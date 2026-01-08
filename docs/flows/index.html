@@ -28,71 +28,281 @@
       </div>
 
       <h1>Power Automate Flows</h1>
-      <p>Übersicht aller Flows der DEX Event Experience Platform. Jeder Flow ist detailliert dokumentiert mit Flowchart, Aktionen und Expressions.</p>
+      <p>Übersicht aller 23 Flows der DEX Event Experience Platform, kategorisiert nach Funktionsbereich.</p>
 
       <section>
-        <h2>Flow-Übersicht</h2>
+        <h2>Flow-Architektur</h2>
         <pre class="mermaid">
 flowchart LR
-    subgraph Trigger["Trigger"]
-        T1[SharePoint Item Created]
-        T2[HTTP Request]
-        T3[Child Flow Call]
+    subgraph Trigger["Trigger-Typen"]
+        T1[SharePoint<br/>Item Created]
+        T2[Power App<br/>Button]
+        T3[Child Flow<br/>Call]
+        T4[Manual<br/>Button]
     end
 
-    subgraph Flows["Flows"]
-        F1[Registrierungs-Flow]
-        F2[Abmelde-Flow]
-        F3[Wartelisten-Flow]
-        F4[E-Mail Flow]
+    subgraph Categories["Kategorien"]
+        C1[Event-Verwaltung<br/>4 Flows]
+        C2[Registrierung<br/>5 Flows]
+        C3[Check-In<br/>3 Flows]
+        C4[E-Mail & Kalender<br/>4 Flows]
+        C5[Utility<br/>7 Flows]
     end
 
-    T1 --> F1
-    T2 --> F2
-    T3 --> F3
-    T3 --> F4
-
-    F1 --> F4
-    F2 --> F3
-    F3 --> F4
+    T1 --> C1
+    T2 --> C2
+    T2 --> C3
+    T3 --> C4
+    T4 --> C5
         </pre>
       </section>
 
-      <section>
-        <h2>Alle Flows</h2>
+      <section id="event-verwaltung">
+        <h2>Event-Verwaltung</h2>
+        <p>Flows für die Erstellung und Konfiguration von Events.</p>
         <table>
           <thead>
             <tr>
               <th>Flow</th>
+              <th>ID</th>
               <th>Trigger</th>
+              <th>Status</th>
               <th>Beschreibung</th>
-              <th>Connectors</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><a href="registrierung.html">Registrierungs-Flow</a></td>
-              <td><code>SharePoint - Item Created</code></td>
-              <td>Verarbeitet neue Event-Anmeldungen</td>
-              <td>SharePoint, Outlook, Office365Users</td>
+              <td><a href="neweventadded-siteprovis.html"><strong>NewEventAdded_SiteProvis</strong></a></td>
+              <td><code>9722b1ef...</code></td>
+              <td>SharePoint Item Created (1 min)</td>
+              <td><span class="tag">Stopped</span></td>
+              <td>Erstellt Subsite, wendet Template an, sendet Organizer-Mail</td>
             </tr>
             <tr>
-              <td><a href="abmeldung.html">Abmelde-Flow</a></td>
-              <td><code>HTTP Request / Power App</code></td>
-              <td>Verarbeitet Abmeldungen mit Deadline-Prüfung</td>
-              <td>SharePoint, Outlook</td>
+              <td><a href="applytemplateb2run.html"><strong>ApplyTemplateB2Run</strong></a></td>
+              <td><code>a95f473c...</code></td>
+              <td>Child Flow (URL)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Wendet B2Run-Template auf neue Subsite an</td>
             </tr>
             <tr>
-              <td><a href="warteliste.html">Wartelisten-Flow</a></td>
-              <td><code>Child Flow</code></td>
-              <td>Nachrücken von Wartelisten-Teilnehmern</td>
-              <td>SharePoint, Outlook</td>
+              <td><a href="applytemplateotherevent.html"><strong>ApplyTemplateOtherEvent</strong></a></td>
+              <td><code>cfcce4df...</code></td>
+              <td>Child Flow (URL)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Wendet Standard-Template auf neue Subsite an</td>
             </tr>
             <tr>
-              <td><a href="email.html">E-Mail &amp; Kalender Flow</a></td>
-              <td><code>Child Flow</code></td>
-              <td>Versand von Mails und Kalendereinträgen</td>
-              <td>Outlook</td>
+              <td><a href="eventpermission.html"><strong>EventPermission</strong></a></td>
+              <td><code>8c702f7e...</code></td>
+              <td>Button (ItemId, Audience)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Verwaltet Berechtigungen für Event-Audience</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="registrierung">
+        <h2>Registrierung</h2>
+        <p>Flows für An- und Abmeldung von Teilnehmern.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Flow</th>
+              <th>ID</th>
+              <th>Trigger</th>
+              <th>Status</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="registerparticipant.html"><strong>RegisterParticipant</strong></a></td>
+              <td><code>12db96ef...</code></td>
+              <td>Power App</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Registriert Teilnehmer für Event</td>
+            </tr>
+            <tr>
+              <td><a href="deregisterparticipant.html"><strong>DeregisterParticipant</strong></a></td>
+              <td><code>b2a06173...</code></td>
+              <td>Power App</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Meldet Teilnehmer von Event ab</td>
+            </tr>
+            <tr>
+              <td><a href="checkregistrationstatusparticipant.html"><strong>CheckRegistrationStatusParticipant</strong></a></td>
+              <td><code>d9455ec1...</code></td>
+              <td>Power App (userEmail, eventID)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Prüft Registrierungsstatus eines Users</td>
+            </tr>
+            <tr>
+              <td><a href="getwaitinglistposition.html"><strong>GetWaitinglistPosition</strong></a></td>
+              <td><code>ba3ea4c3...</code></td>
+              <td>Power App (Email, EventId)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Gibt Wartelistenposition zurück</td>
+            </tr>
+            <tr>
+              <td><a href="getparticipantevents.html"><strong>GetParticipantEvents</strong></a></td>
+              <td><code>c87a1179...</code></td>
+              <td>Power App (userEmail)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Listet Events eines Teilnehmers auf</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="check-in">
+        <h2>Check-In</h2>
+        <p>Flows für den Event-Check-In vor Ort.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Flow</th>
+              <th>ID</th>
+              <th>Trigger</th>
+              <th>Status</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="check-in.html"><strong>Check-In</strong></a></td>
+              <td><code>0d78b8a2...</code></td>
+              <td>Power App</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Manueller Check-In von Teilnehmern</td>
+            </tr>
+            <tr>
+              <td><a href="checkinfromqrcode.html"><strong>CheckInFromQRCode</strong></a></td>
+              <td><code>94af55a9...</code></td>
+              <td>Power App</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Check-In per QR-Code-Scan</td>
+            </tr>
+            <tr>
+              <td><a href="eventqrcodegenerator.html"><strong>EventQRCodeGenerator</strong></a></td>
+              <td><code>3cbcc422...</code></td>
+              <td>Button (EventID)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Generiert QR-Codes für alle Teilnehmer</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="email-kalender">
+        <h2>E-Mail &amp; Kalender</h2>
+        <p>Flows für E-Mail-Versand und Outlook-Integration.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Flow</th>
+              <th>ID</th>
+              <th>Trigger</th>
+              <th>Status</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="sendmailsharedmailbox.html"><strong>SendMailSharedMailbox</strong></a></td>
+              <td><code>1d0481d1...</code></td>
+              <td>Button (name, content, subject, email)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Sendet E-Mail über no_reply.events@deloitte.de</td>
+            </tr>
+            <tr>
+              <td><a href="sendmailparticipantlist.html"><strong>SendMailParticipantList</strong></a></td>
+              <td><code>f245125b...</code></td>
+              <td>Power App (eventId, text, type, subject)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Massen-E-Mail an Teilnehmer/Warteliste</td>
+            </tr>
+            <tr>
+              <td><a href="registeroutlookeventparticipant.html"><strong>RegisterOutlookEventParticipant</strong></a></td>
+              <td><code>9bb8f1e4...</code></td>
+              <td>Button (EventID, ParticipantMail)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Erstellt Outlook-Kalendereintrag für Teilnehmer</td>
+            </tr>
+            <tr>
+              <td><a href="createoutlookeventsharedmailbox.html"><strong>CreateOutlookEventSharedMailbox</strong></a></td>
+              <td><code>c474ce34...</code></td>
+              <td>Child Flow</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Erstellt Event in Shared Mailbox Kalender</td>
+            </tr>
+            <tr>
+              <td><a href="helperflowmailtoregistered.html"><strong>HelperFlowMailToRegistered</strong></a></td>
+              <td><code>9d03f5ba...</code></td>
+              <td>Button</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Helper-Flow für Mails an Registrierte</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="utility">
+        <h2>Utility &amp; Admin</h2>
+        <p>Administrative und Hilfs-Flows.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Flow</th>
+              <th>ID</th>
+              <th>Trigger</th>
+              <th>Status</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Flow-Dokumentation-Export</strong></td>
+              <td><code>2ea78ef7...</code></td>
+              <td>Button</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Exportiert alle Flow-Definitionen in Textdatei</td>
+            </tr>
+            <tr>
+              <td><strong>SharePoint_Batch_Update_V2</strong></td>
+              <td><code>7ca8e381...</code></td>
+              <td>Button (siteUrl, listName, number)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Batch-Updates auf SharePoint-Listen</td>
+            </tr>
+            <tr>
+              <td><strong>SetPermissionForSubWeb</strong></td>
+              <td><code>fa4be831...</code></td>
+              <td>Button (URL, Email)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Setzt Berechtigungen für Subsites</td>
+            </tr>
+            <tr>
+              <td><strong>UpdateAllEventsWithNewFields</strong></td>
+              <td><code>5d529f0a...</code></td>
+              <td>Button</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Fügt Freitextfeld3-7 zu allen Events hinzu</td>
+            </tr>
+            <tr>
+              <td><strong>CorrectOutlookID</strong></td>
+              <td><code>4d185745...</code></td>
+              <td>Button</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Korrigiert Outlook Event IDs</td>
+            </tr>
+            <tr>
+              <td><strong>SP Liste Nummerierung korrigieren</strong></td>
+              <td><code>0a18b534...</code></td>
+              <td>Button (EventID)</td>
+              <td><span class="tag tag-primary">Started</span></td>
+              <td>Korrigiert Nummerierung in SharePoint-Listen</td>
             </tr>
           </tbody>
         </table>
@@ -102,71 +312,75 @@ flowchart LR
         <h2>Flow-Abhängigkeiten</h2>
         <pre class="mermaid">
 flowchart TD
-    REG[Registrierungs-Flow] --> |"bei Erfolg"| MAIL1[E-Mail Flow]
-    REG --> |"Warteliste voll"| MAIL2[E-Mail Flow<br/>Wartelisten-Bestätigung]
+    subgraph EventCreation["Event-Erstellung"]
+        NEW[NewEventAdded_SiteProvis] --> |"Switch ContentType"| SWITCH{Event-Typ}
+        SWITCH --> |"B2Run Event"| TB[ApplyTemplateB2Run]
+        SWITCH --> |"JP Morgan / Other"| TO[ApplyTemplateOtherEvent]
+        NEW --> OE[CreateOutlookEvent<br/>SharedMailbox]
+        NEW --> |"if Audience Mail"| EP[EventPermission]
+    end
 
-    UNREG[Abmelde-Flow] --> |"vor Deadline"| WAIT[Wartelisten-Flow]
-    UNREG --> |"nach Deadline"| MAIL3[E-Mail Flow<br/>Absage-Info]
+    subgraph Registration["Registrierung"]
+        REG[RegisterParticipant] --> RO[RegisterOutlook<br/>EventParticipant]
+        REG --> SM[SendMailSharedMailbox]
+        DEREG[DeregisterParticipant] --> SM
+    end
 
-    WAIT --> |"Nachrücker gefunden"| MAIL4[E-Mail Flow<br/>Nachrücker-Bestätigung]
+    subgraph CheckIn["Check-In"]
+        QR[EventQRCodeGenerator] --> |"generates"| QRDATA[QR-Codes in Liste]
+        CI[Check-In] --> |"updates"| LIST[(Teilnehmerliste)]
+        CIQR[CheckInFromQRCode] --> |"updates"| LIST
+    end
+
+    subgraph Email["E-Mail"]
+        SML[SendMailParticipantList] --> |"iterates"| LIST
+        SM --> |"sends via"| MAILBOX[no_reply.events@deloitte.de]
+        SML --> |"sends via"| MAILBOX
+    end
         </pre>
-
-        <div class="info-box">
-          <h4>Zeitzonenkonvertierung</h4>
-          <p>Alle Flows verwenden die Zeitzone <code>Europe/Berlin</code> (Köln) für Datumsberechnungen und Kalendereinträge.</p>
-        </div>
       </section>
 
       <section>
-        <h2>Gemeinsame Expressions</h2>
-        <p>Diese Expressions werden in mehreren Flows verwendet:</p>
-
+        <h2>Trigger-Typen</h2>
         <table>
           <thead>
             <tr>
-              <th>Expression</th>
+              <th>Trigger-Typ</th>
+              <th>Anzahl</th>
               <th>Beschreibung</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>convertTimeZone(utcNow(),'UTC','W. Europe Standard Time')</code></td>
-              <td>Aktuelle Zeit in deutscher Zeitzone</td>
+              <td><code>Power App (PowerAppV2)</code></td>
+              <td>6</td>
+              <td>Von Power App aufgerufen mit Parametern</td>
             </tr>
             <tr>
-              <td><code>triggerOutputs()?['body/Event registered/Id']</code></td>
-              <td>Event-ID aus Lookup-Feld</td>
+              <td><code>Manual Button</code></td>
+              <td>14</td>
+              <td>Manuell gestartet, teils mit Input-Parametern</td>
             </tr>
             <tr>
-              <td><code>body('Get_Event')?['Capacity']</code></td>
-              <td>Event-Kapazität abrufen</td>
+              <td><code>SharePoint Item Created</code></td>
+              <td>1</td>
+              <td>Bei neuem SharePoint-Eintrag (NewEventAdded)</td>
             </tr>
             <tr>
-              <td><code>length(body('Get_Registrations')?['value'])</code></td>
-              <td>Anzahl aktueller Anmeldungen</td>
+              <td><code>Child Flow (Workflow)</code></td>
+              <td>2</td>
+              <td>Von anderen Flows aufgerufen</td>
             </tr>
           </tbody>
         </table>
       </section>
 
       <section>
-        <h2>Fehlerbehandlung</h2>
-        <p>Alle Flows implementieren ein einheitliches Fehlerbehandlungs-Pattern:</p>
-
-        <pre class="mermaid">
-flowchart TD
-    START[Flow Start] --> TRY[Try Scope]
-    TRY --> |"Erfolg"| SUCCESS[Erfolg-Aktion]
-    TRY --> |"Fehler"| CATCH[Catch Scope]
-    CATCH --> LOG[Fehler loggen]
-    LOG --> NOTIFY[Admin benachrichtigen]
-        </pre>
-
-        <ul>
-          <li><strong>Try Scope:</strong> Enthält die Hauptlogik des Flows</li>
-          <li><strong>Catch Scope:</strong> Konfiguriert mit <code>runAfter: failed, timedOut</code></li>
-          <li><strong>Logging:</strong> Fehlerdetails werden in SharePoint-Liste geschrieben</li>
-        </ul>
+        <h2>Shared Mailbox</h2>
+        <div class="info-box">
+          <h4>no_reply.events@deloitte.de</h4>
+          <p>Alle E-Mail-Benachrichtigungen werden über diese Shared Mailbox versendet. Die Flows <code>SendMailSharedMailbox</code> und <code>SendMailParticipantList</code> nutzen den Office 365 Outlook Connector mit der Operation <code>SharedMailboxSendEmailV2</code>.</p>
+        </div>
       </section>
     </div>
   </main>

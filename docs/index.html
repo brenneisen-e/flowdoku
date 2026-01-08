@@ -32,34 +32,34 @@
 
         <div class="info-box">
           <h4>Status</h4>
-          <p>15+ Events erfolgreich durchgeführt. Von BR und SecO freigegeben.</p>
+          <p>15+ Events erfolgreich durchgeführt. Von BR und SecO freigegeben. 23 Power Automate Flows implementiert.</p>
         </div>
 
         <h3>Kernfunktionen</h3>
         <div class="card-grid">
           <div class="card">
             <h3>Event-Erstellung</h3>
-            <p>Automatische SharePoint-Site-Erstellung inkl. Anmeldemaske. Setup in wenigen Minuten.</p>
+            <p>Automatische SharePoint-Subsite-Erstellung inkl. Teilnehmerliste. Unterstützt verschiedene Event-Typen (B2Run, JP Morgan, Other).</p>
           </div>
           <div class="card">
             <h3>An-/Abmeldung</h3>
-            <p>Automatische Bestätigungsmail und Kalendereintrag bei Registrierung.</p>
+            <p>Automatische Bestätigungsmail und Kalendereintrag bei Registrierung. Abmeldung mit Deadline-Prüfung.</p>
           </div>
           <div class="card">
             <h3>Wartelisten-Handling</h3>
-            <p>Automatisches Nachrücken bei Abmeldung mit Benachrichtigung.</p>
+            <p>Automatisches Nachrücken bei Abmeldung mit Position-Tracking.</p>
           </div>
           <div class="card">
             <h3>QR-Code Check-In</h3>
-            <p>Individuelle QR-Codes für jeden Teilnehmer. Check-In-Funktion für das Orga-Team.</p>
+            <p>Individuelle QR-Codes pro Teilnehmer. Check-In per Scan oder manuell.</p>
           </div>
           <div class="card">
-            <h3>Assistenz-Modus</h3>
-            <p>Anmeldung für andere Personen möglich (varAssistancetrue).</p>
+            <h3>E-Mail-Kommunikation</h3>
+            <p>Shared Mailbox (no_reply.events@deloitte.de) für alle Benachrichtigungen.</p>
           </div>
           <div class="card">
-            <h3>Organizer-Zugang</h3>
-            <p>Event-Auswahl gefiltert auf eigene Events. Vollständige Teilnehmerverwaltung.</p>
+            <h3>Berechtigungen</h3>
+            <p>Automatische Vergabe von Subsite-Berechtigungen für Organizer und Audience.</p>
           </div>
         </div>
       </section>
@@ -73,41 +73,60 @@ flowchart TB
         CHECKIN[Check-In App]
     end
 
-    subgraph PowerAutomate["Power Automate Flows"]
-        REG[Registrierungs-Flow]
-        UNREG[Abmelde-Flow]
-        WAIT[Wartelisten-Flow]
-        MAIL[E-Mail Flow]
+    subgraph EventMgmt["Event-Verwaltung"]
+        NEW[NewEventAdded<br/>SiteProvis]
+        TEMPLATE1[ApplyTemplate<br/>B2Run]
+        TEMPLATE2[ApplyTemplate<br/>OtherEvent]
+        PERM[EventPermission]
     end
 
-    subgraph SharePoint["SharePoint Listen"]
+    subgraph Registration["Registrierung"]
+        REG[RegisterParticipant]
+        REGOL[RegisterOutlook<br/>EventParticipant]
+        DEREG[DeregisterParticipant]
+        STATUS[CheckRegistration<br/>StatusParticipant]
+    end
+
+    subgraph CheckInFlows["Check-In"]
+        CI[Check-In]
+        CIQR[CheckInFromQRCode]
+        QRGEN[EventQRCode<br/>Generator]
+    end
+
+    subgraph Email["E-Mail & Kalender"]
+        MAIL[SendMailShared<br/>Mailbox]
+        MAILLIST[SendMail<br/>ParticipantList]
+        OUTLOOK[CreateOutlookEvent<br/>SharedMailbox]
+    end
+
+    subgraph SharePoint["SharePoint"]
         EVENTS[(Events)]
-        VISITORS[(Event visitors)]
-        TEMP[(Anmeldungen)]
-    end
-
-    subgraph Services["Microsoft 365 Services"]
-        OUTLOOK[Outlook]
-        O365[Office365Users]
+        VISITORS[(Teilnehmerliste)]
     end
 
     APP --> REG
-    APP --> UNREG
-    CHECKIN --> VISITORS
+    APP --> DEREG
+    APP --> STATUS
+    CHECKIN --> CI
+    CHECKIN --> CIQR
 
-    REG --> EVENTS
-    REG --> VISITORS
-    REG --> TEMP
+    NEW --> TEMPLATE1
+    NEW --> TEMPLATE2
+    NEW --> PERM
+    NEW --> OUTLOOK
+
+    REG --> REGOL
     REG --> MAIL
+    REGOL --> OUTLOOK
 
-    UNREG --> VISITORS
-    UNREG --> WAIT
+    DEREG --> MAIL
 
-    WAIT --> VISITORS
-    WAIT --> MAIL
+    CI --> VISITORS
+    CIQR --> VISITORS
+    QRGEN --> VISITORS
 
-    MAIL --> OUTLOOK
-    APP --> O365
+    MAIL --> EVENTS
+    MAILLIST --> VISITORS
         </pre>
       </section>
 
@@ -127,71 +146,111 @@ flowchart TB
             <tr>
               <td><code>Events</code></td>
               <td>Event-Stammdaten</td>
-              <td>Organizer, Datum, Kapazität, Deadline</td>
+              <td>Title, Event_time, Event_end_time, Organizer, Status, Teilnehmerliste_URL, OutlookEventID, Audience_Mail</td>
             </tr>
             <tr>
-              <td><code>Event visitors</code></td>
-              <td>Registrierte Teilnehmer</td>
-              <td>Event registered (Lookup), Status, QR-Code</td>
-            </tr>
-            <tr>
-              <td><code>Anmeldungen</code></td>
-              <td>Temporäre Registrierungstabelle</td>
-              <td>Processing-Status</td>
+              <td><code>Teilnehmerliste</code></td>
+              <td>Pro Event eine Liste (Subsite)</td>
+              <td>Participant, Email, Status, QR-Code, CheckIn-Zeit, Freitextfeld1-7</td>
             </tr>
           </tbody>
         </table>
 
+        <h3>SharePoint-Site</h3>
+        <p>Basis-URL: <code>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</code></p>
+        <p>Pro Event wird eine Subsite mit Teilnehmerliste erstellt.</p>
+
         <h3>Connectors</h3>
         <div class="tag">SharePoint</div>
         <div class="tag">Office 365 Outlook</div>
-        <div class="tag">Office365Users</div>
+        <div class="tag">Power Automate Management</div>
+        <div class="tag">HTTP</div>
       </section>
 
       <section>
         <h2>Power Automate Flows</h2>
-        <p>Die Geschäftslogik der Plattform wird durch mehrere Power Automate Flows abgebildet:</p>
+        <p>Die Plattform umfasst <strong>23 Power Automate Flows</strong> in folgenden Kategorien:</p>
 
         <div class="card-grid">
-          <a href="flows/registrierung.html" class="card-link">
+          <a href="flows/index.html#event-verwaltung" class="card-link">
             <div class="card">
-              <h3>Registrierungs-Flow</h3>
-              <p>Verarbeitet neue Anmeldungen, prüft Kapazität, erstellt Kalendereinträge.</p>
+              <h3>Event-Verwaltung</h3>
+              <p>NewEventAdded_SiteProvis, ApplyTemplateB2Run, ApplyTemplateOtherEvent, EventPermission</p>
               <div style="margin-top: 0.75rem;">
-                <span class="tag tag-primary">Trigger: SharePoint Item Created</span>
+                <span class="tag">4 Flows</span>
               </div>
             </div>
           </a>
-          <a href="flows/abmeldung.html" class="card-link">
+          <a href="flows/index.html#registrierung" class="card-link">
             <div class="card">
-              <h3>Abmelde-Flow</h3>
-              <p>Verarbeitet Abmeldungen, prüft Deadline, triggert Wartelisten-Nachrücken.</p>
+              <h3>Registrierung</h3>
+              <p>RegisterParticipant, DeregisterParticipant, CheckRegistrationStatusParticipant, GetWaitinglistPosition</p>
               <div style="margin-top: 0.75rem;">
-                <span class="tag tag-primary">Trigger: HTTP Request / App</span>
+                <span class="tag">5 Flows</span>
               </div>
             </div>
           </a>
-          <a href="flows/warteliste.html" class="card-link">
+          <a href="flows/index.html#check-in" class="card-link">
             <div class="card">
-              <h3>Wartelisten-Flow</h3>
-              <p>Automatisches Nachrücken von Wartelisten-Teilnehmern bei freien Plätzen.</p>
+              <h3>Check-In</h3>
+              <p>Check-In, CheckInFromQRCode, EventQRCodeGenerator</p>
               <div style="margin-top: 0.75rem;">
-                <span class="tag tag-primary">Trigger: Flow-Aufruf</span>
+                <span class="tag">3 Flows</span>
               </div>
             </div>
           </a>
-          <a href="flows/email.html" class="card-link">
+          <a href="flows/index.html#email-kalender" class="card-link">
             <div class="card">
               <h3>E-Mail &amp; Kalender</h3>
-              <p>Versand von Bestätigungsmails und Erstellung von Kalendereinträgen.</p>
+              <p>SendMailSharedMailbox, SendMailParticipantList, CreateOutlookEventSharedMailbox, RegisterOutlookEventParticipant</p>
               <div style="margin-top: 0.75rem;">
-                <span class="tag tag-primary">Trigger: Child Flow</span>
+                <span class="tag">4 Flows</span>
+              </div>
+            </div>
+          </a>
+          <a href="flows/index.html#utility" class="card-link">
+            <div class="card">
+              <h3>Utility &amp; Admin</h3>
+              <p>SharePoint_Batch_Update, SetPermissionForSubWeb, UpdateAllEventsWithNewFields, und weitere</p>
+              <div style="margin-top: 0.75rem;">
+                <span class="tag">7 Flows</span>
               </div>
             </div>
           </a>
         </div>
 
-        <p style="margin-top: 1.5rem;"><a href="flows/index.html">Alle Flows anzeigen &rarr;</a></p>
+        <p style="margin-top: 1.5rem;"><a href="flows/index.html">Alle 23 Flows anzeigen &rarr;</a></p>
+      </section>
+
+      <section>
+        <h2>Event-Typen</h2>
+        <p>Die Plattform unterstützt verschiedene Event-Typen mit unterschiedlichen Templates:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Event-Typ</th>
+              <th>Content Type</th>
+              <th>Template-Flow</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>B2Run Event</td>
+              <td><code>B2Run Event</code></td>
+              <td>ApplyTemplateB2Run</td>
+            </tr>
+            <tr>
+              <td>JP Morgan Run</td>
+              <td><code>JP Morgan Run</code></td>
+              <td>ApplyTemplateOtherEvent</td>
+            </tr>
+            <tr>
+              <td>Sonstige Events</td>
+              <td><code>Other Deloitte Event</code></td>
+              <td>ApplyTemplateOtherEvent</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
 
       <section>
