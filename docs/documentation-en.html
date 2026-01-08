@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DEX Event Experience Platform - Anwenderdokumentation</title>
+  <title>DEX Event Experience Platform - User Documentation</title>
   <style>
     @page { size: A4; margin: 20mm 15mm 20mm 15mm; }
     @media print {
@@ -65,51 +65,51 @@
 <div class="nav-header no-print">
   <span class="logo">DEX Documentation</span>
   <nav>
-    <a href="index.html">Übersicht</a>
+    <a href="index.html">Overview</a>
     <a href="flows/index.html">Flows</a>
-    <a href="dokumentation.html" style="font-weight: bold; text-decoration: underline;">DE</a>
-    <a href="documentation-en.html">EN</a>
+    <a href="dokumentation.html">DE</a>
+    <a href="documentation-en.html" style="font-weight: bold; text-decoration: underline;">EN</a>
   </nav>
 </div>
 
-<button class="print-btn no-print" onclick="window.print()">Als PDF speichern</button>
+<button class="print-btn no-print" onclick="window.print()">Save as PDF</button>
 
 <!-- TITELSEITE -->
 <div class="title-page">
   <h1>DEX Event Experience Platform</h1>
-  <p class="subtitle">Anwenderdokumentation</p>
+  <p class="subtitle">User Documentation</p>
   <p class="meta">
-    Version 2.0 | Januar 2026<br>
+    Version 2.0 | January 2026<br>
     Deloitte Deutschland GmbH<br><br>
-    Erstellt von: Eike Brenneisen, Andreas Enk, Nils Felten
+    Created by: Eike Brenneisen, Andreas Enk, Nils Felten
   </p>
 </div>
 
 <!-- INHALTSVERZEICHNIS -->
 <div class="toc">
-  <h2 style="border: none; margin-top: 0;">Inhaltsverzeichnis</h2>
+  <h2 style="border: none; margin-top: 0;">Table of Contents</h2>
   <ul>
     <li><strong>1. Management Summary</strong></li>
-    <li><strong>2. Anwendungsbeschreibung</strong>
+    <li><strong>2. Application Description</strong>
       <ul>
-        <li>2.1 Zweck und Nutzen</li>
-        <li>2.2 Technische Architektur</li>
-        <li>2.3 Architektur-Flowchart</li>
+        <li>2.1 Purpose and Benefits</li>
+        <li>2.2 Technical Architecture</li>
+        <li>2.3 Architecture Flowchart</li>
         <li>2.4 Power App Screens</li>
-        <li>2.5 Event Creation - Architektur im Detail</li>
+        <li>2.5 Event Creation - Architecture in Detail</li>
       </ul>
     </li>
-    <li><strong>3. Power Automate Flows - Übersicht</strong></li>
-    <li><strong>4. Flow-Detaildokumentation</strong> (mit geclusterten Actions)
+    <li><strong>3. Power Automate Flows - Overview</strong></li>
+    <li><strong>4. Flow Detail Documentation</strong> (with clustered Actions)
       <ul>
-        <li>4.1-4.4 Event-Verwaltung</li>
-        <li>4.5-4.9 Registrierung</li>
+        <li>4.1-4.4 Event Management</li>
+        <li>4.5-4.9 Registration</li>
         <li>4.10-4.12 Check-In</li>
-        <li>4.13-4.17 E-Mail & Kalender</li>
+        <li>4.13-4.17 Email & Calendar</li>
         <li>4.18-4.23 Utility & Administration</li>
       </ul>
     </li>
-    <li><strong>5. Anhang</strong></li>
+    <li><strong>5. Appendix</strong></li>
   </ul>
 </div>
 
@@ -117,95 +117,95 @@
 <div class="page-break"></div>
 <h1>1. Management Summary</h1>
 
-<p>Die <strong>DEX Event Experience Platform</strong> ist eine vollständig auf Microsoft Power Platform basierende Event-Management-Lösung für interne Deloitte-Veranstaltungen. Die Plattform digitalisiert und automatisiert den gesamten Event-Lebenszyklus.</p>
+<p>The <strong>DEX Event Experience Platform</strong> is a fully Microsoft Power Platform-based event management solution for internal Deloitte events. The platform digitizes and automates the entire event lifecycle.</p>
 
-<h3>Ausgangssituation</h3>
-<p>Vor DEX: Manuelle Event-Verwaltung mit E-Mail-Anmeldungen, Excel-Listen, manueller Kalenderpflege und Papier-Check-In-Listen.</p>
+<h3>Initial Situation</h3>
+<p>Vor DEX: Manuelle Event Management mit E-Mail-Registrationen, Excel-Listen, manueller Calendarpflege und Papier-Check-In-Listen.</p>
 
-<h3>Die Lösung</h3>
-<p>DEX automatisiert diese Prozesse durch <strong>Power Apps</strong> (Frontend), <strong>Power Automate</strong> (23 Flows), <strong>SharePoint Online</strong> (Daten) und <strong>Office 365</strong> (E-Mail/Kalender).</p>
+<h3>The Solution</h3>
+<p>DEX automates these processes through <strong>Power Apps</strong> (Frontend), <strong>Power Automate</strong> (23 Flows), <strong>SharePoint Online</strong> (Daten) und <strong>Office 365</strong> (E-Mail/Calendar).</p>
 
-<h3>Erreichte Ergebnisse</h3>
+<h3>Achieved Results</h3>
 <table>
-  <tr><td><strong>15+ Events</strong></td><td>erfolgreich durchgeführt</td></tr>
-  <tr><td><strong>80% Zeiteinsparung</strong></td><td>bei Event-Administration</td></tr>
-  <tr><td><strong>23 Flows</strong></td><td>implementiert und produktiv</td></tr>
-  <tr><td><strong>100% Compliance</strong></td><td>BR und SecO freigegeben</td></tr>
+  <tr><td><strong>15+ Events</strong></td><td>successfully executed</td></tr>
+  <tr><td><strong>80% time saved</strong></td><td>in event administration</td></tr>
+  <tr><td><strong>23 Flows</strong></td><td>implemented and productive</td></tr>
+  <tr><td><strong>100% Compliance</strong></td><td>BR and SecO approved</td></tr>
 </table>
 
-<h3>Kernfunktionen</h3>
+<h3>Core Functions</h3>
 <ul>
-  <li><strong>Event-Erstellung:</strong> Automatische SharePoint-Subsite mit Teilnehmerliste</li>
-  <li><strong>Self-Service-Registrierung:</strong> Anmeldung mit automatischer Bestätigungsmail und Kalendereintrag</li>
-  <li><strong>Wartelisten-Management:</strong> Automatisches Nachrücken bei Abmeldungen</li>
-  <li><strong>QR-Code Check-In:</strong> Individuelle QR-Codes für schnellen Check-In</li>
-  <li><strong>E-Mail-Kommunikation:</strong> Zentral über Shared Mailbox (no_reply.events@deloitte.de)</li>
+  <li><strong>Event Creation:</strong> Automatic SharePoint subsite with participant list</li>
+  <li><strong>Self-Service-Registration:</strong> Registration with automatic confirmation email and calendar entry</li>
+  <li><strong>Waiting List Management:</strong> Automatic advancement when cancellations occur</li>
+  <li><strong>QR Code Check-In:</strong> Individual QR codes for quick check-in</li>
+  <li><strong>Email Communication:</strong> Centralized via shared mailbox (no_reply.events@deloitte.de)</li>
 </ul>
 
 <!-- 2. ANWENDUNGSBESCHREIBUNG -->
 <div class="page-break"></div>
-<h1>2. Anwendungsbeschreibung</h1>
+<h1>2. Application Description</h1>
 
-<h2>2.1 Zweck und Nutzen</h2>
-<p>DEX ersetzt manuelle Event-Prozesse durch automatisierte Workflows für Organizer, Teilnehmer und Check-In-Teams.</p>
+<h2>2.1 Purpose and Benefits</h2>
+<p>DEX ersetzt manuelle Event-Prozesse durch automatisierte Workflows für Organizer, Participant und Check-In-Teams.</p>
 
-<h3>Nutzen für Organizer</h3>
+<h3>Benefits for Organizers</h3>
 <ul>
-  <li>Schnelle Event-Erstellung mit automatischer Infrastruktur</li>
-  <li>Echtzeit-Übersicht über Anmeldungen und Warteliste</li>
-  <li>Integrierte E-Mail-Kommunikation</li>
+  <li>Quick event creation with automatic infrastructure</li>
+  <li>Echtzeit-Overview über Registrationen und Warteliste</li>
+  <li>Integrated email communication</li>
 </ul>
 
-<h3>Nutzen für Teilnehmer</h3>
+<h3>Benefits for Participants</h3>
 <ul>
-  <li>Self-Service-Anmeldung ohne E-Mail</li>
-  <li>Automatischer Outlook-Kalendereintrag</li>
-  <li>Persönlicher QR-Code für Check-In</li>
+  <li>Self-service registration without email</li>
+  <li>Automatic Outlook calendar entry</li>
+  <li>Personal QR code for check-in</li>
 </ul>
 
-<h2>2.2 Technische Architektur</h2>
+<h2>2.2 Technical Architecture</h2>
 <table>
-  <tr><th>Komponente</th><th>Technologie</th><th>Zweck</th></tr>
-  <tr><td>Frontend</td><td>Power Apps</td><td>Benutzeroberfläche</td></tr>
-  <tr><td>Backend</td><td>Power Automate (23 Flows)</td><td>Geschäftslogik</td></tr>
-  <tr><td>Daten</td><td>SharePoint Online</td><td>Events, Teilnehmerlisten</td></tr>
-  <tr><td>Kommunikation</td><td>Office 365 Outlook</td><td>E-Mail, Kalender</td></tr>
+  <tr><th>Component</th><th>Technology</th><th>Purpose</th></tr>
+  <tr><td>Frontend</td><td>Power Apps</td><td>User Interface</td></tr>
+  <tr><td>Backend</td><td>Power Automate (23 Flows)</td><td>Business Logic</td></tr>
+  <tr><td>Daten</td><td>SharePoint Online</td><td>Events, Participant Listn</td></tr>
+  <tr><td>Communication</td><td>Office 365 Outlook</td><td>E-Mail, Calendar</td></tr>
 </table>
 
-<h3>SharePoint-Struktur</h3>
+<h3>SharePoint Structure</h3>
 <table>
-  <tr><th>Element</th><th>Pfad</th></tr>
-  <tr><td>Basis-Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
-  <tr><td>Events-Liste</td><td>/Lists/Events</td></tr>
-  <tr><td>Event-Subsites</td><td>/sites/DOL-c-DE-B2Run/[EventName]/</td></tr>
-  <tr><td>Teilnehmerliste</td><td>/[EventName]/Lists/Teilnehmerliste</td></tr>
+  <tr><th>Element</th><th>Path</th></tr>
+  <tr><td>Base Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
+  <tr><td>Events List</td><td>/Lists/Events</td></tr>
+  <tr><td>Event Subsites</td><td>/sites/DOL-c-DE-B2Run/[EventName]/</td></tr>
+  <tr><td>Participant List</td><td>/[EventName]/Lists/Participant List</td></tr>
 </table>
 
-<h3>Umgebungen</h3>
-<p>Das Projekt verfügt über drei separate Umgebungen für den gesamten Entwicklungslebenszyklus:</p>
+<h3>Environments</h3>
+<p>Das Projekt verfügt über drei separate Environments für den gesamten Developmentslebenszyklus:</p>
 <table>
-  <tr><th>Umgebung</th><th>Zweck</th><th>Beschreibung</th></tr>
-  <tr><td><strong>Development (DEV)</strong></td><td>Entwicklung</td><td>Aktive Entwicklung neuer Features und Bug-Fixes. Instabile Umgebung für Entwickler-Tests.</td></tr>
-  <tr><td><strong>Quality Assurance (QA)</strong></td><td>Test & Abnahme</td><td>Qualitätssicherung und User Acceptance Testing (UAT). Stabile Test-Umgebung.</td></tr>
-  <tr><td><strong>Production (PROD)</strong></td><td>Produktiv</td><td>Live-System für Endbenutzer. Nur getestete und freigegebene Releases.</td></tr>
+  <tr><th>Environment</th><th>Purpose</th><th>Description</th></tr>
+  <tr><td><strong>Development (DEV)</strong></td><td>Development</td><td>Aktive Development neuer Features und Bug-Fixes. Instabile Environment für Entwickler-Tests.</td></tr>
+  <tr><td><strong>Quality Assurance (QA)</strong></td><td>Test & Acceptance</td><td>Qualitätssicherung und User Acceptance Testing (UAT). Stabile Test-Environment.</td></tr>
+  <tr><td><strong>Production (PROD)</strong></td><td>Production</td><td>Live system for end users. Only tested and released versions.</td></tr>
 </table>
 
-<h3>Service Accounts & Verbindungsreferenzen</h3>
-<p>Alle Verbindungsreferenzen (Connection References) in Power Automate und Power Apps werden über <strong>Service Accounts</strong> bereitgestellt:</p>
+<h3>Service Accounts & Connection References</h3>
+<p>All connection references in Power Automate and Power Apps are provided through <strong>Service Accounts</strong>:</p>
 <table>
-  <tr><th>Aspekt</th><th>Beschreibung</th></tr>
-  <tr><td>Authentifizierung</td><td>Dedizierte Service Accounts für alle Connector-Verbindungen</td></tr>
-  <tr><td>SharePoint</td><td>Service Account mit Site Collection Admin-Rechten</td></tr>
-  <tr><td>Outlook/Exchange</td><td>Service Account mit Zugriff auf Shared Mailbox</td></tr>
-  <tr><td>Office 365 Users</td><td>Service Account mit Directory Read-Berechtigung</td></tr>
-  <tr><td>Vorteile</td><td>Unabhängig von persönlichen Accounts, zentrale Verwaltung, Audit-Trail</td></tr>
+  <tr><th>Aspect</th><th>Description</th></tr>
+  <tr><td>Authentication</td><td>Dedicated service accounts for all connector connections</td></tr>
+  <tr><td>SharePoint</td><td>Service account with Site Collection Admin rights</td></tr>
+  <tr><td>Outlook/Exchange</td><td>Service account with access to shared mailbox</td></tr>
+  <tr><td>Office 365 Users</td><td>Service account with Directory Read permission</td></tr>
+  <tr><td>Benefits</td><td>Independent of personal accounts, central management, audit trail</td></tr>
 </table>
 
 <!-- 2.3 ARCHITEKTUR-FLOWCHART -->
 <div class="page-break"></div>
-<h2>2.3 Architektur-Flowchart</h2>
+<h2>2.3 Architecture Flowchart</h2>
 
-<p>Das folgende Diagramm zeigt den <strong>Datenfluss zwischen Benutzern, Power App, Power Automate Flows und den Datenspeichern</strong> (SharePoint & Office 365).</p>
+<p>The following diagram shows the <strong>data flow between users, Power App, Power Automate Flows, and data stores</strong> (SharePoint & Office 365).</p>
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 480" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
@@ -237,17 +237,17 @@
   </defs>
 
   <!-- Layer Labels -->
-  <text x="15" y="50" font-size="11" font-weight="bold" fill="#1a365d">BENUTZER</text>
+  <text x="15" y="50" font-size="11" font-weight="bold" fill="#1a365d">USERS</text>
   <text x="15" y="140" font-size="11" font-weight="bold" fill="#1a365d">FRONTEND</text>
   <text x="15" y="260" font-size="11" font-weight="bold" fill="#1a365d">BACKEND</text>
-  <text x="15" y="400" font-size="11" font-weight="bold" fill="#1a365d">DATEN</text>
+  <text x="15" y="400" font-size="11" font-weight="bold" fill="#1a365d">DATA</text>
 
   <!-- User Layer -->
   <rect x="120" y="25" width="130" height="50" rx="8" fill="url(#userGrad)"/>
   <text x="185" y="55" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Organizer</text>
 
   <rect x="280" y="25" width="130" height="50" rx="8" fill="url(#userGrad)"/>
-  <text x="345" y="55" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Teilnehmer</text>
+  <text x="345" y="55" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Participant</text>
 
   <rect x="440" y="25" width="130" height="50" rx="8" fill="url(#userGrad)"/>
   <text x="505" y="55" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Check-In Team</text>
@@ -280,7 +280,7 @@
   <text x="167" y="282" text-anchor="middle" fill="white" font-size="8">(4 Flows)</text>
 
   <rect x="235" y="230" width="105" height="75" rx="6" fill="url(#flowGrad)"/>
-  <text x="287" y="258" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Registrierung</text>
+  <text x="287" y="258" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Registration</text>
   <text x="287" y="282" text-anchor="middle" fill="white" font-size="8">(5 Flows)</text>
 
   <rect x="355" y="230" width="105" height="75" rx="6" fill="url(#flowGrad)"/>
@@ -289,7 +289,7 @@
 
   <rect x="475" y="230" width="105" height="75" rx="6" fill="url(#flowGrad)"/>
   <text x="527" y="252" text-anchor="middle" fill="white" font-size="9" font-weight="bold">E-Mail &amp;</text>
-  <text x="527" y="264" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Kalender</text>
+  <text x="527" y="264" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Calendar</text>
   <text x="527" y="282" text-anchor="middle" fill="white" font-size="8">(5 Flows)</text>
 
   <rect x="595" y="230" width="90" height="75" rx="6" fill="url(#flowGrad)"/>
@@ -307,7 +307,7 @@
   <!-- SharePoint Structure -->
   <rect x="115" y="368" width="170" height="90" rx="5" fill="url(#spGrad)"/>
   <text x="200" y="388" text-anchor="middle" fill="white" font-size="10" font-weight="bold">DOL-c-DE-B2Run</text>
-  <text x="200" y="403" text-anchor="middle" fill="white" font-size="8">(Basis-Site)</text>
+  <text x="200" y="403" text-anchor="middle" fill="white" font-size="8">(Base Site)</text>
   <rect x="125" y="410" width="150" height="18" rx="3" fill="white" fill-opacity="0.3"/>
   <text x="200" y="423" text-anchor="middle" fill="white" font-size="8">Lists/Events</text>
   <rect x="125" y="432" width="150" height="18" rx="3" fill="white" fill-opacity="0.3"/>
@@ -317,7 +317,7 @@
   <text x="392" y="388" text-anchor="middle" fill="white" font-size="10" font-weight="bold">[EventName]/</text>
   <text x="392" y="403" text-anchor="middle" fill="white" font-size="8">(Dynamische Subsite)</text>
   <rect x="310" y="410" width="165" height="40" rx="3" fill="white" fill-opacity="0.3"/>
-  <text x="392" y="426" text-anchor="middle" fill="white" font-size="8">Lists/Teilnehmerliste</text>
+  <text x="392" y="426" text-anchor="middle" fill="white" font-size="8">Lists/Participant List</text>
   <text x="392" y="440" text-anchor="middle" fill="white" font-size="7">Name, Email, Status, Nr, CheckIn...</text>
 
   <!-- Office 365 Layer -->
@@ -329,130 +329,130 @@
   <text x="610" y="402" text-anchor="middle" fill="white" font-size="7">no_reply.events@deloitte.de</text>
 
   <rect x="535" y="420" width="150" height="40" rx="5" fill="url(#o365Grad)"/>
-  <text x="610" y="440" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Kalender-Events</text>
-  <text x="610" y="452" text-anchor="middle" fill="white" font-size="7">Termin-Einladungen</text>
+  <text x="610" y="440" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Calendar-Events</text>
+  <text x="610" y="452" text-anchor="middle" fill="white" font-size="7">Calendar invitationen</text>
 
   <!-- Horizontal connection between SP and O365 -->
   <line x1="500" y1="420" x2="520" y2="420" stroke="#718096" stroke-width="1.5" stroke-dasharray="4,2"/>
 </svg>
 </div>
 
-<h3>SharePoint-Listenstruktur im Detail</h3>
+<h3>SharePoint List Structure in Detail</h3>
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 340" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <!-- Events Liste -->
   <rect x="50" y="20" width="300" height="300" rx="8" fill="#f0fff4" stroke="#48bb78" stroke-width="2"/>
   <rect x="50" y="20" width="300" height="35" rx="8" fill="#48bb78"/>
-  <text x="200" y="44" text-anchor="middle" fill="white" font-size="13" font-weight="bold">Events-Liste</text>
+  <text x="200" y="44" text-anchor="middle" fill="white" font-size="13" font-weight="bold">Events List</text>
   <text x="200" y="73" text-anchor="middle" fill="#276749" font-size="9">/Lists/Events</text>
 
   <!-- Events Fields -->
   <rect x="65" y="90" width="270" height="220" rx="4" fill="white" stroke="#c6f6d5" stroke-width="1"/>
-  <text x="75" y="110" fill="#276749" font-size="10" font-weight="bold">Felder (aus CSV):</text>
-  <text x="75" y="128" fill="#2d3748" font-size="9">• Titel - Event-Name</text>
-  <text x="75" y="143" fill="#2d3748" font-size="9">• Inhaltstyp - B2Run/JP Morgan/Other</text>
-  <text x="75" y="158" fill="#2d3748" font-size="9">• Event end time - Endzeitpunkt</text>
-  <text x="75" y="173" fill="#2d3748" font-size="9">• Standort / Standort Filter</text>
-  <text x="75" y="188" fill="#2d3748" font-size="9">• Max. parcipients - Kapazitat</text>
+  <text x="75" y="110" fill="#276749" font-size="10" font-weight="bold">Fields (from CSV):</text>
+  <text x="75" y="128" fill="#2d3748" font-size="9">• Title - Event Name</text>
+  <text x="75" y="143" fill="#2d3748" font-size="9">• Content Typee - B2Run/JP Morgan/Other</text>
+  <text x="75" y="158" fill="#2d3748" font-size="9">• Event end time - End time</text>
+  <text x="75" y="173" fill="#2d3748" font-size="9">• Location / Location Filter</text>
+  <text x="75" y="188" fill="#2d3748" font-size="9">• Max. parcipients - Capacity</text>
   <text x="75" y="203" fill="#2d3748" font-size="9">• Current parcipients / Wait list</text>
-  <text x="75" y="218" fill="#2d3748" font-size="9">• Organzier - Verantwortliche</text>
+  <text x="75" y="218" fill="#2d3748" font-size="9">• Organzier - Responsible</text>
   <text x="75" y="233" fill="#2d3748" font-size="9">• Audience / Audience Mail</text>
   <text x="75" y="248" fill="#2d3748" font-size="9">• Status - Active/Out dated</text>
   <text x="75" y="263" fill="#2d3748" font-size="9">• Outlook EventID</text>
-  <text x="75" y="278" fill="#2d3748" font-size="9">• Teilnehmerliste URL - Subsite</text>
+  <text x="75" y="278" fill="#2d3748" font-size="9">• Participant List URL - Subsite</text>
   <text x="75" y="293" fill="#2d3748" font-size="9">• Event image / T-Shirtgroessen</text>
 
   <!-- Arrow -->
   <path d="M350 170 L400 170" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
-  <text x="375" y="160" text-anchor="middle" fill="#718096" font-size="9">erstellt</text>
+  <text x="375" y="160" text-anchor="middle" fill="#718096" font-size="9">creates</text>
   <defs><marker id="arrow2" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#718096"/></marker></defs>
 
-  <!-- Teilnehmerliste -->
+  <!-- Participant List -->
   <rect x="400" y="20" width="350" height="300" rx="8" fill="#ebf8ff" stroke="#4299e1" stroke-width="2"/>
   <rect x="400" y="20" width="350" height="35" rx="8" fill="#4299e1"/>
-  <text x="575" y="44" text-anchor="middle" fill="white" font-size="13" font-weight="bold">Teilnehmerliste</text>
-  <text x="575" y="73" text-anchor="middle" fill="#2b6cb0" font-size="9">/[EventName]/Lists/Teilnehmerliste</text>
+  <text x="575" y="44" text-anchor="middle" fill="white" font-size="13" font-weight="bold">Participant List</text>
+  <text x="575" y="73" text-anchor="middle" fill="#2b6cb0" font-size="9">/[EventName]/Lists/Participant List</text>
 
-  <!-- Teilnehmerliste Fields -->
+  <!-- Participant List Fields -->
   <rect x="415" y="90" width="320" height="220" rx="4" fill="white" stroke="#bee3f8" stroke-width="1"/>
-  <text x="425" y="110" fill="#2b6cb0" font-size="10" font-weight="bold">Felder (aus CSV):</text>
-  <text x="425" y="128" fill="#2d3748" font-size="9">• Teilnehmername / Vorname / Nachname</text>
-  <text x="425" y="143" fill="#2d3748" font-size="9">• E-Mail - Adresse</text>
-  <text x="425" y="158" fill="#2d3748" font-size="9">• Status - Angemeldet/Warteliste/Abgemeldet</text>
-  <text x="425" y="173" fill="#2d3748" font-size="9">• Nr. - Registrierungsnummer</text>
-  <text x="425" y="188" fill="#2d3748" font-size="9">• Anrede / JobTitle / Department / Office</text>
+  <text x="425" y="110" fill="#2b6cb0" font-size="10" font-weight="bold">Fields (from CSV):</text>
+  <text x="425" y="128" fill="#2d3748" font-size="9">• Participantname / Vorname / Nachname</text>
+  <text x="425" y="143" fill="#2d3748" font-size="9">• Email - Address</text>
+  <text x="425" y="158" fill="#2d3748" font-size="9">• Status - Registered/Waitlist/Cancelled</text>
+  <text x="425" y="173" fill="#2d3748" font-size="9">• Nr. - Registrationsnummer</text>
+  <text x="425" y="188" fill="#2d3748" font-size="9">• Salutation / JobTitle / Department / Office</text>
   <text x="425" y="203" fill="#2d3748" font-size="9">• TShirtGroesse / Allergies / FoodPreferences</text>
 
-  <text x="425" y="225" fill="#2b6cb0" font-size="10" font-weight="bold">Event-spezifische Felder:</text>
-  <text x="425" y="243" fill="#2d3748" font-size="9">• Freitextfeld1/2 - Zusatzinfos</text>
-  <text x="425" y="258" fill="#2d3748" font-size="9">• Dropdownfeld1 - z.B. Rolle (Partner/Director)</text>
-  <text x="425" y="273" fill="#2d3748" font-size="9">• HotelRequired / RoomType / PreferredRoommate</text>
+  <text x="425" y="225" fill="#2b6cb0" font-size="10" font-weight="bold">Event-specific fields:</text>
+  <text x="425" y="243" fill="#2d3748" font-size="9">• Freitextfeld1/2 - Additional info</text>
+  <text x="425" y="258" fill="#2d3748" font-size="9">• Dropdownfeld1 - e.g. Role (Partner/Director)</text>
+  <text x="425" y="273" fill="#2d3748" font-size="9">• HotelRequired / RoomTypee / PreferredRoommate</text>
 
   <!-- Legend -->
-  <text x="425" y="298" fill="#718096" font-size="8" font-style="italic">Pro Event wird eine eigene Subsite mit Teilnehmerliste erstellt</text>
+  <text x="425" y="298" fill="#718096" font-size="8" font-style="italic">Pro Event wird eine eigene Subsite mit Participant List creates</text>
 </svg>
 </div>
 
-<h3>Datenfluss: Registrierungsprozess</h3>
+<h3>Datenfluss: Registrationsprozess</h3>
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 200" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <!-- Step 1 -->
   <rect x="20" y="60" width="120" height="80" rx="8" fill="#e9d8fd" stroke="#805ad5" stroke-width="2"/>
-  <text x="80" y="90" text-anchor="middle" fill="#553c9a" font-size="10" font-weight="bold">1. Anmeldung</text>
-  <text x="80" y="108" text-anchor="middle" fill="#553c9a" font-size="8">Teilnehmer klickt</text>
-  <text x="80" y="120" text-anchor="middle" fill="#553c9a" font-size="8">"Registrieren"</text>
+  <text x="80" y="90" text-anchor="middle" fill="#553c9a" font-size="10" font-weight="bold">1. Registration</text>
+  <text x="80" y="108" text-anchor="middle" fill="#553c9a" font-size="8">Participant klickt</text>
+  <text x="80" y="120" text-anchor="middle" fill="#553c9a" font-size="8">"Register"</text>
   <text x="80" y="132" text-anchor="middle" fill="#553c9a" font-size="8">in Power App</text>
 
   <path d="M140 100 L160 100" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
 
   <!-- Step 2 -->
   <rect x="160" y="60" width="120" height="80" rx="8" fill="#feebc8" stroke="#ed8936" stroke-width="2"/>
-  <text x="220" y="90" text-anchor="middle" fill="#c05621" font-size="10" font-weight="bold">2. Eintrag</text>
-  <text x="220" y="108" text-anchor="middle" fill="#c05621" font-size="8">Item wird in</text>
-  <text x="220" y="120" text-anchor="middle" fill="#c05621" font-size="8">Teilnehmerliste</text>
-  <text x="220" y="132" text-anchor="middle" fill="#c05621" font-size="8">erstellt</text>
+  <text x="220" y="90" text-anchor="middle" fill="#c05621" font-size="10" font-weight="bold">2. Entry</text>
+  <text x="220" y="108" text-anchor="middle" fill="#c05621" font-size="8">Item is created in</text>
+  <text x="220" y="120" text-anchor="middle" fill="#c05621" font-size="8">Participant List</text>
+  <text x="220" y="132" text-anchor="middle" fill="#c05621" font-size="8">creates</text>
 
   <path d="M280 100 L300 100" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
 
   <!-- Step 3 -->
   <rect x="300" y="60" width="120" height="80" rx="8" fill="#feebc8" stroke="#ed8936" stroke-width="2"/>
-  <text x="360" y="85" text-anchor="middle" fill="#c05621" font-size="10" font-weight="bold">3. Flow-Trigger</text>
+  <text x="360" y="85" text-anchor="middle" fill="#c05621" font-size="10" font-weight="bold">3. Flow Trigger</text>
   <text x="360" y="103" text-anchor="middle" fill="#c05621" font-size="8">RegisterParticipant</text>
-  <text x="360" y="115" text-anchor="middle" fill="#c05621" font-size="8">wird durch</text>
+  <text x="360" y="115" text-anchor="middle" fill="#c05621" font-size="8">is triggered by</text>
   <text x="360" y="127" text-anchor="middle" fill="#c05621" font-size="8">"Item Created"</text>
-  <text x="360" y="139" text-anchor="middle" fill="#c05621" font-size="8">ausgelöst</text>
+  <text x="360" y="139" text-anchor="middle" fill="#c05621" font-size="8">triggered</text>
 
   <path d="M420 100 L440 100" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
 
   <!-- Step 4 -->
   <rect x="440" y="60" width="120" height="80" rx="8" fill="#c6f6d5" stroke="#48bb78" stroke-width="2"/>
-  <text x="500" y="85" text-anchor="middle" fill="#276749" font-size="10" font-weight="bold">4. Prüfung</text>
-  <text x="500" y="103" text-anchor="middle" fill="#276749" font-size="8">Kapazität prüfen:</text>
+  <text x="500" y="85" text-anchor="middle" fill="#276749" font-size="10" font-weight="bold">4. Check</text>
+  <text x="500" y="103" text-anchor="middle" fill="#276749" font-size="8">Check capacity:</text>
   <text x="500" y="118" text-anchor="middle" fill="#276749" font-size="8">Registered &lt; Max?</text>
-  <text x="500" y="133" text-anchor="middle" fill="#276749" font-size="8">→ Status setzen</text>
+  <text x="500" y="133" text-anchor="middle" fill="#276749" font-size="8">→ Set status</text>
 
   <path d="M560 100 L580 100" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
 
   <!-- Step 5 -->
   <rect x="580" y="35" width="100" height="55" rx="8" fill="#fed7d7" stroke="#fc8181" stroke-width="2"/>
   <text x="630" y="55" text-anchor="middle" fill="#c53030" font-size="9" font-weight="bold">5a. E-Mail</text>
-  <text x="630" y="70" text-anchor="middle" fill="#c53030" font-size="7">Bestätigung via</text>
+  <text x="630" y="70" text-anchor="middle" fill="#c53030" font-size="7">Confirmation via</text>
   <text x="630" y="82" text-anchor="middle" fill="#c53030" font-size="7">Shared Mailbox</text>
 
   <rect x="580" y="100" width="100" height="55" rx="8" fill="#fed7d7" stroke="#fc8181" stroke-width="2"/>
-  <text x="630" y="120" text-anchor="middle" fill="#c53030" font-size="9" font-weight="bold">5b. Kalender</text>
-  <text x="630" y="135" text-anchor="middle" fill="#c53030" font-size="7">Termin-Einladung</text>
-  <text x="630" y="147" text-anchor="middle" fill="#c53030" font-size="7">hinzufügen</text>
+  <text x="630" y="120" text-anchor="middle" fill="#c53030" font-size="9" font-weight="bold">5b. Calendar</text>
+  <text x="630" y="135" text-anchor="middle" fill="#c53030" font-size="7">Calendar invitation</text>
+  <text x="630" y="147" text-anchor="middle" fill="#c53030" font-size="7">add</text>
 
   <path d="M680 100 L700 100" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
 
   <!-- Step 6 -->
   <rect x="700" y="60" width="90" height="80" rx="8" fill="#c6f6d5" stroke="#48bb78" stroke-width="2"/>
-  <text x="745" y="90" text-anchor="middle" fill="#276749" font-size="10" font-weight="bold">6. Fertig</text>
-  <text x="745" y="108" text-anchor="middle" fill="#276749" font-size="8">Teilnehmer</text>
-  <text x="745" y="120" text-anchor="middle" fill="#276749" font-size="8">ist registriert</text>
+  <text x="745" y="90" text-anchor="middle" fill="#276749" font-size="10" font-weight="bold">6. Done</text>
+  <text x="745" y="108" text-anchor="middle" fill="#276749" font-size="8">Participant</text>
+  <text x="745" y="120" text-anchor="middle" fill="#276749" font-size="8">is registered</text>
   <text x="745" y="132" text-anchor="middle" fill="#276749" font-size="8">[done]</text>
 
   <!-- Legend -->
@@ -471,9 +471,9 @@
 <div class="page-break"></div>
 <h2>2.4 Power App Screens</h2>
 
-<p>Die DEX Power App umfasst <strong>27 Screens</strong> für verschiedene Benutzergruppen und Anwendungsfälle.</p>
+<p>The DEX Power App includes <strong>27 screens</strong> for different user groups and use cases.</p>
 
-<h3>Screen-Navigation</h3>
+<h3>Screen Navigation</h3>
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 380" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
@@ -489,7 +489,7 @@
   <!-- StartScreen -->
   <rect x="300" y="100" width="200" height="50" rx="6" fill="#805ad5"/>
   <text x="400" y="125" text-anchor="middle" fill="white" font-size="11" font-weight="bold">StartScreen</text>
-  <text x="400" y="140" text-anchor="middle" fill="white" font-size="8">Hauptmenu</text>
+  <text x="400" y="140" text-anchor="middle" fill="white" font-size="8">Main Menu</text>
 
   <!-- Arrows from StartScreen -->
   <path d="M300 125 L180 125 L180 175" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
@@ -499,17 +499,17 @@
   <!-- Registration Branch -->
   <rect x="80" y="180" width="200" height="50" rx="6" fill="#4299e1"/>
   <text x="180" y="205" text-anchor="middle" fill="white" font-size="11" font-weight="bold">RegisterScreen</text>
-  <text x="180" y="220" text-anchor="middle" fill="white" font-size="8">Event-Galerie (standortbasiert)</text>
+  <text x="180" y="220" text-anchor="middle" fill="white" font-size="8">Event Gallery (location-based)</text>
 
   <path d="M180 230 L180 255" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
 
   <rect x="30" y="260" width="130" height="45" rx="5" fill="#4299e1" fill-opacity="0.7"/>
   <text x="95" y="280" text-anchor="middle" fill="white" font-size="9">RegisterB2Event</text>
-  <text x="95" y="292" text-anchor="middle" fill="white" font-size="7">B2Run Formular</text>
+  <text x="95" y="292" text-anchor="middle" fill="white" font-size="7">B2Run Form</text>
 
   <rect x="170" y="260" width="130" height="45" rx="5" fill="#4299e1" fill-opacity="0.7"/>
   <text x="235" y="280" text-anchor="middle" fill="white" font-size="9">RegisterOtherEvent</text>
-  <text x="235" y="292" text-anchor="middle" fill="white" font-size="7">Standard Formular</text>
+  <text x="235" y="292" text-anchor="middle" fill="white" font-size="7">Standard Form</text>
 
   <path d="M95 305 L95 325 L180 325 L180 335" stroke="#718096" stroke-width="1.5" fill="none" marker-end="url(#arrNav)"/>
   <path d="M235 305 L235 325 L180 325" stroke="#718096" stroke-width="1.5" fill="none"/>
@@ -520,13 +520,13 @@
   <!-- My Events Branch -->
   <rect x="300" y="180" width="200" height="50" rx="6" fill="#ed8936"/>
   <text x="400" y="205" text-anchor="middle" fill="white" font-size="11" font-weight="bold">MyEventsScreen</text>
-  <text x="400" y="220" text-anchor="middle" fill="white" font-size="8">Meine Events + Warteliste</text>
+  <text x="400" y="220" text-anchor="middle" fill="white" font-size="8">My Events + Warteliste</text>
 
   <path d="M400 230 L400 260" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
 
   <rect x="320" y="265" width="160" height="40" rx="5" fill="#ed8936" fill-opacity="0.7"/>
   <text x="400" y="285" text-anchor="middle" fill="white" font-size="9">ScreenCancellation</text>
-  <text x="400" y="297" text-anchor="middle" fill="white" font-size="7">Abmeldung</text>
+  <text x="400" y="297" text-anchor="middle" fill="white" font-size="7">Deregistration</text>
 
   <path d="M400 305 L400 335" stroke="#718096" stroke-width="1.5" fill="none" marker-end="url(#arrNav)"/>
 
@@ -536,13 +536,13 @@
   <!-- Admin Branch -->
   <rect x="520" y="180" width="200" height="50" rx="6" fill="#c53030"/>
   <text x="620" y="200" text-anchor="middle" fill="white" font-size="11" font-weight="bold">SettingsScreen</text>
-  <text x="620" y="215" text-anchor="middle" fill="white" font-size="8">(nur Admins)</text>
+  <text x="620" y="215" text-anchor="middle" fill="white" font-size="8">(Admin only)</text>
 
   <path d="M620 230 L620 260" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
 
   <rect x="520" y="265" width="90" height="40" rx="5" fill="#c53030" fill-opacity="0.7"/>
   <text x="565" y="285" text-anchor="middle" fill="white" font-size="8">EventCreation</text>
-  <text x="565" y="297" text-anchor="middle" fill="white" font-size="7">Neues Event</text>
+  <text x="565" y="297" text-anchor="middle" fill="white" font-size="7">New Event</text>
 
   <rect x="620" y="265" width="90" height="40" rx="5" fill="#c53030" fill-opacity="0.7"/>
   <text x="665" y="285" text-anchor="middle" fill="white" font-size="8">CheckInScreen</text>
@@ -556,9 +556,9 @@
 
   <!-- Legend -->
   <rect x="20" y="20" width="12" height="12" rx="2" fill="#4299e1"/>
-  <text x="37" y="30" fill="#2b6cb0" font-size="8">Teilnehmer</text>
+  <text x="37" y="30" fill="#2b6cb0" font-size="8">Participant</text>
   <rect x="20" y="38" width="12" height="12" rx="2" fill="#ed8936"/>
-  <text x="37" y="48" fill="#c05621" font-size="8">Meine Events</text>
+  <text x="37" y="48" fill="#c05621" font-size="8">My Events</text>
   <rect x="20" y="56" width="12" height="12" rx="2" fill="#c53030"/>
   <text x="37" y="66" fill="#c53030" font-size="8">Admin-only</text>
   <rect x="20" y="74" width="12" height="12" rx="2" fill="#48bb78"/>
@@ -566,62 +566,62 @@
 </svg>
 </div>
 
-<h3>Screen-Beschreibungen</h3>
+<h3>Screen-Descriptionen</h3>
 
 <table>
-  <tr><th>Screen</th><th>Zweck</th><th>Wichtige Features</th></tr>
-  <tr><td><strong>LandingScreen</strong></td><td>Willkommensseite</td><td>Start-Button, Info-Text, E-Mail-Link zu Entwicklern</td></tr>
-  <tr><td><strong>StartScreen</strong></td><td>Hauptmenu</td><td>Navigation zu Registration, My Events; Settings-Icon (nur Admins)</td></tr>
-  <tr><td><strong>RegisterScreen</strong></td><td>Event-Auswahl</td><td>Gallery mit Events, gefiltert nach Standort und Audience</td></tr>
-  <tr><td><strong>RegisterB2EventScreen</strong></td><td>B2Run-Anmeldung</td><td>Formular mit Laufstrecke, Team, Zusatzfeldern</td></tr>
-  <tr><td><strong>RegisterOtherEventScreen</strong></td><td>Standard-Anmeldung</td><td>Formular für JP Morgan Run und andere Events</td></tr>
-  <tr><td><strong>MyEventsScreen</strong></td><td>Meine Events</td><td>Registrierte Events + Warteliste; Abmeldeoption</td></tr>
-  <tr><td><strong>CheckInScreen</strong></td><td>QR-Code Check-In</td><td>BarcodeReader, Office365-Profilbild, Check-In Button</td></tr>
-  <tr><td><strong>SettingsScreen</strong></td><td>Admin-Bereich</td><td>Event erstellen, bearbeiten, E-Mails senden</td></tr>
-  <tr><td><strong>AllEventsScreen</strong></td><td>Event-Übersicht</td><td>DataTable mit allen Events (Admin)</td></tr>
+  <tr><th>Screen</th><th>Purpose</th><th>Key Features</th></tr>
+  <tr><td><strong>LandingScreen</strong></td><td>Welcome page</td><td>Start button, info text, email link to developers</td></tr>
+  <tr><td><strong>StartScreen</strong></td><td>Main Menu</td><td>Navigation to Registration, My Events; Settings icon (Admin only)</td></tr>
+  <tr><td><strong>RegisterScreen</strong></td><td>Event selection</td><td>Gallery with events, filtered by location and audience</td></tr>
+  <tr><td><strong>RegisterB2EventScreen</strong></td><td>B2Run-Registration</td><td>Form with running distance, team, additional fields</td></tr>
+  <tr><td><strong>RegisterOtherEventScreen</strong></td><td>Standard-Registration</td><td>Form for JP Morgan Run and other events</td></tr>
+  <tr><td><strong>MyEventsScreen</strong></td><td>My Events</td><td>Registrierte Events + Warteliste; Abmeldeoption</td></tr>
+  <tr><td><strong>CheckInScreen</strong></td><td>QR Code Check-In</td><td>BarcodeReader, Office365 profile picture, Check-In button</td></tr>
+  <tr><td><strong>SettingsScreen</strong></td><td>Admin area</td><td>Create event, edit, send emails</td></tr>
+  <tr><td><strong>AllEventsScreen</strong></td><td>Event-Overview</td><td>DataTable with all events (Admin)</td></tr>
 </table>
 
-<h3>Datenquellen der App</h3>
+<h3>App Data Sources</h3>
 
 <table>
-  <tr><th>Connector</th><th>Datenquelle</th><th>Verwendung</th></tr>
-  <tr><td rowspan="6">SharePoint Online</td><td>Events</td><td>Hauptliste aller Veranstaltungen</td></tr>
-  <tr><td>Anmeldungen</td><td>Queue für neue Registrierungen (Trigger)</td></tr>
-  <tr><td>Abmeldungen</td><td>Queue für Abmeldungen (Trigger)</td></tr>
-  <tr><td>Event visitors</td><td>Teilnehmerliste (dynamisch pro Event)</td></tr>
-  <tr><td>Check-In</td><td>Queue für Check-In-Aktionen</td></tr>
-  <tr><td>Admins</td><td>Liste der Admin-Benutzer</td></tr>
-  <tr><td>Office 365 Users</td><td>User Profile</td><td>Name, Abteilung, Standort, Profilbild</td></tr>
-  <tr><td rowspan="6">Power Automate</td><td>GetParticipantEvents</td><td>Lädt "Meine Events" des Users</td></tr>
-  <tr><td>CheckRegistrationStatus</td><td>Prüft Registrierungsstatus</td></tr>
-  <tr><td>GetWaitinglistPosition</td><td>Wartelisten-Position</td></tr>
-  <tr><td>CheckInFromQRCode</td><td>Führt Check-In durch</td></tr>
-  <tr><td>SendMailParticipantlist</td><td>Massen-E-Mail versenden</td></tr>
-  <tr><td>ExtractParticipantMails</td><td>E-Mail-Adressen extrahieren</td></tr>
+  <tr><th>Connector</th><th>Data Source</th><th>Usage</th></tr>
+  <tr><td rowspan="6">SharePoint Online</td><td>Events</td><td>Main list of all events</td></tr>
+  <tr><td>Registrationen</td><td>Queue für neue Registrationen (Trigger)</td></tr>
+  <tr><td>Deregistrationen</td><td>Queue für Deregistrationen (Trigger)</td></tr>
+  <tr><td>Event visitors</td><td>Participant List (dynamisch pro Event)</td></tr>
+  <tr><td>Check-In</td><td>Queue for check-in actions</td></tr>
+  <tr><td>Admins</td><td>List of admin users</td></tr>
+  <tr><td>Office 365 Users</td><td>User Profile</td><td>Name, department, location, profile picture</td></tr>
+  <tr><td rowspan="6">Power Automate</td><td>GetParticipantEvents</td><td>Lädt "My Events" des Users</td></tr>
+  <tr><td>CheckRegistrationStatus</td><td>Prüft Registrationsstatus</td></tr>
+  <tr><td>GetWaitinglistPosition</td><td>Waiting list position</td></tr>
+  <tr><td>CheckInFromQRCode</td><td>Performs check-in</td></tr>
+  <tr><td>SendMailParticipantlist</td><td>Send mass email</td></tr>
+  <tr><td>ExtractParticipantMails</td><td>Extract email addresses</td></tr>
 </table>
 
-<h3>Benutzergruppen & Berechtigungen</h3>
+<h3>User Groups & Permissions</h3>
 
 <table>
-  <tr><th>Rolle</th><th>Erkennung</th><th>Zugängliche Screens</th></tr>
-  <tr><td><strong>Teilnehmer</strong></td><td>Jeder authentifizierte User</td><td>LandingScreen, StartScreen, RegisterScreen, MyEventsScreen</td></tr>
-  <tr><td><strong>Admin</strong></td><td>E-Mail in Admins-Liste</td><td>+ SettingsScreen, CheckInScreen, AllEventsScreen, EventCreation, SendMail</td></tr>
+  <tr><th>Role</th><th>Recognition</th><th>Accessible Screens</th></tr>
+  <tr><td><strong>Participant</strong></td><td>Every authenticated user</td><td>LandingScreen, StartScreen, RegisterScreen, MyEventsScreen</td></tr>
+  <tr><td><strong>Admin</strong></td><td>Email in Admins list</td><td>+ SettingsScreen, CheckInScreen, AllEventsScreen, EventCreation, SendMail</td></tr>
 </table>
 
-<p><strong>Admin-Prüfung im Code:</strong></p>
+<p><strong>Admin-Check im Code:</strong></p>
 <pre style="background: var(--gray-100); padding: 0.5rem; border-radius: 4px; font-size: 9pt; overflow-x: auto;">
 If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
 </pre>
 
 <!-- 2.5 EVENT CREATION ARCHITEKTUR -->
 <div class="page-break"></div>
-<h2>2.5 Event Creation - Architektur im Detail</h2>
+<h2>2.5 Event Creation - Architecture in Detail</h2>
 
-<p>Die Event-Erstellung ist ein zentraler Prozess in der DEX-Plattform. Dieser Abschnitt dokumentiert die <strong>Power App Architektur</strong> für die Event-Erstellung, um eine mögliche Modernisierung zu unterstützen.</p>
+<p>Event creation is a central process in the DEX platform. This section documents the <strong>Power App architecture</strong> for event creation to support potential modernization.</p>
 
-<h3>Event-Typ Auswahl (EventCreationSelectionScreen)</h3>
+<h3>Event Typee Selection (EventCreationSelectionScreen)</h3>
 
-<p>Der Einstiegspunkt für die Event-Erstellung ist der <strong>EventCreationSelectionScreen</strong>, der drei Event-Typen zur Auswahl bietet:</p>
+<p>The entry point for event creation is the <strong>EventCreationSelectionScreen</strong>, which offers three event types:</p>
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 280" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
@@ -634,7 +634,7 @@ If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
   <!-- Selection Screen -->
   <rect x="250" y="20" width="300" height="60" rx="8" fill="#805ad5"/>
   <text x="400" y="50" text-anchor="middle" fill="white" font-size="12" font-weight="bold">EventCreationSelectionScreen</text>
-  <text x="400" y="68" text-anchor="middle" fill="white" font-size="9">Auswahl des Event-Typs</text>
+  <text x="400" y="68" text-anchor="middle" fill="white" font-size="9">Event type selection</text>
 
   <!-- Arrows -->
   <line x1="300" y1="80" x2="130" y2="130" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
@@ -646,21 +646,21 @@ If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
   <text x="130" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">B2Run Event</text>
   <text x="130" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationB2EventForm</text>
   <text x="130" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "B2Run Event"</text>
-  <text x="130" y="208" text-anchor="middle" fill="white" font-size="7">Spezialfelder: Startblock, T-Shirt, Fun-Runner</text>
+  <text x="130" y="208" text-anchor="middle" fill="white" font-size="7">Special fields: start block, T-shirt, fun runner</text>
 
   <!-- JP Morgan -->
   <rect x="300" y="135" width="200" height="80" rx="8" fill="#4299e1"/>
   <text x="400" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">J.P. Morgan Lauf</text>
   <text x="400" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationJPMorgan</text>
   <text x="400" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "JP Morgan Run"</text>
-  <text x="400" y="208" text-anchor="middle" fill="white" font-size="7">Standort: Frankfurt</text>
+  <text x="400" y="208" text-anchor="middle" fill="white" font-size="7">Location: Frankfurt</text>
 
   <!-- Other Events -->
   <rect x="570" y="135" width="200" height="80" rx="8" fill="#48bb78"/>
-  <text x="670" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">Andere Events</text>
+  <text x="670" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">Other Events</text>
   <text x="670" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationOtherEventForm</text>
   <text x="670" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "Other Deloitte Event"</text>
-  <text x="670" y="208" text-anchor="middle" fill="white" font-size="7">Generisch, anpassbar</text>
+  <text x="670" y="208" text-anchor="middle" fill="white" font-size="7">Generic, customizable</text>
 
   <!-- Flow Trigger -->
   <line x1="130" y1="215" x2="130" y2="250" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
@@ -673,156 +673,156 @@ If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
 </svg>
 </div>
 
-<h3>Formular-Architektur (Form Control)</h3>
+<h3>Form Architecture (Form Control)</h3>
 
-<p>Jedes Event-Erstellungsformular verwendet ein <strong>Power Apps Form Control</strong> mit folgender Struktur:</p>
+<p>Each event creation form uses a <strong>Power Apps Form Control</strong> with the following structure:</p>
 
 <table>
-  <tr><th>Eigenschaft</th><th>Wert</th><th>Beschreibung</th></tr>
+  <tr><th>Property</th><th>Value</th><th>Description</th></tr>
   <tr><td>Control</td><td><code>Form@2.4.4</code></td><td>Standard Power Apps Form</td></tr>
-  <tr><td>Layout</td><td><code>Vertical</code></td><td>Vertikale Anordnung der Felder</td></tr>
-  <tr><td>DataSource</td><td><code>=Events</code></td><td>Direkte Bindung an SharePoint Events-Liste</td></tr>
-  <tr><td>DefaultMode</td><td><code>=FormMode.New</code></td><td>Immer im Erstellungsmodus</td></tr>
-  <tr><td>OnVisible</td><td><code>=ResetForm(Form1)</code></td><td>Formular beim Öffnen zurücksetzen</td></tr>
+  <tr><td>Layout</td><td><code>Vertical</code></td><td>Vertical arrangement of fields</td></tr>
+  <tr><td>DataSource</td><td><code>=Events</code></td><td>Direkte Bindung an SharePoint Events List</td></tr>
+  <tr><td>DefaultMode</td><td><code>=FormMode.New</code></td><td>Always in creation mode</td></tr>
+  <tr><td>OnVisible</td><td><code>=ResetForm(Form1)</code></td><td>Reset form when opening</td></tr>
 </table>
 
-<h3>Feldkonfiguration nach Event-Typ</h3>
+<h3>Field Configuration by Event Typee</h3>
 
-<p><strong>Gemeinsame Felder (alle Event-Typen):</strong></p>
+<p><strong>Common Fields (all event types):</strong></p>
 <table>
-  <tr><th>Feld</th><th>Control</th><th>DataField</th><th>Required</th></tr>
-  <tr><td>Title</td><td>TextInput (Multiline)</td><td><code>Title</code></td><td>Ja</td></tr>
-  <tr><td>Standort</td><td>TextInput</td><td><code>Standort</code></td><td>Nein</td></tr>
-  <tr><td>Standort Filter</td><td>ComboBox</td><td><code>Standort_x0020_Filter</code></td><td>Nein</td></tr>
-  <tr><td>Organizer</td><td>ComboBox (MultiSelect)</td><td><code>Organzier</code></td><td>Ja</td></tr>
-  <tr><td>Event time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_time</code></td><td>Ja</td></tr>
-  <tr><td>Event end time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_end_x0020_time</code></td><td>Ja</td></tr>
-  <tr><td>Last Register Date Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Date_x</code></td><td>Ja</td></tr>
-  <tr><td>Last Deregister Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Event_</code></td><td>Ja</td></tr>
+  <tr><th>Field</th><th>Control</th><th>DataField</th><th>Required</th></tr>
+  <tr><td>Title</td><td>TextInput (Multiline)</td><td><code>Title</code></td><td>Yes</td></tr>
+  <tr><td>Standort</td><td>TextInput</td><td><code>Standort</code></td><td>No</td></tr>
+  <tr><td>Standort Filter</td><td>ComboBox</td><td><code>Standort_x0020_Filter</code></td><td>No</td></tr>
+  <tr><td>Organizer</td><td>ComboBox (MultiSelect)</td><td><code>Organzier</code></td><td>Yes</td></tr>
+  <tr><td>Event time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_time</code></td><td>Yes</td></tr>
+  <tr><td>Event end time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_end_x0020_time</code></td><td>Yes</td></tr>
+  <tr><td>Last Register Date Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Date_x</code></td><td>Yes</td></tr>
+  <tr><td>Last Deregister Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Event_</code></td><td>Yes</td></tr>
 </table>
 
-<p><strong>B2Run-spezifische Felder:</strong></p>
+<p><strong>B2Run-spezifische Fielder:</strong></p>
 <table>
-  <tr><th>Feld</th><th>Control</th><th>Beschreibung</th></tr>
-  <tr><td>Max Fun-runner</td><td>Number Input</td><td>Maximale Anzahl Fun-Runner</td></tr>
-  <tr><td>Max Durchstarter</td><td>Number Input</td><td>Maximale Anzahl Durchstarter</td></tr>
-  <tr><td>Startblock</td><td>ComboBox (Multi)</td><td>Verfügbare Startblöcke ["17:00", "18:30"]</td></tr>
-  <tr><td>T-Shirtgrößen</td><td>ComboBox (Multi)</td><td>Verfügbare T-Shirt Größen</td></tr>
-  <tr><td>T Shirt Größe visible</td><td>Toggle</td><td>T-Shirt Auswahl anzeigen?</td></tr>
+  <tr><th>Field</th><th>Control</th><th>Description</th></tr>
+  <tr><td>Max Fun-runner</td><td>Number Input</td><td>Maximum number of fun runners</td></tr>
+  <tr><td>Max Durchstarter</td><td>Number Input</td><td>Maximum number of serious runners</td></tr>
+  <tr><td>Startblock</td><td>ComboBox (Multi)</td><td>Available start blocks ["17:00", "18:30"]</td></tr>
+  <tr><td>T-Shirtgrößen</td><td>ComboBox (Multi)</td><td>Available T-shirt sizes</td></tr>
+  <tr><td>T Shirt Größe visible</td><td>Toggle</td><td>Show T-shirt selection?</td></tr>
 </table>
 
-<p><strong>Other Event-spezifische Felder:</strong></p>
+<p><strong>Other Event-specific fields:</strong></p>
 <table>
-  <tr><th>Feld</th><th>Control</th><th>Beschreibung</th></tr>
-  <tr><td>Audience Mail</td><td>TextInput (Dialog)</td><td>E-Mail-Adressen für Zugangsbeschränkung</td></tr>
-  <tr><td>Frage Freitextfeld 1/2</td><td>TextInput</td><td>Benutzerdefinierte Fragefelder</td></tr>
-  <tr><td>Dropdownfeld 1/2</td><td>Dialog mit Collection</td><td>Benutzerdefinierte Dropdown-Optionen</td></tr>
-  <tr><td>Location Hotel</td><td>TextInput</td><td>Hotel-Information (falls relevant)</td></tr>
-  <tr><td>Allergien visible</td><td>Toggle</td><td>Allergien-Feld bei Registrierung anzeigen?</td></tr>
+  <tr><th>Field</th><th>Control</th><th>Description</th></tr>
+  <tr><td>Audience Mail</td><td>TextInput (Dialog)</td><td>Email addresses for access restriction</td></tr>
+  <tr><td>Frage Freitextfeld 1/2</td><td>TextInput</td><td>Custom question fields</td></tr>
+  <tr><td>Dropdownfeld 1/2</td><td>Dialog mit Collection</td><td>Custom dropdown options</td></tr>
+  <tr><td>Location Hotel</td><td>TextInput</td><td>Hotel information (if relevant)</td></tr>
+  <tr><td>Allergien visible</td><td>Toggle</td><td>Allergien-Field bei Registration anzeigen?</td></tr>
 </table>
 
-<h3>DataCard-Struktur</h3>
+<h3>DataCard Structure</h3>
 
-<p>Jedes Feld wird als <strong>TypedDataCard</strong> implementiert mit folgender Struktur:</p>
+<p>Jedes Field wird als <strong>TypeedDataCard</strong> implementiert mit folgender Struktur:</p>
 
 <pre style="background: var(--gray-100); padding: 0.75rem; border-radius: 4px; font-size: 9pt; overflow-x: auto;">
-TypedDataCard@1.0.7
-├── DataCardKey (Text)        - Feldbezeichnung
-├── DataCardValue (Input)     - Eingabefeld (TextInput/ComboBox/DatePicker)
-├── ErrorMessage (Text)       - Validierungsfehler
-├── StarVisible (Text)        - Required-Indikator "*"
-└── InfoButtonCanvas          - Hilfe-Tooltip (optional)
+TypeedDataCard@1.0.7
+├── DataCardKey (Text)        - Fieldbezeichnung
+├── DataCardValue (Input)     - Input field (TextInput/ComboBox/DatePicker)
+├── ErrorMessage (Text)       - Validation error
+├── StarVisible (Text)        - Required indicator "*"
+└── InfoButtonCanvas          - Help tooltip (optional)
 </pre>
 
-<h3>Submit-Logik</h3>
+<h3>Submit Logic</h3>
 
-<p>Beim Speichern eines Events:</p>
+<p>When saving an event:</p>
 
 <ol>
-  <li><strong>Form.Submit()</strong> - Erstellt neuen Eintrag in Events-Liste</li>
-  <li><strong>SharePoint Trigger</strong> - "Item Created" triggert <code>NewEventAdded_SiteProvis</code> Flow</li>
-  <li><strong>Flow-Verarbeitung:</strong>
+  <li><strong>Form.Submit()</strong> - Erstellt neuen Entry in Events List</li>
+  <li><strong>SharePoint Trigger</strong> - "Item Created" triggers <code>NewEventAdded_SiteProvis</code> Flow</li>
+  <li><strong>Flow processing:</strong>
     <ul>
-      <li>Erstellt SharePoint Subsite</li>
-      <li>Ruft ApplyTemplateB2Run oder ApplyTemplateOtherEvent auf (basierend auf Inhaltstyp)</li>
-      <li>Setzt Berechtigungen</li>
-      <li>Erstellt Outlook-Kalendereintrag</li>
+      <li>Creates SharePoint subsite</li>
+      <li>Calls ApplyTemplateB2Run or ApplyTemplateOtherEvent (based on content type)</li>
+      <li>Sets permissions</li>
+      <li>Erstellt Outlook-Calendareintrag</li>
     </ul>
   </li>
 </ol>
 
-<h3>Modernisierungsempfehlungen</h3>
+<h3>Modernization Recommendations</h3>
 
-<p>Für eine zukünftige Modernisierung der Event-Erstellung:</p>
+<p>Für eine zukünftige Modernisierung der Event Creation:</p>
 
 <table>
-  <tr><th>Bereich</th><th>Aktuell</th><th>Empfehlung</th></tr>
-  <tr><td>Formular</td><td>3 separate Screens</td><td>Einzelnes dynamisches Formular mit bedingter Anzeige</td></tr>
-  <tr><td>Validierung</td><td>DataCard-basiert</td><td>Zentrale Validierungslogik mit Custom Connector</td></tr>
-  <tr><td>Event-Typen</td><td>Hardcoded in Screens</td><td>Konfigurationsliste für dynamische Event-Typen</td></tr>
-  <tr><td>Feldkonfiguration</td><td>Pro Screen definiert</td><td>Metadata-driven Form basierend auf Inhaltstyp</td></tr>
-  <tr><td>Custom Fields</td><td>Freitextfeld1-7</td><td>JSON-Schema für flexible Feldkonfiguration</td></tr>
+  <tr><th>Area</th><th>Current</th><th>Recommendation</th></tr>
+  <tr><td>Form</td><td>3 separate screens</td><td>Einzelnes dynamisches Form mit bedingter Anzeige</td></tr>
+  <tr><td>Validation</td><td>DataCard-based</td><td>Zentrale Validationslogik mit Custom Connector</td></tr>
+  <tr><td>Event types</td><td>Hardcoded in screens</td><td>Konfigurationsliste für dynamische Event types</td></tr>
+  <tr><td>Fieldkonfiguration</td><td>Defined per screen</td><td>Metadata-driven form based on content type</td></tr>
+  <tr><td>Custom Fields</td><td>Freitextfeld1-7</td><td>JSON-Schema für flexible Fieldkonfiguration</td></tr>
 </table>
 
 <!-- 3. FLOW-ÜBERSICHT -->
 <div class="page-break"></div>
-<h1>3. Power Automate Flows - Übersicht</h1>
+<h1>3. Power Automate Flows - Overview</h1>
 
-<p>Die DEX-Plattform umfasst <strong>23 Power Automate Flows</strong> in fünf Kategorien:</p>
+<p>The DEX platform includes <strong>23 Power Automate Flows</strong> in five categories:</p>
 
-<h2>3.1 Event-Verwaltung (4 Flows)</h2>
+<h2>3.1 Event Management (4 Flows)</h2>
 <table>
-  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
-  <tr><td>NewEventAdded_SiteProvis</td><td>SharePoint Item Created</td><td>Hauptflow: Erstellt Subsite, Template, Outlook-Event</td></tr>
-  <tr><td>ApplyTemplateB2Run</td><td>Child Flow</td><td>B2Run-Teilnehmerliste mit Spezialfeldern</td></tr>
-  <tr><td>ApplyTemplateOtherEvent</td><td>Child Flow</td><td>Standard-Teilnehmerliste</td></tr>
-  <tr><td>EventPermission</td><td>Manual Button</td><td>Berechtigungen für Zielgruppe setzen</td></tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Description</th></tr>
+  <tr><td>NewEventAdded_SiteProvis</td><td>SharePoint Item Created</td><td>Main flow: Creates subsite, template, Outlook event</td></tr>
+  <tr><td>ApplyTemplateB2Run</td><td>Child Flow</td><td>B2Run-Participant List mit Spezialfeldern</td></tr>
+  <tr><td>ApplyTemplateOtherEvent</td><td>Child Flow</td><td>Standard-Participant List</td></tr>
+  <tr><td>EventPermission</td><td>Manual Button</td><td>Set permissions for target audience</td></tr>
 </table>
 
-<h2>3.2 Registrierung (5 Flows)</h2>
+<h2>3.2 Registration (5 Flows)</h2>
 <table>
-  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
-  <tr><td>RegisterParticipant</td><td>SharePoint Item Created</td><td>Anmeldung: Kapazitätsprüfung, Registrierung/Warteliste</td></tr>
-  <tr><td>DeregisterParticipant</td><td>SharePoint Item Created</td><td>Abmeldung mit automatischem Nachrücken</td></tr>
-  <tr><td>CheckRegistrationStatusParticipant</td><td>Power App</td><td>Prüft Status: registered/waitlist/not_registered</td></tr>
-  <tr><td>GetWaitinglistPosition</td><td>Power App</td><td>Ermittelt Position auf Warteliste</td></tr>
-  <tr><td>GetParticipantEvents</td><td>Power App</td><td>Listet "Meine Events"</td></tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Description</th></tr>
+  <tr><td>RegisterParticipant</td><td>SharePoint Item Created</td><td>Registration: Capacity Check, Registration/Warteliste</td></tr>
+  <tr><td>DeregisterParticipant</td><td>SharePoint Item Created</td><td>Deregistration mit automatischem Nachrücken</td></tr>
+  <tr><td>CheckRegistrationStatusParticipant</td><td>Power App</td><td>Checks status: registered/waitlist/not_registered</td></tr>
+  <tr><td>GetWaitinglistPosition</td><td>Power App</td><td>Determines position on waiting list</td></tr>
+  <tr><td>GetParticipantEvents</td><td>Power App</td><td>Listet "My Events"</td></tr>
 </table>
 
 <h2>3.3 Check-In (3 Flows)</h2>
 <table>
-  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Description</th></tr>
   <tr><td>Check-In</td><td>SharePoint Item Created</td><td>Manueller Check-In</td></tr>
   <tr><td>CheckInFromQRCode</td><td>Power App</td><td>Check-In per QR-Code-Scan</td></tr>
   <tr><td>EventQRCodeGenerator</td><td>Manual Button</td><td>Generiert QR-Codes, versendet per E-Mail</td></tr>
 </table>
 
-<h2>3.4 E-Mail & Kalender (5 Flows)</h2>
+<h2>3.4 Email & Calendar (5 Flows)</h2>
 <table>
-  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Description</th></tr>
   <tr><td>SendMailSharedMailbox</td><td>Child Flow</td><td>Zentrale E-Mail-Funktion</td></tr>
-  <tr><td>SendMailParticipantList</td><td>Power App</td><td>Massen-E-Mail an Teilnehmer</td></tr>
-  <tr><td>RegisterOutlookEventParticipant</td><td>Child Flow</td><td>Fügt Teilnehmer zu Outlook-Termin hinzu</td></tr>
+  <tr><td>SendMailParticipantList</td><td>Power App</td><td>Massen-E-Mail an Participant</td></tr>
+  <tr><td>RegisterOutlookEventParticipant</td><td>Child Flow</td><td>Fügt Participant zu Outlook-Termin hinzu</td></tr>
   <tr><td>CreateOutlookEventSharedMailbox</td><td>Child Flow</td><td>Erstellt Outlook-Termin</td></tr>
   <tr><td>HelperFlowMailToRegistered</td><td>Manual Button</td><td>Hilfsflow für spezielle E-Mails</td></tr>
 </table>
 
 <h2>3.5 Utility & Administration (6 Flows)</h2>
 <table>
-  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Description</th></tr>
   <tr><td>Flow-Dokumentation-Export</td><td>Manual Button</td><td>Exportiert Flow-Definitionen</td></tr>
   <tr><td>SharePoint_Batch_Update_V2</td><td>Manual Button</td><td>Batch-Updates via REST API</td></tr>
   <tr><td>SetPermissionForSubWeb</td><td>Manual Button</td><td>Subsite-Berechtigungen setzen</td></tr>
-  <tr><td>UpdateAllEventsWithNewFields</td><td>Manual Button</td><td>Migration: Neue Felder hinzufügen</td></tr>
+  <tr><td>UpdateAllEventsWithNewFields</td><td>Manual Button</td><td>Migration: Neue Fielder add</td></tr>
   <tr><td>CorrectOutlookID</td><td>Manual Button</td><td>Korrigiert Outlook-Event-IDs</td></tr>
-  <tr><td>SP Liste Nummerierung korrigieren</td><td>Manual Button</td><td>Korrigiert Nr.-Feld</td></tr>
+  <tr><td>SP Liste Nummerierung korrigieren</td><td>Manual Button</td><td>Korrigiert Nr.-Field</td></tr>
 </table>
 
 <!-- 4. FLOW-DETAILDOKUMENTATION -->
 <div class="page-break"></div>
-<h1>4. Flow-Detaildokumentation</h1>
+<h1>4. Flow Detail Documentation</h1>
 
-<p>Jeder Flow wird mit <strong>geclusterten Actions</strong> dokumentiert. Die Actions sind in logische Gruppen unterteilt, jeweils mit einer Beschreibung was der Cluster macht.</p>
+<p>Jeder Flow wird mit <strong>geclusterten Actions</strong> dokumentiert. Die Actions sind in logische Gruppen unterteilt, jeweils mit einer Description was der Cluster macht.</p>
 
 <!-- 4.1 NewEventAdded_SiteProvis -->
 <h2>4.1 NewEventAdded_SiteProvis</h2>
@@ -835,30 +835,30 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
-  <p>Der <strong>zentrale Flow für Event-Erstellung</strong>. Wird automatisch ausgelöst wenn ein neues Event in der Events-Liste angelegt wird. Erstellt die komplette Infrastruktur: SharePoint-Subsite, Teilnehmerliste, Outlook-Termin und benachrichtigt den Organizer.</p>
+  <h4>Description</h4>
+  <p>Der <strong>zentrale Flow für Event-Erstellung</strong>. Wird automatisch triggered wenn ein neues Event in der Events List angelegt wird. Erstellt die komplette Infrastruktur: SharePoint-Subsite, Participant List, Outlook-Termin und benachrichtigt den Organizer.</p>
 
-  <h4>Unterstützte Event-Typen</h4>
+  <h4>Unterstützte Event types</h4>
   <ul>
     <li><strong>B2Run Event:</strong> Verwendet ApplyTemplateB2Run mit Spezialfeldern</li>
     <li><strong>JP Morgan Run / Other:</strong> Verwendet ApplyTemplateOtherEvent</li>
   </ul>
 
   <div class="action-cluster">
-    <div class="cluster-header">1. Initialisierung & Status-Update</div>
+    <div class="cluster-header">1. Initialization & Status Update</div>
     <div class="cluster-desc">
       <ul>
-        <li>Setzt Event-Status auf "Under Construction" um anzuzeigen dass Erstellung läuft</li>
-        <li>Initialisiert alle benötigten Variablen (Titel, URL, Content Type)</li>
+        <li>Sets event status to "Under Construction" um anzuzeigen dass Erstellung läuft</li>
+        <li>Initializes all required variables (Titel, URL, Content Typee)</li>
         <li>Bereitet Daten für die weitere Verarbeitung vor</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Update_item-_Set_Status_to_Under_Construction</td><td>SharePoint PatchItem</td><td>Status → "Under Construction"</td></tr>
       <tr><td>Initialize_variable-_varSiteTitle</td><td>InitializeVariable</td><td>Event-Titel speichern</td></tr>
       <tr><td>Initialize_variable-_varSiteURL</td><td>InitializeVariable</td><td>URL-Variable initialisieren</td></tr>
-      <tr><td>Initialize_variable-_varContentTypeName</td><td>InitializeVariable</td><td>Event-Typ speichern</td></tr>
+      <tr><td>Initialize_variable-_varContentTypeeName</td><td>InitializeVariable</td><td>Event-Type speichern</td></tr>
     </table>
   </div>
 
@@ -872,7 +872,7 @@ TypedDataCard@1.0.7
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Compose-_Create_FilterCharArray</td><td>Compose</td><td>Array mit ungültigen Zeichen</td></tr>
       <tr><td>Apply_to_each (Filter)</td><td>Foreach</td><td>Entfernt jedes ungültige Zeichen</td></tr>
     </table>
@@ -882,13 +882,13 @@ TypedDataCard@1.0.7
     <div class="cluster-header">3. SharePoint-Subsite erstellen</div>
     <div class="cluster-desc">
       <ul>
-        <li>HTTP POST an SharePoint REST API erstellt neue Subsite</li>
-        <li>Template STS#3 (Team Site ohne M365 Gruppe) wird verwendet</li>
+        <li>HTTP POST an SharePoint REST API creates neue Subsite</li>
+        <li>Template STS#3 (Team Site without M365 Group) is used</li>
         <li>ServerRelativeUrl wird aus API-Antwort extrahiert</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Send_an_HTTP_request-_Create_New_Sub_Site</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/webinfos/add</td></tr>
       <tr><td>Parse_JSON-_Parse_Response</td><td>ParseJson</td><td>Extrahiert ServerRelativeUrl</td></tr>
       <tr><td>Compose-_FinalURL</td><td>Compose</td><td>Kombiniert zu finaler URL</td></tr>
@@ -899,29 +899,29 @@ TypedDataCard@1.0.7
     <div class="cluster-header">4. Template-Flow aufrufen</div>
     <div class="cluster-desc">
       <ul>
-        <li>Switch verzweigt basierend auf Content Type (Event-Typ)</li>
-        <li>B2Run Events → ApplyTemplateB2Run (Spezialfelder für Laufstrecke, Team)</li>
-        <li>Andere Events → ApplyTemplateOtherEvent (Standardfelder)</li>
+        <li>Switch verzweigt basierend auf Content Typee (Event-Type)</li>
+        <li>B2Run Events → ApplyTemplateB2Run (Special fields for running distance, team)</li>
+        <li>Other Events → ApplyTemplateOtherEvent (Standardfelder)</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-      <tr><td>Switch</td><td>Switch</td><td>Verzweigt nach Event-Typ</td></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
+      <tr><td>Switch</td><td>Switch</td><td>Verzweigt nach Event-Type</td></tr>
       <tr><td>Run_a_Child_Flow (Template)</td><td>Workflow</td><td>Ruft Template-Flow auf</td></tr>
     </table>
   </div>
 
   <div class="action-cluster">
-    <div class="cluster-header">5. Outlook-Kalendereintrag erstellen</div>
+    <div class="cluster-header">5. Outlook-Calendareintrag erstellen</div>
     <div class="cluster-desc">
       <ul>
         <li>Start-/Endzeit werden in ISO-Format konvertiert</li>
-        <li>CreateOutlookEventSharedMailbox erstellt Termin in Shared Mailbox</li>
-        <li>Outlook-Event-ID wird für spätere Teilnehmer-Einladungen gespeichert</li>
+        <li>CreateOutlookEventSharedMailbox creates Termin in Shared Mailbox</li>
+        <li>Outlook-Event-ID wird für spätere Participant-Einladungen gespeichert</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Compose_2, Compose_3</td><td>Compose</td><td>Formatiert Datum in ISO</td></tr>
       <tr><td>Run_a_Child_Flow_1 (Outlook)</td><td>Workflow</td><td>Erstellt Outlook-Termin</td></tr>
       <tr><td>Update_item_-_Events</td><td>SharePoint PatchItem</td><td>Speichert Outlook-ID</td></tr>
@@ -933,16 +933,16 @@ TypedDataCard@1.0.7
     <div class="cluster-desc">
       <ul>
         <li>Logos werden geladen und als Data-URI für E-Mail vorbereitet</li>
-        <li>Jeder Organizer erhält Bestätigungsmail mit Link zur Teilnehmerliste</li>
+        <li>Jeder Organizer erhält Bestätigungsmail mit Link zur Participant List</li>
         <li>Bei definierter Audience wird EventPermission aufgerufen</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Get_file_content-_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Event-Logo</td></tr>
       <tr><td>For_each (Organizer)</td><td>Foreach</td><td>Iteriert über Organizer</td></tr>
       <tr><td>Send_an_email_from_shared_mailbox</td><td>Office 365</td><td>Sendet Bestätigungsmail</td></tr>
-      <tr><td>Run_a_Child_Flow_3 (Permission)</td><td>Workflow</td><td>Setzt Berechtigungen</td></tr>
+      <tr><td>Run_a_Child_Flow_3 (Permission)</td><td>Workflow</td><td>Sets permissions</td></tr>
     </table>
   </div>
 </div>
@@ -958,36 +958,36 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
-  <p>Wird von NewEventAdded aufgerufen für <strong>B2Run-Events</strong>. Erstellt die Teilnehmerliste mit allen B2Run-spezifischen Feldern.</p>
+  <h4>Description</h4>
+  <p>Wird von NewEventAdded aufgerufen für <strong>B2Run-Events</strong>. Erstellt die Participant List mit allen B2Run-spezifischen Fieldern.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">1. Parameter empfangen</div>
     <div class="cluster-desc">
       <ul>
         <li>Empfängt Subsite-URL vom aufrufenden Flow</li>
-        <li>URL definiert wo die Teilnehmerliste erstellt wird</li>
+        <li>URL definiert wo die Participant List creates wird</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Initialize_variable-_varURL</td><td>InitializeVariable</td><td>Speichert Subsite-URL</td></tr>
     </table>
   </div>
 
   <div class="action-cluster">
-    <div class="cluster-header">2. Teilnehmerliste & Felder erstellen</div>
+    <div class="cluster-header">2. Participant List & Fielder erstellen</div>
     <div class="cluster-desc">
       <ul>
-        <li>POST an /_api/web/lists erstellt die Liste "Teilnehmerliste"</li>
-        <li>Standardfelder: Teilnehmername, Email, Status (Choice), Nr, CheckIn</li>
-        <li>B2Run-Felder: Freitextfeld1-7 für Laufstrecke, Team etc.</li>
+        <li>POST an /_api/web/lists creates die Liste "Participant List"</li>
+        <li>Standardfelder: Participantname, Email, Status (Choice), Nr, CheckIn</li>
+        <li>B2Run-Fielder: Freitextfeld1-7 für Laufstrecke, Team etc.</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-      <tr><td>Send_HTTP_request-_Create_Teilnehmerliste</td><td>SharePoint HttpRequest</td><td>Erstellt Liste</td></tr>
-      <tr><td>Send_HTTP_request-_Create_Fields</td><td>SharePoint HttpRequest</td><td>Erstellt alle Felder</td></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
+      <tr><td>Send_HTTP_request-_Create_Participant List</td><td>SharePoint HttpRequest</td><td>Erstellt Liste</td></tr>
+      <tr><td>Send_HTTP_request-_Create_Fields</td><td>SharePoint HttpRequest</td><td>Erstellt alle Fielder</td></tr>
       <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
     </table>
   </div>
@@ -1004,8 +1004,8 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
-  <p>Erstellt Standard-Teilnehmerliste für <strong>JP Morgan Run und andere Events</strong>. Struktur identisch mit ApplyTemplateB2Run, ermöglicht aber separate Anpassungen.</p>
+  <h4>Description</h4>
+  <p>Erstellt Standard-Participant List für <strong>JP Morgan Run und andere Events</strong>. Struktur identisch mit ApplyTemplateB2Run, ermöglicht aber separate Anpassungen.</p>
 </div>
 
 <!-- 4.4 EventPermission -->
@@ -1019,7 +1019,7 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p>Verwaltet <strong>Berechtigungen für Events mit eingeschränkter Zielgruppe</strong>. Entfernt Standardfreigaben und setzt spezifische Rechte für die definierte Audience.</p>
 
   <div class="action-cluster">
@@ -1032,7 +1032,7 @@ TypedDataCard@1.0.7
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Stop_sharing_an_item</td><td>SharePoint UnshareItem</td><td>Entfernt Freigaben</td></tr>
       <tr><td>Grant_access (Audience)</td><td>SharePoint GrantAccess</td><td>Lesezugriff für Audience</td></tr>
       <tr><td>Grant_access (Organizer)</td><td>SharePoint GrantAccess</td><td>Vollzugriff für Organizer</td></tr>
@@ -1052,37 +1052,37 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
-  <p>Das <strong>Herzstück des Anmeldeprozesses</strong>. Verarbeitet neue Teilnehmeranmeldungen, prüft Kapazität und entscheidet über Registrierung oder Warteliste.</p>
+  <h4>Description</h4>
+  <p>Das <strong>Herzstück des Anmeldeprozesses</strong>. Verarbeitet neue Participantanmeldungen, prüft Kapazität und entscheidet über Registration oder Warteliste.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">1. Initialisierung & Datenabfrage</div>
     <div class="cluster-desc">
       <ul>
         <li>Initialisiert Variablen für Item-ID, User-Listen-ID, Status</li>
-        <li>Lädt Event-Details aus SharePoint (Kapazität, aktuelle Teilnehmerzahl)</li>
-        <li>Zählt bereits registrierte Teilnehmer</li>
+        <li>Lädt Event-Details aus SharePoint (Kapazität, aktuelle Participantzahl)</li>
+        <li>Zählt bereits registrierte Participant</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Arbeitsvariablen</td></tr>
       <tr><td>Get_item (Event)</td><td>SharePoint GetItem</td><td>Lädt Event-Details</td></tr>
-      <tr><td>Get_items (Registrations)</td><td>SharePoint GetItems</td><td>Zählt Registrierungen</td></tr>
+      <tr><td>Get_items (Registrations)</td><td>SharePoint GetItems</td><td>Zählt Registrationen</td></tr>
     </table>
   </div>
 
   <div class="action-cluster">
-    <div class="cluster-header">2. Kapazitätsprüfung & Entscheidung</div>
+    <div class="cluster-header">2. Capacity Check & Entscheidung</div>
     <div class="cluster-desc">
       <ul>
-        <li>Vergleicht aktuelle Teilnehmerzahl mit maximaler Kapazität</li>
-        <li>Platz frei → Status "Registered", E-Mail + Kalendereintrag</li>
+        <li>Vergleicht aktuelle Participantzahl mit maximaler Kapazität</li>
+        <li>Platz frei → Status "Registered", E-Mail + Calendareintrag</li>
         <li>Event voll → Status "Waitlist", Info über Position</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Condition (Kapazität)</td><td>If</td><td>Prüft: Registrierte < Kapazität?</td></tr>
       <tr><td>Update_item (Registered)</td><td>SharePoint PatchItem</td><td>Status → "Registered"</td></tr>
       <tr><td>Update_item (Waitlist)</td><td>SharePoint PatchItem</td><td>Status → "Waitlist"</td></tr>
@@ -1090,16 +1090,16 @@ TypedDataCard@1.0.7
   </div>
 
   <div class="action-cluster">
-    <div class="cluster-header">3. E-Mail & Kalender-Integration</div>
+    <div class="cluster-header">3. Email & Calendar-Integration</div>
     <div class="cluster-desc">
       <ul>
-        <li>Bei Registrierung: Teilnehmer wird zu Outlook-Event hinzugefügt</li>
+        <li>Bei Registration: Participant wird zu Outlook-Event hinzugefügt</li>
         <li>Bestätigungsmail über Shared Mailbox</li>
         <li>Bei Warteliste: Info-Mail mit Position</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
       <tr><td>Run_a_Child_Flow (Outlook)</td><td>Workflow</td><td>RegisterOutlookEventParticipant</td></tr>
       <tr><td>Run_a_Child_Flow (Mail)</td><td>Workflow</td><td>SendMailSharedMailbox</td></tr>
     </table>
@@ -1117,21 +1117,21 @@ TypedDataCard@1.0.7
     </table>
   </div>
 
-  <h4>Beschreibung</h4>
-  <p>Verarbeitet Abmeldungen und löst <strong>automatisches Wartelisten-Nachrücken</strong> aus. Der erste Wartelisten-Teilnehmer wird automatisch registriert.</p>
+  <h4>Description</h4>
+  <p>Verarbeitet Deregistrationen und löst <strong>automatisches Wartelisten-Nachrücken</strong> aus. Der erste Wartelisten-Participant wird automatisch registriert.</p>
 
   <div class="action-cluster">
-    <div class="cluster-header">1. Daten laden & Abmeldung validieren</div>
+    <div class="cluster-header">1. Daten laden & Deregistration validieren</div>
     <div class="cluster-desc">
       <ul>
-        <li>Lädt Teilnehmerdaten und Event-Logos</li>
-        <li>Prüft ob Abmeldung gültig ist</li>
-        <li>Setzt Status auf "Cancelled" oder löscht Eintrag</li>
+        <li>Lädt Participantdaten und Event-Logos</li>
+        <li>Prüft ob Deregistration gültig ist</li>
+        <li>Sets status to "Cancelled" oder löscht Entry</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-      <tr><td>Get_item_-_Event_Visitors</td><td>SharePoint GetItem</td><td>Lädt Teilnehmerdaten</td></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
+      <tr><td>Get_item_-_Event_Visitors</td><td>SharePoint GetItem</td><td>Lädt Participantdaten</td></tr>
       <tr><td>Condition (Valid)</td><td>If</td><td>Prüft Gültigkeit</td></tr>
       <tr><td>Update_item (Cancel)</td><td>SharePoint PatchItem</td><td>Status → "Cancelled"</td></tr>
     </table>
@@ -1142,31 +1142,31 @@ TypedDataCard@1.0.7
     <div class="cluster-desc">
       <ul>
         <li>Warteliste wird nach Erstellungsdatum sortiert abgefragt</li>
-        <li>Erster Eintrag (ältester) wird für Nachrücken ausgewählt</li>
-        <li>Status → "Registered", E-Mail + Kalendereintrag für Nachrücker</li>
+        <li>Erster Entry (ältester) wird für Nachrücken ausgewählt</li>
+        <li>Status → "Registered", E-Mail + Calendareintrag für Nachrücker</li>
       </ul>
     </div>
     <table>
-      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-      <tr><td>Apply_to_each (Waitlist)</td><td>Foreach</td><td>Sucht ersten Wartelisten-Teilnehmer</td></tr>
-      <tr><td>Run_a_Child_Flow (Promote)</td><td>Workflow</td><td>Status, Mail, Kalender für Nachrücker</td></tr>
+      <tr><th>Action</th><th>Type</th><th>Description</th></tr>
+      <tr><td>Apply_to_each (Waitlist)</td><td>Foreach</td><td>Sucht ersten Wartelisten-Participant</td></tr>
+      <tr><td>Run_a_Child_Flow (Promote)</td><td>Workflow</td><td>Status, Mail, Calendar für Nachrücker</td></tr>
     </table>
   </div>
 </div>
 
-<!-- 4.7-4.9 Registrierung (kompakt) -->
+<!-- 4.7-4.9 Registration (kompakt) -->
 <h2>4.7 CheckRegistrationStatusParticipant</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Prüft den Registrierungsstatus eines Users für ein Event. Gibt zurück: <code>registered</code>, <code>waitlist</code> oder <code>not_registered</code>.</p>
+  <h4>Description</h4>
+  <p>Prüft den Registrationsstatus eines Users für ein Event. Gibt zurück: <code>registered</code>, <code>waitlist</code> oder <code>not_registered</code>.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Statusprüfung</div>
     <div class="cluster-desc">
       <ul>
-        <li>Sucht in Teilnehmerliste nach User-E-Mail</li>
-        <li>Liest Status-Wert aus gefundenem Eintrag</li>
+        <li>Sucht in Participant List nach User-E-Mail</li>
+        <li>Liest Status-Value aus gefundenem Entry</li>
         <li>Gibt Status an Power App zurück</li>
       </ul>
     </div>
@@ -1176,8 +1176,8 @@ TypedDataCard@1.0.7
 <h2>4.8 GetWaitinglistPosition</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Ermittelt die aktuelle <strong>Wartelisten-Position</strong> eines Teilnehmers (FIFO-Prinzip).</p>
+  <h4>Description</h4>
+  <p>Ermittelt die aktuelle <strong>Waiting list position</strong> eines Participants (FIFO principle).</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Positionsberechnung</div>
@@ -1194,8 +1194,8 @@ TypedDataCard@1.0.7
 <h2>4.9 GetParticipantEvents</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Listet alle Events für die <strong>"Meine Events"</strong>-Ansicht in der Power App.</p>
+  <h4>Description</h4>
+  <p>Listet alle Events für die <strong>"My Events"</strong>-Ansicht in der Power App.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Event-Abfrage</div>
@@ -1213,15 +1213,15 @@ TypedDataCard@1.0.7
 <h2>4.10 Check-In</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p><strong>Manueller Check-In</strong> am Veranstaltungstag. Fallback wenn QR-Code nicht funktioniert.</p>
 
   <div class="action-cluster">
-    <div class="cluster-header">Check-In durchführen</div>
+    <div class="cluster-header">Perform Check-In</div>
     <div class="cluster-desc">
       <ul>
-        <li>Identifiziert Teilnehmer aus Check-In-Queue</li>
-        <li>Setzt CheckIn-Feld auf true</li>
+        <li>Identifiziert Participant aus Check-In-Queue</li>
+        <li>Setzt CheckIn-Field auf true</li>
         <li>Speichert Check-In-Zeitstempel</li>
       </ul>
     </div>
@@ -1231,8 +1231,8 @@ TypedDataCard@1.0.7
 <h2>4.11 CheckInFromQRCode</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p><strong>Check-In per QR-Code-Scan</strong>. Das Check-In-Team scannt den QR-Code, der Flow identifiziert und checkt den Teilnehmer ein.</p>
+  <h4>Description</h4>
+  <p><strong>Check-In per QR-Code-Scan</strong>. Das Check-In-Team scannt den QR-Code, der Flow identifiziert und checkt den Participant ein.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">1. QR-Code verarbeiten</div>
@@ -1246,12 +1246,12 @@ TypedDataCard@1.0.7
   </div>
 
   <div class="action-cluster">
-    <div class="cluster-header">2. Validierung & Check-In</div>
+    <div class="cluster-header">2. Validation & Check-In</div>
     <div class="cluster-desc">
       <ul>
-        <li>Prüft ob Teilnehmer registriert und noch nicht eingecheckt ist</li>
+        <li>Prüft ob Participant registriert und noch nicht eingecheckt ist</li>
         <li>Setzt CheckIn=true, speichert Zeitstempel</li>
-        <li>Gibt Erfolg/Fehler mit Teilnehmername zurück</li>
+        <li>Gibt Erfolg/Fehler mit Participantname zurück</li>
       </ul>
     </div>
   </div>
@@ -1260,14 +1260,14 @@ TypedDataCard@1.0.7
 <h2>4.12 EventQRCodeGenerator</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Generiert für alle registrierten Teilnehmer <strong>individuelle QR-Codes</strong> und versendet diese per E-Mail.</p>
+  <h4>Description</h4>
+  <p>Generiert für alle registrierten Participant <strong>individuelle QR-Codes</strong> und versendet diese per E-Mail.</p>
 
   <div class="action-cluster">
-    <div class="cluster-header">1. Teilnehmer laden</div>
+    <div class="cluster-header">1. Participant laden</div>
     <div class="cluster-desc">
       <ul>
-        <li>Lädt Event-Details und alle Teilnehmer mit Status "Registered"</li>
+        <li>Lädt Event-Details und alle Participant mit Status "Registered"</li>
         <li>Bereitet E-Mail-Assets vor</li>
       </ul>
     </div>
@@ -1277,7 +1277,7 @@ TypedDataCard@1.0.7
     <div class="cluster-header">2. QR-Codes generieren & versenden</div>
     <div class="cluster-desc">
       <ul>
-        <li>Für jeden Teilnehmer: JSON-Payload mit ID und E-Mail erstellen</li>
+        <li>Für jeden Participant: JSON-Payload mit ID und E-Mail erstellen</li>
         <li>QR-Code via API generieren, als Base64 kodieren</li>
         <li>E-Mail mit eingebettetem QR-Code versenden</li>
       </ul>
@@ -1285,11 +1285,11 @@ TypedDataCard@1.0.7
   </div>
 </div>
 
-<!-- 4.13-4.17 E-Mail & Kalender -->
+<!-- 4.13-4.17 Email & Calendar -->
 <h2>4.13 SendMailSharedMailbox</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p><strong>Zentrale E-Mail-Funktion</strong>. Sendet E-Mails über die Shared Mailbox <code>no_reply.events@deloitte.de</code>.</p>
 
   <div class="action-cluster">
@@ -1307,15 +1307,15 @@ TypedDataCard@1.0.7
 <h2>4.14 SendMailParticipantList</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p><strong>Massen-E-Mail</strong> an alle Teilnehmer oder nur Warteliste eines Events.</p>
+  <h4>Description</h4>
+  <p><strong>Massen-E-Mail</strong> an alle Participant oder nur Warteliste eines Events.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Batch-Versand</div>
     <div class="cluster-desc">
       <ul>
         <li>Filter-Optionen: all, registered, waitlist</li>
-        <li>Iteriert über Teilnehmer, sendet individuelle E-Mails</li>
+        <li>Iteriert über Participant, sendet individuelle E-Mails</li>
         <li>Gibt Anzahl versendeter E-Mails zurück</li>
       </ul>
     </div>
@@ -1325,11 +1325,11 @@ TypedDataCard@1.0.7
 <h2>4.15 RegisterOutlookEventParticipant</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Fügt Teilnehmer zu bestehendem <strong>Outlook-Kalendereintrag</strong> hinzu via Graph API.</p>
+  <h4>Description</h4>
+  <p>Fügt Participant zu bestehendem <strong>Outlook-Calendareintrag</strong> hinzu via Graph API.</p>
 
   <div class="action-cluster">
-    <div class="cluster-header">Attendee hinzufügen</div>
+    <div class="cluster-header">Attendee add</div>
     <div class="cluster-desc">
       <ul>
         <li>Ruft bestehendes Event via Graph API ab</li>
@@ -1343,15 +1343,15 @@ TypedDataCard@1.0.7
 <h2>4.16 CreateOutlookEventSharedMailbox</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Erstellt neuen <strong>Outlook-Termin im Shared Mailbox Kalender</strong>. Basis-Termin für Teilnehmer-Einladungen.</p>
+  <h4>Description</h4>
+  <p>Erstellt neuen <strong>Outlook-Termin im Shared Mailbox Calendar</strong>. Basis-Termin für Participant-Einladungen.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Event erstellen</div>
     <div class="cluster-desc">
       <ul>
         <li>Empfängt Event-Details (Titel, Start, Ende, Ort)</li>
-        <li>Erstellt Kalendereintrag via Outlook Connector</li>
+        <li>Erstellt Calendareintrag via Outlook Connector</li>
         <li>Gibt Event-ID für spätere Referenz zurück</li>
       </ul>
     </div>
@@ -1361,8 +1361,8 @@ TypedDataCard@1.0.7
 <h2>4.17 HelperFlowMailToRegistered</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p><strong>Hilfsflow</strong> für spezielle E-Mail-Szenarien an registrierte Teilnehmer.</p>
+  <h4>Description</h4>
+  <p><strong>Hilfsflow</strong> für spezielle E-Mail-Szenarien an registrierte Participant.</p>
 </div>
 
 <!-- 4.18-4.23 Utility -->
@@ -1370,14 +1370,14 @@ TypedDataCard@1.0.7
 <h2>4.18 Flow-Dokumentation-Export</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p>Exportiert die <strong>Definitionen aller Flows</strong> in eine Textdatei für Dokumentationszwecke.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Export-Prozess</div>
     <div class="cluster-desc">
       <ul>
-        <li>Listet alle Flows der Umgebung auf</li>
+        <li>Listet alle Flows der Environment auf</li>
         <li>Liest JSON-Definition jedes Flows</li>
         <li>Schreibt alle Definitionen in SharePoint-Datei</li>
       </ul>
@@ -1388,7 +1388,7 @@ TypedDataCard@1.0.7
 <h2>4.19 SharePoint_Batch_Update_V2</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p><strong>Batch-Updates</strong> auf SharePoint-Listen via REST Batch API für bessere Performance.</p>
 
   <div class="action-cluster">
@@ -1406,7 +1406,7 @@ TypedDataCard@1.0.7
 <h2>4.20 SetPermissionForSubWeb</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
+  <h4>Description</h4>
   <p>Setzt <strong>Berechtigungen auf SharePoint-Subsites</strong>. Bricht Vererbung und weist spezifische Rechte zu.</p>
 
   <div class="action-cluster">
@@ -1423,16 +1423,16 @@ TypedDataCard@1.0.7
 <h2>4.21 UpdateAllEventsWithNewFields</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p><strong>Migrationsflow</strong>: Fügt neue Felder (Freitextfeld3-7) zu allen bestehenden Teilnehmerlisten hinzu.</p>
+  <h4>Description</h4>
+  <p><strong>Migrationsflow</strong>: Fügt neue Fielder (Freitextfeld3-7) zu allen bestehenden Participant Listn hinzu.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Migration</div>
     <div class="cluster-desc">
       <ul>
-        <li>Iteriert über alle Event-Subsites</li>
-        <li>Erstellt fehlende Felder via SharePoint REST API</li>
-        <li>Fehlerbehandlung wenn Feld bereits existiert</li>
+        <li>Iteriert über alle Event Subsites</li>
+        <li>Erstellt fehlende Fielder via SharePoint REST API</li>
+        <li>Error Handling wenn Field bereits existiert</li>
       </ul>
     </div>
   </div>
@@ -1441,15 +1441,15 @@ TypedDataCard@1.0.7
 <h2>4.22 CorrectOutlookID</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p><strong>Korrigiert fehlerhafte Outlook-Event-IDs</strong> in der Events-Liste durch Abgleich mit Graph API.</p>
+  <h4>Description</h4>
+  <p><strong>Korrigiert fehlerhafte Outlook-Event-IDs</strong> in der Events List durch Abgleich mit Graph API.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">ID-Korrektur</div>
     <div class="cluster-desc">
       <ul>
         <li>Identifiziert Events mit fehlerhafter/fehlender Outlook-ID</li>
-        <li>Sucht passenden Termin im Shared Mailbox Kalender</li>
+        <li>Sucht passenden Termin im Shared Mailbox Calendar</li>
         <li>Aktualisiert OutlookEventID in SharePoint</li>
       </ul>
     </div>
@@ -1459,15 +1459,15 @@ TypedDataCard@1.0.7
 <h2>4.23 SP Liste Nummerierung korrigieren</h2>
 
 <div class="flow-section">
-  <h4>Beschreibung</h4>
-  <p>Korrigiert die <strong>Nummerierung (Nr.-Feld)</strong> in Teilnehmerlisten nach manuellen Änderungen.</p>
+  <h4>Description</h4>
+  <p>Korrigiert die <strong>Nummerierung (Nr.-Field)</strong> in Participant Listn nach manuellen Änderungen.</p>
 
   <div class="action-cluster">
     <div class="cluster-header">Nummerierung korrigieren</div>
     <div class="cluster-desc">
       <ul>
-        <li>Lädt Teilnehmer sortiert nach Erstellungsdatum</li>
-        <li>Setzt Nr.-Feld auf fortlaufende Nummer (1, 2, 3...)</li>
+        <li>Lädt Participant sortiert nach Erstellungsdatum</li>
+        <li>Setzt Nr.-Field auf fortlaufende Nummer (1, 2, 3...)</li>
         <li>Stellt durchgehende Nummerierung ohne Lücken sicher</li>
       </ul>
     </div>
@@ -1476,37 +1476,37 @@ TypedDataCard@1.0.7
 
 <!-- 5. ANHANG -->
 <div class="page-break"></div>
-<h1>5. Anhang</h1>
+<h1>5. Appendix</h1>
 
-<h2>5.1 Glossar</h2>
+<h2>5.1 Glossary</h2>
 <table>
-  <tr><th>Begriff</th><th>Erklärung</th></tr>
-  <tr><td>Child Flow</td><td>Ein Flow der von einem anderen Flow aufgerufen wird</td></tr>
-  <tr><td>Shared Mailbox</td><td>Gemeinsam genutztes Postfach (no_reply.events@deloitte.de)</td></tr>
-  <tr><td>Subsite</td><td>Unterwebsite innerhalb einer SharePoint Site Collection</td></tr>
-  <tr><td>FIFO</td><td>First In, First Out - Warteschlangenprinzip</td></tr>
-  <tr><td>Graph API</td><td>Microsoft Graph REST API für Office 365 Dienste</td></tr>
+  <tr><th>Term</th><th>Explanation</th></tr>
+  <tr><td>Child Flow</td><td>A flow that is called by another flow</td></tr>
+  <tr><td>Shared Mailbox</td><td>Shared mailbox (no_reply.events@deloitte.de)</td></tr>
+  <tr><td>Subsite</td><td>Subsite within a SharePoint Site Collection</td></tr>
+  <tr><td>FIFO</td><td>First In, First Out - queue principle</td></tr>
+  <tr><td>Graph API</td><td>Microsoft Graph REST API for Office 365 services</td></tr>
 </table>
 
-<h2>5.2 Technische Referenzen</h2>
+<h2>5.2 Technical References</h2>
 <table>
-  <tr><th>Ressource</th><th>URL / Wert</th></tr>
-  <tr><td>SharePoint Basis-Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
+  <tr><th>Resource</th><th>URL / Value</th></tr>
+  <tr><td>SharePoint Base Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
   <tr><td>Shared Mailbox</td><td>no_reply.events@deloitte.de</td></tr>
-  <tr><td>Power Apps Umgebung</td><td>Default Environment</td></tr>
+  <tr><td>Power Apps Environment</td><td>Default Environment</td></tr>
 </table>
 
-<h2>5.3 Kontakt</h2>
-<p>Bei Fragen zur Plattform oder technischen Problemen:</p>
+<h2>5.3 Contact</h2>
+<p>For questions about the platform or technical issues:</p>
 <ul>
-  <li><strong>Eike Brenneisen</strong> - Product Owner, Entwicklung, Event-Koordination & Onboarding</li>
-  <li><strong>Nils Felten</strong> - Product Owner, Entwicklung, Event-Koordination & Onboarding</li>
-  <li><strong>Andreas Enk</strong> - Product Owner, Entwicklung</li>
+  <li><strong>Eike Brenneisen</strong> - Product Owner, Development, Event-Koordination & Onboarding</li>
+  <li><strong>Nils Felten</strong> - Product Owner, Development, Event-Koordination & Onboarding</li>
+  <li><strong>Andreas Enk</strong> - Product Owner, Development</li>
 </ul>
 
 <p style="margin-top: 3rem; text-align: center; color: var(--gray-600); font-size: 9pt;">
-  DEX Event Experience Platform - Anwenderdokumentation v2.0<br>
-  Generiert: Januar 2026
+  DEX Event Experience Platform - User Documentation v2.0<br>
+  Generated: January 2026
 </p>
 
 </body>
