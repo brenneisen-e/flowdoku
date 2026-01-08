@@ -95,6 +95,7 @@
         <li>2.2 Technische Architektur</li>
         <li>2.3 Architektur-Flowchart</li>
         <li>2.4 Power App Screens</li>
+        <li>2.5 Event Creation - Architektur im Detail</li>
       </ul>
     </li>
     <li><strong>3. Power Automate Flows - Übersicht</strong></li>
@@ -187,8 +188,11 @@
 
 <div class="avoid-break" style="margin: 1.5rem 0;">
 <svg viewBox="0 0 800 480" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-  <!-- Background -->
+  <!-- Marker Definitions -->
   <defs>
+    <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L3,5 Z" fill="#718096"/>
+    </marker>
     <linearGradient id="userGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#4299e1"/>
       <stop offset="100%" style="stop-color:#2b6cb0"/>
@@ -227,19 +231,22 @@
   <rect x="440" y="25" width="130" height="50" rx="8" fill="url(#userGrad)"/>
   <text x="505" y="55" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Check-In Team</text>
 
-  <!-- Arrows from Users to App -->
-  <path d="M185 75 L185 105 L400 105 L400 115" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <path d="M345 75 L345 105 L400 105 L400 115" stroke="#718096" stroke-width="2" fill="none"/>
-  <path d="M505 75 L505 105 L400 105 L400 115" stroke="#718096" stroke-width="2" fill="none"/>
-  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#718096"/></marker></defs>
+  <!-- Connecting Lines from Users to App (simple vertical lines) -->
+  <line x1="185" y1="75" x2="185" y2="100" stroke="#718096" stroke-width="2"/>
+  <line x1="345" y1="75" x2="345" y2="100" stroke="#718096" stroke-width="2"/>
+  <line x1="505" y1="75" x2="505" y2="100" stroke="#718096" stroke-width="2"/>
+  <!-- Horizontal connector line -->
+  <line x1="185" y1="100" x2="505" y2="100" stroke="#718096" stroke-width="2"/>
+  <!-- Arrow down to App -->
+  <line x1="345" y1="100" x2="345" y2="115" stroke="#718096" stroke-width="2" marker-end="url(#arrowDown)"/>
 
   <!-- Power App Layer -->
   <rect x="200" y="115" width="400" height="60" rx="10" fill="url(#appGrad)"/>
   <text x="400" y="145" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Power App</text>
   <text x="400" y="162" text-anchor="middle" fill="white" font-size="10">DEX Event Experience Platform</text>
 
-  <!-- Arrows from App to Flows -->
-  <path d="M400 175 L400 195" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <!-- Arrow from App to Flows -->
+  <line x1="400" y1="175" x2="400" y2="198" stroke="#718096" stroke-width="2" marker-end="url(#arrowDown)"/>
 
   <!-- Power Automate Layer -->
   <rect x="100" y="200" width="600" height="120" rx="10" fill="url(#flowGrad)" fill-opacity="0.15" stroke="url(#flowGrad)" stroke-width="2"/>
@@ -269,8 +276,8 @@
   <text x="640" y="282" text-anchor="middle" fill="white" font-size="8">(6 Flows)</text>
 
   <!-- Arrows from Flows to Data -->
-  <path d="M287 320 L287 360 L300 360" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <path d="M527 320 L527 360 L620 360" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <line x1="287" y1="305" x2="287" y2="338" stroke="#718096" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="527" y1="305" x2="527" y2="338" stroke="#718096" stroke-width="2" marker-end="url(#arrowDown)"/>
 
   <!-- SharePoint Layer -->
   <rect x="100" y="340" width="400" height="130" rx="10" fill="url(#spGrad)" fill-opacity="0.15" stroke="url(#spGrad)" stroke-width="2"/>
@@ -304,8 +311,8 @@
   <text x="610" y="440" text-anchor="middle" fill="white" font-size="9" font-weight="bold">Kalender-Events</text>
   <text x="610" y="452" text-anchor="middle" fill="white" font-size="7">Termin-Einladungen</text>
 
-  <!-- Connection Arrow between SP and O365 -->
-  <path d="M500 420 L520 420" stroke="#718096" stroke-width="1.5" stroke-dasharray="4,2" fill="none"/>
+  <!-- Horizontal connection between SP and O365 -->
+  <line x1="500" y1="420" x2="520" y2="420" stroke="#718096" stroke-width="1.5" stroke-dasharray="4,2"/>
 </svg>
 </div>
 
@@ -584,6 +591,157 @@
 <pre style="background: var(--gray-100); padding: 0.5rem; border-radius: 4px; font-size: 9pt; overflow-x: auto;">
 If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
 </pre>
+
+<!-- 2.5 EVENT CREATION ARCHITEKTUR -->
+<div class="page-break"></div>
+<h2>2.5 Event Creation - Architektur im Detail</h2>
+
+<p>Die Event-Erstellung ist ein zentraler Prozess in der DEX-Plattform. Dieser Abschnitt dokumentiert die <strong>Power App Architektur</strong> für die Event-Erstellung, um eine mögliche Modernisierung zu unterstützen.</p>
+
+<h3>Event-Typ Auswahl (EventCreationSelectionScreen)</h3>
+
+<p>Der Einstiegspunkt für die Event-Erstellung ist der <strong>EventCreationSelectionScreen</strong>, der drei Event-Typen zur Auswahl bietet:</p>
+
+<div class="avoid-break" style="margin: 1.5rem 0;">
+<svg viewBox="0 0 800 280" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+  <defs>
+    <marker id="arrCreate" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L3,5 Z" fill="#718096"/>
+    </marker>
+  </defs>
+
+  <!-- Selection Screen -->
+  <rect x="250" y="20" width="300" height="60" rx="8" fill="#805ad5"/>
+  <text x="400" y="50" text-anchor="middle" fill="white" font-size="12" font-weight="bold">EventCreationSelectionScreen</text>
+  <text x="400" y="68" text-anchor="middle" fill="white" font-size="9">Auswahl des Event-Typs</text>
+
+  <!-- Arrows -->
+  <line x1="300" y1="80" x2="130" y2="130" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+  <line x1="400" y1="80" x2="400" y2="130" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+  <line x1="500" y1="80" x2="670" y2="130" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+
+  <!-- B2Run -->
+  <rect x="30" y="135" width="200" height="80" rx="8" fill="#ed8936"/>
+  <text x="130" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">B2Run Event</text>
+  <text x="130" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationB2EventForm</text>
+  <text x="130" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "B2Run Event"</text>
+  <text x="130" y="208" text-anchor="middle" fill="white" font-size="7">Spezialfelder: Startblock, T-Shirt, Fun-Runner</text>
+
+  <!-- JP Morgan -->
+  <rect x="300" y="135" width="200" height="80" rx="8" fill="#4299e1"/>
+  <text x="400" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">J.P. Morgan Lauf</text>
+  <text x="400" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationJPMorgan</text>
+  <text x="400" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "JP Morgan Run"</text>
+  <text x="400" y="208" text-anchor="middle" fill="white" font-size="7">Standort: Frankfurt</text>
+
+  <!-- Other Events -->
+  <rect x="570" y="135" width="200" height="80" rx="8" fill="#48bb78"/>
+  <text x="670" y="160" text-anchor="middle" fill="white" font-size="11" font-weight="bold">Andere Events</text>
+  <text x="670" y="178" text-anchor="middle" fill="white" font-size="8">EventCreationOtherEventForm</text>
+  <text x="670" y="195" text-anchor="middle" fill="white" font-size="8">Inhaltstyp: "Other Deloitte Event"</text>
+  <text x="670" y="208" text-anchor="middle" fill="white" font-size="7">Generisch, anpassbar</text>
+
+  <!-- Flow Trigger -->
+  <line x1="130" y1="215" x2="130" y2="250" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+  <line x1="400" y1="215" x2="400" y2="250" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+  <line x1="670" y1="215" x2="670" y2="250" stroke="#718096" stroke-width="2" marker-end="url(#arrCreate)"/>
+
+  <text x="130" y="268" text-anchor="middle" fill="#c05621" font-size="8">Trigger: NewEventAdded</text>
+  <text x="400" y="268" text-anchor="middle" fill="#c05621" font-size="8">Trigger: NewEventAdded</text>
+  <text x="670" y="268" text-anchor="middle" fill="#c05621" font-size="8">Trigger: NewEventAdded</text>
+</svg>
+</div>
+
+<h3>Formular-Architektur (Form Control)</h3>
+
+<p>Jedes Event-Erstellungsformular verwendet ein <strong>Power Apps Form Control</strong> mit folgender Struktur:</p>
+
+<table>
+  <tr><th>Eigenschaft</th><th>Wert</th><th>Beschreibung</th></tr>
+  <tr><td>Control</td><td><code>Form@2.4.4</code></td><td>Standard Power Apps Form</td></tr>
+  <tr><td>Layout</td><td><code>Vertical</code></td><td>Vertikale Anordnung der Felder</td></tr>
+  <tr><td>DataSource</td><td><code>=Events</code></td><td>Direkte Bindung an SharePoint Events-Liste</td></tr>
+  <tr><td>DefaultMode</td><td><code>=FormMode.New</code></td><td>Immer im Erstellungsmodus</td></tr>
+  <tr><td>OnVisible</td><td><code>=ResetForm(Form1)</code></td><td>Formular beim Öffnen zurücksetzen</td></tr>
+</table>
+
+<h3>Feldkonfiguration nach Event-Typ</h3>
+
+<p><strong>Gemeinsame Felder (alle Event-Typen):</strong></p>
+<table>
+  <tr><th>Feld</th><th>Control</th><th>DataField</th><th>Required</th></tr>
+  <tr><td>Title</td><td>TextInput (Multiline)</td><td><code>Title</code></td><td>Ja</td></tr>
+  <tr><td>Standort</td><td>TextInput</td><td><code>Standort</code></td><td>Nein</td></tr>
+  <tr><td>Standort Filter</td><td>ComboBox</td><td><code>Standort_x0020_Filter</code></td><td>Nein</td></tr>
+  <tr><td>Organizer</td><td>ComboBox (MultiSelect)</td><td><code>Organzier</code></td><td>Ja</td></tr>
+  <tr><td>Event time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_time</code></td><td>Ja</td></tr>
+  <tr><td>Event end time</td><td>DatePicker + DropDown (HH:MM)</td><td><code>Event_x0020_end_x0020_time</code></td><td>Ja</td></tr>
+  <tr><td>Last Register Date Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Date_x</code></td><td>Ja</td></tr>
+  <tr><td>Last Deregister Time</td><td>DatePicker + DropDown</td><td><code>Last_x0020_Register_x0020_Event_</code></td><td>Ja</td></tr>
+</table>
+
+<p><strong>B2Run-spezifische Felder:</strong></p>
+<table>
+  <tr><th>Feld</th><th>Control</th><th>Beschreibung</th></tr>
+  <tr><td>Max Fun-runner</td><td>Number Input</td><td>Maximale Anzahl Fun-Runner</td></tr>
+  <tr><td>Max Durchstarter</td><td>Number Input</td><td>Maximale Anzahl Durchstarter</td></tr>
+  <tr><td>Startblock</td><td>ComboBox (Multi)</td><td>Verfügbare Startblöcke ["17:00", "18:30"]</td></tr>
+  <tr><td>T-Shirtgrößen</td><td>ComboBox (Multi)</td><td>Verfügbare T-Shirt Größen</td></tr>
+  <tr><td>T Shirt Größe visible</td><td>Toggle</td><td>T-Shirt Auswahl anzeigen?</td></tr>
+</table>
+
+<p><strong>Other Event-spezifische Felder:</strong></p>
+<table>
+  <tr><th>Feld</th><th>Control</th><th>Beschreibung</th></tr>
+  <tr><td>Audience Mail</td><td>TextInput (Dialog)</td><td>E-Mail-Adressen für Zugangsbeschränkung</td></tr>
+  <tr><td>Frage Freitextfeld 1/2</td><td>TextInput</td><td>Benutzerdefinierte Fragefelder</td></tr>
+  <tr><td>Dropdownfeld 1/2</td><td>Dialog mit Collection</td><td>Benutzerdefinierte Dropdown-Optionen</td></tr>
+  <tr><td>Location Hotel</td><td>TextInput</td><td>Hotel-Information (falls relevant)</td></tr>
+  <tr><td>Allergien visible</td><td>Toggle</td><td>Allergien-Feld bei Registrierung anzeigen?</td></tr>
+</table>
+
+<h3>DataCard-Struktur</h3>
+
+<p>Jedes Feld wird als <strong>TypedDataCard</strong> implementiert mit folgender Struktur:</p>
+
+<pre style="background: var(--gray-100); padding: 0.75rem; border-radius: 4px; font-size: 9pt; overflow-x: auto;">
+TypedDataCard@1.0.7
+├── DataCardKey (Text)        - Feldbezeichnung
+├── DataCardValue (Input)     - Eingabefeld (TextInput/ComboBox/DatePicker)
+├── ErrorMessage (Text)       - Validierungsfehler
+├── StarVisible (Text)        - Required-Indikator "*"
+└── InfoButtonCanvas          - Hilfe-Tooltip (optional)
+</pre>
+
+<h3>Submit-Logik</h3>
+
+<p>Beim Speichern eines Events:</p>
+
+<ol>
+  <li><strong>Form.Submit()</strong> - Erstellt neuen Eintrag in Events-Liste</li>
+  <li><strong>SharePoint Trigger</strong> - "Item Created" triggert <code>NewEventAdded_SiteProvis</code> Flow</li>
+  <li><strong>Flow-Verarbeitung:</strong>
+    <ul>
+      <li>Erstellt SharePoint Subsite</li>
+      <li>Ruft ApplyTemplateB2Run oder ApplyTemplateOtherEvent auf (basierend auf Inhaltstyp)</li>
+      <li>Setzt Berechtigungen</li>
+      <li>Erstellt Outlook-Kalendereintrag</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Modernisierungsempfehlungen</h3>
+
+<p>Für eine zukünftige Modernisierung der Event-Erstellung:</p>
+
+<table>
+  <tr><th>Bereich</th><th>Aktuell</th><th>Empfehlung</th></tr>
+  <tr><td>Formular</td><td>3 separate Screens</td><td>Einzelnes dynamisches Formular mit bedingter Anzeige</td></tr>
+  <tr><td>Validierung</td><td>DataCard-basiert</td><td>Zentrale Validierungslogik mit Custom Connector</td></tr>
+  <tr><td>Event-Typen</td><td>Hardcoded in Screens</td><td>Konfigurationsliste für dynamische Event-Typen</td></tr>
+  <tr><td>Feldkonfiguration</td><td>Pro Screen definiert</td><td>Metadata-driven Form basierend auf Inhaltstyp</td></tr>
+  <tr><td>Custom Fields</td><td>Freitextfeld1-7</td><td>JSON-Schema für flexible Feldkonfiguration</td></tr>
+</table>
 
 <!-- 3. FLOW-ÜBERSICHT -->
 <div class="page-break"></div>
@@ -1320,9 +1478,9 @@ If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
 <h2>5.3 Kontakt</h2>
 <p>Bei Fragen zur Plattform oder technischen Problemen:</p>
 <ul>
-  <li><strong>Eike Brenneisen</strong> - Product Owner</li>
-  <li><strong>Andreas Enk</strong> - Entwicklung</li>
-  <li><strong>Nils Felten</strong> - Entwicklung</li>
+  <li><strong>Eike Brenneisen</strong> - Product Owner, Entwicklung, Event-Koordination & Onboarding</li>
+  <li><strong>Nils Felten</strong> - Product Owner, Entwicklung, Event-Koordination & Onboarding</li>
+  <li><strong>Andreas Enk</strong> - Product Owner, Entwicklung</li>
 </ul>
 
 <p style="margin-top: 3rem; text-align: center; color: var(--gray-600); font-size: 9pt;">
