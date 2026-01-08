@@ -94,6 +94,7 @@
         <li>2.1 Zweck und Nutzen</li>
         <li>2.2 Technische Architektur</li>
         <li>2.3 Architektur-Flowchart</li>
+        <li>2.4 Power App Screens</li>
       </ul>
     </li>
     <li><strong>3. Power Automate Flows - Übersicht</strong></li>
@@ -320,19 +321,19 @@
 
   <!-- Events Fields -->
   <rect x="65" y="90" width="270" height="220" rx="4" fill="white" stroke="#c6f6d5" stroke-width="1"/>
-  <text x="75" y="110" fill="#276749" font-size="10" font-weight="bold">Felder:</text>
-  <text x="75" y="128" fill="#2d3748" font-size="9">• Title (Text) - Event-Name</text>
-  <text x="75" y="143" fill="#2d3748" font-size="9">• EventType (Choice) - B2Run/Other</text>
-  <text x="75" y="158" fill="#2d3748" font-size="9">• StartDate (DateTime)</text>
-  <text x="75" y="173" fill="#2d3748" font-size="9">• EndDate (DateTime)</text>
-  <text x="75" y="188" fill="#2d3748" font-size="9">• Location (Text)</text>
-  <text x="75" y="203" fill="#2d3748" font-size="9">• Capacity (Number) - Max. Teilnehmer</text>
-  <text x="75" y="218" fill="#2d3748" font-size="9">• Organizer (Person) - Verantwortliche</text>
-  <text x="75" y="233" fill="#2d3748" font-size="9">• Audience (Person) - Zielgruppe</text>
-  <text x="75" y="248" fill="#2d3748" font-size="9">• Status (Choice) - Active/Closed</text>
-  <text x="75" y="263" fill="#2d3748" font-size="9">• OutlookEventID (Text) - Kalender-Ref</text>
-  <text x="75" y="278" fill="#2d3748" font-size="9">• SubsiteURL (Text) - Link zur Subsite</text>
-  <text x="75" y="293" fill="#2d3748" font-size="9">• EventImage (Image) - Event-Logo</text>
+  <text x="75" y="110" fill="#276749" font-size="10" font-weight="bold">Felder (aus CSV):</text>
+  <text x="75" y="128" fill="#2d3748" font-size="9">• Titel - Event-Name</text>
+  <text x="75" y="143" fill="#2d3748" font-size="9">• Inhaltstyp - B2Run/JP Morgan/Other</text>
+  <text x="75" y="158" fill="#2d3748" font-size="9">• Event end time - Endzeitpunkt</text>
+  <text x="75" y="173" fill="#2d3748" font-size="9">• Standort / Standort Filter</text>
+  <text x="75" y="188" fill="#2d3748" font-size="9">• Max. parcipients - Kapazitat</text>
+  <text x="75" y="203" fill="#2d3748" font-size="9">• Current parcipients / Wait list</text>
+  <text x="75" y="218" fill="#2d3748" font-size="9">• Organzier - Verantwortliche</text>
+  <text x="75" y="233" fill="#2d3748" font-size="9">• Audience / Audience Mail</text>
+  <text x="75" y="248" fill="#2d3748" font-size="9">• Status - Active/Out dated</text>
+  <text x="75" y="263" fill="#2d3748" font-size="9">• Outlook EventID</text>
+  <text x="75" y="278" fill="#2d3748" font-size="9">• Teilnehmerliste URL - Subsite</text>
+  <text x="75" y="293" fill="#2d3748" font-size="9">• Event image / T-Shirtgroessen</text>
 
   <!-- Arrow -->
   <path d="M350 170 L400 170" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
@@ -347,18 +348,18 @@
 
   <!-- Teilnehmerliste Fields -->
   <rect x="415" y="90" width="320" height="220" rx="4" fill="white" stroke="#bee3f8" stroke-width="1"/>
-  <text x="425" y="110" fill="#2b6cb0" font-size="10" font-weight="bold">Standard-Felder:</text>
-  <text x="425" y="128" fill="#2d3748" font-size="9">• Title (Text) - Teilnehmername</text>
-  <text x="425" y="143" fill="#2d3748" font-size="9">• Email (Text) - E-Mail-Adresse</text>
-  <text x="425" y="158" fill="#2d3748" font-size="9">• Status (Choice) - Registered/Waitlist/Cancelled</text>
-  <text x="425" y="173" fill="#2d3748" font-size="9">• Nr (Number) - Registrierungsnummer</text>
-  <text x="425" y="188" fill="#2d3748" font-size="9">• CheckIn (Boolean) - Eingecheckt?</text>
-  <text x="425" y="203" fill="#2d3748" font-size="9">• CheckInTime (DateTime)</text>
+  <text x="425" y="110" fill="#2b6cb0" font-size="10" font-weight="bold">Felder (aus CSV):</text>
+  <text x="425" y="128" fill="#2d3748" font-size="9">• Teilnehmername / Vorname / Nachname</text>
+  <text x="425" y="143" fill="#2d3748" font-size="9">• E-Mail - Adresse</text>
+  <text x="425" y="158" fill="#2d3748" font-size="9">• Status - Angemeldet/Warteliste/Abgemeldet</text>
+  <text x="425" y="173" fill="#2d3748" font-size="9">• Nr. - Registrierungsnummer</text>
+  <text x="425" y="188" fill="#2d3748" font-size="9">• Anrede / JobTitle / Department / Office</text>
+  <text x="425" y="203" fill="#2d3748" font-size="9">• TShirtGroesse / Allergies / FoodPreferences</text>
 
-  <text x="425" y="225" fill="#2b6cb0" font-size="10" font-weight="bold">B2Run-Zusatzfelder:</text>
-  <text x="425" y="243" fill="#2d3748" font-size="9">• Freitextfeld1 (Text) - Laufstrecke</text>
-  <text x="425" y="258" fill="#2d3748" font-size="9">• Freitextfeld2 (Text) - Team</text>
-  <text x="425" y="273" fill="#2d3748" font-size="9">• Freitextfeld3-7 (Text) - Individuelle Felder</text>
+  <text x="425" y="225" fill="#2b6cb0" font-size="10" font-weight="bold">Event-spezifische Felder:</text>
+  <text x="425" y="243" fill="#2d3748" font-size="9">• Freitextfeld1/2 - Zusatzinfos</text>
+  <text x="425" y="258" fill="#2d3748" font-size="9">• Dropdownfeld1 - z.B. Rolle (Partner/Director)</text>
+  <text x="425" y="273" fill="#2d3748" font-size="9">• HotelRequired / RoomType / PreferredRoommate</text>
 
   <!-- Legend -->
   <text x="425" y="298" fill="#718096" font-size="8" font-style="italic">Pro Event wird eine eigene Subsite mit Teilnehmerliste erstellt</text>
@@ -437,6 +438,152 @@
   <text x="360" y="172" fill="#c53030" font-size="8">Office 365</text>
 </svg>
 </div>
+
+<!-- 2.4 POWER APP SCREENS -->
+<div class="page-break"></div>
+<h2>2.4 Power App Screens</h2>
+
+<p>Die DEX Power App umfasst <strong>27 Screens</strong> für verschiedene Benutzergruppen und Anwendungsfälle.</p>
+
+<h3>Screen-Navigation</h3>
+
+<div class="avoid-break" style="margin: 1.5rem 0;">
+<svg viewBox="0 0 800 380" style="width: 100%; max-width: 800px; height: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+  <!-- LandingScreen -->
+  <rect x="300" y="20" width="200" height="50" rx="6" fill="#805ad5"/>
+  <text x="400" y="50" text-anchor="middle" fill="white" font-size="11" font-weight="bold">LandingScreen</text>
+  <text x="400" y="62" text-anchor="middle" fill="white" font-size="8">Welcome + Start Button</text>
+
+  <!-- Arrow down -->
+  <path d="M400 70 L400 95" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+  <defs><marker id="arrNav" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#718096"/></marker></defs>
+
+  <!-- StartScreen -->
+  <rect x="300" y="100" width="200" height="50" rx="6" fill="#805ad5"/>
+  <text x="400" y="125" text-anchor="middle" fill="white" font-size="11" font-weight="bold">StartScreen</text>
+  <text x="400" y="140" text-anchor="middle" fill="white" font-size="8">Hauptmenu</text>
+
+  <!-- Arrows from StartScreen -->
+  <path d="M300 125 L180 125 L180 175" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+  <path d="M500 125 L620 125 L620 175" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+  <path d="M400 150 L400 175" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+
+  <!-- Registration Branch -->
+  <rect x="80" y="180" width="200" height="50" rx="6" fill="#4299e1"/>
+  <text x="180" y="205" text-anchor="middle" fill="white" font-size="11" font-weight="bold">RegisterScreen</text>
+  <text x="180" y="220" text-anchor="middle" fill="white" font-size="8">Event-Galerie (standortbasiert)</text>
+
+  <path d="M180 230 L180 255" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+
+  <rect x="30" y="260" width="130" height="45" rx="5" fill="#4299e1" fill-opacity="0.7"/>
+  <text x="95" y="280" text-anchor="middle" fill="white" font-size="9">RegisterB2Event</text>
+  <text x="95" y="292" text-anchor="middle" fill="white" font-size="7">B2Run Formular</text>
+
+  <rect x="170" y="260" width="130" height="45" rx="5" fill="#4299e1" fill-opacity="0.7"/>
+  <text x="235" y="280" text-anchor="middle" fill="white" font-size="9">RegisterOtherEvent</text>
+  <text x="235" y="292" text-anchor="middle" fill="white" font-size="7">Standard Formular</text>
+
+  <path d="M95 305 L95 325 L180 325 L180 335" stroke="#718096" stroke-width="1.5" fill="none" marker-end="url(#arrNav)"/>
+  <path d="M235 305 L235 325 L180 325" stroke="#718096" stroke-width="1.5" fill="none"/>
+
+  <rect x="100" y="340" width="160" height="35" rx="5" fill="#48bb78"/>
+  <text x="180" y="362" text-anchor="middle" fill="white" font-size="9">ScreenSuccessRegistration</text>
+
+  <!-- My Events Branch -->
+  <rect x="300" y="180" width="200" height="50" rx="6" fill="#ed8936"/>
+  <text x="400" y="205" text-anchor="middle" fill="white" font-size="11" font-weight="bold">MyEventsScreen</text>
+  <text x="400" y="220" text-anchor="middle" fill="white" font-size="8">Meine Events + Warteliste</text>
+
+  <path d="M400 230 L400 260" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+
+  <rect x="320" y="265" width="160" height="40" rx="5" fill="#ed8936" fill-opacity="0.7"/>
+  <text x="400" y="285" text-anchor="middle" fill="white" font-size="9">ScreenCancellation</text>
+  <text x="400" y="297" text-anchor="middle" fill="white" font-size="7">Abmeldung</text>
+
+  <path d="M400 305 L400 335" stroke="#718096" stroke-width="1.5" fill="none" marker-end="url(#arrNav)"/>
+
+  <rect x="320" y="340" width="160" height="35" rx="5" fill="#48bb78"/>
+  <text x="400" y="362" text-anchor="middle" fill="white" font-size="9">ScreeSuccessDeregistration</text>
+
+  <!-- Admin Branch -->
+  <rect x="520" y="180" width="200" height="50" rx="6" fill="#c53030"/>
+  <text x="620" y="200" text-anchor="middle" fill="white" font-size="11" font-weight="bold">SettingsScreen</text>
+  <text x="620" y="215" text-anchor="middle" fill="white" font-size="8">(nur Admins)</text>
+
+  <path d="M620 230 L620 260" stroke="#718096" stroke-width="2" fill="none" marker-end="url(#arrNav)"/>
+
+  <rect x="520" y="265" width="90" height="40" rx="5" fill="#c53030" fill-opacity="0.7"/>
+  <text x="565" y="285" text-anchor="middle" fill="white" font-size="8">EventCreation</text>
+  <text x="565" y="297" text-anchor="middle" fill="white" font-size="7">Neues Event</text>
+
+  <rect x="620" y="265" width="90" height="40" rx="5" fill="#c53030" fill-opacity="0.7"/>
+  <text x="665" y="285" text-anchor="middle" fill="white" font-size="8">CheckInScreen</text>
+  <text x="665" y="297" text-anchor="middle" fill="white" font-size="7">QR Scanner</text>
+
+  <rect x="540" y="315" width="80" height="35" rx="5" fill="#c53030" fill-opacity="0.7"/>
+  <text x="580" y="337" text-anchor="middle" fill="white" font-size="8">SendMail</text>
+
+  <rect x="630" y="315" width="80" height="35" rx="5" fill="#c53030" fill-opacity="0.7"/>
+  <text x="670" y="337" text-anchor="middle" fill="white" font-size="8">EditEvent</text>
+
+  <!-- Legend -->
+  <rect x="20" y="20" width="12" height="12" rx="2" fill="#4299e1"/>
+  <text x="37" y="30" fill="#2b6cb0" font-size="8">Teilnehmer</text>
+  <rect x="20" y="38" width="12" height="12" rx="2" fill="#ed8936"/>
+  <text x="37" y="48" fill="#c05621" font-size="8">Meine Events</text>
+  <rect x="20" y="56" width="12" height="12" rx="2" fill="#c53030"/>
+  <text x="37" y="66" fill="#c53030" font-size="8">Admin-only</text>
+  <rect x="20" y="74" width="12" height="12" rx="2" fill="#48bb78"/>
+  <text x="37" y="84" fill="#276749" font-size="8">Erfolg</text>
+</svg>
+</div>
+
+<h3>Screen-Beschreibungen</h3>
+
+<table>
+  <tr><th>Screen</th><th>Zweck</th><th>Wichtige Features</th></tr>
+  <tr><td><strong>LandingScreen</strong></td><td>Willkommensseite</td><td>Start-Button, Info-Text, E-Mail-Link zu Entwicklern</td></tr>
+  <tr><td><strong>StartScreen</strong></td><td>Hauptmenu</td><td>Navigation zu Registration, My Events; Settings-Icon (nur Admins)</td></tr>
+  <tr><td><strong>RegisterScreen</strong></td><td>Event-Auswahl</td><td>Gallery mit Events, gefiltert nach Standort und Audience</td></tr>
+  <tr><td><strong>RegisterB2EventScreen</strong></td><td>B2Run-Anmeldung</td><td>Formular mit Laufstrecke, Team, Zusatzfeldern</td></tr>
+  <tr><td><strong>RegisterOtherEventScreen</strong></td><td>Standard-Anmeldung</td><td>Formular für JP Morgan Run und andere Events</td></tr>
+  <tr><td><strong>MyEventsScreen</strong></td><td>Meine Events</td><td>Registrierte Events + Warteliste; Abmeldeoption</td></tr>
+  <tr><td><strong>CheckInScreen</strong></td><td>QR-Code Check-In</td><td>BarcodeReader, Office365-Profilbild, Check-In Button</td></tr>
+  <tr><td><strong>SettingsScreen</strong></td><td>Admin-Bereich</td><td>Event erstellen, bearbeiten, E-Mails senden</td></tr>
+  <tr><td><strong>AllEventsScreen</strong></td><td>Event-Übersicht</td><td>DataTable mit allen Events (Admin)</td></tr>
+</table>
+
+<h3>Datenquellen der App</h3>
+
+<table>
+  <tr><th>Connector</th><th>Datenquelle</th><th>Verwendung</th></tr>
+  <tr><td rowspan="6">SharePoint Online</td><td>Events</td><td>Hauptliste aller Veranstaltungen</td></tr>
+  <tr><td>Anmeldungen</td><td>Queue für neue Registrierungen (Trigger)</td></tr>
+  <tr><td>Abmeldungen</td><td>Queue für Abmeldungen (Trigger)</td></tr>
+  <tr><td>Event visitors</td><td>Teilnehmerliste (dynamisch pro Event)</td></tr>
+  <tr><td>Check-In</td><td>Queue für Check-In-Aktionen</td></tr>
+  <tr><td>Admins</td><td>Liste der Admin-Benutzer</td></tr>
+  <tr><td>Office 365 Users</td><td>User Profile</td><td>Name, Abteilung, Standort, Profilbild</td></tr>
+  <tr><td rowspan="6">Power Automate</td><td>GetParticipantEvents</td><td>Lädt "Meine Events" des Users</td></tr>
+  <tr><td>CheckRegistrationStatus</td><td>Prüft Registrierungsstatus</td></tr>
+  <tr><td>GetWaitinglistPosition</td><td>Wartelisten-Position</td></tr>
+  <tr><td>CheckInFromQRCode</td><td>Führt Check-In durch</td></tr>
+  <tr><td>SendMailParticipantlist</td><td>Massen-E-Mail versenden</td></tr>
+  <tr><td>ExtractParticipantMails</td><td>E-Mail-Adressen extrahieren</td></tr>
+</table>
+
+<h3>Benutzergruppen & Berechtigungen</h3>
+
+<table>
+  <tr><th>Rolle</th><th>Erkennung</th><th>Zugängliche Screens</th></tr>
+  <tr><td><strong>Teilnehmer</strong></td><td>Jeder authentifizierte User</td><td>LandingScreen, StartScreen, RegisterScreen, MyEventsScreen</td></tr>
+  <tr><td><strong>Admin</strong></td><td>E-Mail in Admins-Liste</td><td>+ SettingsScreen, CheckInScreen, AllEventsScreen, EventCreation, SendMail</td></tr>
+</table>
+
+<p><strong>Admin-Prüfung im Code:</strong></p>
+<pre style="background: var(--gray-100); padding: 0.5rem; border-radius: 4px; font-size: 9pt; overflow-x: auto;">
+If(IsBlank(LookUp(Admins,'Admin Account'.Email = User().Email)), false, true)
+</pre>
 
 <!-- 3. FLOW-ÜBERSICHT -->
 <div class="page-break"></div>

@@ -1,0 +1,641 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  ScreenSendMail:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: |-
+        =Reset(tEmail_11);
+        Reset(tEmail_12);
+        Reset(cbAnrede_4);
+    Children:
+      - ScreenContainer5_7:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer5_7:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  AlignInContainer: =AlignInContainer.SetByContainer
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header5_9:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        Logo: =AdobeStock_131107922
+                        LogoTooltip: ="Back"
+                        OnSelectLogo: =Navigate(StartScreen)
+                        Title: ="Send Mail"
+            - MainContainer5_7:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  AlignInContainer: =AlignInContainer.SetByContainer
+                  DropShadow: =DropShadow.None
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutGap: =16
+                  LayoutMinHeight: =500
+                  LayoutWrap: =true
+                  PaddingBottom: =2
+                  PaddingLeft: =2
+                  PaddingRight: =2
+                  PaddingTop: =2
+                  RadiusBottomLeft: =0
+                  RadiusBottomRight: =0
+                  RadiusTopLeft: =0
+                  RadiusTopRight: =0
+                Children:
+                  - FormContainer2_22:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        AlignInContainer: =AlignInContainer.SetByContainer
+                        FillPortions: =0
+                        LayoutAlignItems: =LayoutAlignItems.Stretch
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =16
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =150
+                        LayoutMinWidth: =500
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =15
+                        PaddingLeft: =15
+                        PaddingRight: =15
+                        PaddingTop: =15
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =248
+                      Children:
+                        - Container16_20:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              LayoutDirection: =LayoutDirection.Vertical
+                              LayoutMinWidth: =150
+                            Children:
+                              - Container5_129:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =0
+                                  Children:
+                                    - TextCanvas2_193:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: =RGBA(106, 122, 127, 1)
+                                          FillPortions: =1
+                                          FontColor: =RGBA(255, 255, 255, 1)
+                                          Height: =40
+                                          Size: =16
+                                          Text: ="Selected Event"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Weight: ='TextCanvas.Weight'.Bold
+                                          Width: =150
+                              - Container6_6:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    FillPortions: =0
+                                    Height: =10
+                                    LayoutMinWidth: =50
+                              - Container9_7:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    FillPortions: =0
+                                    Height: =320
+                                    LayoutMinHeight: =200
+                                    LayoutMinWidth: =100
+                                  Children:
+                                    - Image5_9:
+                                        Control: Image@2.2.3
+                                        Properties:
+                                          BorderColor: =RGBA(0, 0, 0, 1)
+                                          BorderThickness: =1
+                                          CalculateOriginalDimensions: =true
+                                          Height: =319
+                                          Image: =If(IsBlank(Gallery3_1.Selected.'Event image'),B2RunLogo,Gallery3_1.Selected.'Event image'.Full)
+                                          ImagePosition: =ImagePosition.Fill
+                                          OnSelect: =Gallery3.Selected.'Event description'
+                                          Width: =215
+                                    - InfoButtonCanvas3_8:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          Content: =Gallery3.Selected.'Event description'
+                                          FontColor: =RGBA(0, 0, 0, 1)
+                                          Height: =40
+                                          IconColor: =RGBA(0, 0, 0, 1)
+                                          Width: =40
+                                          X: =8
+                                          Y: =8
+                                    - Container4_7:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          Fill: =RGBA(0, 0, 0, 0.7)
+                                          Height: =78
+                                          Width: =215
+                                          Y: =227
+                                        Children:
+                                          - TextCanvas3_14:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                Align: ='TextCanvas.Align'.Center
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =54
+                                                Size: =18
+                                                Text: =Gallery3_1.Selected.Title
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Weight: ='TextCanvas.Weight'.Bold
+                                                Width: =215
+                                          - TextCanvas3_15:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                Align: ='TextCanvas.Align'.Center
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =35
+                                                Size: =16
+                                                Text: |+
+                                                  =Text(Gallery3_1.Selected.'Event time', "[$-de-DE]dd.mm.yyyy") & "  " & Text(Gallery3_1.Selected.'Event time', "HH:mm") & " - " & Text(Gallery3_1.Selected.'Event end time', "HH:mm")
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Weight: ='TextCanvas.Weight'.Bold
+                                                Width: =215
+                                                Y: =42
+                              - Container5_130:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    BorderColor: =RGBA(0, 0, 0, 0)
+                                    DropShadow: =DropShadow.None
+                                    Height: =40
+                                    LayoutAlignItems: =LayoutAlignItems.End
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    LayoutMinWidth: =100
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas7_17:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          AutoHeight: =true
+                                          BorderColor: =RGBA(255, 255, 255, 1)
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: |+
+                                            =
+                                          FillPortions: =1
+                                          Height: =50
+                                          Size: =
+                                          Text: =
+                                          Weight: ='TextCanvas.Weight'.Regular
+                                          Width: =350
+                                    - TextCanvas7:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Text: =
+                  - FormContainer2_26:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        AlignInContainer: =AlignInContainer.SetByContainer
+                        LayoutAlignItems: =LayoutAlignItems.Stretch
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =16
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =120
+                        LayoutMinWidth: =500
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =15
+                        PaddingLeft: =15
+                        PaddingRight: =15
+                        PaddingTop: =15
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =1000
+                      Children:
+                        - Container16_21:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              LayoutDirection: =LayoutDirection.Vertical
+                            Children:
+                              - Container5_78:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =80
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =160
+                                    Width: =650
+                                  Children:
+                                    - Container18:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: AutoLayout
+                                        Properties:
+                                          DropShadow: =DropShadow.None
+                                          LayoutDirection: =LayoutDirection.Vertical
+                                          LayoutMinHeight: =80
+                                        Children:
+                                          - Container19:
+                                              Control: GroupContainer@1.3.0
+                                              Variant: AutoLayout
+                                              Properties:
+                                                DropShadow: =DropShadow.None
+                                                FillPortions: =0
+                                                Height: =30
+                                                LayoutDirection: =LayoutDirection.Horizontal
+                                              Children:
+                                                - TextCanvas2_124:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      Align: ='TextCanvas.Align'.Start
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      PaddingLeft: |+
+                                                        =
+                                                      Text: ="*"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =10
+                                                - TextCanvas2_125:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      Align: ='TextCanvas.Align'.Start
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      PaddingLeft: |+
+                                                        =
+                                                      Text: ="Empfänger"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =180
+                                          - cbAnrede_4:
+                                              Control: ComboBox@0.0.51
+                                              Properties:
+                                                AlignInContainer: =AlignInContainer.Start
+                                                Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                                BorderColor: =RGBA(0, 0, 0, 1)
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =1
+                                                Fill: =RGBA(255, 255, 255, 1)
+                                                Height: =30
+                                                InputTextPlaceholder: ="Please select"
+                                                Items: =["Participants", "Waitinglist", "All"]
+                                                Required: =true
+                                                Width: =240
+                              - Container5_73:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =80
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =25
+                                    LayoutMinWidth: =80
+                                    Width: =600
+                                  Children:
+                                    - Container15:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: AutoLayout
+                                        Properties:
+                                          DropShadow: =DropShadow.None
+                                          LayoutDirection: =LayoutDirection.Vertical
+                                          LayoutMinHeight: =80
+                                        Children:
+                                          - Container16:
+                                              Control: GroupContainer@1.3.0
+                                              Variant: AutoLayout
+                                              Properties:
+                                                DropShadow: =DropShadow.None
+                                                FillPortions: =0
+                                                Height: =30
+                                                LayoutDirection: =LayoutDirection.Horizontal
+                                                LayoutMinWidth: =30
+                                              Children:
+                                                - TextCanvas2_118:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      Align: ='TextCanvas.Align'.Start
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      PaddingLeft: |+
+                                                        =
+                                                      Text: ="*"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =10
+                                                - TextCanvas2_119:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      Text: ="Subject"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =180
+                                                      Wrap: =false
+                                          - tEmail_11:
+                                              Control: TextInput@0.0.54
+                                              Properties:
+                                                Align: =Align.Left
+                                                AlignInContainer: =AlignInContainer.Stretch
+                                                Appearance: ='TextInputCanvas.Appearance'.Outline
+                                                BorderColor: =RGBA(0, 0, 0, 1)
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =1
+                                                DisplayMode: =
+                                                Fill: =RGBA(255, 255, 255, 1)
+                                                Height: =30
+                                                Mode: ='TextInputCanvas.Mode'.Multiline
+                                                Value: =
+                                                Width: =240
+                              - Container5_72:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =300
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =25
+                                    LayoutMinWidth: =25
+                                    Width: =600
+                                  Children:
+                                    - Container11:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: AutoLayout
+                                        Properties:
+                                          DropShadow: =DropShadow.None
+                                          LayoutDirection: =LayoutDirection.Vertical
+                                          LayoutMinHeight: =30
+                                        Children:
+                                          - Container14:
+                                              Control: GroupContainer@1.3.0
+                                              Variant: AutoLayout
+                                              Properties:
+                                                DropShadow: =DropShadow.None
+                                                FillPortions: =0
+                                                Height: =30
+                                                LayoutDirection: =LayoutDirection.Horizontal
+                                                LayoutMinHeight: =30
+                                                LayoutMinWidth: =30
+                                              Children:
+                                                - TextCanvas2_116:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      Align: ='TextCanvas.Align'.Start
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      PaddingLeft: |+
+                                                        =
+                                                      Text: ="*"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =10
+                                                - TextCanvas2_117:
+                                                    Control: Text@0.0.51
+                                                    Properties:
+                                                      AlignInContainer: =AlignInContainer.Start
+                                                      Height: =30
+                                                      Text: ="E-Mail"
+                                                      VerticalAlign: =VerticalAlign.Middle
+                                                      Width: =180
+                                                      Wrap: =false
+                                          - tEmail_12:
+                                              Control: TextInput@0.0.54
+                                              Properties:
+                                                Align: =Align.Left
+                                                AlignInContainer: =AlignInContainer.Stretch
+                                                Appearance: ='TextInputCanvas.Appearance'.Outline
+                                                BorderColor: =RGBA(0, 0, 0, 1)
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =1
+                                                DisplayMode: =
+                                                Fill: =RGBA(255, 255, 255, 1)
+                                                Height: =250
+                                                Mode: ='TextInputCanvas.Mode'.Multiline
+                                                Value: =
+                                                Width: =240
+                              - Container5_74:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =25
+                                    LayoutMinWidth: =900
+                                    Visible: =false
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_114:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_115:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Event ID"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                          Wrap: =false
+                                    - tEmail_9:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =If(varAssistancetrue,DisplayMode.Edit,DisplayMode.Disabled)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          FillPortions: =1
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =Gallery3_1.Selected.ID
+                                          Width: =240
+            - FormContainer2_28:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Vertical
+                  LayoutGap: =16
+                  LayoutJustifyContent: =LayoutJustifyContent.Center
+                  LayoutOverflowY: =LayoutOverflow.Scroll
+                  PaddingBottom: =15
+                  PaddingLeft: =15
+                  PaddingRight: =15
+                  PaddingTop: =15
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                  Width: =1330
+                Children:
+                  - Container7_1:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        DropShadow: =DropShadow.None
+                        LayoutDirection: =LayoutDirection.Horizontal
+                      Children:
+                        - Container16_9:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              Height: =120
+                              LayoutDirection: =LayoutDirection.Vertical
+                        - Container17_9:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              FillPortions: =0
+                              Height: =40
+                              LayoutAlignItems: =LayoutAlignItems.End
+                              LayoutDirection: =LayoutDirection.Horizontal
+                              LayoutJustifyContent: =LayoutJustifyContent.End
+                              Width: =350
+                            Children:
+                              - Container23_7:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    AlignInContainer: =AlignInContainer.SetByContainer
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutJustifyContent: =LayoutJustifyContent.End
+                                    LayoutMinHeight: =10
+                                    Width: =350
+                                  Children:
+                                    - Container24_14:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.SetByContainer
+                                          DropShadow: =DropShadow.None
+                                          Height: =40
+                                          LayoutMinWidth: =150
+                                        Children:
+                                          - ButtonCanvas1_21:
+                                              Control: Button@0.0.45
+                                              Properties:
+                                                Align: =Align.Center
+                                                Appearance: ='ButtonCanvas.Appearance'.Primary
+                                                BasePaletteColor: =RGBA(0, 0, 0, 1)
+                                                BorderColor: =RGBA(0, 0, 0, 1)
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =0
+                                                DisplayMode: =
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =30
+                                                Icon: ="ArrowLeft"
+                                                IconStyle: ='ButtonCanvas.IconStyle'.Outline
+                                                Layout: ='ButtonCanvas.Layout'.IconBefore
+                                                OnSelect: =Navigate(ScreenEditEvent)
+                                                Text: ="Back"
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =120
+                                                X: =44
+                                                Y: =8
+                                    - Container24_15:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.SetByContainer
+                                          DropShadow: =DropShadow.None
+                                          Height: =40
+                                          LayoutMinWidth: =150
+                                        Children:
+                                          - ButtonCanvas1_22:
+                                              Control: Button@0.0.45
+                                              Properties:
+                                                Align: =Align.Center
+                                                Appearance: =
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =0
+                                                DisplayMode: |-
+                                                  =If(
+                                                      Or(
+                                                          IsBlank(cbAnrede_4.Selected.Value),
+                                                          IsBlank(tEmail_11.Value),
+                                                          IsBlank(tEmail_12.Value)
+                                                      ), DisplayMode.Disabled, DisplayMode.Edit)
+                                                Height: =30
+                                                Icon: ="Send"
+                                                IconStyle: ='ButtonCanvas.IconStyle'.Outline
+                                                OnSelect: |+
+                                                  =If(
+                                                      Or(
+                                                          IsBlank(cbAnrede_4.Selected.Value),
+                                                          IsBlank(tEmail_11.Value),
+                                                          IsBlank(tEmail_12.Value)
+                                                      ),
+                                                      Notify("Bitte fülle alle erforderlichen Felder aus", NotificationType.Error, 6000),
+                                                      // Führe den Flow aus und überprüfe, ob er erfolgreich ist
+                                                      If(
+                                                          SendMailParticipantlistcopy.Run(tEmail_9.Value, tEmail_12.Value, cbAnrede_4.Selected.Value, tEmail_11.Value),
+                                                          Navigate(ScreenSuccessSendMail, ScreenTransition.Fade),
+                                                          Notify("Fehler beim Senden der E-Mail", NotificationType.Error, 6000)
+                                                      )
+                                                  )
+                                                Text: ="Send"
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =120
+                                                X: =44
+                                                Y: =8

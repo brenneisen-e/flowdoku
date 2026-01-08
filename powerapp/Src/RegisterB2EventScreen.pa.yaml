@@ -1,0 +1,1698 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  RegisterB2EventScreen:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: |-
+        =ClearCollect(colStartblock,Filter(Events,ID=Gallery3.Selected.ID).Startblock);
+        ClearCollect(
+            colFlattened,
+            Ungroup(colStartblock, Startblock)
+        );
+        ClearCollect(colTShirtGroesse, Filter(Events,ID=Gallery3.Selected.ID).'T-Shirtgrößen');
+
+        ClearCollect(
+            colFlattenedTShirt,
+            Ungroup(colTShirtGroesse, 'T-Shirtgrößen')
+        );
+        Set(varAssistancetrue,false);
+        Set(CurrentUser,{    
+                '@odata.type': "#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser",    
+                Claims: "i:0#.f|membership|" & Lower(User().Email),    
+                Department:Office365Users.UserProfile(User().Email).Department,
+                CompanyName:Office365Users.UserProfile(User().Email).CompanyName,      
+                DisplayName: User().FullName,
+                LastName:Office365Users.UserProfile(User().Email).Surname,
+                FirstName:Office365Users.UserProfile(User().Email).GivenName,    
+                Email: User().Email,    
+                JobTitle: Office365Users.UserProfile(User().Email).JobTitle ,        
+                Office:  Office365Users.UserProfile(User().Email).OfficeLocation,   
+                Picture: "."           
+            });
+        Reset(cbAnrede);
+        Reset(tStreet);
+        Reset(tPostalCode);
+        Reset(tCity);
+        Reset(cbStartBlcok);
+        Reset(cbAnonym);
+        Reset(tNumber);
+        Reset(cbUsageInfoservice);
+        Reset(cbAgeClass);
+        Reset(cbNordicWalker);
+        Reset(cbTshirtGroesse);
+        Reset(tCompany);
+        Reset(tDepatment);
+        Reset(CheckboxCanvas1_19);
+        Reset(cDurchstarter);
+
+        // NEU: Flow-Prüfung initialisieren (AM ENDE)
+        If(
+            !IsBlank(CurrentUser.Email) && !IsBlank(Gallery3.Selected.ID),
+            Set(
+                varEventCheck,
+                IfError(
+                    CheckEventRegistration.Run(
+                        CurrentUser.Email,  // Nutze CurrentUser.Email hier
+                        Gallery3.Selected.ID
+                    ),
+                    {registered: "error"}
+                )
+            ),
+            // Default wenn keine Email oder kein Event
+            Set(varEventCheck, {registered: "False"})
+        )
+    Children:
+      - ScreenContainer5:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer5:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  AlignInContainer: =AlignInContainer.SetByContainer
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header5_3:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        Logo: =AdobeStock_131107922
+                        LogoTooltip: ="Back"
+                        OnSelectLogo: =Navigate(StartScreen)
+                        Title: ="Registration B2Run "
+            - MainContainer5:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  AlignInContainer: =AlignInContainer.SetByContainer
+                  DropShadow: =DropShadow.None
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutGap: =16
+                  LayoutMinHeight: =500
+                  LayoutWrap: =true
+                  PaddingBottom: =2
+                  PaddingLeft: =2
+                  PaddingRight: =2
+                  PaddingTop: =2
+                  RadiusBottomLeft: =0
+                  RadiusBottomRight: =0
+                  RadiusTopLeft: =0
+                  RadiusTopRight: =0
+                Children:
+                  - FormContainer2_1:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        AlignInContainer: =AlignInContainer.SetByContainer
+                        FillPortions: =0
+                        LayoutAlignItems: =LayoutAlignItems.Stretch
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =16
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =150
+                        LayoutMinWidth: =500
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =15
+                        PaddingLeft: =15
+                        PaddingRight: =15
+                        PaddingTop: =15
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =248
+                      Children:
+                        - Container16_3:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              LayoutDirection: =LayoutDirection.Vertical
+                              LayoutMinWidth: =150
+                            Children:
+                              - Container5_67:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =0
+                                  Children:
+                                    - TextCanvas2_100:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: =RGBA(106, 122, 127, 1)
+                                          FillPortions: =1
+                                          FontColor: =RGBA(255, 255, 255, 1)
+                                          Height: =40
+                                          Size: =16
+                                          Text: ="Selected Event"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Weight: ='TextCanvas.Weight'.Bold
+                                          Width: =150
+                              - Container6:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    FillPortions: =0
+                                    Height: =10
+                                    LayoutMinWidth: =50
+                              - Container9:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    FillPortions: =0
+                                    Height: =320
+                                    LayoutMinHeight: =200
+                                    LayoutMinWidth: =100
+                                  Children:
+                                    - Image5_1:
+                                        Control: Image@2.2.3
+                                        Properties:
+                                          BorderColor: =RGBA(0, 0, 0, 1)
+                                          BorderThickness: =1
+                                          CalculateOriginalDimensions: =true
+                                          Height: =319
+                                          Image: =If(IsBlank(Gallery3.Selected.'Event image'),B2RunLogo,Gallery3.Selected.'Event image'.Full)
+                                          ImagePosition: =ImagePosition.Fill
+                                          OnSelect: =Gallery3.Selected.'Event description'
+                                          Width: =215
+                                    - Container4:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          Fill: =RGBA(0, 0, 0, 0.7)
+                                          Height: =78
+                                          Width: =215
+                                          Y: =227
+                                        Children:
+                                          - TextCanvas3:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                Align: ='TextCanvas.Align'.Center
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =54
+                                                Size: =18
+                                                Text: =Gallery3.Selected.Title
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Weight: ='TextCanvas.Weight'.Bold
+                                                Width: =215
+                                          - TextCanvas3_1:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                Align: ='TextCanvas.Align'.Center
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =35
+                                                Size: =16
+                                                Text: |+
+                                                  =Text(Gallery3.Selected.'Event time', "[$-de-DE]dd.mm.yyyy") & "  " & Text(Gallery3.Selected.'Event time', "HH:mm") & " - " & Text(Gallery3.Selected.'Event end time', "HH:mm")
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Weight: ='TextCanvas.Weight'.Bold
+                                                Width: =215
+                                                Y: =42
+                                    - InfoButtonCanvas3_1:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          Content: =Gallery3.Selected.'Event description'
+                                          FontColor: =RGBA(0, 0, 0, 1)
+                                          Height: =40
+                                          IconColor: =RGBA(0, 0, 0, 1)
+                                          Width: =40
+                                          X: =8
+                                          Y: =8
+                              - Container5_37:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    BorderColor: =RGBA(0, 0, 0, 0)
+                                    DropShadow: =DropShadow.None
+                                    Height: =40
+                                    LayoutAlignItems: =LayoutAlignItems.End
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    LayoutMinWidth: =100
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas7_8:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          AutoHeight: =true
+                                          BorderColor: =RGBA(255, 255, 255, 1)
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: |+
+                                            =
+                                          FillPortions: =1
+                                          FontColor: |+
+                                            =If(
+                                                Gallery3.Selected.'Max. parcipients' - Gallery3.Selected.'Current parcipients' <= 0,
+                                                // IF no total place (waiting list)
+                                                Color.Red, // Color Red for waiting list
+                                                If(
+                                                    cDurchstarter.Checked,
+                                                    // IF Durchstarter checked
+                                                    If(
+                                                        Gallery3.Selected.'Max Durchstarter' - Gallery3.Selected.'Current Durchstarter' <= 0,
+                                                        Color.Orange, // Color Orange when Durchstarter places are taken
+                                                        Color.Green // Color Green when there are free Durchstarter places
+                                                    ),
+                                                    Color.Green // Color Blue for available general places
+                                                )
+                                            )
+                                          Height: =50
+                                          Size: "=If(\r\n    Gallery3.Selected.'Max. parcipients' - Gallery3.Selected.'Current parcipients' <= 0,\r\n    // IF no total place (waiting list)\r\n    16, // Font size for waiting list\r\n    If(\r\n        cDurchstarter.Checked,\r\n        // IF Durchstarter checked\r\n        If(\r\n            Gallery3.Selected.'Max Durchstarter' - Gallery3.Selected.'Current Durchstarter' <= 0,\r\n            \r\n            14, // (no Durchstarter places available)\r\n            16 // (available Durchstarter places)\r\n        ),\r\n        16 // (general available places)\r\n    )\r\n)\r\n"
+                                          Text: |-
+                                            =If(Gallery3.Selected.'Max. parcipients' - Gallery3.Selected.'Current parcipients' - CountRows(Filter(Anmeldungen, ItemID = Gallery3.Selected.ID)) <= 0,
+                                                    //IF no total place
+                                                    "All places are taken. There are currently " & Gallery3.Selected.'Current parcipients' - Gallery3.Selected.'Max. parcipients' - CountRows(Filter(Anmeldungen, ItemID = Gallery3.Selected.ID)) & " people on the waiting list",
+                                                    // IF free total places
+                                                    If(cDurchstarter.Checked = true, 
+                                                        // IF checked
+                                                        If(Gallery3.Selected.'Max Durchstarter' - Gallery3.Selected.'Current Durchstarter' - CountRows(Filter(Anmeldungen, ItemID = Gallery3.Selected.ID && PraeferenzDurchstarter = "Yes")) <=0,
+                                                            "All Durchstarter places are taken and only Funstarter places are avaliable. The preference will be noted and considered should any changes occur",
+                                                            "There are currently " & Gallery3.Selected.'Max Durchstarter' - Gallery3.Selected.'Current Durchstarter' & " free Durchstarter places"),
+                                                        "There are currently " & Gallery3.Selected.'Max. parcipients' - Gallery3.Selected.'Current parcipients' - CountRows(Filter(Anmeldungen, ItemID = Gallery3.Selected.ID)) & " free places")
+                                            )
+                                          Visible: =!IsBlank(Gallery3.Selected) && !IsBlank(Gallery3.Selected.ID)
+                                          Weight: ='TextCanvas.Weight'.Regular
+                                          Width: =350
+                  - FormContainer2:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        AlignInContainer: =AlignInContainer.SetByContainer
+                        FillPortions: =0
+                        LayoutAlignItems: =LayoutAlignItems.Stretch
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =16
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =120
+                        LayoutMinWidth: =500
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =15
+                        PaddingLeft: =15
+                        PaddingRight: =15
+                        PaddingTop: =15
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =525
+                      Children:
+                        - Container16_2:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              LayoutDirection: =LayoutDirection.Vertical
+                            Children:
+                              - Container5_66:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =0
+                                  Children:
+                                    - TextCanvas2_99:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: =RGBA(106, 122, 127, 1)
+                                          FillPortions: =1
+                                          FontColor: =RGBA(255, 255, 255, 1)
+                                          Height: =40
+                                          Size: =16
+                                          Text: ="Personal Information"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Weight: ='TextCanvas.Weight'.Bold
+                                          Width: =150
+                              - Container5_24:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    BorderColor: =RGBA(54, 176, 75, 1)
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutAlignItems: =LayoutAlignItems.End
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    Width: =600
+                                  Children:
+                                    - ButtonCanvas4_3:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          Align: =Align.Left
+                                          Appearance: ='ButtonCanvas.Appearance'.Outline
+                                          BasePaletteColor: =RGBA(0, 0, 0, 1)
+                                          FontColor: =RGBA(0, 0, 0, 1)
+                                          Height: =25
+                                          IconStyle: ='ButtonCanvas.IconStyle'.Filled
+                                          OnSelect: =Set(varAssistancetrue, true)
+                                          Text: ="Click here to register for someone else"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Visible: =If(IsBlank(LookUp(Admins,'Admin Account'.Email =User().Email).'Admin Account'.Email),false,true)
+                                          Width: =280
+                              - Container5_27:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =20
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =650
+                                  Children:
+                                    - TextCanvas2_29:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Stretch
+                                          FillPortions: =1
+                                          Height: =30
+                                          LayoutMinHeight: =20
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =220
+                              - Container5_21:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =160
+                                    Width: =650
+                                  Children:
+                                    - TextCanvas2_32:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_23:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="Salutation"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbAnrede:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          InputTextPlaceholder: ="Please select"
+                                          Items: =["Männlich", "Weiblich", "Divers/ oder anderes nicht binäres Geschlecht","Keine Angaben"]
+                                          Required: =true
+                                          Width: =240
+                              - Container5_25:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =400
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_34:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_26:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Vorname"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - tGivenName:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          Align: =Align.Left
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =If(varAssistancetrue,DisplayMode.Edit,DisplayMode.Disabled)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =CurrentUser.FirstName
+                                          Width: =240
+                              - Container5_26:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_35:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_27:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Surname"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - tLastName:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          Align: =Align.Left
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =If(varAssistancetrue,DisplayMode.Edit,DisplayMode.Disabled)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =CurrentUser.LastName
+                                          Width: =240
+                              - Container5_16:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =25
+                                    LayoutMinWidth: =25
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_36:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_16:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Height: =30
+                                          Text: ="E-Mail"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                          Wrap: =false
+                                    - tEmail:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =If(varAssistancetrue,DisplayMode.Edit,DisplayMode.Disabled)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =User().Email
+                                          Width: =240
+                              - Container5_17:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutAlignItems: =LayoutAlignItems.Center
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =false
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_37:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_17:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Height: =40
+                                          Text: ="Adress (private)"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =190
+                                    - tStreet:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Width: =270
+                              - Container5_19:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    Visible: =false
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_38:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_19:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="PLZ (private)"
+                                          Width: =180
+                                    - tPostalCode:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Width: =270
+                              - Container5_22:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    Visible: =false
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas2_39:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_28:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="City (private)"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =190
+                                    - tCity:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Width: =270
+                              - Container5_50:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                  Children:
+                                    - TextCanvas2_47:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_55:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Mobile Number"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - tNumber:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Width: =240
+                                    - InfoButtonCanvas8_3:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Voluntary field for the B2Run event organizer, required only if you wish to receive event information via SMS. For more information, please refer to the B2Run Privacy Policy linked below."
+                                          Height: =30
+                                          Width: =30
+                  - FormContainer2_2:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        AlignInContainer: =AlignInContainer.SetByContainer
+                        FillPortions: =0
+                        LayoutAlignItems: =LayoutAlignItems.Stretch
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =16
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =400
+                        LayoutMinWidth: =600
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =15
+                        PaddingLeft: =15
+                        PaddingRight: =15
+                        PaddingTop: =15
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =525
+                      Children:
+                        - Container3_4:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              LayoutDirection: =LayoutDirection.Vertical
+                              LayoutMinHeight: =0
+                              LayoutOverflowY: =LayoutOverflow.Scroll
+                              Width: =650
+                            Children:
+                              - Container5_28:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =0
+                                  Children:
+                                    - TextCanvas2_31:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Center
+                                          AlignInContainer: =AlignInContainer.Center
+                                          BorderStyle: =BorderStyle.None
+                                          Fill: =RGBA(106, 122, 127, 1)
+                                          FillPortions: =1
+                                          FontColor: =RGBA(255, 255, 255, 1)
+                                          Height: =40
+                                          Size: =16
+                                          Text: ="Event specific Information"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Weight: ='TextCanvas.Weight'.Bold
+                                          Width: =150
+                              - Container5_32:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    BorderColor: =RGBA(0, 0, 0, 0)
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutAlignItems: =LayoutAlignItems.End
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    Width: =600
+                                  Children:
+                                    - TextCanvas7_6:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.End
+                                          BorderColor: =RGBA(255, 255, 255, 1)
+                                          BorderStyle: =BorderStyle.None
+                                          Height: =25
+                                          Text: |+
+                                            =
+                                          Weight: ='TextCanvas.Weight'.Regular
+                                          Width: =400
+                              - Container5_33:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =20
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    LayoutMinWidth: =180
+                                    Width: =650
+                                  Children:
+                                    - TextCanvas2_30:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Stretch
+                                          FillPortions: =1
+                                          Height: =30
+                                          LayoutMinHeight: =20
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =220
+                              - Container5_12:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =Gallery3.Selected.'Startblock visible'
+                                  Children:
+                                    - TextCanvas2_40:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_12:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Startblock"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                          Wrap: =false
+                                    - cbStartBlcok:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          InputTextPlaceholder: ="Please select"
+                                          Items: =colFlattened
+                                          Width: =240
+                                    - InfoButtonCanvas10:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Choose your start time for the run"
+                                          Height: =30
+                                          Width: =30
+                              - Container5_43:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                  Children:
+                                    - TextCanvas2_41:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_48:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Anonymous"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbAnonym:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DefaultSelectedItems: =["Nein"]
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Items: =["Ja", "Nein"]
+                                          Width: =240
+                                    - InfoButtonCanvas4_4:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Choose whether you want to appear anonymously / by name in the results lists"
+                                          Height: =30
+                              - Container5_46:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                  Children:
+                                    - TextCanvas2_43:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_51:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Subscripe to Info Service"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbUsageInfoservice:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DefaultSelectedItems: =["Ja"]
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Items: =["Ja", "Nein"]
+                                          Width: =240
+                                    - InfoButtonCanvas6_4:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Choose whether you want to receive the B2Run SMS info service with news about the event"
+                                          Height: =30
+                                          Width: =30
+                              - Container5_47:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =Gallery3.Selected.'Age Group visible'
+                                  Children:
+                                    - TextCanvas2_44:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_52:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Age Group"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbAgeClass:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(106, 122, 127, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DefaultSelectedItems: =["offene Klasse"]
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Items: =["offene Klasse", "Ü30", "Ü35", "Ü40", "Ü45", "Ü50", "Ü55", "Ü60", "Ü65", "Ü70", "Ü75", "Ü80"]
+                                          Width: =240
+                                    - InfoButtonCanvas6_8:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Choose an age group in which you want to be listed in the results lists "
+                                          Height: =30
+                                          Width: =30
+                              - Container5_48:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =Gallery3.Selected.'Nordic Walker visible'
+                                  Children:
+                                    - TextCanvas2_45:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_53:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Nordic Walker"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbNordicWalker:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(106, 122, 127, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DefaultSelectedItems: =["Nein"]
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Items: =["Ja", "Nein"]
+                                          Width: =240
+                                    - InfoButtonCanvas6_9:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Choose whether you want to receive the B2Run SMS info service with news about the event"
+                                          Height: =30
+                                          Width: =30
+                              - Container5_49:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =40
+                                    Visible: =Gallery3.Selected.'T Shirt Größe visible'
+                                  Children:
+                                    - TextCanvas2_46:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_54:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="T-Shirt Size"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                    - cbTshirtGroesse:
+                                        Control: ComboBox@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ComboboxCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(106, 122, 127, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          InputTextPlaceholder: ="Please select"
+                                          Items: =colFlattenedTShirt
+                                          Width: =240
+                                    - InfoButtonCanvas6_5:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: ="Select the T-shirt size for your personalised Deloitte running shirt"
+                                          Height: =30
+                                          Width: =30
+                              - Container5_51:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =false
+                                  Children:
+                                    - TextCanvas2_49:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_57:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Company Name"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =190
+                                    - tCompany:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =DisplayMode.Disabled
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =Office365Users.UserProfile(tEmail.Value).CompanyName
+                                          Width: =270
+                              - Container5_52:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutAlignItems: =LayoutAlignItems.Center
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =false
+                                  Children:
+                                    - TextCanvas2_58:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_59:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Height: =30
+                                          Text: ="Department"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =190
+                                    - tDepatment:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          Appearance: ='TextInputCanvas.Appearance'.Outline
+                                          BorderColor: =RGBA(122, 138, 143, 1)
+                                          BorderStyle: =BorderStyle.Solid
+                                          DisplayMode: =DisplayMode.Disabled
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =30
+                                          Mode: ='TextInputCanvas.Mode'.Multiline
+                                          Value: =Office365Users.UserProfile(tEmail.Value).Department
+                                          Width: =270
+                              - Container5_13:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =45
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =32
+                                    Visible: =Gallery3.Selected.'Durchstarter visible'
+                                  Children:
+                                    - TextCanvas2_42:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_13:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Text: ="Preference Durchstarter"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =180
+                                          Wrap: =false
+                                    - cDurchstarter:
+                                        Control: CheckBox@0.0.30
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Label: ="Yes"
+                                          Width: =70
+                                    - InfoButtonCanvas10_2:
+                                        Control: InfoButton@0.0.33
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Content: |-
+                                            ="There are two different starting fields at the B2Run run: ‘Fun-starters’ and ‘Durch-starters’. The ‘Durchstarter’ field is intended for fast and ambitious runners who want to have a ‘clear track’ (guidelines for 6km: men <25 minutes, women <30 minutes). There are no guidelines for the fun starter field - the focus here is on running fun. "
+                                          Height: =30
+                                          Width: =30
+            - FormContainer2_3:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  AlignInContainer: =AlignInContainer.SetByContainer
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Vertical
+                  LayoutGap: =16
+                  LayoutJustifyContent: =LayoutJustifyContent.Center
+                  LayoutMinHeight: =130
+                  LayoutMinWidth: =400
+                  LayoutOverflowY: =LayoutOverflow.Scroll
+                  PaddingBottom: =15
+                  PaddingLeft: =15
+                  PaddingRight: =15
+                  PaddingTop: =15
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                  Width: =1330
+                Children:
+                  - Container7:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        DropShadow: =DropShadow.None
+                        LayoutDirection: =LayoutDirection.Horizontal
+                      Children:
+                        - Container16_8:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              Height: =120
+                              LayoutDirection: =LayoutDirection.Vertical
+                            Children:
+                              - Container5_69:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =10
+                                  Children:
+                                    - TextCanvas2_103:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: =
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - TextCanvas2_104:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =20
+                                          Size: =12
+                                          Text: ="Information regarding the handling of personal data can be found here"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =390
+                                    - ButtonCanvas5_8:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ButtonCanvas.Appearance'.Transparent
+                                          FontSize: =25
+                                          Height: =40
+                                          Icon: ="Link"
+                                          OnSelect: =Launch("https://www.b2run.de/run/de/de/organisation/agb/index.html")
+                                          Text: =
+                                          Width: =40
+                                    - ButtonCanvas5_9:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ButtonCanvas.Appearance'.Transparent
+                                          FontSize: =25
+                                          Height: =40
+                                          Icon: ="DocumentPdf"
+                                          OnSelect: =Launch("https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-b2run.pdf")
+                                          Text: =
+                                          Width: =40
+                              - Container5_68:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =30
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutMinHeight: =10
+                                  Children:
+                                    - TextCanvas2_101:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Align: ='TextCanvas.Align'.Start
+                                          AlignInContainer: =AlignInContainer.Start
+                                          Height: =30
+                                          PaddingLeft: |+
+                                            =
+                                          Text: ="*"
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =10
+                                    - CheckboxCanvas1_19:
+                                        Control: CheckBox@0.0.30
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =30
+                                          Label: =
+                                          Width: =30
+                                    - TextCanvas2_102:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Height: =20
+                                          Size: =12
+                                          Text: |+
+                                            ="I consent to the transfer of my registration data to B2Run GmbH and to the participation terms of B2Run GmbH"
+
+                                          VerticalAlign: =VerticalAlign.Middle
+                                          Width: =600
+                                    - ButtonCanvas5_10:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.Center
+                                          Appearance: ='ButtonCanvas.Appearance'.Transparent
+                                          FontSize: =25
+                                          Height: =40
+                                          Icon: ="Link"
+                                          OnSelect: =Launch("https://www.b2run.de/run/de/de/organisation/agb/index.html")
+                                          Text: =
+                                          Width: =40
+                              - Container8:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    AlignInContainer: =AlignInContainer.Start
+                                    DropShadow: =DropShadow.None
+                                    LayoutDirection: =LayoutDirection.Vertical
+                                    Width: =950
+                                  Children:
+                                    - Container5_70:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: AutoLayout
+                                        Properties:
+                                          DropShadow: =DropShadow.None
+                                          FillPortions: =0
+                                          Height: =30
+                                          LayoutAlignItems: =LayoutAlignItems.Center
+                                          LayoutDirection: =LayoutDirection.Horizontal
+                                          LayoutMinHeight: =10
+                                          LayoutMinWidth: =400
+                                        Children:
+                                          - TextCanvas2_105:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                Align: ='TextCanvas.Align'.Start
+                                                AlignInContainer: =AlignInContainer.Start
+                                                Height: =30
+                                                PaddingLeft: |+
+                                                  =
+                                                Text: =
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =10
+                                          - TextCanvas2_106:
+                                              Control: Text@0.0.51
+                                              Properties:
+                                                FillPortions: =1
+                                                Height: =30
+                                                Size: =12
+                                                Text: ="As part of the event " & Gallery3.Selected.Title & " , audio, image, and video recordings will be made for Deloitte. By the clear confirming action, e.g., posing or smiling at the camera, you consent to the creation of audio, image, and video recordings. The recordings may be used for Deloitte internal publication purposes (e.g., DeloitteNet). The consent can be revoked at any time with future effect and without any negative consequences by sending an email to privacy@deloitte.de."
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =285
+                                                X: =40
+                                                Y: =40
+                                    - TextCanvas5:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.End
+                                          DisplayMode: =
+                                          Size: =8
+                                          Text: =
+                                          Width: =780
+                                          X: =
+                                          Y: =
+                        - Container17_8:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              DropShadow: =DropShadow.None
+                              FillPortions: =0
+                              Height: =40
+                              LayoutAlignItems: =LayoutAlignItems.End
+                              LayoutDirection: =LayoutDirection.Horizontal
+                              LayoutJustifyContent: =LayoutJustifyContent.End
+                              Width: =350
+                            Children:
+                              - Container23_6:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: AutoLayout
+                                  Properties:
+                                    AlignInContainer: =AlignInContainer.SetByContainer
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =40
+                                    LayoutDirection: =LayoutDirection.Horizontal
+                                    LayoutJustifyContent: =LayoutJustifyContent.End
+                                    LayoutMinHeight: =10
+                                    Width: =350
+                                  Children:
+                                    - Container24_12:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.SetByContainer
+                                          DropShadow: =DropShadow.None
+                                          Height: =40
+                                          LayoutMinWidth: =150
+                                        Children:
+                                          - ButtonCanvas1_19:
+                                              Control: Button@0.0.45
+                                              Properties:
+                                                Align: =Align.Center
+                                                Appearance: ='ButtonCanvas.Appearance'.Primary
+                                                BasePaletteColor: =RGBA(0, 0, 0, 1)
+                                                BorderColor: =RGBA(0, 0, 0, 1)
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =0
+                                                DisplayMode: =
+                                                FontColor: =RGBA(255, 255, 255, 1)
+                                                Height: =30
+                                                Icon: ="Delete"
+                                                IconStyle: ='ButtonCanvas.IconStyle'.Outline
+                                                Layout: ='ButtonCanvas.Layout'.IconBefore
+                                                OnSelect: |+
+                                                  =Reset(cbAnrede);
+                                                  Reset(tStreet);
+                                                  Reset(tPostalCode);
+                                                  Reset(tCity);
+                                                  Reset(cbStartBlcok);
+                                                  Reset(cbAnonym);
+                                                  Reset(tNumber);
+                                                  Reset(cbUsageInfoservice);
+                                                  Reset(cbAgeClass);
+                                                  Reset(cbNordicWalker);
+                                                  Reset(cbTshirtGroesse);
+                                                  Reset(CheckboxCanvas1_19);
+                                                  Reset(cDurchstarter);
+                                                  Set(varModalDialog, false);
+                                                Text: ="Delete"
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =120
+                                                X: =44
+                                                Y: =8
+                                    - Container24_13:
+                                        Control: GroupContainer@1.3.0
+                                        Variant: ManualLayout
+                                        Properties:
+                                          AlignInContainer: =AlignInContainer.SetByContainer
+                                          DropShadow: =DropShadow.None
+                                          Height: =40
+                                          LayoutMinWidth: =150
+                                        Children:
+                                          - ButtonCanvas1_20:
+                                              Control: Button@0.0.45
+                                              Properties:
+                                                Align: =Align.Center
+                                                Appearance: |+
+                                                  =If(
+                                                      Or(
+                                                          CheckboxCanvas1_19.Checked = false,  // Wenn das Kontrollkästchen nicht angekreuzt ist
+                                                          IsBlank(cbAnrede.Selected.Value),    // Wenn das Anrede-Feld leer ist
+                                                          IsBlank(tGivenName.Value),           // Wenn der Vorname leer ist
+                                                          IsBlank(tLastName.Value),            // Wenn der Nachname leer ist
+                                                          IsBlank(tEmail.Value),               // Wenn die E-Mail leer ist
+                                                          IsBlank(cbStartBlcok.Selected.Value) // Wenn das Startblock-Feld leer ist
+                                                      ),
+                                                      "Warning",  // Farbe, wenn Felder fehlen (Sekundäre Farbe - z.B. Grau)
+                                                      If(
+                                                          LookUp(Events, Title = Gallery3.Selected.Title).ID in ShowColumns(LookUp('Event visitors', Email = tEmail.Value).'Event registered', Value),
+                                                          "Warning",  // Farbe, wenn der Benutzer bereits registriert ist (z.B. Gelb)
+                                                          "Primary"   // Andernfalls die primäre Farbe (z.B. Blau) für einen aktiven Button
+                                                      )
+                                                  )
+                                                BorderStyle: =BorderStyle.Solid
+                                                BorderThickness: =0
+                                                DisplayMode: =
+                                                Height: =30
+                                                Icon: ="Send"
+                                                IconStyle: ='ButtonCanvas.IconStyle'.Outline
+                                                OnSelect: "=// SOFORT SPINNER ANZEIGEN\nSet(varShowSpinner, true);\n\n// Grundlegende Validierung und Datenverarbeitung\nIf(\n    Or(\n        CheckboxCanvas1_19.Checked = false,\n        IsBlank(cbAnrede.Selected.Value),\n        IsBlank(tGivenName.Value),\n        IsBlank(tLastName.Value),\n        IsBlank(tEmail.Value),\n        IsBlank(cbStartBlcok.Selected.Value)\n    ),\n    // SPINNER AUSBLENDEN BEI FEHLER\n    Set(varShowSpinner, false);\n    Notify(\"Please fill out all required fields\", NotificationType.Error, 6000),\n   \n    // Prüfen ob bereits für Event registriert\n    If(\n        Or(\n            // NUTZE DIE VARIABLE STATT FLOW!\n            varEventCheck.registered = \"True\",\n            // Prüfen, ob die E-Mail in \"Anmeldungen\" schon vorhanden ist\n            !IsBlank(LookUp('Anmeldungen', Email = tEmail.Value && ItemID = Gallery3.Selected.ID))\n        ),\n        // SPINNER AUSBLENDEN BEI FEHLER\n        Set(varShowSpinner, false);\n        Notify(\"You are already registered for the event as a participant or on the waiting list\", NotificationType.Error, 6000),\n       \n        // Direkt in SharePoint patchen\n        With(\n            {\n                result: Patch(\n                    'Anmeldungen',\n                    Defaults('Anmeldungen'),\n                    {\n                        Title: tGivenName.Value & \" \" & tLastName.Value,\n                        Anrede: cbAnrede.Selected.Value,\n                        Vorname: tGivenName.Value,\n                        Nachname: tLastName.Value,\n                        Email: tEmail.Value,\n                        ItemID: Gallery3.Selected.ID,\n                        Allergies: Text(cbStartBlcok.Selected.Value),\n                        Anonym: cbAnonym.Selected.Value,\n                        Gruppe: \"NO\",\n                        StraßeUndHausnummer: Coalesce(tStreet.Value, \" \"),\n                        Stadt: Coalesce(tCity.Value, \" \"),\n                        Mobilnummer: Coalesce(tNumber.Value, \" \"),\n                        VerwendungInfoservice: cbUsageInfoservice.Selected.Value,\n                        Altersklasse: cbAgeClass.Selected.Value,\n                        NordicWalker: cbNordicWalker.Selected.Value,\n                        TShirtGroesse: If(Gallery3.Selected.'T Shirt Größe visible', If(IsBlank(cbTshirtGroesse.Selected.Value), \"Kein Shirt\", cbTshirtGroesse.Selected.Value), \"N/A\"),\n                        PraeferenzDurchstarter: If(cDurchstarter.Checked, \"Durchstarter\", \"FunRunner\"),\n                        EventType: {Value: \"B2Run\"}\n                    }\n                )\n            },\n            // Spinner ausblenden und Erfolgsmeldung anzeigen\n            Set(varShowSpinner, false);\n            \n            // Navigiere zur Erfolgsseite\n            Navigate(ScreenSuccessRegistration, ScreenTransition.Fade);\n            \n            // Erfolgsbenachrichtigung\n            Notify(\"You have successfully registered for the event!\", NotificationType.Success, 6000)\n        )\n    )\n)"
+                                                Text: ="Register"
+                                                VerticalAlign: =VerticalAlign.Middle
+                                                Width: =120
+                                                X: =44
+                                                Y: =8
+      - ContainerModalDialog_1:
+          Control: GroupContainer@1.3.0
+          Variant: ManualLayout
+          Properties:
+            BorderThickness: =1
+            Fill: =RGBA(255, 255, 255, 1)
+            Height: =178
+            RadiusBottomLeft: =8
+            RadiusBottomRight: =8
+            RadiusTopLeft: =8
+            RadiusTopRight: =8
+            Visible: |+
+              =//varModalDialog 
+            Width: =476
+            X: =445
+            Y: =325
+          Children:
+            - TextCanvas2_1:
+                Control: Text@0.0.51
+                Properties:
+                  Align: ='TextCanvas.Align'.Center
+                  Height: =83
+                  Size: =18
+                  Text: ="You have not agreed to the Deloitte Privacy Policy yet. By clicking 'Yes', you consent to the policy. If you do not agree, please click 'No'."
+                  Weight: ='TextCanvas.Weight'.Bold
+                  Width: =419
+                  X: =28
+                  Y: =20
+            - ButtonCanvas1_1:
+                Control: Button@0.0.45
+                Properties:
+                  OnSelect: =
+                  Text: ="Yes"
+                  X: =351
+                  Y: =120
+            - ButtonCanvas4_1:
+                Control: Button@0.0.45
+                Properties:
+                  OnSelect: =
+                  Text: ="No"
+                  X: =28
+                  Y: =120
+      - SpinnerRegistration:
+          Control: Spinner@1.4.6
+          Properties:
+            Height: =72
+            Visible: =varShowSpinner
+            X: =1166
+            Y: =635
+      - Container23_5:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            DropShadow: =DropShadow.None
+            Height: =158
+            LayoutDirection: =LayoutDirection.Horizontal
+            Width: =517
+            X: =280
+            Y: =445
+          Children:
+            - TextCanvas14_2:
+                Control: Text@0.0.51
+                Properties:
+                  Align: ='TextCanvas.Align'.Center
+                  AlignInContainer: =AlignInContainer.Start
+                  BorderColor: |
+                    =
+                  FillPortions: =1
+                  FontColor: |
+                    =If(
+                        varAssistancetrue = true,
+                        If( 
+                            !IsBlank(tEmail_1.Value) && !IsError(Office365Users.UserProfile(tEmail_1.Value)),
+                            If(   
+                                LookUp(Events, Title = Gallery3.Selected.Title).ID in ShowColumns(LookUp('Event visitors', Email = tEmail_1.Value).'Event registered', Value) || 
+                                !IsBlank(LookUp(Anmeldungen, Email = tEmail_1.Value)),
+                                RGBA(0, 120, 0, 1), // Grün: Bereits registriert oder in Bearbeitung
+                                RGBA(0, 0, 0, 1) // Schwarz: Standard/Fallback
+                            ),
+                            RGBA(255, 0, 0, 1) // Rot: Die E-Mail konnte nicht gefunden werden
+                        ),
+                        If(  
+                            LookUp(Events, Title = Gallery3.Selected.Title).ID in ShowColumns(LookUp('Event visitors', Email = tEmail_1.Value).'Event registered', Value) || 
+                            !IsBlank(LookUp(Anmeldungen, Email = tEmail_1.Value)),
+                            RGBA(0, 120, 0, 1), // Grün: Bereits registriert oder in Bearbeitung
+                            RGBA(255, 0, 0, 1) // Rot: Standard für nicht gefundene E-Mail
+                        )
+                    )
+                  Height: =60
+                  Text: "=If(\r\n    varAssistancetrue = true,\r\n    \r\n    // Für anderen Benutzer registrieren\r\n    If( \r\n        !IsBlank(tEmail_1.Value) && !IsError(Office365Users.UserProfile(tEmail_1.Value)),\r\n        \r\n        If(   \r\n            varEventCheck.registered = \"True\",  // Variable verwenden\r\n            Office365Users.UserProfile(tEmail_1.Value).GivenName & \" is already registered for the event\",\r\n            \r\n            If( \r\n                !IsBlank(LookUp(Anmeldungen, Email = tEmail_1.Value && ItemID = Gallery3.Selected.ID)), \r\n                \"The registration for \" & Office365Users.UserProfile(tEmail_1.Value).GivenName & \" is currently being processed\", \r\n                \"Please proceed to register \" & Office365Users.UserProfile(tEmail_1.Value).GivenName\r\n            ) \r\n        ),\r\n        \"The email could not be found\"\r\n    ),\r\n    \r\n    // Für sich selbst registrieren\r\n    If(  \r\n        varEventCheck.registered = \"True\",  // Variable verwenden\r\n        \"You are already registered for the event\",\r\n        \r\n        If( \r\n            !IsBlank(LookUp(Anmeldungen, Email = tEmail_1.Value && ItemID = Gallery3.Selected.ID)), \r\n            \"Your registration is currently being processed. This may take a moment. You will receive an automated email after completion\", \r\n            \" \"\r\n        ) \r\n    )\r\n)"
+                  VerticalAlign: =VerticalAlign.Middle
+                  Visible: =!IsBlank(Gallery3.Selected) && !IsBlank(Gallery3.Selected.ID)
+                  Weight: ='TextCanvas.Weight'.Semibold

@@ -1,0 +1,289 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  CheckInScreen:
+    Properties:
+      Height: =1123
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: |
+        =
+        Clear(colScannedItems);
+        Set(varCheckInSuccessful, false);
+        UpdateContext({ ctxScannerReady: false });
+      Width: =794
+    Children:
+      - Container24:
+          Control: GroupContainer@1.3.0
+          Variant: ManualLayout
+          Properties:
+            Height: =69
+            Width: =794
+          Children:
+            - TextCanvas29:
+                Control: Text@0.0.51
+                Properties:
+                  Size: =20
+                  Text: ="Check-In"
+                  Weight: ='TextCanvas.Weight'.Bold
+                  Width: =163
+                  X: =25
+                  Y: =15
+      - Gallery2:
+          Control: Gallery@2.15.0
+          Variant: BrowseLayout_Vertical_TwoTextOneImageVariant_ver5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Height: =768
+            Items: =colScannedItems
+            TemplateSize: =783
+            Width: =731
+            X: =42
+          Children:
+            - Separator7:
+                Control: Rectangle@2.3.0
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Fill: =RGBA(255, 255, 255, 1)
+                  Height: =8
+                  OnSelect: =Select(Parent)
+                  Width: =Parent.TemplateWidth
+                  Y: =Parent.TemplateHeight - Self.Height
+            - Gallery5:
+                Control: Gallery@2.15.0
+                Variant: BrowseLayout_Vertical_TwoTextOneImageVariant_ver5.0
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Height: =763
+                  Items: |-
+                    =Office365Users.SearchUserV2({searchTerm: First(Split(ThisItem.ScannedItem,"|")).Value}).value
+                  TemplateSize: =610
+                  Width: =727
+                  X: =4
+                  Y: =20
+                Children:
+                  - Image9:
+                      Control: Image@2.2.3
+                      Properties:
+                        BorderColor: =RGBA(0, 18, 107, 1)
+                        Height: =243
+                        Image: |-
+                          =If(
+                              IsBlank(ThisItem.Id),
+                              'DEL_Favicons_Standard-white_square',
+                              If(
+                                  IsBlank(Office365Users.UserPhotoV2(ThisItem.Id)),
+                                  'DEL_Favicons_Standard-white_square',
+                                  Office365Users.UserPhotoV2(ThisItem.Id)
+                              )
+                          )
+                        OnSelect: =Select(Parent)
+                        RadiusBottomLeft: =8
+                        RadiusBottomRight: =8
+                        RadiusTopLeft: =8
+                        RadiusTopRight: =8
+                        Width: =235
+                        X: =4
+                        Y: =208
+                  - Title4:
+                      Control: Label@2.5.1
+                      Properties:
+                        BorderColor: =RGBA(0, 0, 0, 1)
+                        Color: =RGBA(50, 49, 48, 1)
+                        Font: ="Aptos"
+                        FontWeight: =If(ThisItem.IsSelected, FontWeight.Semibold, FontWeight.Normal)
+                        Height: =43
+                        OnSelect: =Select(Parent)
+                        PaddingBottom: =0
+                        PaddingLeft: =0
+                        PaddingRight: =0
+                        PaddingTop: =0
+                        Size: =20
+                        Text: =ThisItem.DisplayName
+                        VerticalAlign: =VerticalAlign.Top
+                        Width: =461
+                        X: =4
+                        Y: =165
+                  - Separator9:
+                      Control: Rectangle@2.3.0
+                      Properties:
+                        BorderColor: =RGBA(0, 18, 107, 1)
+                        Fill: =RGBA(255, 255, 255, 1)
+                        Height: =8
+                        OnSelect: =Select(Parent)
+                        Width: =Parent.TemplateWidth
+                        Y: =Parent.TemplateHeight - Self.Height
+                  - TextCanvas32:
+                      Control: Text@0.0.51
+                      Properties:
+                        Font: ="Aptos"
+                        Height: =37
+                        Size: =20
+                        Text: =ThisItem.Department
+                        Width: =317
+                        X: =253
+                        Y: =247
+                  - TextCanvas33:
+                      Control: Text@0.0.51
+                      Properties:
+                        Font: ="Aptos"
+                        Size: =20
+                        Text: =ThisItem.City
+                        X: =253
+                        Y: =284
+                  - TextCanvas35:
+                      Control: Text@0.0.51
+                      Properties:
+                        Font: ="Aptos"
+                        Height: =45
+                        Size: =20
+                        Text: =ThisItem.JobTitle
+                        Width: =239
+                        X: =253
+                        Y: =208
+                  - Button2:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =ColorFade(Self.Fill, -15%)
+                        BorderThickness: =0
+                        Color: =RGBA(255, 255, 255, 1)
+                        DisabledBorderColor: =RGBA(166, 166, 166, 1)
+                        Fill: =RGBA(4, 106, 56, 1)
+                        Font: ="Aptos"
+                        HoverBorderColor: =ColorFade(Self.BorderColor, 20%)
+                        HoverColor: =RGBA(255, 255, 255, 1)
+                        HoverFill: =ColorFade(RGBA(56, 96, 178, 1), -20%)
+                        OnSelect: |-
+                          =If(
+                              IsBlank(DropdownCanvas8.Selected.Value),
+                              Notify("Bitte erst eine Auswahl treffen", NotificationType.Warning),
+                              CheckInFromQRCode.Run(ThisItem.Mail, Int(TextCanvas37.Text), DropdownCanvas8.Selected.Value);
+                              Set(varCheckInSuccessful, true)
+                          )
+                        PressedBorderColor: =Self.Fill
+                        PressedColor: =Self.Fill
+                        PressedFill: =Self.Color
+                        Size: =20
+                        Text: ="Check-In"
+                        Width: =653
+                        X: =37
+                        Y: =551
+                  - DropdownCanvas8:
+                      Control: DropDown@0.0.45
+                      Properties:
+                        AccessibleLabel: ="Select"
+                        FontSize: =20
+                        Height: =75
+                        Items: =Split(TextInputCanvas4.Value,";").Value
+                        Width: =426
+                        X: =253
+                        Y: =331
+            - TextCanvas37:
+                Control: Text@0.0.51
+                Properties:
+                  Height: =53
+                  Text: =If(IsBlank(ThisItem.ScannedItem),"",Int(Index(Split(ThisItem.ScannedItem,"|"),2).Value))
+                  Visible: =false
+                  Width: =250
+                  X: =15
+                  Y: =20
+            - TextInputCanvas4:
+                Control: TextInput@0.0.54
+                Properties:
+                  Height: =42
+                  Value: =LookUp(Events,ID = Int(Index(Split(ThisItem.ScannedItem,"|"),2).Value),'Check-In')
+                  Visible: =false
+                  X: =15
+                  Y: =36
+      - Icon5:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(52, 152, 47, 1)
+            Icon: =Icon.Erase
+            OnSelect: |-
+              =Clear(
+                  colScannedItems    
+              );
+              Set(varCheckInSuccessful,false);
+            X: =517
+            Y: =147
+      - TextCanvas38:
+          Control: Text@0.0.51
+          Properties:
+            Align: ='TextCanvas.Align'.Center
+            Font: ="Aptos"
+            Height: =76
+            Size: =25
+            Text: ="Check-In successful!"
+            VerticalAlign: =VerticalAlign.Middle
+            Visible: =varCheckInSuccessful
+            Weight: ='TextCanvas.Weight'.Semibold
+            Width: =347
+            X: =234
+            Y: =692
+      - BarcodeReader2:
+          Control: BarcodeReader@1.0.25
+          Properties:
+            BarcodeType: ='BarcodeReader.BarcodeType'.QRCode
+            BorderStyle: =BorderStyle.None
+            DisplayMode: =If(ctxScannerReady, DisplayMode.Edit, DisplayMode.Disabled)
+            FillColor: =RGBA(128, 128, 128, 1)
+            Font: ="Aptos"
+            Height: =99
+            OnScan: |-
+              =Collect(
+                  colScannedItems,
+                  {ScannedItem: First(BarcodeReader2.Barcodes).Value, ScannedTime: Now()}
+              )
+            ScanningMode: ='BarcodeReader.ScanningMode'.AutomaticallyScan
+            Text: ="QR-Code Reader"
+            Width: =181
+            X: =306
+            Y: =130
+      - Icon4:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(52, 152, 47, 1)
+            Height: =58
+            Icon: =Icon.BackArrow
+            OnSelect: =Back()
+            Width: =53
+            X: =720
+            Y: =5
+      - Timer2:
+          Control: Timer@2.1.0
+          Properties:
+            AutoStart: =true
+            BorderColor: =ColorFade(Self.Fill, -15%)
+            Color: =RGBA(255, 255, 255, 1)
+            DisabledBorderColor: =ColorFade(Self.BorderColor, 70%)
+            DisabledColor: =ColorFade(Self.Fill, 90%)
+            DisabledFill: =ColorFade(Self.Fill, 70%)
+            Duration: =500
+            Fill: =RGBA(56, 96, 178, 1)
+            Font: =Font.'Open Sans'
+            HoverBorderColor: =ColorFade(Self.BorderColor, 20%)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =ColorFade(RGBA(56, 96, 178, 1), -20%)
+            OnTimerEnd: |-
+              =UpdateContext({ ctxScannerReady: true });
+            PressedBorderColor: =Self.Fill
+            PressedColor: =Self.Fill
+            PressedFill: =Self.Color
+            Visible: =false
+            X: =42
+            Y: =307
+      - TextCanvas31:
+          Control: Text@0.0.51
+          Properties:
+            Font: ="Aptos"
+            Text: ="Please select"
+            X: =306
+            Y: =653

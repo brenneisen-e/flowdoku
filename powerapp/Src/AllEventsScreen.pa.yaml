@@ -1,0 +1,160 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  AllEventsScreen:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+    Children:
+      - ScreenContainer6:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer6:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header6:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        Logo: =AdobeStock_131107922
+                        LogoTooltip: ="Back"
+                        OnSelectLogo: =Navigate(StartScreen)
+                        Title: ="All events"
+            - MainContainer6:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  DropShadow: =DropShadow.None
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutWrap: =true
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                  Width: =1000
+                Children:
+                  - Table1:
+                      Control: Table@1.0.278
+                      Properties:
+                        FillPortions: =1
+                        Items: =Events
+                        ReflowBehavior: ='PowerAppsOneGrid.ReflowBehavior'.Reflow
+                      Children:
+                        - Standort1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Standort"
+                              FieldName: ="Standort"
+                              FieldType: ="E"
+                              Order: =10
+                        - Organzier1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Organzier"
+                              FieldName: ="Organzier"
+                              FieldType: ="E"
+                              Order: =9
+                        - Status1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Status"
+                              FieldName: ="Status"
+                              FieldType: ="E"
+                              Order: =8
+                        - Wait list1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Wait list"
+                              FieldName: ="Wait_x0020_list"
+                              FieldType: ="n"
+                              Order: =7
+                        - Current parcipients1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Current parcipients"
+                              FieldName: ="Current_x0020_parcipients"
+                              FieldType: ="n"
+                              Order: =6
+                        - Max. parcipients1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Max. parcipients"
+                              FieldName: ="Max_x002e__x0020_parcipients"
+                              FieldType: ="n"
+                              Order: =5
+                        - Event image1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Event image"
+                              FieldName: ="Event_x0020_image"
+                              FieldType: ="I"
+                              Order: =4
+                        - Event description1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Event description"
+                              FieldName: ="Event_x0020_description"
+                              FieldType: ="s"
+                              Order: =3
+                        - Event time1:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Event time"
+                              FieldName: ="Event_x0020_time"
+                              FieldType: ="d"
+                              Order: =2
+                        - Title2:
+                            Control: TableDataField@1.5.0
+                            Variant: textualColumn
+                            IsLocked: true
+                            Properties:
+                              FieldDisplayName: ="Title"
+                              FieldName: ="Title"
+                              FieldType: ="s"
+                              Order: =1

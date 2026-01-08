@@ -1,0 +1,341 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  RegisterScreen:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: |+
+        =Refresh(Events);
+        Reset(Toggle2);
+        Set(CurrentUser,{    
+                '@odata.type': "#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser",    
+                Claims: "i:0#.f|membership|" & Lower(User().Email),    
+                Department: "",    
+                DisplayName: User().FullName,
+                LastName:Office365Users.UserProfile(User().Email).Surname,
+                FirstName:Office365Users.UserProfile(User().Email).GivenName,    
+                Email: User().Email,    
+                JobTitle: Office365Users.UserProfile(User().Email).JobTitle ,        
+                Office:  Office365Users.UserProfile(User().Email).OfficeLocation,   
+                Picture: "."           
+            });
+            Set (isAdminUser,!IsBlank(LookUp(Admins, 'Admin Account'.Email = User().Email).'Admin Account'.Email));
+            Set(ShowOnlyActive, true)
+    Children:
+      - ScreenContainer2:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer2:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  Fill: =RGBA(255, 255, 255, 1)
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header2:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        Font: ="Aptos"
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        Logo: =AdobeStock_131107922
+                        LogoTooltip: ="Back"
+                        OnSelectLogo: =Navigate(StartScreen)
+                        Title: ="Registration | Available events at your location"
+            - MainContainer2:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  DropShadow: =DropShadow.None
+                  Fill: =Parent.Fill
+                  Height: =800
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutWrap: =true
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                  Width: =1300
+                Children:
+                  - Gallery3:
+                      Control: Gallery@2.15.0
+                      Variant: BrowseLayout_Horizontal_TwoTextOneImageOverlayVariant_ver5.0
+                      Properties:
+                        BorderColor: =RGBA(0, 18, 107, 1)
+                        Items: |-
+                          =If(isAdminUser, 
+                              If(ShowOnlyActive,
+                                  Filter(Events, Status.Value = "Active"),
+                                  Events
+                              ),
+                              Filter(
+                                  Events,
+                                  (
+                                      (CurrentUser.Office in 'Standort Filter'.Value || "ALL" in 'Standort Filter'.Value) &&
+                                      (!ShowOnlyActive || Status.Value = "Active") &&
+                                      (
+                                          IsBlank('Audience Mail') ||
+                                          Lower(User().Email) in Lower('Audience Mail')
+                                      )
+                                  ) ||
+                                  (
+                                      "Partner" in Title && 
+                                      (CurrentUser.JobTitle = "Assistant" || CurrentUser.JobTitle = "Senior Assistant") &&
+                                      (!ShowOnlyActive || Status.Value = "Active")
+                                  )
+                              )
+                          )
+                        Width: =1300
+                      Children:
+                        - Image7:
+                            Control: Image@2.2.3
+                            Properties:
+                              BorderColor: =RGBA(0, 18, 107, 1)
+                              Height: =Parent.TemplateHeight - 32
+                              Image: =If(IsBlank(ThisItem.'Event image'),'LogoDex',ThisItem.'Event image'.Full)
+                              ImagePosition: =ImagePosition.Fill
+                              OnSelect: =Select(Parent)
+                              RadiusBottomLeft: =8
+                              RadiusBottomRight: =8
+                              RadiusTopLeft: =8
+                              RadiusTopRight: =8
+                              Transparency: =If(ThisItem.Status.Value = "Active", 0, 0.5)
+                              Width: =Parent.TemplateWidth - 32
+                              X: =16
+                              Y: =16
+                        - Overlay2:
+                            Control: Rectangle@2.3.0
+                            Properties:
+                              BorderColor: =RGBA(0, 18, 107, 1)
+                              Fill: =RGBA(0, 0, 0, 0.7)
+                              Height: =176
+                              OnSelect: =Select(Parent)
+                              Width: =Image7.Width
+                              X: =Image7.X
+                              Y: =451
+                        - Title5_2:
+                            Control: Label@2.5.1
+                            Properties:
+                              BorderColor: =RGBA(0, 0, 0, 1)
+                              Color: =RGBA(255, 255, 255, 1)
+                              Font: ="Aptos"
+                              FontWeight: =FontWeight.Lighter
+                              Height: =20
+                              OnSelect: =Select(Parent)
+                              PaddingBottom: =0
+                              PaddingLeft: =0
+                              PaddingRight: =0
+                              PaddingTop: =0
+                              Size: =10
+                              Text: "=If(IsBlank(ThisItem.'Last Register Date Time'), \"\", \"Registration open until: \" & Text(ThisItem.'Last Register Date Time', \"[$-de-DE]dd.mm.yyyy HH:mm\")) "
+                              VerticalAlign: =VerticalAlign.Top
+                              Width: =238
+                              X: =32
+                              Y: =583
+                        - Title5:
+                            Control: Label@2.5.1
+                            Properties:
+                              BorderColor: =RGBA(0, 0, 0, 1)
+                              Color: =RGBA(255, 255, 255, 1)
+                              Font: ="Aptos"
+                              FontWeight: =FontWeight.Bold
+                              Height: =34
+                              OnSelect: =Select(Parent)
+                              PaddingBottom: =0
+                              PaddingLeft: =0
+                              PaddingRight: =0
+                              PaddingTop: =0
+                              Size: =20
+                              Text: =ThisItem.Title
+                              VerticalAlign: =VerticalAlign.Top
+                              Width: =390
+                              X: =32
+                              Y: =462
+                        - Subtitle4:
+                            Control: Label@2.5.1
+                            Properties:
+                              BorderColor: =RGBA(0, 0, 0, 1)
+                              Color: =RGBA(255, 255, 255, 1)
+                              Font: ="Aptos"
+                              Height: =62
+                              OnSelect: =Select(Parent)
+                              PaddingBottom: =0
+                              PaddingLeft: =0
+                              PaddingRight: =0
+                              PaddingTop: =0
+                              Size: =14
+                              Text: =Text(ThisItem.'Event time', "[$-de-DE]dd.mm.yyyy HH:mm") & " until " & Text(ThisItem.'Event end time', "[$-de-DE]dd.mm.yyyy HH:mm")
+                              VerticalAlign: =VerticalAlign.Top
+                              Width: =197
+                              X: =32
+                              Y: =521
+                        - ButtonCanvas2:
+                            Control: Button@0.0.45
+                            Properties:
+                              Appearance: |-
+                                =If(ThisItem.Status.Value = "Active", 
+                                    'ButtonCanvas.Appearance'.Primary, 
+                                    'ButtonCanvas.Appearance'.Secondary
+                                )
+                              DisplayMode: |+
+                                =If(
+                                    Or(
+                                        !IsBlank(LookUp(Admins, 'Admin Account'.Email = User().Email).'Admin Account'.Email),
+                                        CurrentUser.JobTitle = "Assistant",
+                                        CurrentUser.JobTitle = "Senior Assistant"
+                                    ),
+                                    DisplayMode.Edit,
+                                    If(
+                                        Or(
+                                            IsBlank(ThisItem.'Last Register Date Time'),
+                                            Now() <= ThisItem.'Last Register Date Time'
+                                        ),
+                                        If(
+                                            ThisItem.ID in ShowColumns(LookUp('Event visitors', Email = CurrentUser.Email).'Event registered', Value),
+                                            DisplayMode.Disabled,
+                                            DisplayMode.Edit
+                                        ),
+                                        DisplayMode.Disabled
+                                    )
+                                )
+
+
+                              Font: ="Aptos"
+                              OnSelect: |+
+                                =Select(Parent);
+
+                                //B2Run Contenttype ID
+                                If(ThisItem.'Content type'.Id = "0x0100A1C19A2468C67742B45F27D412A6FE8E0100C99C1DFE89A5E547A3793AE62D9D1182",
+                                //JPMorgan LaufContenttype ID
+                                Navigate(RegisterB2EventScreen), If(ThisItem.'Content type'.Id = "0x0100A1C19A2468C67742B45F27D412A6FE8E02001B86E0F2C481154986FAC55BB2C534CB", Navigate(RegisterJPMorganRunScreen), Navigate(RegisterOtherEventScreen)));
+                                Set(varModalDialog, false);
+                              Text: |-
+                                =If(ThisItem.Status.Value = "Active", 
+                                    "Registrate", 
+                                    ThisItem.Status.Value
+                                )
+                              X: =311
+                              Y: =571
+                        - TextCanvas1:
+                            Control: Text@0.0.51
+                            Properties:
+                              Font: ="Aptos"
+                              FontColor: =RGBA(255, 255, 255, 1)
+                              Height: =25
+                              Text: =ThisItem.Standort
+                              Width: =300
+                              X: =32
+                              Y: =496
+                        - TextCanvas4:
+                            Control: Text@0.0.51
+                            Properties:
+                              Align: ='TextCanvas.Align'.Start
+                              Font: ="Aptos"
+                              FontColor: =RGBA(255, 255, 255, 1)
+                              Height: =69
+                              Size: =16
+                              Text: |-
+                                =If( Value(ThisItem.'Max. parcipients') >= 10000 , "Unlimited places",
+                                If(
+                                    Value(ThisItem.'Max. parcipients') - Value(ThisItem.'Current parcipients')  > 0,
+                                    "Free places: " & Text(Value(ThisItem.'Max. parcipients') - Value(ThisItem.'Current parcipients')),
+                                    "No free places. Current position on waiting list: " & Text(Value(ThisItem.'Current parcipients') - Value(ThisItem.'Max. parcipients'))
+                                )
+                                )
+                              Weight: ='TextCanvas.Weight'.Semibold
+                              Width: =152
+                              X: =270
+                              Y: =496
+                        - TextCanvas6:
+                            Control: Text@0.0.51
+                            Properties:
+                              Font: ="Aptos"
+                              FontColor: =RGBA(255, 255, 255, 1)
+                              Height: =34
+                              Text: |-
+                                ="Warteliste: " & ThisItem.'Wait list'
+                              Visible: =If(ThisItem.'Wait list'>0,true,false)
+                              Width: =129
+                              X: =311
+                              Y: =462
+                        - TextCanvas11:
+                            Control: Text@0.0.51
+                            Properties:
+                              Font: ="Aptos"
+                              Text: |+
+                                =//Find(ThisItem.ID,Concat(LookUp('Event visitors',Email = User().Email,'Event registered'),Value))
+                                //Concat(LookUp(LookUp('Event visitors',Email = User().Email,'Event registered'),Value),Id = ThisItem.ID)),Value)
+                                //Find(First(colFilterSelection).Sector, Concat('Sector relevance'.Value, Value & ",")
+
+                                //Concat(LookUp(LookUp('Event visitors',Email = User().Email,'Event registered'),Id=ThisItem.ID),Value)
+                                //ThisItem.ID in LookUp('Event visitors',Email = User().Email,'Event registered')
+
+                              X: =149
+                              Y: =151
+                        - InfoButtonCanvas10_1:
+                            Control: InfoButton@0.0.33
+                            Properties:
+                              Content: =ThisItem.'Event description'
+                              Font: ="Aptos"
+                              FontWeight: =FontWeight.Normal
+                              Height: =60
+                              IconColor: =RGBA(0, 0, 0, 1)
+                              Width: =60
+                              X: =32
+                              Y: =43
+      - Toggle2:
+          Control: Classic/Toggle@2.1.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            Default: =true
+            FalseText: =""
+            FocusedBorderThickness: =0
+            Font: ="Aptos"
+            HoverBorderColor: =ColorValue("#046A38")
+            OnCheck: =Set(ShowOnlyActive, true)
+            OnUncheck: =Set(ShowOnlyActive, false)
+            PressedBorderColor: =ColorValue("#046A38")
+            TrueFill: =RGBA(4, 106, 56, 1)
+            TrueHoverFill: =ColorValue("#046A38")
+            TrueText: =""
+            Visible: =isAdminUser || CurrentUser.JobTitle = "Assistant" || CurrentUser.JobTitle = "Senior Assistant"
+            Width: =53
+            X: =551
+            Y: =38
+      - TextCanvas27:
+          Control: Text@0.0.51
+          Properties:
+            Align: ='TextCanvas.Align'.Start
+            Font: ="Aptos"
+            Height: =23
+            Text: ="Only Active Events"
+            VerticalAlign: =VerticalAlign.Middle
+            Visible: =isAdminUser || CurrentUser.JobTitle = "Assistant" || CurrentUser.JobTitle = "Senior Assistant"
+            Width: =148
+            X: =609
+            Y: =40

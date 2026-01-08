@@ -1,0 +1,188 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  LandingScreen:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: =Set(varDatenschutzClicked, false)
+    Children:
+      - ScreenContainer8:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer8:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  Fill: =RGBA(255, 255, 255, 1)
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header7:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        IsTitleVisible: =false
+                        Logo: =Picture1
+                        LogoTooltip: ="Deloitte"
+                        Title: ="Welcome Screen"
+            - MainContainer8:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  DropShadow: =DropShadow.None
+                  Fill: =RGBA(255, 255, 255, 1)
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutGap: =16
+                  LayoutOverflowY: =LayoutOverflow.Scroll
+                  LayoutWrap: =true
+                  PaddingBottom: =2
+                  PaddingLeft: =2
+                  PaddingRight: =2
+                  PaddingTop: =2
+                  RadiusBottomLeft: =0
+                  RadiusBottomRight: =0
+                  RadiusTopLeft: =0
+                  RadiusTopRight: =0
+                Children:
+                  - Container3:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        Fill: =RGBA(252, 250, 253, 1)
+                        LayoutAlignItems: =LayoutAlignItems.Center
+                        LayoutDirection: =LayoutDirection.Vertical
+                        LayoutGap: =5
+                        LayoutJustifyContent: =LayoutJustifyContent.Center
+                        LayoutMinHeight: =300
+                        LayoutMinWidth: =If(LandingScreen.Size = ScreenSize.Small, Parent.Width, 400)
+                        LayoutOverflowY: =LayoutOverflow.Scroll
+                        PaddingBottom: =10
+                        PaddingLeft: =5
+                        PaddingRight: =5
+                        PaddingTop: =10
+                      Children:
+                        - ImageContainer3:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              AlignInContainer: =AlignInContainer.Center
+                              DropShadow: =DropShadow.None
+                              FillPortions: =1.6
+                              LayoutAlignItems: =LayoutAlignItems.Center
+                              LayoutDirection: =LayoutDirection.Vertical
+                              LayoutGap: =5
+                              LayoutJustifyContent: =LayoutJustifyContent.End
+                              LayoutMinWidth: =Container3.Width
+                              RadiusBottomLeft: =0
+                              RadiusBottomRight: =0
+                              RadiusTopLeft: =0
+                              RadiusTopRight: =0
+                              Width: =Parent.Width
+      - Button1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Align: =Align.Left
+            BorderColor: =RGBA(134, 188, 37, 1)  // Grün
+            BorderThickness: =0
+            Color: =RGBA(0, 0, 0, 1)  // Hellgrau
+            DisabledBorderColor: =RGBA(166, 166, 166, 1)
+            DisplayMode: =
+            Fill: =RGBA(200, 200, 200, 1)  // Hellgrau
+            Font: ="Aptos"
+            FontWeight: =FontWeight.Lighter
+            Height: =51
+            HoverBorderColor: =ColorFade(Self.BorderColor, 20%)
+            HoverColor: =RGBA(255, 255, 255, 1)  // Weiß
+            HoverFill: =RGBA(38, 137, 13, 1)  // Grün
+            OnSelect: =Navigate(StartScreen)
+            PaddingLeft: '=20  '
+            PressedBorderColor: =RGBA(134, 188, 37, 1)  // Grün
+            PressedColor: =RGBA(255, 255, 255, 1)  // Weiß
+            PressedFill: =RGBA(38, 137, 13, 1)  // Grün
+            RadiusBottomLeft: =15
+            RadiusBottomRight: =15
+            RadiusTopLeft: =15
+            RadiusTopRight: =15
+            Size: =25
+            Text: ="Start"
+            Width: =756
+            X: =400
+            Y: =436
+      - HtmlText1:
+          Control: HtmlViewer@2.1.0
+          Properties:
+            Font: ="Aptos"
+            Height: =150
+            HtmlText: |-
+              ="<p style='font-family: Aptos; color: black; font-size: 25px;'>
+                Welcome to the new <b>Event Experience Platform</b>.<br>
+                Enjoy the new app to handle your registration for your Deloitte Event.
+              </p>"
+            Width: =862
+            X: =400
+            Y: =286
+      - TextCanvas22:
+          Control: Text@0.0.51
+          Properties:
+            Font: ="Aptos"
+            Height: =83
+            Text: ="The Event Experience Platform is a new solution for managing participants at Deloitte events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The platform was developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in its pilot phase, the platform may still have a few quirks – but rest assured, we’re continuously refining and expanding its capabilities. Over the coming months, it will be rolled out to support more and more events across the firm. If you have any questions, feedback, or are interested in using the platform for your upcoming event, feel free to get in touch with us!"
+            Width: =1159
+            X: =45
+            Y: =627
+      - Icon6:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(200, 200, 200, 1)  // Hellgrau
+            HoverColor: '=ColorValue("#046A38") '
+            Icon: =Icon.Mail
+            OnSelect: =Launch("mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de")
+            X: =1221
+            Y: =627
+      - Image10:
+          Control: Image@2.2.3
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Height: =408
+            Image: =Logogif4
+            Visible: =!IsBlank(Self.Image)
+            Width: =370
+            X: =15
+            Y: =205
+      - Icon3_1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(0, 18, 107, 1)
+            Height: =43
+            Icon: =Icon.Scan
+            OnSelect: =Navigate(CheckInScreen)
+            Visible: =If(IsBlank(LookUp(Admins,'Admin Account'.Email =User().Email).'Admin Account'.Email),false,true)
+            Width: =54
+            X: =1215
+            Y: =35

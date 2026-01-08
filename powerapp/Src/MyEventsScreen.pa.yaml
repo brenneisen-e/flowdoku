@@ -1,0 +1,397 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  MyEventsScreen:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      OnVisible: "=Refresh('Event visitors');\r\nSet(varModalDialog, false);\r\nSet(varItem, 0);\r\n\r\nClearCollect(colAllEvents, Events);\r\n\r\nWith(\r\n    {\r\n        userEvents: GetParticipantEvents.Run(User().Email)\r\n    },\r\n    \r\n    ClearCollect(\r\n        colMyEvents,\r\n        Filter(colAllEvents, Text(ID) in userEvents.eventids)\r\n    );\r\n    \r\n    ClearCollect(\r\n        colMyWaitlistEvents,\r\n        Filter(colAllEvents, Text(ID) in userEvents.waitlistids)\r\n    )\r\n)"
+    Children:
+      - ScreenContainer2_1:
+          Control: GroupContainer@1.3.0
+          Variant: AutoLayout
+          Properties:
+            Fill: =RGBA(245, 245, 245, 1)
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutGap: =16
+            PaddingBottom: =16
+            PaddingLeft: =16
+            PaddingRight: =16
+            PaddingTop: =16
+            Width: =Parent.Width
+          Children:
+            - HeaderContainer2_1:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  Fill: =RGBA(255, 255, 255, 1)
+                  FillPortions: =0
+                  Height: =75
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                Children:
+                  - Header2_1:
+                      Control: Header@0.0.44
+                      Properties:
+                        Fill: =RGBA(255, 255, 255, 1)
+                        Font: ="Aptos"
+                        FontColor: =RGBA(0, 0, 0, 1)
+                        Logo: =AdobeStock_131107922
+                        LogoTooltip: ="Back"
+                        OnSelectLogo: =Navigate(StartScreen)
+                        Title: ="My Events"
+            - MainContainer2_1:
+                Control: GroupContainer@1.3.0
+                Variant: AutoLayout
+                Properties:
+                  DropShadow: =DropShadow.None
+                  Fill: =Parent.Fill
+                  Height: =800
+                  LayoutAlignItems: =LayoutAlignItems.Stretch
+                  LayoutDirection: =LayoutDirection.Horizontal
+                  LayoutWrap: =true
+                  RadiusBottomLeft: =8
+                  RadiusBottomRight: =8
+                  RadiusTopLeft: =8
+                  RadiusTopRight: =8
+                  Width: =1300
+                Children:
+                  - Container10:
+                      Control: GroupContainer@1.3.0
+                      Variant: AutoLayout
+                      Properties:
+                        LayoutDirection: =LayoutDirection.Horizontal
+                      Children:
+                        - Container12:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              LayoutDirection: =LayoutDirection.Vertical
+                            Children:
+                              - Container17:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =10
+                              - TextCanvas12:
+                                  Control: Text@0.0.51
+                                  Properties:
+                                    Align: ='TextCanvas.Align'.Center
+                                    AlignInContainer: =AlignInContainer.Center
+                                    Fill: =RGBA(214, 221, 224, 1)
+                                    Font: ="Aptos"
+                                    Size: =18
+                                    Text: ="Successfully registered events"
+                                    VerticalAlign: =VerticalAlign.Middle
+                                    Weight: ='TextCanvas.Weight'.Bold
+                                    Width: =650
+                              - Container17_1:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =10
+                              - Gallery1_3:
+                                  Control: Gallery@2.15.0
+                                  Variant: BrowseLayout_Vertical_TwoTextOneImageVariant_ver5.0
+                                  Properties:
+                                    AlignInContainer: =AlignInContainer.Center
+                                    BorderColor: =RGBA(0, 0, 0, 0)
+                                    BorderThickness: =1
+                                    Height: =400
+                                    Items: =colMyEvents
+                                    Width: =650
+                                  Children:
+                                    - Separator2_4:
+                                        Control: Rectangle@2.3.0
+                                        Properties:
+                                          BorderColor: =RGBA(0, 18, 107, 1)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =8
+                                          OnSelect: =Select(Parent)
+                                          Width: =Parent.TemplateWidth
+                                          Y: =Parent.TemplateHeight - Self.Height
+                                    - Title1_3:
+                                        Control: Label@2.5.1
+                                        Properties:
+                                          BorderColor: =RGBA(0, 18, 107, 1)
+                                          Font: ="Aptos"
+                                          FontWeight: =If(ThisItem.IsSelected, FontWeight.Semibold, FontWeight.Normal)
+                                          Height: =38
+                                          OnSelect: =Select(Parent)
+                                          PaddingBottom: =0
+                                          PaddingLeft: =0
+                                          PaddingRight: =0
+                                          PaddingTop: =0
+                                          Text: =ThisItem.Title
+                                          VerticalAlign: =VerticalAlign.Top
+                                          Width: =320
+                                          X: =30
+                                          Y: =15
+                                    - Rectangle1_4:
+                                        Control: Rectangle@2.3.0
+                                        Properties:
+                                          BorderColor: =RGBA(0, 18, 107, 1)
+                                          Fill: =RGBA(56, 96, 178, 1)
+                                          Height: =Parent.TemplateHeight - Separator2_4.Height
+                                          OnSelect: =Select(Parent)
+                                          Visible: =ThisItem.IsSelected
+                                          Width: =4
+                                    - TextCanvas8_3:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Font: ="Aptos"
+                                          Height: =24
+                                          Text: |-
+                                            =Text(
+                                                ThisItem.'Event time',
+                                                "[$-de-DE]dd.mm.yyyy HH:mm"
+                                            )
+                                          Width: =219
+                                          X: =30
+                                          Y: =58
+                                    - ButtonCanvas3_3:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          Font: ="Aptos"
+                                          OnSelect: |-
+                                            =//Select(Parent)
+                                            Set(varItem, ThisItem.ID);  // oder Gallery3.Selected.ID
+                                            Set(varModalDialog, true);
+                                            Set(DatumHeute, Text(Today(), "yyyy-mm-dd"));
+                                          Text: ="Deregister"
+                                          X: =520
+                                          Y: =32
+                                    - TextCanvas10_3:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Font: ="Aptos"
+                                          Text: =ThisItem.Standort
+                                          Width: =201
+                                          X: =30
+                                          Y: =32
+                                    - TextCanvas8_4:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Font: ="Aptos"
+                                          Height: =28
+                                          Text: |-
+                                            ="Deregistration until: " & Text(
+                                                ThisItem.'Last Deregister Event Time', 
+                                                "[$-de-DE]dd.mm.yyyy HH:mm"
+                                            )
+                                          Width: =272
+                                          X: =378
+                                          Y: =76
+                        - Container13:
+                            Control: GroupContainer@1.3.0
+                            Variant: AutoLayout
+                            Properties:
+                              LayoutDirection: =LayoutDirection.Vertical
+                            Children:
+                              - Container17_2:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =10
+                              - TextCanvas12_1:
+                                  Control: Text@0.0.51
+                                  Properties:
+                                    Align: ='TextCanvas.Align'.Center
+                                    AlignInContainer: =AlignInContainer.Center
+                                    Fill: =RGBA(214, 221, 224, 1)
+                                    Font: ="Aptos"
+                                    Size: =18
+                                    Text: ="Events with a place on the waiting list"
+                                    VerticalAlign: =VerticalAlign.Middle
+                                    Weight: ='TextCanvas.Weight'.Bold
+                                    Width: =650
+                              - Container17_4:
+                                  Control: GroupContainer@1.3.0
+                                  Variant: ManualLayout
+                                  Properties:
+                                    DropShadow: =DropShadow.None
+                                    FillPortions: =0
+                                    Height: =10
+                              - Gallery4_2:
+                                  Control: Gallery@2.15.0
+                                  Variant: BrowseLayout_Vertical_TwoTextOneImageVariant_ver5.0
+                                  Properties:
+                                    AlignInContainer: =AlignInContainer.Center
+                                    BorderColor: =RGBA(0, 18, 107, 1)
+                                    FillPortions: =0
+                                    Height: =200
+                                    Items: =colMyWaitlistEvents
+                                    Width: =650
+                                  Children:
+                                    - Title4_2:
+                                        Control: Label@2.5.1
+                                        Properties:
+                                          BorderColor: =RGBA(0, 0, 0, 1)
+                                          Color: =RGBA(50, 49, 48, 1)
+                                          Font: ="Aptos"
+                                          FontWeight: =If(ThisItem.IsSelected, FontWeight.Semibold, FontWeight.Normal)
+                                          Height: =46
+                                          OnSelect: =Select(Parent)
+                                          PaddingBottom: =0
+                                          PaddingLeft: =0
+                                          PaddingRight: =0
+                                          PaddingTop: =0
+                                          Text: =ThisItem.Title
+                                          VerticalAlign: =VerticalAlign.Top
+                                          Width: =320
+                                          X: =30
+                                          Y: =15
+                                    - Subtitle1_2:
+                                        Control: Label@2.5.1
+                                        Properties:
+                                          BorderColor: =RGBA(0, 0, 0, 1)
+                                          Font: ="Aptos"
+                                          FontWeight: =If(ThisItem.IsSelected, FontWeight.Semibold, FontWeight.Normal)
+                                          Height: =Self.Size * 1.8
+                                          OnSelect: =Select(Parent)
+                                          PaddingBottom: =0
+                                          PaddingLeft: =0
+                                          PaddingRight: =0
+                                          PaddingTop: =0
+                                          Size: =12
+                                          Text: |-
+                                            =Text(
+                                                ThisItem.'Event time',
+                                                "[$-de-DE]dd.mm.yyyy HH:mm"
+                                            )
+                                          VerticalAlign: =VerticalAlign.Top
+                                          Width: =219
+                                          X: =30
+                                          Y: =58
+                                    - Separator2_5:
+                                        Control: Rectangle@2.3.0
+                                        Properties:
+                                          BorderColor: =RGBA(0, 18, 107, 1)
+                                          Fill: =RGBA(255, 255, 255, 1)
+                                          Height: =8
+                                          OnSelect: =Select(Parent)
+                                          Width: =Parent.TemplateWidth
+                                          Y: =Parent.TemplateHeight - Self.Height
+                                    - Rectangle1_5:
+                                        Control: Rectangle@2.3.0
+                                        Properties:
+                                          BorderColor: =RGBA(0, 18, 107, 1)
+                                          Fill: =RGBA(0, 18, 107, 1)
+                                          Height: =Parent.TemplateHeight - Separator2_5.Height
+                                          OnSelect: =Select(Parent)
+                                          Visible: =ThisItem.IsSelected
+                                          Width: =4
+                                    - TextCanvas9:
+                                        Control: Text@0.0.51
+                                        Properties:
+                                          Font: ="Aptos"
+                                          Height: =49
+                                          Text: =
+                                          Width: =335
+                                          X: =185
+                                          Y: =15
+                                    - TextInputCanvas1:
+                                        Control: TextInput@0.0.54
+                                        Properties:
+                                          Font: ="Aptos"
+                                          FontSize: =16
+                                          FontWeight: =FontWeight.Semibold
+                                          Value: =varResult.waitinglistposition
+                                          Width: =86
+                                          X: =564
+                                          Y: =26
+                                    - ButtonCanvas5:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          Font: ="Aptos"
+                                          FontSize: =10
+                                          OnSelect: =Set(varResult, GetWaitinglistPosition.Run(User().Email, ThisItem.ID))
+                                          Text: ="Position on Waitinglist"
+                                          X: =468
+                                          Y: =26
+                                    - ButtonCanvas3_4:
+                                        Control: Button@0.0.45
+                                        Properties:
+                                          Font: ="Aptos"
+                                          OnSelect: |-
+                                            =//Select(Parent)
+                                            Set(varItem, ThisItem.ID);  // oder Gallery3.Selected.ID
+                                            Set(varModalDialog, true);
+                                            Set(DatumHeute, Text(Today(), "yyyy-mm-dd"));
+                                          Text: ="Deregister"
+                                          X: =338
+                                          Y: =26
+      - ContainerModalDialog:
+          Control: GroupContainer@1.3.0
+          Variant: ManualLayout
+          Properties:
+            BorderThickness: =1
+            Fill: =RGBA(255, 255, 255, 1)
+            Height: =178
+            RadiusBottomLeft: =8
+            RadiusBottomRight: =8
+            RadiusTopLeft: =8
+            RadiusTopRight: =8
+            Visible: =varModalDialog
+            Width: =476
+            X: =445
+            Y: =325
+          Children:
+            - TextCanvas2:
+                Control: Text@0.0.51
+                Properties:
+                  Align: ='TextCanvas.Align'.Center
+                  Height: =33
+                  Size: =20
+                  Text: ="Do you really want to deregister?"
+                  Weight: ='TextCanvas.Weight'.Bold
+                  Width: =338
+                  X: =65
+                  Y: =45
+            - ButtonCanvas1:
+                Control: Button@0.0.45
+                Properties:
+                  OnSelect: |+
+                    =//DeregisterFlow.Run(User().Email,varItem,LookUp('Event visitors',Email= User().Email).ID);
+                    If( !IsBlank(LookUp(Abmeldungen, Email = User().Email)), Notify("You have already requested the cancellation of the event. Please note that this process may take some time.", NotificationType.Error, 6000); Set(varModalDialog, false),
+                    Patch(
+                                    Abmeldungen,
+                                    Defaults(Abmeldungen),
+                                    {
+                                        Title: varItem,
+                                        Email: User().Email,
+                                        TeilnehmerID: LookUp('Event visitors',Email= User().Email).ID
+                                    }
+                                );
+                    Set(varModalDialog, false)
+                    ;
+                    Navigate(ScreeSuccessDeregistration, ScreenTransition.Fade)
+                    )
+
+
+                  Text: ="Yes"
+                  X: =351
+                  Y: =120
+            - ButtonCanvas4:
+                Control: Button@0.0.45
+                Properties:
+                  OnSelect: =Set(varModalDialog,false)
+                  Text: ="No"
+                  X: =28
+                  Y: =120
