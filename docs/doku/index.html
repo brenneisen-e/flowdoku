@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEX Event Experience Platform - Dokumentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .doc-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+    .doc-card { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 1.5rem; transition: box-shadow 0.2s; }
+    .doc-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .doc-card h3 { margin: 0 0 0.5rem 0; color: var(--primary); }
+    .doc-card p { margin: 0 0 1rem 0; color: var(--gray-600); font-size: 0.9rem; }
+    .doc-card a { display: inline-block; color: var(--primary); font-weight: 500; }
+    .flow-list { list-style: none; padding: 0; margin: 1.5rem 0; }
+    .flow-list li { padding: 0.75rem 1rem; border-bottom: 1px solid var(--gray-200); }
+    .flow-list li:last-child { border-bottom: none; }
+    .flow-list a { color: var(--gray-800); text-decoration: none; }
+    .flow-list a:hover { color: var(--primary); }
+    .category { font-size: 0.75rem; background: var(--primary); color: white; padding: 0.2rem 0.5rem; border-radius: 3px; margin-left: 0.5rem; }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Übersicht</a>
+      <a href="../flows/index.html">Flows</a>
+      <a href="../dokumentation.html">PDF-Export</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <h1>DEX Event Experience Platform</h1>
+    <p class="subtitle">Modulare Dokumentation</p>
+
+    <div class="doc-nav">
+      <div class="doc-card">
+        <h3>1. Management Summary</h3>
+        <p>Überblick über die Plattform, erreichte Ergebnisse und Kernfunktionen.</p>
+        <a href="01-management-summary.html">Lesen →</a>
+      </div>
+      <div class="doc-card">
+        <h3>2. Anwendungsbeschreibung</h3>
+        <p>Zweck, Zielgruppen, Funktionen und technische Architektur.</p>
+        <a href="02-anwendung.html">Lesen →</a>
+      </div>
+      <div class="doc-card">
+        <h3>3. Flow-Übersicht</h3>
+        <p>Kategorisierte Übersicht aller 23 Power Automate Flows.</p>
+        <a href="03-flow-uebersicht.html">Lesen →</a>
+      </div>
+      <div class="doc-card">
+        <h3>4. Flow-Detaildokumentation</h3>
+        <p>Ausführliche Dokumentation jedes einzelnen Flows mit Action-Clustern.</p>
+        <a href="#flow-details">Siehe unten →</a>
+      </div>
+    </div>
+
+    <hr style="margin: 2rem 0;">
+
+    <h2 id="flow-details">Flow-Detaildokumentation</h2>
+    <p>Wählen Sie einen Flow für die detaillierte Dokumentation mit geclusterten Actions:</p>
+
+    <h3>Event-Verwaltung</h3>
+    <ul class="flow-list">
+      <li><a href="flows/01-neweventadded.html">NewEventAdded_SiteProvis</a> <span class="category">Event-Erstellung</span></li>
+      <li><a href="flows/02-applytemplateb2run.html">ApplyTemplateB2Run</a> <span class="category">Template</span></li>
+      <li><a href="flows/03-applytemplateotherevent.html">ApplyTemplateOtherEvent</a> <span class="category">Template</span></li>
+      <li><a href="flows/04-eventpermission.html">EventPermission</a> <span class="category">Berechtigungen</span></li>
+    </ul>
+
+    <h3>Registrierung</h3>
+    <ul class="flow-list">
+      <li><a href="flows/05-registerparticipant.html">RegisterParticipant</a> <span class="category">Anmeldung</span></li>
+      <li><a href="flows/06-deregisterparticipant.html">DeregisterParticipant</a> <span class="category">Abmeldung</span></li>
+      <li><a href="flows/07-checkregistrationstatus.html">CheckRegistrationStatusParticipant</a> <span class="category">Status</span></li>
+      <li><a href="flows/08-getwaitinglistposition.html">GetWaitinglistPosition</a> <span class="category">Warteliste</span></li>
+      <li><a href="flows/09-getparticipantevents.html">GetParticipantEvents</a> <span class="category">Abfrage</span></li>
+    </ul>
+
+    <h3>Check-In</h3>
+    <ul class="flow-list">
+      <li><a href="flows/10-checkin.html">Check-In</a> <span class="category">Manuell</span></li>
+      <li><a href="flows/11-checkinfromqrcode.html">CheckInFromQRCode</a> <span class="category">QR-Code</span></li>
+      <li><a href="flows/12-eventqrcodegenerator.html">EventQRCodeGenerator</a> <span class="category">Generator</span></li>
+    </ul>
+
+    <h3>E-Mail & Kalender</h3>
+    <ul class="flow-list">
+      <li><a href="flows/13-sendmailsharedmailbox.html">SendMailSharedMailbox</a> <span class="category">E-Mail</span></li>
+      <li><a href="flows/14-sendmailparticipantlist.html">SendMailParticipantList</a> <span class="category">Massen-Mail</span></li>
+      <li><a href="flows/15-registeroutlookevent.html">RegisterOutlookEventParticipant</a> <span class="category">Kalender</span></li>
+      <li><a href="flows/16-createoutlookevent.html">CreateOutlookEventSharedMailbox</a> <span class="category">Kalender</span></li>
+      <li><a href="flows/17-helperflowtmail.html">HelperFlowMailToRegistered</a> <span class="category">Hilfsflow</span></li>
+    </ul>
+
+    <h3>Utility & Administration</h3>
+    <ul class="flow-list">
+      <li><a href="flows/18-flowdokuexport.html">Flow-Dokumentation-Export</a> <span class="category">Export</span></li>
+      <li><a href="flows/19-sharepointbatchupdate.html">SharePoint_Batch_Update_V2</a> <span class="category">Batch</span></li>
+      <li><a href="flows/20-setpermissionsubweb.html">SetPermissionForSubWeb</a> <span class="category">Berechtigungen</span></li>
+      <li><a href="flows/21-updateallevents.html">UpdateAllEventsWithNewFields</a> <span class="category">Migration</span></li>
+      <li><a href="flows/22-correctoutlookid.html">CorrectOutlookID</a> <span class="category">Korrektur</span></li>
+      <li><a href="flows/23-splistenummerierung.html">SP Liste Nummerierung korrigieren</a> <span class="category">Korrektur</span></li>
+    </ul>
+
+    <div class="info-box" style="margin-top: 2rem;">
+      <h4>PDF-Export</h4>
+      <p>Für eine vollständige PDF-Version der gesamten Dokumentation nutzen Sie die <a href="../dokumentation.html">PDF-Export-Seite</a>.</p>
+    </div>
+  </main>
+</body>
+</html>

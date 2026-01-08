@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CheckRegistrationStatusParticipant - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+    .status-box { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; margin: 0.25rem; font-weight: 500; }
+    .status-registered { background: #d1fae5; color: #065f46; }
+    .status-waitlist { background: #fef3c7; color: #92400e; }
+    .status-not { background: var(--gray-100); color: var(--gray-600); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / CheckRegistrationStatusParticipant</p>
+
+    <h1>CheckRegistrationStatusParticipant</h1>
+    <p class="subtitle">Statusabfrage für Teilnehmer</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>d9455ec1-88c3-4ebe-bcd7-63b50146c3cc</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Power App V2</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Registrierung</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Prüft den Registrierungsstatus eines Users für ein bestimmtes Event. Wird von der Power App aufgerufen, um den korrekten Button (Anmelden/Abmelden/Warteliste) anzuzeigen.</p>
+
+    <h3>Mögliche Rückgabewerte</h3>
+    <p>
+      <span class="status-box status-registered">registered</span>
+      <span class="status-box status-waitlist">waitlist</span>
+      <span class="status-box status-not">not_registered</span>
+    </p>
+
+    <h3>Verwendung in der Power App</h3>
+    <ul>
+      <li><strong>registered:</strong> Zeigt "Abmelden"-Button</li>
+      <li><strong>waitlist:</strong> Zeigt "Von Warteliste entfernen"-Button + Position</li>
+      <li><strong>not_registered:</strong> Zeigt "Anmelden"-Button</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Teilnehmerdaten abfragen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Sucht in der Teilnehmerliste nach der E-Mail des Users</li>
+          <li>Filtert nach dem spezifischen Event</li>
+          <li>Initialisiert Variable für das Ergebnis</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_items_-_Event_visitors</td><td>SharePoint GetItems</td><td>Sucht Einträge mit User-Email</td></tr>
+        <tr><td>Initialize_variable (isRegistered)</td><td>InitializeVariable</td><td>Variable für Ergebnis-Status</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Status ermitteln</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Prüft ob ein Eintrag gefunden wurde</li>
+          <li>Liest den Status-Wert aus dem gefundenen Eintrag</li>
+          <li>Setzt entsprechend "registered", "waitlist" oder "not_registered"</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each</td><td>Foreach</td><td>Prüft gefundene Einträge</td></tr>
+        <tr><td>Condition</td><td>If</td><td>Bestimmt Status basierend auf Eintrag</td></tr>
+        <tr><td>Set_variable</td><td>SetVariable</td><td>Setzt Ergebnis-Status</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Ergebnis zurückgeben</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Gibt den ermittelten Status an die Power App zurück</li>
+          <li>Die App kann dann die UI entsprechend anpassen</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Status zurück</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="06-deregisterparticipant.html">← DeregisterParticipant</a>
+      <a href="08-getwaitinglistposition.html">GetWaitinglistPosition →</a>
+    </div>
+  </main>
+</body>
+</html>

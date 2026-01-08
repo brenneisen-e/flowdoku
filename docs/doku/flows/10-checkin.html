@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check-In - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / Check-In</p>
+
+    <h1>Check-In</h1>
+    <p class="subtitle">Manueller Check-In am Veranstaltungstag</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>checkin-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>SharePoint Item Created</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Check-In</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Verarbeitet manuelle Check-Ins am Veranstaltungstag. Wird verwendet, wenn ein Teilnehmer keinen QR-Code hat oder dieser nicht funktioniert.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Check-In registrieren:</strong> Setzt das CheckIn-Feld auf true</li>
+      <li><strong>Zeitstempel speichern:</strong> Erfasst den genauen Check-In-Zeitpunkt</li>
+      <li><strong>Validierung:</strong> Prüft ob Teilnehmer registriert ist</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Teilnehmer identifizieren</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Lädt Teilnehmerdaten aus der Check-In-Queue</li>
+          <li>Validiert dass Teilnehmer für das Event registriert ist</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_item</td><td>SharePoint GetItem</td><td>Lädt Check-In-Request</td></tr>
+        <tr><td>Condition (Valid)</td><td>If</td><td>Prüft Registrierungsstatus</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Check-In durchführen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Aktualisiert das CheckIn-Feld in der Teilnehmerliste</li>
+          <li>Speichert den Check-In-Zeitstempel</li>
+          <li>Ermöglicht Tracking der Anwesenheit</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Update_item</td><td>SharePoint PatchItem</td><td>Setzt CheckIn=true, speichert Timestamp</td></tr>
+      </table>
+    </div>
+
+    <h2>Zusammenspiel mit CheckInFromQRCode</h2>
+    <p>Beide Flows setzen das gleiche CheckIn-Feld. Der Unterschied:</p>
+    <table>
+      <tr><th>Flow</th><th>Auslöser</th><th>Verwendung</th></tr>
+      <tr><td>Check-In</td><td>Manuell/Queue</td><td>Fallback ohne QR-Code</td></tr>
+      <tr><td>CheckInFromQRCode</td><td>Power App</td><td>Standard per QR-Scan</td></tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="09-getparticipantevents.html">← GetParticipantEvents</a>
+      <a href="11-checkinfromqrcode.html">CheckInFromQRCode →</a>
+    </div>
+  </main>
+</body>
+</html>

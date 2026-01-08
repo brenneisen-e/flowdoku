@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventPermission - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / EventPermission</p>
+
+    <h1>EventPermission</h1>
+    <p class="subtitle">Berechtigungsverwaltung für Events mit Zielgruppe</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>8c702f7e-b925-6769-ba71-102a65c4d0be</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Event-Verwaltung</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Verwaltet die Berechtigungen für Events mit eingeschränkter Zielgruppe. Wenn ein Event nur für eine bestimmte Audience zugänglich sein soll, konfiguriert dieser Flow die entsprechenden SharePoint-Zugriffsrechte.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Berechtigungen entfernen:</strong> Entfernt bestehende Standardfreigaben</li>
+      <li><strong>Audience berechtigen:</strong> Gewährt der definierten Zielgruppe Lesezugriff</li>
+      <li><strong>Organizer berechtigen:</strong> Gewährt dem Organizer Vollzugriff</li>
+    </ul>
+
+    <h3>Anwendungsfall</h3>
+    <p>Ein Event soll nur für eine bestimmte Abteilung (z.B. Consulting) sichtbar sein. Der Organizer gibt eine E-Mail-Gruppe als Audience an, und dieser Flow beschränkt den Zugriff entsprechend.</p>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Bestehende Berechtigungen entfernen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Entfernt alle bestehenden Freigaben für das Event</li>
+          <li>Stellt sicher, dass nur autorisierte Personen Zugriff haben</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Stop_sharing_an_item_or_a_file</td><td>SharePoint UnshareItem</td><td>Entfernt bestehende Freigaben</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Neue Berechtigungen setzen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Gewährt der Audience-Gruppe Lesezugriff auf das Event</li>
+          <li>Gewährt dem Organizer Vollzugriff für Verwaltung</li>
+          <li>Verwendet SharePoint-Freigabefunktionen</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Grant_access_to_an_item_or_a_folder</td><td>SharePoint GrantAccess</td><td>Lesezugriff für Audience</td></tr>
+        <tr><td>Grant_access_to_an_item_or_a_folder_2</td><td>SharePoint GrantAccess</td><td>Vollzugriff für Organizer</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Abschluss</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Bestätigt erfolgreiche Ausführung an aufrufenden Flow</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
+      </table>
+    </div>
+
+    <h2>Abhängigkeiten</h2>
+    <table>
+      <tr><th>Wird aufgerufen von</th></tr>
+      <tr><td>NewEventAdded_SiteProvis (wenn Audience definiert)</td></tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="03-applytemplateotherevent.html">← ApplyTemplateOtherEvent</a>
+      <a href="05-registerparticipant.html">RegisterParticipant →</a>
+    </div>
+  </main>
+</body>
+</html>

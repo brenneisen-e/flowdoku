@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NewEventAdded_SiteProvis - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .flow-meta table { margin: 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; font-size: 1rem; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .cluster-desc li { margin: 0.3rem 0; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .nav-flow a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../../index.html">Übersicht</a>
+      <a href="../index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / <a href="../03-flow-uebersicht.html">Flow-Übersicht</a> / NewEventAdded_SiteProvis</p>
+
+    <h1>NewEventAdded_SiteProvis</h1>
+    <p class="subtitle">Hauptflow für die automatische Event-Erstellung</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>9722b1ef-8f72-83a4-55f8-e69cb548ea04</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Stopped (manuelle Aktivierung bei Bedarf)</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 1 Minute)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Event-Verwaltung</td></tr>
+        <tr><td><strong>Erstellt</strong></td><td>30.12.2024</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Dies ist der <strong>zentrale Flow für die Event-Erstellung</strong> in der DEX-Plattform. Er wird automatisch ausgelöst, wenn ein neues Event in der SharePoint Events-Liste angelegt wird und orchestriert den gesamten Erstellungsprozess.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Infrastruktur erstellen:</strong> Legt eine dedizierte SharePoint-Subsite für das Event an mit standardisierten Einstellungen</li>
+      <li><strong>Teilnehmerliste konfigurieren:</strong> Ruft den passenden Template-Flow auf (B2Run oder Other Event), der alle erforderlichen Listenfelder erstellt</li>
+      <li><strong>Outlook-Integration:</strong> Erstellt einen Kalender-Termin in der Shared Mailbox, der später für Teilnehmer-Einladungen verwendet wird</li>
+      <li><strong>Benachrichtigung:</strong> Informiert den Organizer per E-Mail über die erfolgreiche Erstellung mit Link zur Teilnehmerliste</li>
+      <li><strong>Berechtigungen setzen:</strong> Bei Events mit eingeschränkter Zielgruppe werden entsprechende Zugriffsrechte konfiguriert</li>
+    </ul>
+
+    <h3>Unterstützte Event-Typen</h3>
+    <ul>
+      <li><strong>B2Run Event:</strong> Verwendet ApplyTemplateB2Run mit speziellen Feldern für Laufstrecke, Team etc.</li>
+      <li><strong>JP Morgan Run:</strong> Verwendet ApplyTemplateOtherEvent mit Standardfeldern</li>
+      <li><strong>Other Deloitte Event:</strong> Verwendet ApplyTemplateOtherEvent mit Standardfeldern</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+    <p>Der Flow besteht aus <strong>25 Actions</strong>, die in 6 logische Cluster unterteilt sind:</p>
+
+    <!-- Cluster 1: Initialisierung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Initialisierung & Status-Update</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Dieser Block bereitet den Flow vor und signalisiert den Start der Verarbeitung:</p>
+        <ul>
+          <li>Das Event wird auf "Under Construction" gesetzt, damit Anwender wissen, dass die Erstellung läuft</li>
+          <li>Alle benötigten Variablen werden initialisiert (Titel, URL, Content Type)</li>
+          <li>Diese Variablen werden im weiteren Verlauf des Flows befüllt und verwendet</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Update_item-_Set_Status_to_Under_Construction</td><td>SharePoint PatchItem</td><td>Setzt Event-Status auf "Under Construction"</td></tr>
+        <tr><td>Initialize_variable-_varSiteTitle</td><td>InitializeVariable</td><td>Speichert Event-Titel für Subsite</td></tr>
+        <tr><td>Initialize_variable-_varSiteURL</td><td>InitializeVariable</td><td>Initialisiert URL-Variable</td></tr>
+        <tr><td>Initialize_variable-_varSubject-Name</td><td>InitializeVariable</td><td>Variable für bereinigten Site-Namen</td></tr>
+        <tr><td>Initialize_variable-_varFinalURL</td><td>InitializeVariable</td><td>Speichert finale Subsite-URL</td></tr>
+        <tr><td>Initialize_variable-_varContentTypeName</td><td>InitializeVariable</td><td>Speichert Event-Typ für Switch</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 2: URL-Bereinigung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. URL-Bereinigung & Validierung</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>SharePoint-URLs dürfen bestimmte Sonderzeichen nicht enthalten. Dieser Block bereinigt den Event-Titel:</p>
+        <ul>
+          <li>Ein Array mit ungültigen Zeichen wird erstellt: Leerzeichen, :, #, %, ", *, ?, /, \, | etc.</li>
+          <li>Der Event-Titel wird iterativ von allen ungültigen Zeichen bereinigt</li>
+          <li>Das Ergebnis ist ein URL-sicherer Site-Name ohne Sonderzeichen</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Compose-_Create_FilterCharArray</td><td>Compose</td><td>Erstellt Array mit ungültigen URL-Zeichen</td></tr>
+        <tr><td>Apply_to_each (Filter)</td><td>Foreach</td><td>Entfernt jedes ungültige Zeichen aus dem Titel</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 3: Subsite-Erstellung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. SharePoint-Subsite erstellen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Die eigentliche Erstellung der Event-Infrastruktur in SharePoint:</p>
+        <ul>
+          <li>Ein HTTP POST-Request an die SharePoint REST API erstellt die neue Subsite</li>
+          <li>Template STS#3 (Team Site ohne Microsoft 365 Gruppe) wird verwendet</li>
+          <li>Die API-Antwort wird geparst um die ServerRelativeUrl zu extrahieren</li>
+          <li>Die finale URL wird zusammengesetzt und gespeichert</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_New_Sub_Site</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/webinfos/add</td></tr>
+        <tr><td>Parse_JSON-_Parse_Response</td><td>ParseJson</td><td>Extrahiert ServerRelativeUrl</td></tr>
+        <tr><td>Set_variable_-_varSiteURL</td><td>SetVariable</td><td>Speichert relative URL</td></tr>
+        <tr><td>Compose-_FinalURL_+_SubjectName</td><td>Compose</td><td>Kombiniert zu finaler URL</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 4: Template-Anwendung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>4. Template-Flow aufrufen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Je nach Event-Typ wird der passende Template-Flow aufgerufen:</p>
+        <ul>
+          <li>Der Content Type des Events bestimmt, welcher Template-Flow verwendet wird</li>
+          <li>B2Run Events erhalten spezielle Felder für Laufstrecke, Team-Zugehörigkeit etc.</li>
+          <li>JP Morgan und andere Events erhalten die Standard-Teilnehmerliste</li>
+          <li>Der Template-Flow erstellt die Teilnehmerliste mit allen erforderlichen Feldern</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Set_variable-_varContentTypeName</td><td>SetVariable</td><td>Liest Content Type des Events</td></tr>
+        <tr><td>Switch</td><td>Switch</td><td>Verzweigt nach Event-Typ</td></tr>
+        <tr><td>Run_a_Child_Flow (Template)</td><td>Workflow</td><td>Ruft ApplyTemplateB2Run oder ApplyTemplateOtherEvent auf</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 5: Outlook-Integration -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>5. Outlook-Kalendereintrag erstellen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Für die spätere Teilnehmer-Integration wird ein Basis-Kalendereintrag erstellt:</p>
+        <ul>
+          <li>Start- und Endzeit werden aus den Event-Daten in ISO-Format konvertiert</li>
+          <li>Der Child Flow CreateOutlookEventSharedMailbox erstellt den Termin</li>
+          <li>Die zurückgegebene Outlook-Event-ID wird gespeichert für spätere Teilnehmer-Einladungen</li>
+          <li>Der Termin dient als "Master-Event", zu dem Teilnehmer hinzugefügt werden</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Compose_2, Compose_3</td><td>Compose</td><td>Formatiert Start/End-Zeit in ISO</td></tr>
+        <tr><td>Run_a_Child_Flow_1 (Outlook)</td><td>Workflow</td><td>Ruft CreateOutlookEventSharedMailbox auf</td></tr>
+        <tr><td>Initialize_variable (varOutlookEventID)</td><td>InitializeVariable</td><td>Speichert Outlook-Event-ID</td></tr>
+        <tr><td>Update_item_-_Events</td><td>SharePoint PatchItem</td><td>Speichert URL und Outlook-ID im Event</td></tr>
+        <tr><td>Append_to_string_variable</td><td>AppendToStringVariable</td><td>Fügt /Lists/Teilnehmerliste hinzu</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 6: Benachrichtigung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>6. Organizer benachrichtigen & Berechtigungen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Abschluss des Flows mit Benachrichtigung und optionaler Berechtigungskonfiguration:</p>
+        <ul>
+          <li>Event- und Deloitte-Logo werden geladen und als Data-URI für E-Mail vorbereitet</li>
+          <li>Jeder Organizer erhält eine Bestätigungsmail mit Link zur Teilnehmerliste</li>
+          <li>Falls eine Audience angegeben wurde, werden entsprechende Berechtigungen gesetzt</li>
+          <li>Der EventPermission-Flow beschränkt dann den Zugriff auf die definierte Zielgruppe</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_file_content-_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Event-Logo</td></tr>
+        <tr><td>Get_file_content-_Deloitte_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Deloitte-Logo</td></tr>
+        <tr><td>Compose, Compose_1</td><td>Compose</td><td>Konvertiert zu Data-URIs</td></tr>
+        <tr><td>Initialize_variable_1, Initialize_variable_2</td><td>InitializeVariable</td><td>Erstellt HTML img-Tags</td></tr>
+        <tr><td>For_each (Organizer)</td><td>Foreach</td><td>Iteriert über alle Organizer</td></tr>
+        <tr><td>Send_an_email_from_a_shared_mailbox_(V2)</td><td>Office 365</td><td>Sendet Bestätigungsmail</td></tr>
+        <tr><td>Initialize_variable_3 (EmailString)</td><td>InitializeVariable</td><td>Variable für Audience</td></tr>
+        <tr><td>Condition (Audience Mail)</td><td>If</td><td>Prüft ob Audience definiert</td></tr>
+        <tr><td>Run_a_Child_Flow_3 (Permission)</td><td>Workflow</td><td>Ruft EventPermission auf</td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Abhängigkeiten</h2>
+    <table>
+      <tr><th>Ruft auf</th><th>Wird aufgerufen von</th></tr>
+      <tr>
+        <td>
+          <ul>
+            <li>ApplyTemplateB2Run</li>
+            <li>ApplyTemplateOtherEvent</li>
+            <li>CreateOutlookEventSharedMailbox</li>
+            <li>EventPermission</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Automatisch durch SharePoint-Trigger</li>
+          </ul>
+        </td>
+      </tr>
+    </table>
+
+    <div class="nav-flow">
+      <span></span>
+      <a href="02-applytemplateb2run.html">Nächster Flow: ApplyTemplateB2Run →</a>
+    </div>
+  </main>
+</body>
+</html>

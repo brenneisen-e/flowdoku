@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RegisterOutlookEventParticipant - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / RegisterOutlookEventParticipant</p>
+
+    <h1>RegisterOutlookEventParticipant</h1>
+    <p class="subtitle">Teilnehmer zu Outlook-Termin hinzufügen</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>register-outlook-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button (Child Flow)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>E-Mail & Kalender</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Fügt einen Teilnehmer zu einem bestehenden Outlook-Kalendereintrag hinzu. Nutzt die Microsoft Graph API um die Attendee-Liste des Events zu aktualisieren.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Event laden:</strong> Ruft das bestehende Outlook-Event ab</li>
+      <li><strong>Teilnehmer hinzufügen:</strong> Fügt E-Mail zur Attendee-Liste hinzu</li>
+      <li><strong>Event aktualisieren:</strong> Speichert die aktualisierte Teilnehmerliste</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter & Event laden</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt Outlook-Event-ID und Teilnehmer-E-Mail</li>
+          <li>Ruft aktuelles Event via Graph API ab</li>
+          <li>Extrahiert bestehende Attendee-Liste</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Event-ID, E-Mail speichern</td></tr>
+        <tr><td>HTTP (Get Event)</td><td>Http</td><td>GET /events/{id} via Graph API</td></tr>
+        <tr><td>Parse_JSON</td><td>ParseJson</td><td>Extrahiert attendees Array</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Attendee hinzufügen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Erstellt neuen Attendee-Eintrag mit E-Mail</li>
+          <li>Fügt zur bestehenden Liste hinzu</li>
+          <li>Aktualisiert Event via PATCH Request</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Compose (Attendee)</td><td>Compose</td><td>Erstellt Attendee-Objekt</td></tr>
+        <tr><td>Append_to_array</td><td>AppendToArrayVariable</td><td>Fügt zu Liste hinzu</td></tr>
+        <tr><td>HTTP (Update Event)</td><td>Http</td><td>PATCH /events/{id}</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Abschluss</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Bestätigt erfolgreiche Aktualisierung</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
+      </table>
+    </div>
+
+    <h2>Wird aufgerufen von</h2>
+    <ul>
+      <li>RegisterParticipant (bei erfolgreicher Registrierung)</li>
+      <li>DeregisterParticipant (für Nachrücker)</li>
+    </ul>
+
+    <div class="nav-flow">
+      <a href="14-sendmailparticipantlist.html">← SendMailParticipantList</a>
+      <a href="16-createoutlookevent.html">CreateOutlookEvent →</a>
+    </div>
+  </main>
+</body>
+</html>

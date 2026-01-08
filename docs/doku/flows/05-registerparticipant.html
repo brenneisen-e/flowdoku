@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RegisterParticipant - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .flow-meta table { margin: 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; font-size: 1rem; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .cluster-desc li { margin: 0.3rem 0; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .nav-flow a { color: var(--primary); }
+    .flowchart { background: var(--gray-50); border: 1px solid var(--gray-200); padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../../index.html">Übersicht</a>
+      <a href="../index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / <a href="../03-flow-uebersicht.html">Flow-Übersicht</a> / RegisterParticipant</p>
+
+    <h1>RegisterParticipant</h1>
+    <p class="subtitle">Kernflow für die Teilnehmer-Anmeldung</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>12db96ef-b7e7-6cf8-c1c4-24d7f9fb96c5</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started (produktiv)</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Registrierung</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Der <strong>RegisterParticipant</strong>-Flow ist das Herzstück des Anmeldeprozesses. Er verarbeitet alle neuen Teilnehmeranmeldungen, die über die Power App eingehen, und entscheidet basierend auf der verfügbaren Kapazität, ob ein Teilnehmer registriert oder auf die Warteliste gesetzt wird.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Queue verarbeiten:</strong> Neue Anmeldungen werden zunächst in einer Queue-Liste erfasst und dann vom Flow verarbeitet</li>
+      <li><strong>Kapazität prüfen:</strong> Vergleicht die aktuelle Teilnehmerzahl mit der maximalen Kapazität des Events</li>
+      <li><strong>Registrierung durchführen:</strong> Bei freien Plätzen wird der Teilnehmer mit Status "Registered" eingetragen</li>
+      <li><strong>Warteliste verwalten:</strong> Bei ausgebuchten Events wird der Teilnehmer auf die Warteliste gesetzt</li>
+      <li><strong>Kommunikation auslösen:</strong> Sendet Bestätigungsmail und erstellt Outlook-Kalendereintrag (nur bei Registrierung)</li>
+    </ul>
+
+    <div class="flowchart">
+      <strong>Entscheidungslogik:</strong><br><br>
+      Anmeldung eingetroffen → Kapazität prüfen → <br>
+      Ja: Platz frei → Status "Registered" → E-Mail + Kalender<br>
+      Nein: Event voll → Status "Waitlist" → Wartelisten-Info
+    </div>
+
+    <h3>Auslöser und Timing</h3>
+    <ul>
+      <li>Der Flow wird durch einen SharePoint-Trigger alle <strong>5 Minuten</strong> ausgelöst</li>
+      <li>Er prüft die Anmeldungs-Queue auf neue Einträge</li>
+      <li>Mehrere Anmeldungen werden sequentiell verarbeitet (FIFO-Prinzip)</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+    <p>Der Flow besteht aus <strong>14 Actions</strong>, die in 4 logische Cluster unterteilt sind:</p>
+
+    <!-- Cluster 1: Initialisierung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Initialisierung & Datenabfrage</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Vorbereitung der Verarbeitung und Laden aller benötigten Daten:</p>
+        <ul>
+          <li>Arbeitsvariablen werden initialisiert für Item-ID, User-Listen-ID und Status</li>
+          <li>Die Event-Details werden aus SharePoint geladen (Kapazität, aktuelle Teilnehmerzahl)</li>
+          <li>Die aktuelle Anzahl registrierter Teilnehmer wird gezählt</li>
+          <li>Diese Daten bilden die Grundlage für die Kapazitätsentscheidung</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_Mail_Loeschen</td><td>InitializeVariable</td><td>Flag für E-Mail-Verarbeitung</td></tr>
+        <tr><td>Initialize_varItemID</td><td>InitializeVariable</td><td>Speichert ID des Eintrags</td></tr>
+        <tr><td>Initialize_variable-_varUserListId</td><td>InitializeVariable</td><td>Speichert User-Listen-ID</td></tr>
+        <tr><td>Initialize_variable-varRegisteredColumn</td><td>InitializeVariable</td><td>Speichert Registrierungsstatus</td></tr>
+        <tr><td>Get_item</td><td>SharePoint GetItem</td><td>Lädt Event-Details (Kapazität etc.)</td></tr>
+        <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Zählt aktuelle Registrierungen</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 2: Kapazitätsprüfung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Kapazitätsprüfung & Entscheidung</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Die zentrale Geschäftslogik des Flows - Entscheidung über Registrierung oder Warteliste:</p>
+        <ul>
+          <li>Die Anzahl registrierter Teilnehmer wird mit der maximalen Kapazität verglichen</li>
+          <li>Ist Kapazität verfügbar (Registrierte &lt; Maximum), wird der Teilnehmer registriert</li>
+          <li>Ist das Event ausgebucht, wird der Teilnehmer auf die Warteliste gesetzt</li>
+          <li>Der Status wird entsprechend als "Registered" oder "Waitlist" gespeichert</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Condition (Kapazität)</td><td>If</td><td>Prüft: Registrierte &lt; Kapazität?</td></tr>
+        <tr><td>Update_item (Registered)</td><td>SharePoint PatchItem</td><td>Erstellt Eintrag mit Status "Registered"</td></tr>
+        <tr><td>Update_item (Waitlist)</td><td>SharePoint PatchItem</td><td>Erstellt Eintrag mit Status "Waitlist"</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 3: Kommunikation -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. E-Mail & Kalender-Integration</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Benachrichtigung des Teilnehmers und Outlook-Integration (nur bei erfolgreicher Registrierung):</p>
+        <ul>
+          <li>Bei Registrierung wird der Child Flow für Outlook-Kalender aufgerufen</li>
+          <li>Der Teilnehmer wird zum bestehenden Event-Termin hinzugefügt</li>
+          <li>Eine Bestätigungsmail wird über die Shared Mailbox versendet</li>
+          <li>Bei Warteliste erhält der Teilnehmer eine andere E-Mail mit seiner Position</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Run_a_Child_Flow (Outlook)</td><td>Workflow</td><td>Ruft RegisterOutlookEventParticipant auf</td></tr>
+        <tr><td>Run_a_Child_Flow (Mail)</td><td>Workflow</td><td>Ruft SendMailSharedMailbox auf</td></tr>
+      </table>
+    </div>
+
+    <!-- Cluster 4: Batch-Verarbeitung -->
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>4. Batch-Verarbeitung & Fehlerbehandlung</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Strukturierung für mehrere gleichzeitige Anmeldungen und robuste Fehlerbehandlung:</p>
+        <ul>
+          <li>Eine Apply_to_each-Schleife verarbeitet alle neuen Anmeldungen in der Queue</li>
+          <li>Scope-Blöcke gruppieren zusammengehörige Actions für bessere Fehlerbehandlung</li>
+          <li>Bei Fehlern in einem Durchlauf werden andere Anmeldungen nicht beeinträchtigt</li>
+          <li>Jede Anmeldung wird unabhängig voneinander verarbeitet</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über alle neuen Anmeldungen</td></tr>
+        <tr><td>Scope</td><td>Scope</td><td>Gruppiert Actions für Fehlerbehandlung</td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Abhängigkeiten</h2>
+    <table>
+      <tr><th>Ruft auf</th><th>Wird aufgerufen von</th></tr>
+      <tr>
+        <td>
+          <ul>
+            <li>RegisterOutlookEventParticipant</li>
+            <li>SendMailSharedMailbox</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Automatisch durch SharePoint-Trigger (Queue-Liste)</li>
+            <li>Indirekt durch Power App (erstellt Queue-Eintrag)</li>
+          </ul>
+        </td>
+      </tr>
+    </table>
+
+    <h2>Zusammenspiel mit anderen Flows</h2>
+    <table>
+      <tr><th>Szenario</th><th>Beteiligte Flows</th></tr>
+      <tr>
+        <td>Normale Anmeldung</td>
+        <td>RegisterParticipant → RegisterOutlookEventParticipant → SendMailSharedMailbox</td>
+      </tr>
+      <tr>
+        <td>Warteliste + Nachrücken</td>
+        <td>RegisterParticipant (Waitlist) → DeregisterParticipant (anderer User) → RegisterParticipant (Promote)</td>
+      </tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="04-eventpermission.html">← EventPermission</a>
+      <a href="06-deregisterparticipant.html">DeregisterParticipant →</a>
+    </div>
+  </main>
+</body>
+</html>

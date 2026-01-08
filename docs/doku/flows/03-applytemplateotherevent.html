@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ApplyTemplateOtherEvent - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / ApplyTemplateOtherEvent</p>
+
+    <h1>ApplyTemplateOtherEvent</h1>
+    <p class="subtitle">Standard-Template für JP Morgan und andere Events</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>cfcce4df-e10c-eb93-b80e-b65c12c4de4c</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button (Child Flow)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Event-Verwaltung / Template</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Dieser Flow wird von <strong>NewEventAdded_SiteProvis</strong> aufgerufen für JP Morgan Run und andere Deloitte-Events. Er erstellt die Standard-Teilnehmerliste mit den Basisfeldern.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Liste erstellen:</strong> Legt die "Teilnehmerliste" in der Event-Subsite an</li>
+      <li><strong>Standardfelder:</strong> Erstellt Name, E-Mail, Status, Nr., Check-In Felder</li>
+      <li><strong>Flexible Felder:</strong> Fügt Freitextfelder für individuelle Daten hinzu</li>
+    </ul>
+
+    <h3>Unterschied zu ApplyTemplateB2Run</h3>
+    <p>Die Struktur ist identisch mit ApplyTemplateB2Run. Der separate Flow ermöglicht zukünftige Anpassungen für spezifische Event-Typen ohne Änderungen am B2Run-Template.</p>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter & Listenerstellung</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt Subsite-URL als Parameter</li>
+          <li>Erstellt SharePoint-Liste "Teilnehmerliste"</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variable-_varURL</td><td>InitializeVariable</td><td>Speichert Subsite-URL</td></tr>
+        <tr><td>Send_HTTP_request-_Create_List</td><td>SharePoint HttpRequest</td><td>Erstellt Teilnehmerliste</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Felder konfigurieren</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Erstellt alle Standardfelder für Teilnehmerverwaltung</li>
+          <li>Status-Feld mit Auswahloptionen Registered/Waitlist/Cancelled</li>
+          <li>Freitextfelder für zusätzliche Event-spezifische Daten</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Create_Teilnehmername_Field</td><td>SharePoint HttpRequest</td><td>Teilnehmername (Text)</td></tr>
+        <tr><td>Create_Email_Field</td><td>SharePoint HttpRequest</td><td>E-Mail (Text)</td></tr>
+        <tr><td>Create_Status_Field</td><td>SharePoint HttpRequest</td><td>Status (Choice)</td></tr>
+        <tr><td>Create_Nr_Field</td><td>SharePoint HttpRequest</td><td>Nummer (Number)</td></tr>
+        <tr><td>Create_CheckIn_Field</td><td>SharePoint HttpRequest</td><td>Check-In (Boolean)</td></tr>
+        <tr><td>Create_Freitextfelder</td><td>SharePoint HttpRequest</td><td>Freitextfeld1-7</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Abschluss</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Bestätigt erfolgreiche Ausführung an aufrufenden Flow</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="02-applytemplateb2run.html">← ApplyTemplateB2Run</a>
+      <a href="04-eventpermission.html">EventPermission →</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ApplyTemplateB2Run - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / ApplyTemplateB2Run</p>
+
+    <h1>ApplyTemplateB2Run</h1>
+    <p class="subtitle">Template-Flow für B2Run-Events</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>a95f473c-36d2-d9b3-e8fe-16896b20c492</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button (Child Flow)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Event-Verwaltung / Template</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Dieser Flow wird von <strong>NewEventAdded_SiteProvis</strong> als Child Flow aufgerufen, wenn ein B2Run-Event erstellt wird. Er ist verantwortlich für die Einrichtung der Teilnehmerliste mit allen B2Run-spezifischen Feldern.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Liste erstellen:</strong> Legt die "Teilnehmerliste" in der neuen Event-Subsite an</li>
+      <li><strong>Standardfelder konfigurieren:</strong> Erstellt die Basisfelder für alle Events (Name, E-Mail, Status, Nr., Check-In)</li>
+      <li><strong>B2Run-Felder hinzufügen:</strong> Erstellt spezielle Felder für Laufstrecke, Team-Zugehörigkeit und weitere B2Run-spezifische Daten</li>
+      <li><strong>Freitextfelder:</strong> Fügt 7 flexible Freitextfelder hinzu für individuelle Anforderungen</li>
+    </ul>
+
+    <h3>Erstellte Listenfelder</h3>
+    <table>
+      <tr><th>Feld</th><th>Typ</th><th>Zweck</th></tr>
+      <tr><td>Teilnehmername</td><td>Text</td><td>Vor- und Nachname des Teilnehmers</td></tr>
+      <tr><td>Email</td><td>Text</td><td>E-Mail-Adresse für Kommunikation</td></tr>
+      <tr><td>Status</td><td>Choice</td><td>Registered, Waitlist, Cancelled</td></tr>
+      <tr><td>Nr</td><td>Number</td><td>Laufende Nummer/Reihenfolge</td></tr>
+      <tr><td>CheckIn</td><td>Boolean</td><td>Check-In-Status am Veranstaltungstag</td></tr>
+      <tr><td>Freitextfeld1-7</td><td>Text</td><td>Flexible Felder für B2Run-Daten</td></tr>
+    </table>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter empfangen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Der Flow empfängt die Subsite-URL vom aufrufenden Flow:</p>
+        <ul>
+          <li>Die URL wird als Input-Parameter übergeben</li>
+          <li>Diese URL definiert, wo die Teilnehmerliste erstellt wird</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variable-_varURL</td><td>InitializeVariable</td><td>Speichert übergebene Subsite-URL</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Teilnehmerliste erstellen</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Die SharePoint-Liste wird über die REST API erstellt:</p>
+        <ul>
+          <li>POST-Request an /_api/web/lists erstellt die neue Liste</li>
+          <li>Die Liste erhält den Namen "Teilnehmerliste"</li>
+          <li>Template-Typ 100 (Custom List) wird verwendet</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Teilnehmerliste</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/lists</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Listenfelder konfigurieren</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Jedes benötigte Feld wird einzeln über die SharePoint REST API erstellt:</p>
+        <ul>
+          <li>Jedes Feld wird mit passendem Datentyp angelegt (Text, Number, Choice, Boolean)</li>
+          <li>Das Status-Feld enthält die vordefinierten Auswahloptionen</li>
+          <li>Die 7 Freitextfelder ermöglichen flexible Event-spezifische Datenerfassung</li>
+          <li>Alle Felder werden zur Standardansicht hinzugefügt</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Send_an_HTTP_request-_Create_Teilnehmername_Field</td><td>SharePoint HttpRequest</td><td>Erstellt Teilnehmername (Text)</td></tr>
+        <tr><td>Send_an_HTTP_request-_Create_Email_Field</td><td>SharePoint HttpRequest</td><td>Erstellt Email (Text)</td></tr>
+        <tr><td>Send_an_HTTP_request-_Create_Status_Field</td><td>SharePoint HttpRequest</td><td>Erstellt Status (Choice)</td></tr>
+        <tr><td>Send_an_HTTP_request-_Create_Nr_Field</td><td>SharePoint HttpRequest</td><td>Erstellt Nr (Number)</td></tr>
+        <tr><td>Send_an_HTTP_request-_Create_CheckIn_Field</td><td>SharePoint HttpRequest</td><td>Erstellt CheckIn (Boolean)</td></tr>
+        <tr><td>Send_an_HTTP_request-_Create_Freitextfelder</td><td>SharePoint HttpRequest</td><td>Erstellt Freitextfeld1-7</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>4. Ansicht konfigurieren & Abschluss</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Abschluss der Konfiguration und Rückgabe an den aufrufenden Flow:</p>
+        <ul>
+          <li>Die Standard-Ansicht "Alle Elemente" wird abgerufen</li>
+          <li>Optional können Felder zur Ansicht hinzugefügt werden</li>
+          <li>Der Flow bestätigt die erfolgreiche Ausführung</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Send_an_HTTP_request-_Get_AllItems_View</td><td>SharePoint HttpRequest</td><td>Ruft Standard-Ansicht ab</td></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Ausführung</td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Abhängigkeiten</h2>
+    <table>
+      <tr><th>Ruft auf</th><th>Wird aufgerufen von</th></tr>
+      <tr>
+        <td><em>Keine</em></td>
+        <td>NewEventAdded_SiteProvis (bei Event-Typ "B2Run Event")</td>
+      </tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="01-neweventadded.html">← NewEventAdded_SiteProvis</a>
+      <a href="03-applytemplateotherevent.html">ApplyTemplateOtherEvent →</a>
+    </div>
+  </main>
+</body>
+</html>

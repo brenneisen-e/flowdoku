@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anwendungsbeschreibung - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .role-card { background: var(--gray-50); border: 1px solid var(--gray-200); padding: 1.25rem; border-radius: 8px; margin: 1rem 0; }
+    .role-card h4 { margin: 0 0 0.5rem 0; color: var(--primary); }
+    .role-card p { margin: 0 0 0.75rem 0; color: var(--gray-600); }
+    .process-step { display: flex; align-items: flex-start; margin: 1rem 0; }
+    .step-number { background: var(--primary); color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; margin-right: 1rem; }
+    .step-content h4 { margin: 0 0 0.25rem 0; }
+    .step-content p { margin: 0; color: var(--gray-600); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Übersicht</a>
+      <a href="index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="index.html">Dokumentation</a> / Anwendungsbeschreibung</p>
+
+    <h1>2. Anwendungsbeschreibung</h1>
+
+    <h2>2.1 Zweck und Nutzen</h2>
+    <p>Die DEX Event Experience Platform dient der effizienten Verwaltung interner Deloitte-Events. Sie ersetzt manuelle Prozesse durch automatisierte Workflows und bietet allen Beteiligten eine intuitive Benutzeroberfläche.</p>
+
+    <h3>Hauptnutzen für Organizer</h3>
+    <ul>
+      <li>Schnelle Event-Erstellung mit automatischer Infrastruktur (SharePoint-Site, Listen, Berechtigungen)</li>
+      <li>Echtzeit-Übersicht über Anmeldungen und Warteliste</li>
+      <li>Einfache Kommunikation mit Teilnehmern über integrierte E-Mail-Funktion</li>
+      <li>Reduzierter administrativer Aufwand durch Automatisierung</li>
+    </ul>
+
+    <h3>Hauptnutzen für Teilnehmer</h3>
+    <ul>
+      <li>Self-Service-Anmeldung ohne E-Mail-Kommunikation</li>
+      <li>Automatische Bestätigungsmail mit allen Event-Details</li>
+      <li>Automatischer Outlook-Kalendereintrag</li>
+      <li>Persönlicher QR-Code für schnellen Check-In</li>
+      <li>Transparente Wartelisten-Position bei ausgebuchten Events</li>
+    </ul>
+
+    <hr>
+
+    <h2>2.2 Zielgruppen</h2>
+
+    <div class="role-card">
+      <h4>Event-Organizer</h4>
+      <p>Deloitte-Mitarbeiter, die Events planen und durchführen</p>
+      <strong>Hauptfunktionen:</strong> Event anlegen, Teilnehmer verwalten, Kommunikation, Check-In-Übersicht
+    </div>
+
+    <div class="role-card">
+      <h4>Teilnehmer</h4>
+      <p>Alle Deloitte-Mitarbeiter, die an Events teilnehmen möchten</p>
+      <strong>Hauptfunktionen:</strong> Anmeldung, Abmeldung, Event-Übersicht, QR-Code abrufen
+    </div>
+
+    <div class="role-card">
+      <h4>Check-In-Team</h4>
+      <p>Orga-Mitarbeiter vor Ort am Veranstaltungstag</p>
+      <strong>Hauptfunktionen:</strong> Check-In per QR-Scan oder manuell, Teilnehmerliste einsehen
+    </div>
+
+    <div class="role-card">
+      <h4>Assistenzen</h4>
+      <p>Assistenzen, die Anmeldungen für andere durchführen</p>
+      <strong>Hauptfunktionen:</strong> Assistenz-Modus: Anmeldung im Namen anderer Personen
+    </div>
+
+    <div class="role-card">
+      <h4>Administratoren</h4>
+      <p>IT/Admin-Team für Plattform-Management</p>
+      <strong>Hauptfunktionen:</strong> Flow-Verwaltung, Fehlerbehebung, Utility-Flows
+    </div>
+
+    <hr>
+
+    <h2>2.3 Funktionsübersicht</h2>
+
+    <h3>Event-Erstellung</h3>
+    <div class="process-step">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <h4>Event anlegen</h4>
+        <p>Organizer erstellt neues Event in der SharePoint Events-Liste</p>
+      </div>
+    </div>
+    <div class="process-step">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <h4>Automatische Infrastruktur</h4>
+        <p>Flow "NewEventAdded_SiteProvis" erstellt SharePoint-Subsite und Teilnehmerliste</p>
+      </div>
+    </div>
+    <div class="process-step">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <h4>Template anwenden</h4>
+        <p>Je nach Event-Typ (B2Run, JP Morgan, Other) wird das passende Template angewendet</p>
+      </div>
+    </div>
+    <div class="process-step">
+      <div class="step-number">4</div>
+      <div class="step-content">
+        <h4>Benachrichtigung</h4>
+        <p>Organizer erhält Bestätigungsmail mit Link zur Teilnehmerliste</p>
+      </div>
+    </div>
+
+    <h3>Teilnehmer-Registrierung</h3>
+    <p>Teilnehmer melden sich über die Power App an. Der Flow "RegisterParticipant" prüft die Kapazität:</p>
+    <ul>
+      <li><strong>Bei freien Plätzen:</strong> Teilnehmereintrag erstellen → Bestätigungsmail → Kalendereintrag</li>
+      <li><strong>Bei ausgebuchtem Event:</strong> Wartelisten-Eintrag → Info über Position</li>
+    </ul>
+
+    <h3>Abmeldung und Nachrücken</h3>
+    <p>Bei Abmeldung (Flow "DeregisterParticipant"):</p>
+    <ul>
+      <li>Teilnehmereintrag wird entfernt/storniert</li>
+      <li>Kalendereintrag wird gelöscht</li>
+      <li>Erster Wartelisten-Teilnehmer rückt automatisch nach</li>
+      <li>Nachrücker erhält Bestätigung und Kalendereintrag</li>
+    </ul>
+
+    <h3>QR-Code Check-In</h3>
+    <p>Vor dem Event generiert "EventQRCodeGenerator" für jeden Teilnehmer einen individuellen QR-Code. Am Veranstaltungstag kann das Check-In-Team:</p>
+    <ul>
+      <li>QR-Code scannen (Flow "CheckInFromQRCode")</li>
+      <li>Manuell einchecken (Flow "Check-In")</li>
+    </ul>
+
+    <hr>
+
+    <h2>2.4 Technische Architektur</h2>
+
+    <h3>Komponenten</h3>
+    <table>
+      <tr>
+        <th>Komponente</th>
+        <th>Technologie</th>
+        <th>Zweck</th>
+      </tr>
+      <tr>
+        <td>Frontend</td>
+        <td>Power Apps (Canvas App)</td>
+        <td>Benutzeroberfläche für alle Anwender</td>
+      </tr>
+      <tr>
+        <td>Backend-Logik</td>
+        <td>Power Automate (23 Cloud Flows)</td>
+        <td>Geschäftslogik und Automatisierung</td>
+      </tr>
+      <tr>
+        <td>Datenspeicherung</td>
+        <td>SharePoint Online</td>
+        <td>Events-Liste, Teilnehmerlisten pro Event</td>
+      </tr>
+      <tr>
+        <td>E-Mail/Kalender</td>
+        <td>Office 365 Outlook</td>
+        <td>Benachrichtigungen, Kalendereinträge</td>
+      </tr>
+      <tr>
+        <td>Shared Mailbox</td>
+        <td>no_reply.events@deloitte.de</td>
+        <td>Absender für alle automatischen E-Mails</td>
+      </tr>
+    </table>
+
+    <h3>SharePoint-Struktur</h3>
+    <table>
+      <tr>
+        <th>Element</th>
+        <th>Pfad</th>
+        <th>Beschreibung</th>
+      </tr>
+      <tr>
+        <td>Basis-Site</td>
+        <td><code>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</code></td>
+        <td>Hauptsite der Plattform</td>
+      </tr>
+      <tr>
+        <td>Events-Liste</td>
+        <td><code>/Lists/Events</code></td>
+        <td>Zentrale Liste aller Events</td>
+      </tr>
+      <tr>
+        <td>Event-Subsites</td>
+        <td><code>/sites/DOL-c-DE-B2Run/[EventName]/</code></td>
+        <td>Pro Event eine eigene Subsite</td>
+      </tr>
+      <tr>
+        <td>Teilnehmerliste</td>
+        <td><code>/[EventName]/Lists/Teilnehmerliste</code></td>
+        <td>Teilnehmer des jeweiligen Events</td>
+      </tr>
+    </table>
+
+    <div class="info-box" style="margin-top: 2rem;">
+      <h4>Weiter zur Flow-Übersicht</h4>
+      <p>Eine kategorisierte Übersicht aller 23 Power Automate Flows finden Sie im nächsten Kapitel: <a href="03-flow-uebersicht.html">Flow-Übersicht</a></p>
+    </div>
+  </main>
+</body>
+</html>

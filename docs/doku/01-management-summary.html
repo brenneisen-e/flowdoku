@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Management Summary - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .kpi-card { background: var(--primary); color: white; padding: 1.5rem; border-radius: 8px; text-align: center; }
+    .kpi-card .value { font-size: 2.5rem; font-weight: bold; }
+    .kpi-card .label { font-size: 0.9rem; opacity: 0.9; }
+    .feature-table td:first-child { font-weight: 600; width: 30%; }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Übersicht</a>
+      <a href="index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="index.html">Dokumentation</a> / Management Summary</p>
+
+    <h1>1. Management Summary</h1>
+
+    <p>Die <strong>DEX Event Experience Platform</strong> ist eine vollständig auf Microsoft Power Platform basierende Event-Management-Lösung für interne Deloitte-Veranstaltungen. Die Plattform digitalisiert und automatisiert den gesamten Event-Lebenszyklus – von der Erstellung über die Teilnehmerregistrierung bis zum Check-In am Veranstaltungstag.</p>
+
+    <h2>Ausgangssituation</h2>
+    <p>Vor der Einführung von DEX wurden interne Events manuell verwaltet:</p>
+    <ul>
+      <li>Anmeldungen per E-Mail mit manueller Erfassung</li>
+      <li>Teilnehmerlisten in Excel mit hoher Fehleranfälligkeit</li>
+      <li>Manuelle Kalenderverwaltung für jeden Teilnehmer</li>
+      <li>Aufwendige Check-In-Prozesse mit Papierlisten</li>
+      <li>Mangelnde Übersicht für Organizer über den aktuellen Status</li>
+    </ul>
+
+    <h2>Die Lösung</h2>
+    <p>DEX automatisiert diese Prozesse vollständig durch den Einsatz von:</p>
+    <ul>
+      <li><strong>Power Apps</strong> für die intuitive Benutzeroberfläche</li>
+      <li><strong>Power Automate</strong> mit 23 Cloud Flows für die Geschäftslogik</li>
+      <li><strong>SharePoint Online</strong> für sichere Datenspeicherung</li>
+      <li><strong>Office 365 Outlook</strong> für E-Mail und Kalender-Integration</li>
+    </ul>
+
+    <h2>Erreichte Ergebnisse</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="value">15+</div>
+        <div class="label">Events durchgeführt</div>
+      </div>
+      <div class="kpi-card">
+        <div class="value">80%</div>
+        <div class="label">Zeiteinsparung</div>
+      </div>
+      <div class="kpi-card">
+        <div class="value">23</div>
+        <div class="label">Power Automate Flows</div>
+      </div>
+      <div class="kpi-card">
+        <div class="value">100%</div>
+        <div class="label">Compliance (BR/SecO)</div>
+      </div>
+    </div>
+
+    <h2>Kernfunktionen</h2>
+    <table class="feature-table">
+      <tr>
+        <td>Event-Erstellung</td>
+        <td>Automatische Erstellung von SharePoint-Subsites mit Teilnehmerlisten, Templates für verschiedene Event-Typen (B2Run, JP Morgan, andere)</td>
+      </tr>
+      <tr>
+        <td>Self-Service-Registrierung</td>
+        <td>Teilnehmer melden sich eigenständig an, erhalten automatisch Bestätigungsmail und Outlook-Kalendereintrag</td>
+      </tr>
+      <tr>
+        <td>Wartelisten-Management</td>
+        <td>Automatisches Nachrücken bei Abmeldungen mit Benachrichtigung der nachrückenden Teilnehmer</td>
+      </tr>
+      <tr>
+        <td>QR-Code Check-In</td>
+        <td>Individuelle QR-Codes pro Teilnehmer für schnellen, kontaktlosen Check-In vor Ort</td>
+      </tr>
+      <tr>
+        <td>E-Mail-Kommunikation</td>
+        <td>Zentrale Kommunikation über Shared Mailbox (no_reply.events@deloitte.de)</td>
+      </tr>
+    </table>
+
+    <h2>Technische Architektur</h2>
+    <table>
+      <tr>
+        <th>Komponente</th>
+        <th>Technologie</th>
+        <th>Zweck</th>
+      </tr>
+      <tr>
+        <td>Frontend</td>
+        <td>Power Apps (Canvas App)</td>
+        <td>Benutzeroberfläche für Organizer, Teilnehmer und Check-In-Team</td>
+      </tr>
+      <tr>
+        <td>Backend</td>
+        <td>Power Automate (23 Cloud Flows)</td>
+        <td>Geschäftslogik, Automatisierung, Integrationen</td>
+      </tr>
+      <tr>
+        <td>Daten</td>
+        <td>SharePoint Online</td>
+        <td>Events-Liste, Teilnehmerlisten pro Event, Dokumente</td>
+      </tr>
+      <tr>
+        <td>Kommunikation</td>
+        <td>Office 365 Outlook</td>
+        <td>E-Mails, Kalendereinträge, Shared Mailbox</td>
+      </tr>
+    </table>
+
+    <h2>Geplante Weiterentwicklung</h2>
+    <ul>
+      <li><strong>Self-Service-Modus:</strong> Events ohne Admin-Einbindung anlegen</li>
+      <li><strong>Power-User-Schulungen:</strong> Ausbildung von Assistenzen zur eigenständigen Event-Verwaltung</li>
+      <li><strong>Erweiterte Reporting-Funktionen:</strong> Dashboard für Event-Analytics</li>
+    </ul>
+
+    <h3>Budget</h3>
+    <table>
+      <tr><th>Zeitraum</th><th>Budget</th></tr>
+      <tr><td>FY25/26</td><td>5.000 EUR</td></tr>
+      <tr><td>Ab FY26/27</td><td>10.000 EUR</td></tr>
+    </table>
+
+    <div class="info-box" style="margin-top: 2rem;">
+      <h4>Weiter zur Anwendungsbeschreibung</h4>
+      <p>Detaillierte Informationen zu Zielgruppen, Funktionen und Architektur finden Sie im nächsten Kapitel: <a href="02-anwendung.html">Anwendungsbeschreibung</a></p>
+    </div>
+  </main>
+</body>
+</html>

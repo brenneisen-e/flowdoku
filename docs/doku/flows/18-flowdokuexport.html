@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow-Dokumentation-Export - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / Flow-Dokumentation-Export</p>
+
+    <h1>Flow-Dokumentation-Export</h1>
+    <p class="subtitle">Export aller Flow-Definitionen</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>doku-export-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Utility & Administration</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Exportiert die Definitionen aller Power Automate Flows in eine Textdatei. Dient der technischen Dokumentation und Archivierung der Flow-Konfigurationen.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Flows auflisten:</strong> Ruft alle Flows der Umgebung ab</li>
+      <li><strong>Definitionen extrahieren:</strong> Liest die JSON-Definition jedes Flows</li>
+      <li><strong>Export erstellen:</strong> Schreibt alle Definitionen in eine Textdatei</li>
+      <li><strong>Speichern:</strong> Legt die Datei in SharePoint ab</li>
+    </ul>
+
+    <h3>Verwendung</h3>
+    <p>Dieser Flow wurde verwendet um die Basis für diese Dokumentation zu erstellen. Die exportierte Datei (<code>FlowExport_2026-01-08_08-46.txt</code>) enthält alle 23 Flow-Definitionen.</p>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Flows abrufen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Nutzt Power Automate Management Connector</li>
+          <li>Listet alle Flows in der Umgebung auf</li>
+          <li>Filtert nach relevanten Flows</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>List_flows</td><td>Power Automate Management</td><td>Listet alle Flows</td></tr>
+        <tr><td>Initialize_variable (output)</td><td>InitializeVariable</td><td>String für Export</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Definitionen extrahieren</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Iteriert über alle Flows</li>
+          <li>Ruft für jeden Flow die vollständige Definition ab</li>
+          <li>Fügt zur Export-Datei hinzu</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über Flows</td></tr>
+        <tr><td>Get_flow</td><td>Power Automate Management</td><td>Lädt Flow-Definition</td></tr>
+        <tr><td>Append_to_string</td><td>AppendToStringVariable</td><td>Fügt zu Export hinzu</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Datei speichern</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Erstellt Dateinamen mit Timestamp</li>
+          <li>Speichert in SharePoint-Dokumentenbibliothek</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Create_file</td><td>SharePoint</td><td>Erstellt Export-Datei</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="17-helperflowtmail.html">← HelperFlowMail</a>
+      <a href="19-sharepointbatchupdate.html">SharePoint_Batch_Update →</a>
+    </div>
+  </main>
+</body>
+</html>

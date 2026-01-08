@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SetPermissionForSubWeb - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / SetPermissionForSubWeb</p>
+
+    <h1>SetPermissionForSubWeb</h1>
+    <p class="subtitle">Berechtigungen auf SharePoint-Subsites setzen</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>permission-subweb-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Utility & Administration</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Setzt Berechtigungen auf SharePoint-Subsites. Bricht die Berechtigungsvererbung und weist spezifische Rechte zu.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Vererbung brechen:</strong> Trennt Subsite von übergeordneten Berechtigungen</li>
+      <li><strong>Berechtigungen setzen:</strong> Weist Lese- oder Schreibrechte zu</li>
+      <li><strong>Gruppen verwalten:</strong> Kann SharePoint-Gruppen erstellen</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Vererbung brechen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Bricht die Berechtigungsvererbung der Subsite</li>
+          <li>Ermöglicht individuelle Berechtigungen</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>HTTP_BreakRoleInheritance</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/breakroleinheritance</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Berechtigungen zuweisen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Fügt Benutzer oder Gruppen hinzu</li>
+          <li>Weist entsprechende Berechtigungsstufe zu</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>HTTP_AddRoleAssignment</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/roleassignments/addroleassignment</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="19-sharepointbatchupdate.html">← SharePoint_Batch_Update</a>
+      <a href="21-updateallevents.html">UpdateAllEventsWithNewFields →</a>
+    </div>
+  </main>
+</body>
+</html>

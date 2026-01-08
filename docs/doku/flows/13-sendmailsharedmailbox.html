@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SendMailSharedMailbox - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / SendMailSharedMailbox</p>
+
+    <h1>SendMailSharedMailbox</h1>
+    <p class="subtitle">Zentrale E-Mail-Funktion</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>sendmail-shared-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button (Child Flow)</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>E-Mail & Kalender</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Die zentrale E-Mail-Funktion der DEX-Plattform. Sendet einzelne E-Mails über die Shared Mailbox <code>no_reply.events@deloitte.de</code>. Wird von anderen Flows als Child Flow aufgerufen.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Parameter empfangen:</strong> Empfänger, Betreff, HTML-Body</li>
+      <li><strong>E-Mail formatieren:</strong> Fügt Standard-Header/Footer hinzu</li>
+      <li><strong>Versand:</strong> Sendet über Shared Mailbox</li>
+    </ul>
+
+    <h3>Parameter</h3>
+    <table>
+      <tr><th>Parameter</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>to</td><td>String</td><td>E-Mail-Adresse des Empfängers</td></tr>
+      <tr><td>subject</td><td>String</td><td>Betreff der E-Mail</td></tr>
+      <tr><td>body</td><td>String</td><td>HTML-Inhalt der E-Mail</td></tr>
+    </table>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter verarbeiten</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt alle Parameter vom aufrufenden Flow</li>
+          <li>Validiert E-Mail-Adresse</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variable (to)</td><td>InitializeVariable</td><td>Empfänger-Adresse</td></tr>
+        <tr><td>Initialize_variable (subject)</td><td>InitializeVariable</td><td>Betreff</td></tr>
+        <tr><td>Initialize_variable (body)</td><td>InitializeVariable</td><td>E-Mail-Inhalt</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. E-Mail versenden</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Nutzt Office 365 Outlook Connector</li>
+          <li>Sendet als Shared Mailbox (no_reply.events@deloitte.de)</li>
+          <li>Unterstützt HTML-formatierte E-Mails</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Send_an_email_from_shared_mailbox</td><td>Office 365</td><td>Sendet E-Mail über Shared Mailbox</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Abschluss</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Bestätigt erfolgreichen Versand</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
+      </table>
+    </div>
+
+    <h2>Wird aufgerufen von</h2>
+    <ul>
+      <li>RegisterParticipant (Bestätigungsmail)</li>
+      <li>DeregisterParticipant (Abmeldebestätigung, Nachrücker-Info)</li>
+      <li>EventQRCodeGenerator (QR-Code-Versand)</li>
+      <li>NewEventAdded_SiteProvis (Organizer-Benachrichtigung)</li>
+    </ul>
+
+    <div class="nav-flow">
+      <a href="12-eventqrcodegenerator.html">← EventQRCodeGenerator</a>
+      <a href="14-sendmailparticipantlist.html">SendMailParticipantList →</a>
+    </div>
+  </main>
+</body>
+</html>

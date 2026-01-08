@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CheckInFromQRCode - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / CheckInFromQRCode</p>
+
+    <h1>CheckInFromQRCode</h1>
+    <p class="subtitle">Check-In per QR-Code-Scan</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>qr-checkin-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Power App V2</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Check-In</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Verarbeitet Check-Ins per QR-Code-Scan. Das Check-In-Team scannt den QR-Code des Teilnehmers mit der Power App, der Flow identifiziert den Teilnehmer und führt den Check-In durch.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>QR-Daten parsen:</strong> Extrahiert Teilnehmer-ID und Event-ID aus dem gescannten QR-Code</li>
+      <li><strong>Teilnehmer identifizieren:</strong> Findet den Teilnehmer in der Teilnehmerliste</li>
+      <li><strong>Validierung:</strong> Prüft ob Teilnehmer registriert und noch nicht eingecheckt ist</li>
+      <li><strong>Check-In:</strong> Aktualisiert Status und Zeitstempel</li>
+      <li><strong>Feedback:</strong> Gibt Erfolg/Fehler an die Power App zurück</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. QR-Code verarbeiten</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt den gescannten QR-Code-Inhalt von der Power App</li>
+          <li>Parst das JSON um Teilnehmer-ID und Event-ID zu extrahieren</li>
+          <li>Validiert das Format der QR-Daten</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variable (qrData)</td><td>InitializeVariable</td><td>Speichert QR-Code-Inhalt</td></tr>
+        <tr><td>Parse_JSON</td><td>ParseJson</td><td>Extrahiert participantId, eventId</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Teilnehmer validieren</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Sucht den Teilnehmer in der Teilnehmerliste des Events</li>
+          <li>Prüft ob Status "Registered" ist</li>
+          <li>Prüft ob noch nicht eingecheckt (CheckIn = false)</li>
+          <li>Gibt Fehlermeldung bei ungültigem QR-Code zurück</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_item</td><td>SharePoint GetItem</td><td>Lädt Teilnehmereintrag</td></tr>
+        <tr><td>Condition (Registered)</td><td>If</td><td>Prüft Status = Registered</td></tr>
+        <tr><td>Condition (Not CheckedIn)</td><td>If</td><td>Prüft CheckIn = false</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Check-In durchführen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Setzt CheckIn-Feld auf true</li>
+          <li>Speichert aktuellen Zeitstempel als Check-In-Zeit</li>
+          <li>Gibt Erfolgsmeldung mit Teilnehmername an Power App zurück</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Update_item</td><td>SharePoint PatchItem</td><td>Setzt CheckIn=true, Timestamp</td></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Erfolg + Teilnehmername</td></tr>
+      </table>
+    </div>
+
+    <h2>Mögliche Rückgabewerte</h2>
+    <table>
+      <tr><th>Status</th><th>Beschreibung</th></tr>
+      <tr><td>success</td><td>Check-In erfolgreich, enthält Teilnehmername</td></tr>
+      <tr><td>already_checked_in</td><td>Teilnehmer war bereits eingecheckt</td></tr>
+      <tr><td>not_registered</td><td>Teilnehmer nicht für dieses Event registriert</td></tr>
+      <tr><td>invalid_qr</td><td>QR-Code ungültig oder nicht lesbar</td></tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="10-checkin.html">← Check-In</a>
+      <a href="12-eventqrcodegenerator.html">EventQRCodeGenerator →</a>
+    </div>
+  </main>
+</body>
+</html>

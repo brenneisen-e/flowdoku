@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventQRCodeGenerator - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / EventQRCodeGenerator</p>
+
+    <h1>EventQRCodeGenerator</h1>
+    <p class="subtitle">QR-Code-Generierung für alle Event-Teilnehmer</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>qr-generator-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Check-In</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Der <strong>EventQRCodeGenerator</strong> erstellt für alle registrierten Teilnehmer eines Events individuelle QR-Codes und versendet diese per E-Mail. Die QR-Codes ermöglichen einen schnellen Check-In am Veranstaltungstag.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Teilnehmer abfragen:</strong> Lädt alle Teilnehmer mit Status "Registered" für das Event</li>
+      <li><strong>QR-Codes generieren:</strong> Erstellt für jeden Teilnehmer einen einzigartigen QR-Code</li>
+      <li><strong>Daten kodieren:</strong> Der QR-Code enthält Teilnehmer-ID, Event-ID und E-Mail zur eindeutigen Identifikation</li>
+      <li><strong>E-Mail versenden:</strong> Jeder Teilnehmer erhält seinen persönlichen QR-Code per E-Mail</li>
+    </ul>
+
+    <h3>QR-Code-Inhalt</h3>
+    <p>Der generierte QR-Code enthält folgende Daten im JSON-Format:</p>
+    <pre><code>{
+  "participantId": "123",
+  "eventId": "456",
+  "email": "max.mustermann@deloitte.de",
+  "timestamp": "2026-01-08T10:00:00Z"
+}</code></pre>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Event & Teilnehmer laden</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Laden aller relevanten Daten für die QR-Code-Generierung:</p>
+        <ul>
+          <li>Event-Details werden aus der Events-Liste geladen</li>
+          <li>Alle Teilnehmer mit Status "Registered" werden abgefragt</li>
+          <li>E-Mail-Assets (Logos) werden vorbereitet</li>
+          <li>Variablen für die Batch-Verarbeitung werden initialisiert</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_item (Event)</td><td>SharePoint GetItem</td><td>Lädt Event-Details</td></tr>
+        <tr><td>Get_items (Participants)</td><td>SharePoint GetItems</td><td>Lädt registrierte Teilnehmer</td></tr>
+        <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Initialisiert Arbeitsvariablen</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. QR-Code-Generierung</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Erstellung der individuellen QR-Codes für jeden Teilnehmer:</p>
+        <ul>
+          <li>Für jeden Teilnehmer wird ein JSON-Payload mit den Identifikationsdaten erstellt</li>
+          <li>Der Payload wird über einen QR-Code-Service in ein Bild umgewandelt</li>
+          <li>Das QR-Code-Bild wird als Base64 für die E-Mail-Einbettung kodiert</li>
+          <li>Die Generierung erfolgt sequentiell für alle Teilnehmer</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each (Participant)</td><td>Foreach</td><td>Iteriert über alle Teilnehmer</td></tr>
+        <tr><td>Compose (Payload)</td><td>Compose</td><td>Erstellt JSON mit Teilnehmer-Daten</td></tr>
+        <tr><td>HTTP (QR Service)</td><td>Http</td><td>Ruft QR-Code-Generator-API auf</td></tr>
+        <tr><td>Compose (Base64)</td><td>Compose</td><td>Konvertiert QR-Bild zu Base64</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. E-Mail-Versand</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Versand der QR-Codes an alle Teilnehmer:</p>
+        <ul>
+          <li>Eine HTML-E-Mail mit Event-Informationen wird erstellt</li>
+          <li>Der persönliche QR-Code wird als inline-Bild eingebettet</li>
+          <li>Anweisungen zum Check-In-Prozess werden mitgesendet</li>
+          <li>Der Versand erfolgt über die Shared Mailbox</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Compose (Email HTML)</td><td>Compose</td><td>Erstellt HTML-E-Mail mit QR-Code</td></tr>
+        <tr><td>Send_email_shared_mailbox</td><td>Office 365</td><td>Versendet E-Mail an Teilnehmer</td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Verwendung</h2>
+    <p>Der Flow wird <strong>manuell</strong> kurz vor dem Event ausgeführt (typisch 1-2 Tage vorher):</p>
+    <ol>
+      <li>Flow in Power Automate öffnen</li>
+      <li>Event-ID eingeben</li>
+      <li>Flow starten</li>
+      <li>Alle Teilnehmer erhalten ihre QR-Codes per E-Mail</li>
+    </ol>
+
+    <h2>Abhängigkeiten</h2>
+    <table>
+      <tr><th>Ruft auf</th><th>Wird aufgerufen von</th></tr>
+      <tr>
+        <td>SendMailSharedMailbox (optional)</td>
+        <td>Manuell durch Administrator</td>
+      </tr>
+    </table>
+
+    <div class="nav-flow">
+      <a href="11-checkinfromqrcode.html">← CheckInFromQRCode</a>
+      <a href="13-sendmailsharedmailbox.html">SendMailSharedMailbox →</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CreateOutlookEventSharedMailbox - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / CreateOutlookEventSharedMailbox</p>
+
+    <h1>CreateOutlookEventSharedMailbox</h1>
+    <p class="subtitle">Outlook-Termin im Shared Mailbox Kalender erstellen</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>create-outlook-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Child Flow</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>E-Mail & Kalender</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Erstellt einen neuen Outlook-Termin im Kalender der Shared Mailbox. Wird bei der Event-Erstellung aufgerufen und dient als Basis-Termin für spätere Teilnehmer-Einladungen.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Termin erstellen:</strong> Legt neuen Kalendereintrag im Shared Mailbox Kalender an</li>
+      <li><strong>Details konfigurieren:</strong> Setzt Titel, Beschreibung, Start-/Endzeit, Ort</li>
+      <li><strong>ID zurückgeben:</strong> Gibt die Outlook-Event-ID für spätere Referenz zurück</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter empfangen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt Event-Details vom aufrufenden Flow</li>
+          <li>Titel, Beschreibung, Start, Ende, Ort</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Event-Details speichern</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Outlook-Event erstellen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Erstellt Kalendereintrag via Graph API oder Outlook Connector</li>
+          <li>Verwendet Shared Mailbox als Kalender-Owner</li>
+          <li>Konfiguriert alle Event-Properties</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Create_event_V4</td><td>Office 365 Outlook</td><td>Erstellt Kalendereintrag</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. ID zurückgeben</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Extrahiert die Event-ID aus der Antwort</li>
+          <li>Gibt ID an NewEventAdded_SiteProvis zurück</li>
+          <li>ID wird in Events-Liste gespeichert</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Event-ID zurück</td></tr>
+      </table>
+    </div>
+
+    <h2>Wird aufgerufen von</h2>
+    <ul>
+      <li>NewEventAdded_SiteProvis (bei Event-Erstellung)</li>
+    </ul>
+
+    <div class="nav-flow">
+      <a href="15-registeroutlookevent.html">← RegisterOutlookEvent</a>
+      <a href="17-helperflowtmail.html">HelperFlowMailToRegistered →</a>
+    </div>
+  </main>
+</body>
+</html>

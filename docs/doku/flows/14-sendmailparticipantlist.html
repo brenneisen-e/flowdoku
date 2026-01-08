@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SendMailParticipantList - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / SendMailParticipantList</p>
+
+    <h1>SendMailParticipantList</h1>
+    <p class="subtitle">Massen-E-Mail an Teilnehmer</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>sendmail-list-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Power App V2</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>E-Mail & Kalender</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Versendet Massen-E-Mails an alle Teilnehmer eines Events oder nur an die Warteliste. Der Organizer kann über die Power App eine Nachricht an alle versenden.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Teilnehmer laden:</strong> Holt alle Teilnehmer basierend auf Filter</li>
+      <li><strong>E-Mails versenden:</strong> Sendet an jeden Teilnehmer individuell</li>
+      <li><strong>Tracking:</strong> Zählt erfolgreich versendete E-Mails</li>
+    </ul>
+
+    <h3>Filter-Optionen</h3>
+    <table>
+      <tr><th>Filter</th><th>Empfänger</th></tr>
+      <tr><td>all</td><td>Alle Teilnehmer (Registered + Waitlist)</td></tr>
+      <tr><td>registered</td><td>Nur registrierte Teilnehmer</td></tr>
+      <tr><td>waitlist</td><td>Nur Warteliste</td></tr>
+    </table>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Parameter & Teilnehmer laden</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Empfängt Event-ID, Betreff, Body und Filter</li>
+          <li>Lädt Teilnehmerliste basierend auf Filter</li>
+          <li>Initialisiert Zähler für Versandstatistik</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Parameter speichern</td></tr>
+        <tr><td>Get_items (Participants)</td><td>SharePoint GetItems</td><td>Lädt Teilnehmer mit Filter</td></tr>
+        <tr><td>Initialize_variable (counter)</td><td>InitializeVariable</td><td>Zähler für Versand</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. E-Mails versenden</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Iteriert über alle Teilnehmer</li>
+          <li>Sendet individuelle E-Mail an jeden Teilnehmer</li>
+          <li>Erhöht Zähler bei Erfolg</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über Teilnehmer</td></tr>
+        <tr><td>Send_email_shared_mailbox</td><td>Office 365</td><td>Sendet E-Mail</td></tr>
+        <tr><td>Increment_variable</td><td>IncrementVariable</td><td>Erhöht Zähler</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3. Ergebnis zurückgeben</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Gibt Anzahl versendeter E-Mails zurück</li>
+          <li>Power App zeigt Erfolgsmeldung</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Anzahl zurück</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="13-sendmailsharedmailbox.html">← SendMailSharedMailbox</a>
+      <a href="15-registeroutlookevent.html">RegisterOutlookEvent →</a>
+    </div>
+  </main>
+</body>
+</html>

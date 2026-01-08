@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UpdateAllEventsWithNewFields - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <style>
+    .flow-meta { background: var(--gray-50); padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 1rem; }
+    .cluster-header h4 { margin: 0; }
+    .cluster-desc { background: var(--gray-50); padding: 1rem; border-bottom: 1px solid var(--gray-200); }
+    .cluster-desc ul { margin: 0.5rem 0 0 1.2rem; }
+    .action-table { margin: 0; }
+    .action-table th { background: var(--gray-100); }
+    .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div><a href="../index.html">Dokumentation</a></div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / UpdateAllEventsWithNewFields</p>
+
+    <h1>UpdateAllEventsWithNewFields</h1>
+    <p class="subtitle">Migration: Neue Felder zu bestehenden Listen hinzufügen</p>
+
+    <div class="flow-meta">
+      <table>
+        <tr><td><strong>Flow-ID</strong></td><td><code>update-fields-flow-id</code></td></tr>
+        <tr><td><strong>Status</strong></td><td>Started</td></tr>
+        <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
+        <tr><td><strong>Kategorie</strong></td><td>Utility & Administration</td></tr>
+      </table>
+    </div>
+
+    <h2>Beschreibung</h2>
+    <p>Fügt neue Felder (Freitextfeld3-7) zu allen bestehenden Event-Teilnehmerlisten hinzu. Ein Migrationsflow für die Erweiterung der Datenstruktur.</p>
+
+    <h3>Was dieser Flow macht</h3>
+    <ul>
+      <li><strong>Events laden:</strong> Listet alle bestehenden Events auf</li>
+      <li><strong>Subsites iterieren:</strong> Geht zu jeder Event-Subsite</li>
+      <li><strong>Felder hinzufügen:</strong> Erstellt fehlende Felder in der Teilnehmerliste</li>
+    </ul>
+
+    <h3>Hinzugefügte Felder</h3>
+    <ul>
+      <li>Freitextfeld3</li>
+      <li>Freitextfeld4</li>
+      <li>Freitextfeld5</li>
+      <li>Freitextfeld6</li>
+      <li>Freitextfeld7</li>
+    </ul>
+
+    <hr>
+
+    <h2>Actions im Detail</h2>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>1. Events laden</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Ruft alle Events aus der Events-Liste ab</li>
+          <li>Extrahiert Teilnehmerlisten-URLs</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Get_items (Events)</td><td>SharePoint GetItems</td><td>Lädt alle Events</td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>2. Felder hinzufügen</h4>
+      </div>
+      <div class="cluster-desc">
+        <ul>
+          <li>Iteriert über alle Events</li>
+          <li>Erstellt fehlende Felder via SharePoint REST API</li>
+          <li>Fehlerbehandlung wenn Feld bereits existiert</li>
+        </ul>
+      </div>
+      <table class="action-table">
+        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+        <tr><td>Apply_to_each (Event)</td><td>Foreach</td><td>Iteriert über Events</td></tr>
+        <tr><td>HTTP_CreateField</td><td>SharePoint HttpRequest</td><td>Erstellt neues Feld</td></tr>
+      </table>
+    </div>
+
+    <div class="nav-flow">
+      <a href="20-setpermissionsubweb.html">← SetPermissionForSubWeb</a>
+      <a href="22-correctoutlookid.html">CorrectOutlookID →</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow-Übersicht - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .category-section { margin: 2rem 0; }
+    .category-header { background: var(--primary); color: white; padding: 1rem; border-radius: 8px 8px 0 0; }
+    .category-header h3 { margin: 0; }
+    .category-header p { margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem; }
+    .category-table { border-radius: 0 0 8px 8px; overflow: hidden; }
+    .category-table th { background: var(--gray-100); }
+    .flow-link { color: var(--primary); font-weight: 500; }
+    .trigger-tag { display: inline-block; background: var(--gray-100); padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.8rem; }
+    .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--primary); }
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin: 1.5rem 0; }
+    .stat-card { text-align: center; padding: 1rem; background: var(--gray-50); border-radius: 8px; }
+    .stat-card .number { font-size: 2rem; font-weight: bold; color: var(--primary); }
+    .stat-card .label { font-size: 0.8rem; color: var(--gray-600); }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Übersicht</a>
+      <a href="index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="index.html">Dokumentation</a> / Flow-Übersicht</p>
+
+    <h1>3. Power Automate Flows - Übersicht</h1>
+
+    <p>Die DEX-Plattform umfasst <strong>23 Power Automate Flows</strong>, die in fünf funktionale Kategorien unterteilt sind. Jeder Flow erfüllt eine spezifische Aufgabe und ist optimal auf die anderen Flows abgestimmt.</p>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="number">4</div>
+        <div class="label">Event-Verwaltung</div>
+      </div>
+      <div class="stat-card">
+        <div class="number">5</div>
+        <div class="label">Registrierung</div>
+      </div>
+      <div class="stat-card">
+        <div class="number">3</div>
+        <div class="label">Check-In</div>
+      </div>
+      <div class="stat-card">
+        <div class="number">5</div>
+        <div class="label">E-Mail & Kalender</div>
+      </div>
+      <div class="stat-card">
+        <div class="number">6</div>
+        <div class="label">Utility</div>
+      </div>
+    </div>
+
+    <!-- Event-Verwaltung -->
+    <div class="category-section">
+      <div class="category-header">
+        <h3>3.1 Event-Verwaltung</h3>
+        <p>Flows für die Erstellung und Konfiguration von Events</p>
+      </div>
+      <table class="category-table">
+        <tr>
+          <th>Flow</th>
+          <th>Trigger</th>
+          <th>Beschreibung</th>
+        </tr>
+        <tr>
+          <td><a href="flows/01-neweventadded.html" class="flow-link">NewEventAdded_SiteProvis</a></td>
+          <td><span class="trigger-tag">SharePoint Item Created</span></td>
+          <td>Hauptflow für Event-Erstellung. Erstellt SharePoint-Subsite, ruft Template-Flow auf, erstellt Outlook-Event.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/02-applytemplateb2run.html" class="flow-link">ApplyTemplateB2Run</a></td>
+          <td><span class="trigger-tag">Child Flow</span></td>
+          <td>Erstellt Teilnehmerliste mit B2Run-spezifischen Feldern (Laufstrecke, Team etc.).</td>
+        </tr>
+        <tr>
+          <td><a href="flows/03-applytemplateotherevent.html" class="flow-link">ApplyTemplateOtherEvent</a></td>
+          <td><span class="trigger-tag">Child Flow</span></td>
+          <td>Erstellt Standard-Teilnehmerliste für JP Morgan und sonstige Events.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/04-eventpermission.html" class="flow-link">EventPermission</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Verwaltet Berechtigungen für Events mit eingeschränkter Zielgruppe.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Registrierung -->
+    <div class="category-section">
+      <div class="category-header">
+        <h3>3.2 Registrierung</h3>
+        <p>Flows für An- und Abmeldungen von Teilnehmern</p>
+      </div>
+      <table class="category-table">
+        <tr>
+          <th>Flow</th>
+          <th>Trigger</th>
+          <th>Beschreibung</th>
+        </tr>
+        <tr>
+          <td><a href="flows/05-registerparticipant.html" class="flow-link">RegisterParticipant</a></td>
+          <td><span class="trigger-tag">SharePoint Item Created</span></td>
+          <td>Verarbeitet Anmeldungen. Prüft Kapazität, erstellt Teilnehmereintrag oder Warteliste.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/06-deregisterparticipant.html" class="flow-link">DeregisterParticipant</a></td>
+          <td><span class="trigger-tag">SharePoint Item Created</span></td>
+          <td>Verarbeitet Abmeldungen. Triggert automatisches Wartelisten-Nachrücken.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/07-checkregistrationstatus.html" class="flow-link">CheckRegistrationStatusParticipant</a></td>
+          <td><span class="trigger-tag">Power App</span></td>
+          <td>Prüft Registrierungsstatus eines Users (registered, waitlist, not_registered).</td>
+        </tr>
+        <tr>
+          <td><a href="flows/08-getwaitinglistposition.html" class="flow-link">GetWaitinglistPosition</a></td>
+          <td><span class="trigger-tag">Power App</span></td>
+          <td>Ermittelt aktuelle Position auf der Warteliste (FIFO-Prinzip).</td>
+        </tr>
+        <tr>
+          <td><a href="flows/09-getparticipantevents.html" class="flow-link">GetParticipantEvents</a></td>
+          <td><span class="trigger-tag">Power App</span></td>
+          <td>Listet alle Events eines Users für "Meine Events"-Ansicht.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Check-In -->
+    <div class="category-section">
+      <div class="category-header">
+        <h3>3.3 Check-In</h3>
+        <p>Flows für den Check-In am Veranstaltungstag</p>
+      </div>
+      <table class="category-table">
+        <tr>
+          <th>Flow</th>
+          <th>Trigger</th>
+          <th>Beschreibung</th>
+        </tr>
+        <tr>
+          <td><a href="flows/10-checkin.html" class="flow-link">Check-In</a></td>
+          <td><span class="trigger-tag">SharePoint Item Created</span></td>
+          <td>Verarbeitet manuelle Check-Ins, aktualisiert Status und Zeitstempel.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/11-checkinfromqrcode.html" class="flow-link">CheckInFromQRCode</a></td>
+          <td><span class="trigger-tag">Power App</span></td>
+          <td>Verarbeitet Check-Ins per QR-Code-Scan, identifiziert Teilnehmer.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/12-eventqrcodegenerator.html" class="flow-link">EventQRCodeGenerator</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Generiert QR-Codes für alle Teilnehmer und versendet per E-Mail.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- E-Mail & Kalender -->
+    <div class="category-section">
+      <div class="category-header">
+        <h3>3.4 E-Mail & Kalender</h3>
+        <p>Flows für Kommunikation und Outlook-Integration</p>
+      </div>
+      <table class="category-table">
+        <tr>
+          <th>Flow</th>
+          <th>Trigger</th>
+          <th>Beschreibung</th>
+        </tr>
+        <tr>
+          <td><a href="flows/13-sendmailsharedmailbox.html" class="flow-link">SendMailSharedMailbox</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Zentrale E-Mail-Funktion über Shared Mailbox. Child Flow für andere Flows.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/14-sendmailparticipantlist.html" class="flow-link">SendMailParticipantList</a></td>
+          <td><span class="trigger-tag">Power App</span></td>
+          <td>Massen-E-Mails an alle Teilnehmer oder nur Warteliste.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/15-registeroutlookevent.html" class="flow-link">RegisterOutlookEventParticipant</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Fügt Teilnehmer zu bestehendem Outlook-Termin hinzu.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/16-createoutlookevent.html" class="flow-link">CreateOutlookEventSharedMailbox</a></td>
+          <td><span class="trigger-tag">Child Flow</span></td>
+          <td>Erstellt Outlook-Termin im Kalender der Shared Mailbox.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/17-helperflowtmail.html" class="flow-link">HelperFlowMailToRegistered</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Hilfsflow für spezielle E-Mail-Szenarien.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Utility -->
+    <div class="category-section">
+      <div class="category-header">
+        <h3>3.5 Utility & Administration</h3>
+        <p>Flows für administrative Aufgaben und Datenpflege</p>
+      </div>
+      <table class="category-table">
+        <tr>
+          <th>Flow</th>
+          <th>Trigger</th>
+          <th>Beschreibung</th>
+        </tr>
+        <tr>
+          <td><a href="flows/18-flowdokuexport.html" class="flow-link">Flow-Dokumentation-Export</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Exportiert Flow-Definitionen für Dokumentationszwecke.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/19-sharepointbatchupdate.html" class="flow-link">SharePoint_Batch_Update_V2</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Batch-Updates auf SharePoint-Listen via REST API.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/20-setpermissionsubweb.html" class="flow-link">SetPermissionForSubWeb</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Setzt Berechtigungen auf SharePoint-Subsites.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/21-updateallevents.html" class="flow-link">UpdateAllEventsWithNewFields</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Migration: Fügt neue Felder zu bestehenden Teilnehmerlisten hinzu.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/22-correctoutlookid.html" class="flow-link">CorrectOutlookID</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Korrigiert fehlerhafte Outlook-Event-IDs.</td>
+        </tr>
+        <tr>
+          <td><a href="flows/23-splistenummerierung.html" class="flow-link">SP Liste Nummerierung korrigieren</a></td>
+          <td><span class="trigger-tag">Manual Button</span></td>
+          <td>Korrigiert Nr.-Feld in Teilnehmerlisten.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="info-box" style="margin-top: 2rem;">
+      <h4>Detaildokumentation</h4>
+      <p>Für ausführliche Dokumentation mit geclusterten Actions klicken Sie auf den jeweiligen Flow-Namen oder gehen Sie zur <a href="index.html#flow-details">Flow-Detaildokumentation</a>.</p>
+    </div>
+  </main>
+</body>
+</html>
