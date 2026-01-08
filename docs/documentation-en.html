@@ -757,10 +757,10 @@ TypeedDataCard@1.0.7
 
 <table>
   <tr><th>Area</th><th>Current</th><th>Recommendation</th></tr>
-  <tr><td>Form</td><td>3 separate screens</td><td>Einzelnes dynamisches Form mit bedingter Anzeige</td></tr>
-  <tr><td>Validation</td><td>DataCard-based</td><td>Zentrale Validationslogik mit Custom Connector</td></tr>
+  <tr><td>Form</td><td>3 separate screens</td><td>Single dynamic form with conditional display</td></tr>
+  <tr><td>Validation</td><td>DataCard-based</td><td>Central validation logic with Custom Connector</td></tr>
   <tr><td>Event types</td><td>Hardcoded in screens</td><td>Configuration list for dynamic event types</td></tr>
-  <tr><td>Fieldkonfiguration</td><td>Defined per screen</td><td>Metadata-driven form based on content type</td></tr>
+  <tr><td>Field configuration</td><td>Defined per screen</td><td>Metadata-driven form based on content type</td></tr>
   <tr><td>Custom Fields</td><td>Freitextfeld1-7</td><td>JSON schema for flexible field configuration</td></tr>
 </table>
 
@@ -838,17 +838,17 @@ TypeedDataCard@1.0.7
   <h4>Description</h4>
   <p>The <strong>central flow for event creation</strong>. Is automatically triggered when a new event is created in the Events list. Creates the complete infrastructure: SharePoint subsite, participant list, Outlook appointment and notifies the organizer.</p>
 
-  <h4>Unterstützte Event types</h4>
+  <h4>Supported Event Types</h4>
   <ul>
-    <li><strong>B2Run Event:</strong> Verwendet ApplyTemplateB2Run mit Spezialfeldern</li>
-    <li><strong>JP Morgan Run / Other:</strong> Verwendet ApplyTemplateOtherEvent</li>
+    <li><strong>B2Run Event:</strong> Uses ApplyTemplateB2Run with special fields</li>
+    <li><strong>JP Morgan Run / Other:</strong> Uses ApplyTemplateOtherEvent</li>
   </ul>
 
   <div class="action-cluster">
     <div class="cluster-header">1. Initialization & Status Update</div>
     <div class="cluster-desc">
       <ul>
-        <li>Sets event status to "Under Construction" um anzuzeigen dass Erstellung läuft</li>
+        <li>Sets event status to "Under Construction" to indicate creation is in progress</li>
         <li>Initializes all required variables (Titel, URL, Content Typee)</li>
         <li>Prepares data for further processing</li>
       </ul>
