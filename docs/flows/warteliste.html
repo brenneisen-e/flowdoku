@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wartelisten-Flow - DEX Documentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="../index.html" class="logo">DEX <span>Documentation</span></a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Übersicht</a></li>
+          <li><a href="index.html">Flows</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span>/</span>
+        <a href="index.html">Flows</a>
+        <span>/</span>
+        Wartelisten-Flow
+      </div>
+
+      <div class="flow-header">
+        <h1>Wartelisten-Flow</h1>
+        <p>Automatisches Nachrücken von Wartelisten-Teilnehmern bei freien Plätzen.</p>
+        <div class="flow-meta">
+          <div class="flow-meta-item">
+            <strong>Trigger:</strong> Child Flow Call
+          </div>
+          <div class="flow-meta-item">
+            <strong>Aufrufer:</strong> Abmelde-Flow
+          </div>
+        </div>
+      </div>
+
+      <section>
+        <h2>Flowchart</h2>
+        <pre class="mermaid">
+flowchart TD
+    START([Trigger: Child Flow]) --> GET_EVENT[Get Event Details]
+    GET_EVENT --> GET_WAITLIST[Get Waitlist Entries<br/>Sorted by Created Date]
+    GET_WAITLIST --> CHECK_WAIT{Warteliste<br/>vorhanden?}
+
+    CHECK_WAIT --> |"Nein"| END_EMPTY([Keine Nachrücker])
+    CHECK_WAIT --> |"Ja"| GET_FIRST[Get First Waitlist Entry]
+
+    GET_FIRST --> PROMOTE[Promote to Registration]
+    PROMOTE --> UPDATE_STATUS[Update Status:<br/>Waitlist → Registered]
+    UPDATE_STATUS --> CREATE_CAL[Create Calendar Event]
+    CREATE_CAL --> SEND_MAIL[Send Promotion Email]
+    SEND_MAIL --> RETURN[Return Success]
+
+    RETURN --> END([Flow Ende])
+        </pre>
+      </section>
+
+      <section>
+        <h2>Trigger</h2>
+        <div class="info-box">
+          <h4>Child Flow / Run a Child Flow</h4>
+          <p>Dieser Flow wird als Child Flow vom Abmelde-Flow aufgerufen, wenn ein Platz frei wird. Die Event-ID wird als Parameter übergeben.</p>
+        </div>
+
+        <h3>Input Parameter</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Typ</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>eventId</code></td>
+              <td>Integer</td>
+              <td>ID des Events mit freiem Platz</td>
+            </tr>
+            <tr>
+              <td><code>slotsAvailable</code></td>
+              <td>Integer</td>
+              <td>Anzahl freier Plätze (Standard: 1)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Aktionen</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Schritt</th>
+              <th>Aktion</th>
+              <th>Typ</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Get Event</td>
+              <td>SharePoint - Get item</td>
+              <td>Lädt Event-Details für E-Mail</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Get Waitlist</td>
+              <td>SharePoint - Get items</td>
+              <td>Holt Warteliste sortiert nach Erstelldatum</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Check Waitlist</td>
+              <td>Condition</td>
+              <td>Prüft ob Einträge vorhanden</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Get First</td>
+              <td>Expression</td>
+              <td>Nimmt ersten Eintrag (FIFO)</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>Promote</td>
+              <td>SharePoint - Update item</td>
+              <td>Ändert Status von Waitlist zu Registered</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>Create Calendar</td>
+              <td>Outlook - Create event</td>
+              <td>Erstellt Kalendereintrag für Nachrücker</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td>Send Email</td>
+              <td>Outlook - Send email</td>
+              <td>Benachrichtigt Nachrücker</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Wartelisten-Logik</h2>
+        <pre class="mermaid">
+flowchart LR
+    subgraph Waitlist["Warteliste (FIFO)"]
+        W1[User A<br/>10:00] --> W2[User B<br/>10:15] --> W3[User C<br/>10:30]
+    end
+
+    SLOT[Freier Platz] --> W1
+    W1 --> PROMOTE[Nachrücker]
+        </pre>
+
+        <div class="info-box">
+          <h4>First In, First Out (FIFO)</h4>
+          <p>Die Warteliste funktioniert nach dem FIFO-Prinzip. Der Teilnehmer, der sich zuerst auf die Warteliste gesetzt hat, rückt als erstes nach.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Expressions</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Expression</th>
+              <th>Verwendung</th>
+              <th>Erklärung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>triggerBody()?['eventId']</code></td>
+              <td>Get Event</td>
+              <td>Event-ID aus Parent Flow</td>
+            </tr>
+            <tr>
+              <td><code>first(body('Get_Waitlist')?['value'])</code></td>
+              <td>Get First Entry</td>
+              <td>Erster Eintrag der sortierten Warteliste</td>
+            </tr>
+            <tr>
+              <td><code>greater(length(body('Get_Waitlist')?['value']), 0)</code></td>
+              <td>Condition</td>
+              <td>Prüft ob Warteliste Einträge hat</td>
+            </tr>
+            <tr>
+              <td><code>body('Get_Waitlist')?['value'][0]?['Email']</code></td>
+              <td>Send Email</td>
+              <td>E-Mail-Adresse des Nachrückers</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>SharePoint Query</h2>
+        <div class="info-box">
+          <h4>Get Waitlist Items</h4>
+          <p>Die Warteliste wird mit folgendem Filter abgefragt:</p>
+        </div>
+
+        <pre><code>Filter Query:
+  Event_x0020_registered/Id eq @{triggerBody()?['eventId']}
+  and Status eq 'Waitlist'
+
+Order By:
+  Created asc
+
+Top Count:
+  1</code></pre>
+      </section>
+
+      <section>
+        <h2>E-Mail Template</h2>
+        <p>Der Nachrücker erhält folgende Benachrichtigung:</p>
+
+        <div class="info-box">
+          <h4>Betreff</h4>
+          <p>Nachrücker-Bestätigung: [Event-Name]</p>
+        </div>
+
+        <pre><code>Guten Tag [Name],
+
+gute Nachrichten! Ein Platz für das Event "[Event-Name]" ist frei geworden
+und Sie sind nachgerückt.
+
+Event-Details:
+- Datum: [Datum]
+- Uhrzeit: [Uhrzeit]
+- Ort: [Location]
+
+Ein Kalendereintrag wurde automatisch erstellt.
+
+Bei Fragen wenden Sie sich an den Organizer.
+
+Mit freundlichen Grüßen,
+DEX Event Platform</code></pre>
+      </section>
+
+      <section>
+        <h2>Output</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Typ</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>promoted</code></td>
+              <td>Boolean</td>
+              <td>True wenn Nachrücker gefunden</td>
+            </tr>
+            <tr>
+              <td><code>promotedUserId</code></td>
+              <td>String</td>
+              <td>ID des nachgerückten Users</td>
+            </tr>
+            <tr>
+              <td><code>remainingWaitlist</code></td>
+              <td>Integer</td>
+              <td>Verbleibende Wartelisten-Einträge</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Connectors</h2>
+        <div class="tag">SharePoint</div>
+        <div class="tag">Office 365 Outlook</div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DEX Event Experience Platform - Interne Dokumentation</p>
+      <p>Entwickelt von Eike Brenneisen, Andreas Enk, Nils Felten</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#1a365d',
+        primaryTextColor: '#fff',
+        primaryBorderColor: '#1a365d',
+        lineColor: '#6b7280',
+        secondaryColor: '#f3f4f6',
+        tertiaryColor: '#e5e7eb'
+      }
+    });
+  </script>
+</body>
+</html>

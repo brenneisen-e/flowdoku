@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEX Event Experience Platform - Dokumentation</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="index.html" class="logo">DEX <span>Documentation</span></a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Übersicht</a></li>
+          <li><a href="flows/index.html">Flows</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <section class="hero">
+        <h1>DEX Event Experience Platform</h1>
+        <p>Power App + Power Automate Lösung für interne Deloitte-Events</p>
+      </section>
+
+      <section>
+        <h2>Übersicht</h2>
+        <p>DEX ist eine vollständige Event-Management-Lösung, die auf Microsoft Power Platform basiert. Die Plattform ermöglicht die effiziente Verwaltung von internen Events - von der Erstellung über die Anmeldung bis zum Check-In.</p>
+
+        <div class="info-box">
+          <h4>Status</h4>
+          <p>15+ Events erfolgreich durchgeführt. Von BR und SecO freigegeben.</p>
+        </div>
+
+        <h3>Kernfunktionen</h3>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Event-Erstellung</h3>
+            <p>Automatische SharePoint-Site-Erstellung inkl. Anmeldemaske. Setup in wenigen Minuten.</p>
+          </div>
+          <div class="card">
+            <h3>An-/Abmeldung</h3>
+            <p>Automatische Bestätigungsmail und Kalendereintrag bei Registrierung.</p>
+          </div>
+          <div class="card">
+            <h3>Wartelisten-Handling</h3>
+            <p>Automatisches Nachrücken bei Abmeldung mit Benachrichtigung.</p>
+          </div>
+          <div class="card">
+            <h3>QR-Code Check-In</h3>
+            <p>Individuelle QR-Codes für jeden Teilnehmer. Check-In-Funktion für das Orga-Team.</p>
+          </div>
+          <div class="card">
+            <h3>Assistenz-Modus</h3>
+            <p>Anmeldung für andere Personen möglich (varAssistancetrue).</p>
+          </div>
+          <div class="card">
+            <h3>Organizer-Zugang</h3>
+            <p>Event-Auswahl gefiltert auf eigene Events. Vollständige Teilnehmerverwaltung.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Architektur</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph PowerApps["Power Apps"]
+        APP[DEX Event App]
+        CHECKIN[Check-In App]
+    end
+
+    subgraph PowerAutomate["Power Automate Flows"]
+        REG[Registrierungs-Flow]
+        UNREG[Abmelde-Flow]
+        WAIT[Wartelisten-Flow]
+        MAIL[E-Mail Flow]
+    end
+
+    subgraph SharePoint["SharePoint Listen"]
+        EVENTS[(Events)]
+        VISITORS[(Event visitors)]
+        TEMP[(Anmeldungen)]
+    end
+
+    subgraph Services["Microsoft 365 Services"]
+        OUTLOOK[Outlook]
+        O365[Office365Users]
+    end
+
+    APP --> REG
+    APP --> UNREG
+    CHECKIN --> VISITORS
+
+    REG --> EVENTS
+    REG --> VISITORS
+    REG --> TEMP
+    REG --> MAIL
+
+    UNREG --> VISITORS
+    UNREG --> WAIT
+
+    WAIT --> VISITORS
+    WAIT --> MAIL
+
+    MAIL --> OUTLOOK
+    APP --> O365
+        </pre>
+      </section>
+
+      <section>
+        <h2>Technische Komponenten</h2>
+
+        <h3>SharePoint-Listen</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Liste</th>
+              <th>Beschreibung</th>
+              <th>Wichtige Felder</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Events</code></td>
+              <td>Event-Stammdaten</td>
+              <td>Organizer, Datum, Kapazität, Deadline</td>
+            </tr>
+            <tr>
+              <td><code>Event visitors</code></td>
+              <td>Registrierte Teilnehmer</td>
+              <td>Event registered (Lookup), Status, QR-Code</td>
+            </tr>
+            <tr>
+              <td><code>Anmeldungen</code></td>
+              <td>Temporäre Registrierungstabelle</td>
+              <td>Processing-Status</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Connectors</h3>
+        <div class="tag">SharePoint</div>
+        <div class="tag">Office 365 Outlook</div>
+        <div class="tag">Office365Users</div>
+      </section>
+
+      <section>
+        <h2>Power Automate Flows</h2>
+        <p>Die Geschäftslogik der Plattform wird durch mehrere Power Automate Flows abgebildet:</p>
+
+        <div class="card-grid">
+          <a href="flows/registrierung.html" class="card-link">
+            <div class="card">
+              <h3>Registrierungs-Flow</h3>
+              <p>Verarbeitet neue Anmeldungen, prüft Kapazität, erstellt Kalendereinträge.</p>
+              <div style="margin-top: 0.75rem;">
+                <span class="tag tag-primary">Trigger: SharePoint Item Created</span>
+              </div>
+            </div>
+          </a>
+          <a href="flows/abmeldung.html" class="card-link">
+            <div class="card">
+              <h3>Abmelde-Flow</h3>
+              <p>Verarbeitet Abmeldungen, prüft Deadline, triggert Wartelisten-Nachrücken.</p>
+              <div style="margin-top: 0.75rem;">
+                <span class="tag tag-primary">Trigger: HTTP Request / App</span>
+              </div>
+            </div>
+          </a>
+          <a href="flows/warteliste.html" class="card-link">
+            <div class="card">
+              <h3>Wartelisten-Flow</h3>
+              <p>Automatisches Nachrücken von Wartelisten-Teilnehmern bei freien Plätzen.</p>
+              <div style="margin-top: 0.75rem;">
+                <span class="tag tag-primary">Trigger: Flow-Aufruf</span>
+              </div>
+            </div>
+          </a>
+          <a href="flows/email.html" class="card-link">
+            <div class="card">
+              <h3>E-Mail &amp; Kalender</h3>
+              <p>Versand von Bestätigungsmails und Erstellung von Kalendereinträgen.</p>
+              <div style="margin-top: 0.75rem;">
+                <span class="tag tag-primary">Trigger: Child Flow</span>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <p style="margin-top: 1.5rem;"><a href="flows/index.html">Alle Flows anzeigen &rarr;</a></p>
+      </section>
+
+      <section>
+        <h2>Datenschutz</h2>
+        <ul>
+          <li>Datenminimierung und Zweckbindung</li>
+          <li>Keine sensiblen Daten (außer Allergien wenn nötig)</li>
+          <li>Definierte Aufbewahrungsfristen</li>
+          <li>Automatische Löschung nach Event</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Geplante Weiterentwicklung</h2>
+        <ul>
+          <li><strong>Self-Service-Modus</strong> - Events ohne Admin-Einbindung anlegen</li>
+          <li><strong>Power-User-Ausbildung</strong> - Schulung für Assistenzen</li>
+          <li><strong>Organizer-Funktionen</strong> - Änderung von Anmeldedaten/Event-Infos</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DEX Event Experience Platform - Interne Dokumentation</p>
+      <p>Entwickelt von Eike Brenneisen, Andreas Enk, Nils Felten</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#1a365d',
+        primaryTextColor: '#fff',
+        primaryBorderColor: '#1a365d',
+        lineColor: '#6b7280',
+        secondaryColor: '#f3f4f6',
+        tertiaryColor: '#e5e7eb'
+      }
+    });
+  </script>
+</body>
+</html>

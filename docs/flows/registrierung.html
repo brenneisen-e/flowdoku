@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registrierungs-Flow - DEX Documentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="../index.html" class="logo">DEX <span>Documentation</span></a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Übersicht</a></li>
+          <li><a href="index.html">Flows</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span>/</span>
+        <a href="index.html">Flows</a>
+        <span>/</span>
+        Registrierungs-Flow
+      </div>
+
+      <div class="flow-header">
+        <h1>Registrierungs-Flow</h1>
+        <p>Verarbeitet neue Event-Anmeldungen, prüft Kapazität und erstellt Kalendereinträge.</p>
+        <div class="flow-meta">
+          <div class="flow-meta-item">
+            <strong>Trigger:</strong> SharePoint - When an item is created
+          </div>
+          <div class="flow-meta-item">
+            <strong>Liste:</strong> Anmeldungen
+          </div>
+        </div>
+      </div>
+
+      <section>
+        <h2>Flowchart</h2>
+        <pre class="mermaid">
+flowchart TD
+    START([Trigger: Item Created in Anmeldungen]) --> GET_EVENT[Get Event Details]
+    GET_EVENT --> GET_USER[Get User Profile<br/>Office365Users]
+    GET_USER --> COUNT[Count Current Registrations]
+    COUNT --> CHECK{Kapazität<br/>erreicht?}
+
+    CHECK --> |"Nein"| CREATE_REG[Create Registration<br/>in Event visitors]
+    CHECK --> |"Ja"| CHECK_WAIT{Warteliste<br/>aktiviert?}
+
+    CHECK_WAIT --> |"Ja"| CREATE_WAIT[Create Waitlist Entry]
+    CHECK_WAIT --> |"Nein"| REJECT[Ablehnung senden]
+
+    CREATE_REG --> CONVERT_TZ[Convert Timezone<br/>to Europe/Berlin]
+    CONVERT_TZ --> CREATE_CAL[Create Calendar Event]
+    CREATE_CAL --> SEND_CONFIRM[Send Confirmation Email]
+
+    CREATE_WAIT --> SEND_WAIT[Send Waitlist Email]
+
+    SEND_CONFIRM --> UPDATE_STATUS[Update Anmeldungen Status]
+    SEND_WAIT --> UPDATE_STATUS
+    REJECT --> UPDATE_STATUS
+
+    UPDATE_STATUS --> END([Flow Ende])
+        </pre>
+      </section>
+
+      <section>
+        <h2>Trigger</h2>
+        <div class="info-box">
+          <h4>When an item is created</h4>
+          <p>Der Flow wird ausgelöst, wenn ein neuer Eintrag in der SharePoint-Liste <code>Anmeldungen</code> erstellt wird. Diese Liste dient als temporäre Warteschlange für die Verarbeitung.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Aktionen</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Schritt</th>
+              <th>Aktion</th>
+              <th>Typ</th>
+              <th>Beschreibung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Get Event Details</td>
+              <td>SharePoint - Get item</td>
+              <td>Lädt Event-Stammdaten basierend auf Event-ID</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Get User Profile</td>
+              <td>Office365Users</td>
+              <td>Lädt Profildaten des anmeldenden Users</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Count Registrations</td>
+              <td>SharePoint - Get items</td>
+              <td>Zählt aktuelle Anmeldungen für das Event</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Check Capacity</td>
+              <td>Condition</td>
+              <td>Prüft ob Kapazität erreicht</td>
+            </tr>
+            <tr>
+              <td>5a</td>
+              <td>Create Registration</td>
+              <td>SharePoint - Create item</td>
+              <td>Erstellt Eintrag in Event visitors</td>
+            </tr>
+            <tr>
+              <td>5b</td>
+              <td>Create Waitlist Entry</td>
+              <td>SharePoint - Create item</td>
+              <td>Erstellt Wartelisten-Eintrag</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>Convert Timezone</td>
+              <td>Expression</td>
+              <td>Konvertiert Zeiten nach Europe/Berlin</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td>Create Calendar Event</td>
+              <td>Outlook - Create event</td>
+              <td>Erstellt Kalendereintrag beim User</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td>Send Email</td>
+              <td>Outlook - Send email</td>
+              <td>Sendet Bestätigungs-/Wartelisten-Mail</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td>Update Status</td>
+              <td>SharePoint - Update item</td>
+              <td>Markiert Anmeldung als verarbeitet</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Expressions</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Expression</th>
+              <th>Verwendung</th>
+              <th>Erklärung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>triggerOutputs()?['body/Event registered/Id']</code></td>
+              <td>Get Event Details</td>
+              <td>Extrahiert Event-ID aus dem Lookup-Feld der Anmeldung</td>
+            </tr>
+            <tr>
+              <td><code>length(body('Get_Registrations')?['value'])</code></td>
+              <td>Capacity Check</td>
+              <td>Zählt die Anzahl der vorhandenen Registrierungen</td>
+            </tr>
+            <tr>
+              <td><code>greater(variables('currentCount'), body('Get_Event')?['Capacity'])</code></td>
+              <td>Condition</td>
+              <td>Prüft ob aktuelle Anzahl größer als Kapazität</td>
+            </tr>
+            <tr>
+              <td><code>convertTimeZone(body('Get_Event')?['StartDate'],'UTC','W. Europe Standard Time')</code></td>
+              <td>Calendar Event</td>
+              <td>Konvertiert UTC-Startdatum nach deutscher Zeitzone</td>
+            </tr>
+            <tr>
+              <td><code>formatDateTime(variables('localStart'),'dd.MM.yyyy HH:mm')</code></td>
+              <td>Email Body</td>
+              <td>Formatiert Datum für E-Mail-Anzeige</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Fehlerbehandlung</h2>
+        <pre class="mermaid">
+flowchart TD
+    TRY[Try Scope] --> |"Erfolg"| SUCCESS[Status: Completed]
+    TRY --> |"Fehler"| CATCH[Catch Scope]
+    CATCH --> LOG[Log Error to SharePoint]
+    LOG --> STATUS_ERR[Status: Failed]
+    STATUS_ERR --> NOTIFY[Notify Admin]
+        </pre>
+
+        <p>Der Flow verwendet ein Try-Catch-Pattern mit Scopes:</p>
+        <ul>
+          <li><strong>Try Scope:</strong> Enthält alle Hauptaktionen</li>
+          <li><strong>Catch Scope:</strong> <code>runAfter: { "Try_Scope": ["Failed", "TimedOut"] }</code></li>
+          <li>Bei Fehler wird der Status in der Anmeldungen-Liste auf "Failed" gesetzt</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Connectors</h2>
+        <div class="tag">SharePoint</div>
+        <div class="tag">Office 365 Outlook</div>
+        <div class="tag">Office365Users</div>
+      </section>
+
+      <section>
+        <h2>Hinweise</h2>
+        <div class="info-box">
+          <h4>Assistenz-Modus</h4>
+          <p>Wenn <code>varAssistancetrue</code> gesetzt ist, wird die Anmeldung für eine andere Person durchgeführt. Der Flow prüft dann das Feld <code>RegisteredFor</code> statt des aktuellen Users.</p>
+        </div>
+
+        <div class="info-box">
+          <h4>Duplikat-Prüfung</h4>
+          <p>Vor der Registrierung wird geprüft, ob der User bereits für das Event registriert ist oder sich gerade in Bearbeitung befindet.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DEX Event Experience Platform - Interne Dokumentation</p>
+      <p>Entwickelt von Eike Brenneisen, Andreas Enk, Nils Felten</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#1a365d',
+        primaryTextColor: '#fff',
+        primaryBorderColor: '#1a365d',
+        lineColor: '#6b7280',
+        secondaryColor: '#f3f4f6',
+        tertiaryColor: '#e5e7eb'
+      }
+    });
+  </script>
+</body>
+</html>
