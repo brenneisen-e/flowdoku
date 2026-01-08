@@ -1,0 +1,14 @@
+# Cloudflare Pages Headers
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Cache static assets
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML files - kurzes Caching
+/*.html
+  Cache-Control: public, max-age=3600

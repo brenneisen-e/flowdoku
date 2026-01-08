@@ -1,0 +1,10 @@
+# Cloudflare Pages Redirects
+# Falls jemand auf eine alte/nicht existierende Seite geht
+
+/flows/registrierung.html    /dokumentation.html#flow-registerparticipant    301
+/flows/abmeldung.html        /dokumentation.html#flow-deregisterparticipant  301
+/flows/warteliste.html       /dokumentation.html#flow-weitere                301
+/flows/email.html            /dokumentation.html#flow-sendmail               301
+
+# Fallback: 404 zur Startseite
+/*    /index.html    404
