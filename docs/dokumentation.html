@@ -5,21 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DEX Event Experience Platform - Anwenderdokumentation</title>
   <style>
-    /* DIN A4 Print Optimization */
-    @page {
-      size: A4;
-      margin: 20mm 15mm 20mm 15mm;
-    }
-
+    @page { size: A4; margin: 20mm 15mm 20mm 15mm; }
     @media print {
-      html, body {
-        width: 210mm;
-        font-size: 10pt;
-        line-height: 1.4;
-        color: #000;
-        background: #fff;
-      }
-      .no-print, header, .nav-header { display: none !important; }
+      html, body { width: 210mm; font-size: 10pt; line-height: 1.4; color: #000; background: #fff; }
+      .no-print, .nav-header { display: none !important; }
       .page-break { page-break-before: always; }
       .avoid-break { page-break-inside: avoid; }
       h1 { font-size: 18pt; }
@@ -27,91 +16,47 @@
       h3 { font-size: 12pt; page-break-after: avoid; }
       h4 { font-size: 11pt; page-break-after: avoid; }
       table { font-size: 9pt; }
-      pre { font-size: 8pt; white-space: pre-wrap; }
       a { color: #000; text-decoration: none; }
-      .flow-section { page-break-inside: avoid; }
+      .action-cluster { page-break-inside: avoid; }
     }
-
-    /* Screen Styles */
-    :root {
-      --primary: #1a365d;
-      --gray-50: #f9fafb;
-      --gray-100: #f3f4f6;
-      --gray-200: #e5e7eb;
-      --gray-600: #4b5563;
-      --gray-800: #1f2937;
-    }
-
+    :root { --primary: #1a365d; --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb; --gray-600: #4b5563; --gray-800: #1f2937; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      font-size: 11pt;
-      line-height: 1.6;
-      color: var(--gray-800);
-      max-width: 210mm;
-      margin: 0 auto;
-      padding: 20px;
-      background: #fff;
-    }
-
-    .nav-header {
-      background: var(--primary);
-      color: white;
-      padding: 1rem;
-      margin: -20px -20px 20px -20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: var(--gray-800); max-width: 210mm; margin: 0 auto; padding: 20px; background: #fff; }
+    .nav-header { background: var(--primary); color: white; padding: 1rem; margin: -20px -20px 20px -20px; display: flex; justify-content: space-between; align-items: center; }
     .nav-header a { color: white; text-decoration: none; margin-left: 1rem; }
     .nav-header .logo { font-weight: bold; font-size: 1.1rem; }
-
     h1 { font-size: 24pt; color: var(--primary); margin: 1.5rem 0 1rem 0; }
     h2 { font-size: 16pt; color: var(--primary); margin: 1.5rem 0 0.75rem 0; border-bottom: 2px solid var(--gray-200); padding-bottom: 0.5rem; }
     h3 { font-size: 13pt; color: var(--primary); margin: 1.25rem 0 0.5rem 0; }
-    h4 { font-size: 11pt; margin: 1rem 0 0.5rem 0; }
-
+    h4 { font-size: 11pt; margin: 1rem 0 0.5rem 0; color: var(--primary); }
     p { margin-bottom: 0.75rem; }
     ul, ol { margin: 0.5rem 0 0.75rem 1.5rem; }
     li { margin-bottom: 0.25rem; }
-
     table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 10pt; }
     th, td { border: 1px solid var(--gray-200); padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
     th { background: var(--gray-100); font-weight: 600; }
-
-    code { background: var(--gray-100); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 9pt; font-family: Consolas, monospace; }
-    pre { background: var(--gray-50); border: 1px solid var(--gray-200); padding: 0.75rem; overflow-x: auto; font-size: 9pt; margin: 0.5rem 0; }
-
-    .info-box { background: var(--gray-50); border-left: 4px solid var(--primary); padding: 0.75rem 1rem; margin: 0.75rem 0; }
-    .info-box h4 { margin-top: 0; color: var(--primary); }
-
+    code { background: var(--gray-100); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 9pt; }
     .toc { background: var(--gray-50); padding: 1rem; margin: 1rem 0; }
     .toc ul { list-style: none; margin-left: 0; }
     .toc li { padding: 0.2rem 0; }
     .toc ul ul { margin-left: 1rem; }
     .toc a { color: var(--primary); }
-
     .title-page { text-align: center; padding: 4rem 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 2rem; }
     .title-page h1 { font-size: 28pt; margin-bottom: 0.5rem; }
     .title-page .subtitle { font-size: 14pt; color: var(--gray-600); }
     .title-page .meta { margin-top: 2rem; color: var(--gray-600); font-size: 10pt; }
-
     .flow-section { border: 1px solid var(--gray-200); padding: 1rem; margin: 1rem 0; border-radius: 4px; }
     .flow-section h3 { margin-top: 0; border-bottom: 1px solid var(--gray-200); padding-bottom: 0.5rem; }
-
-    .action-table td:first-child { width: 25%; font-weight: 500; }
-    .action-table td:nth-child(2) { width: 20%; }
-
-    .tag { display: inline-block; background: var(--gray-100); padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 9pt; margin-right: 0.25rem; }
-    .tag-primary { background: var(--primary); color: white; }
-
-    .print-btn {
-      position: fixed; bottom: 20px; right: 20px;
-      background: var(--primary); color: white;
-      padding: 0.75rem 1.5rem; border: none; border-radius: 4px;
-      cursor: pointer; font-size: 11pt; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
+    .flow-meta { background: var(--gray-50); padding: 0.75rem; margin: 0.5rem 0; border-radius: 4px; }
+    .flow-meta table { margin: 0; font-size: 9pt; }
+    .action-cluster { border: 1px solid var(--gray-200); border-radius: 6px; margin: 1rem 0; overflow: hidden; }
+    .cluster-header { background: var(--primary); color: white; padding: 0.6rem 1rem; font-weight: 600; font-size: 10pt; }
+    .cluster-desc { background: var(--gray-50); padding: 0.75rem 1rem; border-bottom: 1px solid var(--gray-200); font-size: 10pt; }
+    .cluster-desc ul { margin: 0.25rem 0 0 1.2rem; }
+    .cluster-desc li { margin: 0.15rem 0; }
+    .action-cluster table { margin: 0; font-size: 9pt; }
+    .action-cluster th { background: var(--gray-100); }
+    .print-btn { position: fixed; bottom: 20px; right: 20px; background: var(--primary); color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; font-size: 11pt; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
     .print-btn:hover { background: #2c5282; }
   </style>
 </head>
@@ -122,7 +67,7 @@
   <nav>
     <a href="index.html">Übersicht</a>
     <a href="flows/index.html">Flows</a>
-    <a href="dokumentation.html">Dokumentation</a>
+    <a href="doku/index.html">Modulare Doku</a>
   </nav>
 </div>
 
@@ -133,7 +78,7 @@
   <h1>DEX Event Experience Platform</h1>
   <p class="subtitle">Anwenderdokumentation</p>
   <p class="meta">
-    Version 1.0 | Januar 2026<br>
+    Version 2.0 | Januar 2026<br>
     Deloitte Deutschland GmbH<br><br>
     Erstellt von: Eike Brenneisen, Andreas Enk, Nils Felten
   </p>
@@ -144,48 +89,15 @@
   <h2 style="border: none; margin-top: 0;">Inhaltsverzeichnis</h2>
   <ul>
     <li><strong>1. Management Summary</strong></li>
-    <li><strong>2. Anwendungsbeschreibung</strong>
+    <li><strong>2. Anwendungsbeschreibung</strong></li>
+    <li><strong>3. Power Automate Flows - Übersicht</strong></li>
+    <li><strong>4. Flow-Detaildokumentation</strong> (mit geclusterten Actions)
       <ul>
-        <li>2.1 Zweck und Nutzen</li>
-        <li>2.2 Zielgruppen</li>
-        <li>2.3 Funktionsübersicht</li>
-        <li>2.4 Technische Architektur</li>
-      </ul>
-    </li>
-    <li><strong>3. Power Automate Flows - Übersicht</strong>
-      <ul>
-        <li>3.1 Event-Verwaltung (4 Flows)</li>
-        <li>3.2 Registrierung (5 Flows)</li>
-        <li>3.3 Check-In (3 Flows)</li>
-        <li>3.4 E-Mail &amp; Kalender (5 Flows)</li>
-        <li>3.5 Utility &amp; Administration (6 Flows)</li>
-      </ul>
-    </li>
-    <li><strong>4. Flow-Detaildokumentation</strong>
-      <ul>
-        <li>4.1 NewEventAdded_SiteProvis</li>
-        <li>4.2 ApplyTemplateB2Run</li>
-        <li>4.3 ApplyTemplateOtherEvent</li>
-        <li>4.4 EventPermission</li>
-        <li>4.5 RegisterParticipant</li>
-        <li>4.6 DeregisterParticipant</li>
-        <li>4.7 CheckRegistrationStatusParticipant</li>
-        <li>4.8 GetWaitinglistPosition</li>
-        <li>4.9 GetParticipantEvents</li>
-        <li>4.10 Check-In</li>
-        <li>4.11 CheckInFromQRCode</li>
-        <li>4.12 EventQRCodeGenerator</li>
-        <li>4.13 SendMailSharedMailbox</li>
-        <li>4.14 SendMailParticipantList</li>
-        <li>4.15 RegisterOutlookEventParticipant</li>
-        <li>4.16 CreateOutlookEventSharedMailbox</li>
-        <li>4.17 HelperFlowMailToRegistered</li>
-        <li>4.18 Flow-Dokumentation-Export</li>
-        <li>4.19 SharePoint_Batch_Update_V2</li>
-        <li>4.20 SetPermissionForSubWeb</li>
-        <li>4.21 UpdateAllEventsWithNewFields</li>
-        <li>4.22 CorrectOutlookID</li>
-        <li>4.23 SP Liste Nummerierung korrigieren</li>
+        <li>4.1-4.4 Event-Verwaltung</li>
+        <li>4.5-4.9 Registrierung</li>
+        <li>4.10-4.12 Check-In</li>
+        <li>4.13-4.17 E-Mail & Kalender</li>
+        <li>4.18-4.23 Utility & Administration</li>
       </ul>
     </li>
     <li><strong>5. Anhang</strong></li>
@@ -196,56 +108,29 @@
 <div class="page-break"></div>
 <h1>1. Management Summary</h1>
 
-<p>Die <strong>DEX Event Experience Platform</strong> ist eine vollständig auf Microsoft Power Platform basierende Event-Management-Lösung für interne Deloitte-Veranstaltungen. Die Plattform wurde entwickelt, um den gesamten Lebenszyklus von Events zu digitalisieren und zu automatisieren – von der Erstellung eines Events über die Teilnehmerregistrierung bis hin zum Check-In am Veranstaltungstag.</p>
+<p>Die <strong>DEX Event Experience Platform</strong> ist eine vollständig auf Microsoft Power Platform basierende Event-Management-Lösung für interne Deloitte-Veranstaltungen. Die Plattform digitalisiert und automatisiert den gesamten Event-Lebenszyklus.</p>
 
 <h3>Ausgangssituation</h3>
-<p>Vor der Einführung von DEX wurden interne Events manuell verwaltet: Anmeldungen per E-Mail, Teilnehmerlisten in Excel, manuelle Kalenderverwaltung und aufwendige Check-In-Prozesse mit Papierlisten. Dies führte zu hohem administrativem Aufwand, Fehleranfälligkeit und mangelnder Übersicht für Organizer.</p>
+<p>Vor DEX: Manuelle Event-Verwaltung mit E-Mail-Anmeldungen, Excel-Listen, manueller Kalenderpflege und Papier-Check-In-Listen.</p>
 
-<h3>Lösung</h3>
-<p>DEX automatisiert diese Prozesse vollständig durch den Einsatz von Power Apps für die Benutzeroberfläche und Power Automate für die Geschäftslogik. Insgesamt wurden <strong>23 Power Automate Flows</strong> implementiert, die nahtlos zusammenarbeiten.</p>
+<h3>Die Lösung</h3>
+<p>DEX automatisiert diese Prozesse durch <strong>Power Apps</strong> (Frontend), <strong>Power Automate</strong> (23 Flows), <strong>SharePoint Online</strong> (Daten) und <strong>Office 365</strong> (E-Mail/Kalender).</p>
 
 <h3>Erreichte Ergebnisse</h3>
-<ul>
-  <li><strong>15+ Events</strong> erfolgreich über die Plattform abgewickelt</li>
-  <li><strong>Zeiteinsparung</strong> von ca. 80% bei der Event-Administration</li>
-  <li><strong>Fehlerreduktion</strong> durch automatisierte Prozesse</li>
-  <li><strong>Bessere Teilnehmererfahrung</strong> durch Self-Service-Anmeldung und QR-Code Check-In</li>
-  <li><strong>Compliance</strong>: Von BR und SecO freigegeben</li>
-</ul>
-
-<h3>Kernfunktionen</h3>
 <table>
-  <tr>
-    <th>Funktion</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td>Event-Erstellung</td>
-    <td>Automatische Erstellung von SharePoint-Subsites mit Teilnehmerlisten</td>
-  </tr>
-  <tr>
-    <td>Self-Service-Registrierung</td>
-    <td>Teilnehmer melden sich eigenständig an, erhalten Bestätigungsmail und Kalendereintrag</td>
-  </tr>
-  <tr>
-    <td>Wartelisten-Management</td>
-    <td>Automatisches Nachrücken bei Abmeldungen mit Benachrichtigung</td>
-  </tr>
-  <tr>
-    <td>QR-Code Check-In</td>
-    <td>Individuelle QR-Codes pro Teilnehmer für schnellen Check-In vor Ort</td>
-  </tr>
-  <tr>
-    <td>E-Mail-Kommunikation</td>
-    <td>Zentrale Kommunikation über Shared Mailbox (no_reply.events@deloitte.de)</td>
-  </tr>
+  <tr><td><strong>15+ Events</strong></td><td>erfolgreich durchgeführt</td></tr>
+  <tr><td><strong>80% Zeiteinsparung</strong></td><td>bei Event-Administration</td></tr>
+  <tr><td><strong>23 Flows</strong></td><td>implementiert und produktiv</td></tr>
+  <tr><td><strong>100% Compliance</strong></td><td>BR und SecO freigegeben</td></tr>
 </table>
 
-<h3>Geplante Weiterentwicklung</h3>
+<h3>Kernfunktionen</h3>
 <ul>
-  <li><strong>Self-Service-Modus:</strong> Events ohne Admin-Einbindung anlegen</li>
-  <li><strong>Power-User-Schulungen:</strong> Ausbildung von Assistenzen zur eigenständigen Event-Verwaltung</li>
-  <li><strong>Budget:</strong> 5.000 EUR (FY25/26), 10.000 EUR (ab FY26/27)</li>
+  <li><strong>Event-Erstellung:</strong> Automatische SharePoint-Subsite mit Teilnehmerliste</li>
+  <li><strong>Self-Service-Registrierung:</strong> Anmeldung mit automatischer Bestätigungsmail und Kalendereintrag</li>
+  <li><strong>Wartelisten-Management:</strong> Automatisches Nachrücken bei Abmeldungen</li>
+  <li><strong>QR-Code Check-In:</strong> Individuelle QR-Codes für schnellen Check-In</li>
+  <li><strong>E-Mail-Kommunikation:</strong> Zentral über Shared Mailbox (no_reply.events@deloitte.de)</li>
 </ul>
 
 <!-- 2. ANWENDUNGSBESCHREIBUNG -->
@@ -253,1034 +138,784 @@
 <h1>2. Anwendungsbeschreibung</h1>
 
 <h2>2.1 Zweck und Nutzen</h2>
+<p>DEX ersetzt manuelle Event-Prozesse durch automatisierte Workflows für Organizer, Teilnehmer und Check-In-Teams.</p>
 
-<p>Die DEX Event Experience Platform dient der effizienten Verwaltung interner Deloitte-Events. Sie ersetzt manuelle Prozesse durch automatisierte Workflows und bietet allen Beteiligten – Organizern, Teilnehmern und dem Check-In-Team – eine intuitive Benutzeroberfläche.</p>
-
-<h3>Hauptnutzen für Organizer</h3>
+<h3>Nutzen für Organizer</h3>
 <ul>
-  <li>Schnelle Event-Erstellung mit automatischer Infrastruktur (SharePoint-Site, Listen, Berechtigungen)</li>
+  <li>Schnelle Event-Erstellung mit automatischer Infrastruktur</li>
   <li>Echtzeit-Übersicht über Anmeldungen und Warteliste</li>
-  <li>Einfache Kommunikation mit Teilnehmern über integrierte E-Mail-Funktion</li>
-  <li>Reduzierter administrativer Aufwand durch Automatisierung</li>
+  <li>Integrierte E-Mail-Kommunikation</li>
 </ul>
 
-<h3>Hauptnutzen für Teilnehmer</h3>
+<h3>Nutzen für Teilnehmer</h3>
 <ul>
-  <li>Self-Service-Anmeldung ohne E-Mail-Kommunikation</li>
-  <li>Automatische Bestätigungsmail mit allen Event-Details</li>
+  <li>Self-Service-Anmeldung ohne E-Mail</li>
   <li>Automatischer Outlook-Kalendereintrag</li>
-  <li>Persönlicher QR-Code für schnellen Check-In</li>
-  <li>Transparente Wartelisten-Position bei ausgebuchten Events</li>
+  <li>Persönlicher QR-Code für Check-In</li>
 </ul>
 
-<h2>2.2 Zielgruppen</h2>
-
+<h2>2.2 Technische Architektur</h2>
 <table>
-  <tr>
-    <th>Rolle</th>
-    <th>Beschreibung</th>
-    <th>Hauptfunktionen in DEX</th>
-  </tr>
-  <tr>
-    <td><strong>Event-Organizer</strong></td>
-    <td>Deloitte-Mitarbeiter, die Events planen und durchführen</td>
-    <td>Event anlegen, Teilnehmer verwalten, Kommunikation, Check-In-Übersicht</td>
-  </tr>
-  <tr>
-    <td><strong>Teilnehmer</strong></td>
-    <td>Alle Deloitte-Mitarbeiter, die an Events teilnehmen möchten</td>
-    <td>Anmeldung, Abmeldung, Event-Übersicht, QR-Code abrufen</td>
-  </tr>
-  <tr>
-    <td><strong>Check-In-Team</strong></td>
-    <td>Orga-Mitarbeiter vor Ort am Veranstaltungstag</td>
-    <td>Check-In per QR-Scan oder manuell, Teilnehmerliste einsehen</td>
-  </tr>
-  <tr>
-    <td><strong>Assistenzen</strong></td>
-    <td>Assistenzen, die Anmeldungen für andere durchführen</td>
-    <td>Assistenz-Modus: Anmeldung im Namen anderer Personen</td>
-  </tr>
-  <tr>
-    <td><strong>Administratoren</strong></td>
-    <td>IT/Admin-Team für Plattform-Management</td>
-    <td>Flow-Verwaltung, Fehlerbehebung, Utility-Flows</td>
-  </tr>
-</table>
-
-<h2>2.3 Funktionsübersicht</h2>
-
-<h3>Event-Erstellung</h3>
-<p>Wenn ein neues Event in der SharePoint Events-Liste erstellt wird, startet automatisch der Flow "NewEventAdded_SiteProvis". Dieser erstellt eine dedizierte SharePoint-Subsite für das Event mit einer vorkonfigurierten Teilnehmerliste. Je nach Event-Typ (B2Run, JP Morgan Run, Other Deloitte Event) wird das passende Template angewendet. Der Organizer erhält eine Bestätigungsmail mit Link zur Teilnehmerliste.</p>
-
-<h3>Teilnehmer-Registrierung</h3>
-<p>Teilnehmer melden sich über die Power App an. Der Flow "RegisterParticipant" prüft, ob noch Plätze verfügbar sind. Bei erfolgreicher Anmeldung wird ein Eintrag in der Teilnehmerliste erstellt, eine Bestätigungsmail gesendet und ein Outlook-Kalendereintrag angelegt. Ist das Event ausgebucht, wird der Teilnehmer auf die Warteliste gesetzt und über seine Position informiert.</p>
-
-<h3>Abmeldung und Wartelisten-Nachrücken</h3>
-<p>Bei Abmeldung eines Teilnehmers (Flow "DeregisterParticipant") wird automatisch der erste Teilnehmer von der Warteliste nachgerückt. Dieser erhält eine Benachrichtigung und einen Kalendereintrag. Der ursprüngliche Kalendereintrag des abgemeldeten Teilnehmers wird entfernt.</p>
-
-<h3>QR-Code Check-In</h3>
-<p>Vor dem Event generiert der Flow "EventQRCodeGenerator" für jeden registrierten Teilnehmer einen individuellen QR-Code, der per E-Mail versendet wird. Am Veranstaltungstag kann das Check-In-Team den QR-Code scannen (Flow "CheckInFromQRCode") oder Teilnehmer manuell einchecken (Flow "Check-In").</p>
-
-<h2>2.4 Technische Architektur</h2>
-
-<h3>Komponenten</h3>
-<table>
-  <tr>
-    <th>Komponente</th>
-    <th>Technologie</th>
-    <th>Zweck</th>
-  </tr>
-  <tr>
-    <td>Frontend</td>
-    <td>Power Apps (Canvas App)</td>
-    <td>Benutzeroberfläche für alle Anwender</td>
-  </tr>
-  <tr>
-    <td>Backend-Logik</td>
-    <td>Power Automate (23 Cloud Flows)</td>
-    <td>Geschäftslogik und Automatisierung</td>
-  </tr>
-  <tr>
-    <td>Datenspeicherung</td>
-    <td>SharePoint Online</td>
-    <td>Events-Liste, Teilnehmerlisten pro Event</td>
-  </tr>
-  <tr>
-    <td>E-Mail/Kalender</td>
-    <td>Office 365 Outlook</td>
-    <td>Benachrichtigungen, Kalendereinträge</td>
-  </tr>
-  <tr>
-    <td>Shared Mailbox</td>
-    <td>no_reply.events@deloitte.de</td>
-    <td>Absender für alle automatischen E-Mails</td>
-  </tr>
+  <tr><th>Komponente</th><th>Technologie</th><th>Zweck</th></tr>
+  <tr><td>Frontend</td><td>Power Apps</td><td>Benutzeroberfläche</td></tr>
+  <tr><td>Backend</td><td>Power Automate (23 Flows)</td><td>Geschäftslogik</td></tr>
+  <tr><td>Daten</td><td>SharePoint Online</td><td>Events, Teilnehmerlisten</td></tr>
+  <tr><td>Kommunikation</td><td>Office 365 Outlook</td><td>E-Mail, Kalender</td></tr>
 </table>
 
 <h3>SharePoint-Struktur</h3>
 <table>
-  <tr>
-    <th>Element</th>
-    <th>Pfad / Name</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td>Basis-Site</td>
-    <td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td>
-    <td>Hauptsite der Plattform</td>
-  </tr>
-  <tr>
-    <td>Events-Liste</td>
-    <td>/Lists/Events</td>
-    <td>Zentrale Liste aller Events</td>
-  </tr>
-  <tr>
-    <td>Event-Subsites</td>
-    <td>/sites/DOL-c-DE-B2Run/[EventName]/</td>
-    <td>Pro Event eine eigene Subsite</td>
-  </tr>
-  <tr>
-    <td>Teilnehmerliste</td>
-    <td>/[EventName]/Lists/Teilnehmerliste</td>
-    <td>Teilnehmer des jeweiligen Events</td>
-  </tr>
+  <tr><th>Element</th><th>Pfad</th></tr>
+  <tr><td>Basis-Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
+  <tr><td>Events-Liste</td><td>/Lists/Events</td></tr>
+  <tr><td>Event-Subsites</td><td>/sites/DOL-c-DE-B2Run/[EventName]/</td></tr>
+  <tr><td>Teilnehmerliste</td><td>/[EventName]/Lists/Teilnehmerliste</td></tr>
 </table>
 
 <!-- 3. FLOW-ÜBERSICHT -->
 <div class="page-break"></div>
 <h1>3. Power Automate Flows - Übersicht</h1>
 
-<p>Die DEX-Plattform umfasst 23 Power Automate Flows, die in fünf funktionale Kategorien unterteilt sind. Jeder Flow erfüllt eine spezifische Aufgabe im Gesamtsystem und ist optimal auf die anderen Flows abgestimmt.</p>
+<p>Die DEX-Plattform umfasst <strong>23 Power Automate Flows</strong> in fünf Kategorien:</p>
 
 <h2>3.1 Event-Verwaltung (4 Flows)</h2>
-
-<p>Diese Flows sind für die Erstellung und Konfiguration von Events zuständig. Sie werden ausgelöst, wenn ein neues Event in der SharePoint-Liste angelegt wird, und kümmern sich um die gesamte Infrastruktur.</p>
-
 <table>
-  <tr>
-    <th>Flow</th>
-    <th>Trigger</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td><strong>NewEventAdded_SiteProvis</strong></td>
-    <td>SharePoint Item Created</td>
-    <td>Hauptflow für Event-Erstellung. Erstellt SharePoint-Subsite, ruft Template-Flow auf, erstellt Outlook-Event, benachrichtigt Organizer. Aktuell: Stopped (manuelle Aktivierung).</td>
-  </tr>
-  <tr>
-    <td><strong>ApplyTemplateB2Run</strong></td>
-    <td>Child Flow</td>
-    <td>Wird von NewEventAdded aufgerufen. Erstellt die Teilnehmerliste mit allen erforderlichen Feldern für B2Run-Events (Laufstrecke, Team, etc.).</td>
-  </tr>
-  <tr>
-    <td><strong>ApplyTemplateOtherEvent</strong></td>
-    <td>Child Flow</td>
-    <td>Wird von NewEventAdded aufgerufen. Erstellt die Standard-Teilnehmerliste für JP Morgan und sonstige Deloitte-Events.</td>
-  </tr>
-  <tr>
-    <td><strong>EventPermission</strong></td>
-    <td>Manual Button</td>
-    <td>Verwaltet Berechtigungen für die Event-Zielgruppe (Audience). Entfernt bestehende Berechtigungen und setzt neue basierend auf E-Mail-Verteilern.</td>
-  </tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><td>NewEventAdded_SiteProvis</td><td>SharePoint Item Created</td><td>Hauptflow: Erstellt Subsite, Template, Outlook-Event</td></tr>
+  <tr><td>ApplyTemplateB2Run</td><td>Child Flow</td><td>B2Run-Teilnehmerliste mit Spezialfeldern</td></tr>
+  <tr><td>ApplyTemplateOtherEvent</td><td>Child Flow</td><td>Standard-Teilnehmerliste</td></tr>
+  <tr><td>EventPermission</td><td>Manual Button</td><td>Berechtigungen für Zielgruppe setzen</td></tr>
 </table>
 
 <h2>3.2 Registrierung (5 Flows)</h2>
-
-<p>Diese Flows verarbeiten An- und Abmeldungen von Teilnehmern. Sie werden primär von der Power App aufgerufen und verwalten den gesamten Registrierungsprozess inklusive Warteliste.</p>
-
 <table>
-  <tr>
-    <th>Flow</th>
-    <th>Trigger</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td><strong>RegisterParticipant</strong></td>
-    <td>SharePoint Item Created</td>
-    <td>Verarbeitet neue Anmeldungen. Prüft Kapazität, erstellt Teilnehmereintrag oder Wartelisten-Eintrag, ruft E-Mail- und Kalender-Flows auf.</td>
-  </tr>
-  <tr>
-    <td><strong>DeregisterParticipant</strong></td>
-    <td>SharePoint Item Created</td>
-    <td>Verarbeitet Abmeldungen. Entfernt Teilnehmereintrag, löscht Kalendereintrag, triggert Wartelisten-Nachrücken.</td>
-  </tr>
-  <tr>
-    <td><strong>CheckRegistrationStatusParticipant</strong></td>
-    <td>Power App</td>
-    <td>Prüft ob ein User bereits für ein Event registriert ist. Gibt Status zurück: registered, waitlist, oder not_registered.</td>
-  </tr>
-  <tr>
-    <td><strong>GetWaitinglistPosition</strong></td>
-    <td>Power App</td>
-    <td>Ermittelt die aktuelle Position eines Teilnehmers auf der Warteliste basierend auf dem Anmeldezeitpunkt.</td>
-  </tr>
-  <tr>
-    <td><strong>GetParticipantEvents</strong></td>
-    <td>Power App</td>
-    <td>Listet alle Events auf, für die ein User registriert ist oder auf der Warteliste steht. Wird für die "Meine Events"-Ansicht verwendet.</td>
-  </tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><td>RegisterParticipant</td><td>SharePoint Item Created</td><td>Anmeldung: Kapazitätsprüfung, Registrierung/Warteliste</td></tr>
+  <tr><td>DeregisterParticipant</td><td>SharePoint Item Created</td><td>Abmeldung mit automatischem Nachrücken</td></tr>
+  <tr><td>CheckRegistrationStatusParticipant</td><td>Power App</td><td>Prüft Status: registered/waitlist/not_registered</td></tr>
+  <tr><td>GetWaitinglistPosition</td><td>Power App</td><td>Ermittelt Position auf Warteliste</td></tr>
+  <tr><td>GetParticipantEvents</td><td>Power App</td><td>Listet "Meine Events"</td></tr>
 </table>
 
 <h2>3.3 Check-In (3 Flows)</h2>
-
-<p>Diese Flows ermöglichen den Check-In von Teilnehmern am Veranstaltungstag. Sie unterstützen sowohl QR-Code-basiertes als auch manuelles Einchecken.</p>
-
 <table>
-  <tr>
-    <th>Flow</th>
-    <th>Trigger</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td><strong>Check-In</strong></td>
-    <td>SharePoint Item Created</td>
-    <td>Verarbeitet manuelle Check-Ins. Aktualisiert den Status in der Teilnehmerliste und speichert den Check-In-Zeitstempel.</td>
-  </tr>
-  <tr>
-    <td><strong>CheckInFromQRCode</strong></td>
-    <td>Power App</td>
-    <td>Verarbeitet Check-Ins per QR-Code-Scan. Identifiziert Teilnehmer anhand der gescannten Daten und führt Check-In durch.</td>
-  </tr>
-  <tr>
-    <td><strong>EventQRCodeGenerator</strong></td>
-    <td>Manual Button</td>
-    <td>Generiert für alle registrierten Teilnehmer eines Events individuelle QR-Codes und versendet diese per E-Mail.</td>
-  </tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><td>Check-In</td><td>SharePoint Item Created</td><td>Manueller Check-In</td></tr>
+  <tr><td>CheckInFromQRCode</td><td>Power App</td><td>Check-In per QR-Code-Scan</td></tr>
+  <tr><td>EventQRCodeGenerator</td><td>Manual Button</td><td>Generiert QR-Codes, versendet per E-Mail</td></tr>
 </table>
 
-<h2>3.4 E-Mail &amp; Kalender (5 Flows)</h2>
-
-<p>Diese Flows sind für die gesamte E-Mail-Kommunikation und Outlook-Integration zuständig. Sie nutzen die Shared Mailbox no_reply.events@deloitte.de als Absender.</p>
-
+<h2>3.4 E-Mail & Kalender (5 Flows)</h2>
 <table>
-  <tr>
-    <th>Flow</th>
-    <th>Trigger</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td><strong>SendMailSharedMailbox</strong></td>
-    <td>Manual Button</td>
-    <td>Zentrale E-Mail-Funktion. Sendet einzelne E-Mails über die Shared Mailbox. Wird von anderen Flows als Child Flow aufgerufen.</td>
-  </tr>
-  <tr>
-    <td><strong>SendMailParticipantList</strong></td>
-    <td>Power App</td>
-    <td>Versendet Massen-E-Mails an alle Teilnehmer oder nur an die Warteliste eines Events. Unterstützt HTML-formatierte E-Mails.</td>
-  </tr>
-  <tr>
-    <td><strong>RegisterOutlookEventParticipant</strong></td>
-    <td>Manual Button</td>
-    <td>Fügt einen Teilnehmer zu einem bestehenden Outlook-Kalendereintrag hinzu. Nutzt die Graph API.</td>
-  </tr>
-  <tr>
-    <td><strong>CreateOutlookEventSharedMailbox</strong></td>
-    <td>Child Flow</td>
-    <td>Erstellt einen neuen Outlook-Termin im Kalender der Shared Mailbox. Wird bei Event-Erstellung aufgerufen.</td>
-  </tr>
-  <tr>
-    <td><strong>HelperFlowMailToRegistered</strong></td>
-    <td>Manual Button</td>
-    <td>Hilfsflow für spezielle E-Mail-Szenarien an registrierte Teilnehmer.</td>
-  </tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><td>SendMailSharedMailbox</td><td>Child Flow</td><td>Zentrale E-Mail-Funktion</td></tr>
+  <tr><td>SendMailParticipantList</td><td>Power App</td><td>Massen-E-Mail an Teilnehmer</td></tr>
+  <tr><td>RegisterOutlookEventParticipant</td><td>Child Flow</td><td>Fügt Teilnehmer zu Outlook-Termin hinzu</td></tr>
+  <tr><td>CreateOutlookEventSharedMailbox</td><td>Child Flow</td><td>Erstellt Outlook-Termin</td></tr>
+  <tr><td>HelperFlowMailToRegistered</td><td>Manual Button</td><td>Hilfsflow für spezielle E-Mails</td></tr>
 </table>
 
-<h2>3.5 Utility &amp; Administration (6 Flows)</h2>
-
-<p>Diese Flows dienen administrativen Zwecken wie Datenmigration, Fehlerbehebung und Dokumentation. Sie werden manuell bei Bedarf ausgeführt.</p>
-
+<h2>3.5 Utility & Administration (6 Flows)</h2>
 <table>
-  <tr>
-    <th>Flow</th>
-    <th>Trigger</th>
-    <th>Beschreibung</th>
-  </tr>
-  <tr>
-    <td><strong>Flow-Dokumentation-Export</strong></td>
-    <td>Manual Button</td>
-    <td>Exportiert die Definitionen aller Flows in eine Textdatei für Dokumentationszwecke.</td>
-  </tr>
-  <tr>
-    <td><strong>SharePoint_Batch_Update_V2</strong></td>
-    <td>Manual Button</td>
-    <td>Führt Batch-Updates auf SharePoint-Listen durch. Nutzt die SharePoint REST Batch API für Performance.</td>
-  </tr>
-  <tr>
-    <td><strong>SetPermissionForSubWeb</strong></td>
-    <td>Manual Button</td>
-    <td>Setzt Berechtigungen auf SharePoint-Subsites. Bricht Vererbung und weist spezifische Rechte zu.</td>
-  </tr>
-  <tr>
-    <td><strong>UpdateAllEventsWithNewFields</strong></td>
-    <td>Manual Button</td>
-    <td>Fügt neue Felder (Freitextfeld3-7) zu allen bestehenden Event-Teilnehmerlisten hinzu.</td>
-  </tr>
-  <tr>
-    <td><strong>CorrectOutlookID</strong></td>
-    <td>Manual Button</td>
-    <td>Korrigiert fehlerhafte Outlook-Event-IDs in der Events-Liste durch Abgleich mit der Graph API.</td>
-  </tr>
-  <tr>
-    <td><strong>SP Liste Nummerierung korrigieren</strong></td>
-    <td>Manual Button</td>
-    <td>Korrigiert die Nummerierung (Nr.-Feld) in Teilnehmerlisten nach manuellen Änderungen.</td>
-  </tr>
+  <tr><th>Flow</th><th>Trigger</th><th>Beschreibung</th></tr>
+  <tr><td>Flow-Dokumentation-Export</td><td>Manual Button</td><td>Exportiert Flow-Definitionen</td></tr>
+  <tr><td>SharePoint_Batch_Update_V2</td><td>Manual Button</td><td>Batch-Updates via REST API</td></tr>
+  <tr><td>SetPermissionForSubWeb</td><td>Manual Button</td><td>Subsite-Berechtigungen setzen</td></tr>
+  <tr><td>UpdateAllEventsWithNewFields</td><td>Manual Button</td><td>Migration: Neue Felder hinzufügen</td></tr>
+  <tr><td>CorrectOutlookID</td><td>Manual Button</td><td>Korrigiert Outlook-Event-IDs</td></tr>
+  <tr><td>SP Liste Nummerierung korrigieren</td><td>Manual Button</td><td>Korrigiert Nr.-Feld</td></tr>
 </table>
 
 <!-- 4. FLOW-DETAILDOKUMENTATION -->
 <div class="page-break"></div>
 <h1>4. Flow-Detaildokumentation</h1>
 
-<p>In diesem Kapitel wird jeder der 23 Flows detailliert dokumentiert. Für jeden Flow werden Zweck, Trigger, alle Actions und deren Funktion beschrieben.</p>
+<p>Jeder Flow wird mit <strong>geclusterten Actions</strong> dokumentiert. Die Actions sind in logische Gruppen unterteilt, jeweils mit einer Beschreibung was der Cluster macht.</p>
 
 <!-- 4.1 NewEventAdded_SiteProvis -->
-<h2 id="flow-neweventadded">4.1 NewEventAdded_SiteProvis</h2>
+<h2>4.1 NewEventAdded_SiteProvis</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>9722b1ef-8f72-83a4-55f8-e69cb548ea04</td></tr>
-  <tr><td><strong>Status</strong></td><td>Stopped (manuelle Aktivierung bei Bedarf)</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 1 Minute)</td></tr>
-  <tr><td><strong>Erstellt</strong></td><td>30.12.2024</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>9722b1ef-8f72-83a4-55f8-e69cb548ea04</td><td><strong>Status</strong></td><td>Stopped (manuelle Aktivierung)</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">SharePoint - When an item is created (Intervall: 1 Minute)</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Dies ist der zentrale Flow für die Event-Erstellung. Er wird automatisch ausgelöst, wenn ein neues Event in der SharePoint Events-Liste angelegt wird. Der Flow erstellt die gesamte Infrastruktur für das Event: eine dedizierte SharePoint-Subsite, die Teilnehmerliste mit allen erforderlichen Feldern, einen Outlook-Kalendereintrag und sendet eine Benachrichtigung an den Organizer.</p>
+  <h4>Beschreibung</h4>
+  <p>Der <strong>zentrale Flow für Event-Erstellung</strong>. Wird automatisch ausgelöst wenn ein neues Event in der Events-Liste angelegt wird. Erstellt die komplette Infrastruktur: SharePoint-Subsite, Teilnehmerliste, Outlook-Termin und benachrichtigt den Organizer.</p>
 
-<p>Der Flow unterstützt drei Event-Typen, die über das Content Type Feld unterschieden werden: "B2Run Event", "JP Morgan Run" und "Other Deloitte Event". Je nach Typ wird der entsprechende Template-Flow aufgerufen.</p>
+  <h4>Unterstützte Event-Typen</h4>
+  <ul>
+    <li><strong>B2Run Event:</strong> Verwendet ApplyTemplateB2Run mit Spezialfeldern</li>
+    <li><strong>JP Morgan Run / Other:</strong> Verwendet ApplyTemplateOtherEvent</li>
+  </ul>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Update_item-_Set_Status_to_Under_Construction</td><td>SharePoint PatchItem</td><td>Setzt den Event-Status auf "Under Construction" um anzuzeigen, dass die Erstellung läuft.</td></tr>
-  <tr><td>Initialize_variable-_varSiteTitle</td><td>InitializeVariable</td><td>Speichert den Event-Titel für die Subsite-Erstellung.</td></tr>
-  <tr><td>Initialize_variable-_varSiteURL</td><td>InitializeVariable</td><td>Initialisiert die URL-Variable mit dem Titel.</td></tr>
-  <tr><td>Initialize_variable-_varSubject-Name</td><td>InitializeVariable</td><td>Variable für den bereinigten Site-Namen.</td></tr>
-  <tr><td>Initialize_variable-_varFinalURL</td><td>InitializeVariable</td><td>Speichert die finale URL der Subsite.</td></tr>
-  <tr><td>Initialize_variable-_varContentTypeName</td><td>InitializeVariable</td><td>Speichert den Event-Typ für die Switch-Logik.</td></tr>
-  <tr><td>Compose-_Create_FilterCharArray</td><td>Compose</td><td>Erstellt Array mit ungültigen Zeichen für SharePoint-URLs: Leerzeichen, :, #, %, ", *, ?, /, \, |, etc.</td></tr>
-  <tr><td>Apply_to_each (Filter)</td><td>Foreach</td><td>Iteriert über alle ungültigen Zeichen und entfernt sie aus dem Site-Namen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_New_Sub_Site</td><td>SharePoint HttpRequest</td><td>POST-Request an /_api/web/webinfos/add um die Subsite zu erstellen. Template: STS#3 (Team Site).</td></tr>
-  <tr><td>Parse_JSON-_Parse_Response</td><td>ParseJson</td><td>Extrahiert die ServerRelativeUrl aus der API-Antwort.</td></tr>
-  <tr><td>Set_variable_-_varSiteURL</td><td>SetVariable</td><td>Speichert die relative URL der erstellten Subsite.</td></tr>
-  <tr><td>Compose-_FinalURL_+_SubjectName</td><td>Compose</td><td>Kombiniert Basis-URL mit Subsite-Pfad zur finalen URL.</td></tr>
-  <tr><td>Set_variable-_varContentTypeName</td><td>SetVariable</td><td>Liest den Content Type des Events für die Switch-Entscheidung.</td></tr>
-  <tr><td>Switch</td><td>Switch</td><td>Verzweigt basierend auf Event-Typ: B2Run → ApplyTemplateB2Run, JP Morgan/Other → ApplyTemplateOtherEvent.</td></tr>
-  <tr><td>Run_a_Child_Flow (Template)</td><td>Workflow</td><td>Ruft den entsprechenden Template-Flow auf mit der Subsite-URL als Parameter.</td></tr>
-  <tr><td>Compose_2, Compose_3</td><td>Compose</td><td>Formatiert Start- und Endzeit im ISO-Format für Outlook.</td></tr>
-  <tr><td>Run_a_Child_Flow_1 (Outlook)</td><td>Workflow</td><td>Ruft CreateOutlookEventSharedMailbox auf um den Kalender-Termin zu erstellen.</td></tr>
-  <tr><td>Initialize_variable (varOutlookEventID)</td><td>InitializeVariable</td><td>Speichert die ID des erstellten Outlook-Events.</td></tr>
-  <tr><td>Update_item_-_Events</td><td>SharePoint PatchItem</td><td>Aktualisiert Event: Status → "Active", speichert Teilnehmerliste-URL und Outlook-Event-ID.</td></tr>
-  <tr><td>Append_to_string_variable</td><td>AppendToStringVariable</td><td>Fügt "/Lists/Teilnehmerliste" zur URL hinzu.</td></tr>
-  <tr><td>Get_file_content-_Logo</td><td>SharePoint GetFileContent</td><td>Lädt das Event-Logo für die E-Mail.</td></tr>
-  <tr><td>Get_file_content-_Deloitte_Logo</td><td>SharePoint GetFileContent</td><td>Lädt das Deloitte-Logo für die E-Mail.</td></tr>
-  <tr><td>Compose, Compose_1</td><td>Compose</td><td>Konvertiert Bilder in Data-URIs für E-Mail-Einbettung.</td></tr>
-  <tr><td>Initialize_variable_1, Initialize_variable_2</td><td>InitializeVariable</td><td>Erstellt HTML img-Tags für Logo-Einbettung.</td></tr>
-  <tr><td>For_each (Organizer)</td><td>Foreach</td><td>Iteriert über alle Organizer des Events.</td></tr>
-  <tr><td>Send_an_email_from_a_shared_mailbox_(V2)</td><td>Office 365 SharedMailboxSendEmailV2</td><td>Sendet Bestätigungsmail an jeden Organizer mit Link zur Teilnehmerliste.</td></tr>
-  <tr><td>Initialize_variable_3 (EmailString)</td><td>InitializeVariable</td><td>Variable für Audience-Mail-Handling.</td></tr>
-  <tr><td>Condition (Audience Mail)</td><td>If</td><td>Prüft ob eine Audience-Mail angegeben wurde.</td></tr>
-  <tr><td>Run_a_Child_Flow_3 (Permission)</td><td>Workflow</td><td>Ruft EventPermission auf um Berechtigungen für die Audience zu setzen.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">1. Initialisierung & Status-Update</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Setzt Event-Status auf "Under Construction" um anzuzeigen dass Erstellung läuft</li>
+        <li>Initialisiert alle benötigten Variablen (Titel, URL, Content Type)</li>
+        <li>Bereitet Daten für die weitere Verarbeitung vor</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Update_item-_Set_Status_to_Under_Construction</td><td>SharePoint PatchItem</td><td>Status → "Under Construction"</td></tr>
+      <tr><td>Initialize_variable-_varSiteTitle</td><td>InitializeVariable</td><td>Event-Titel speichern</td></tr>
+      <tr><td>Initialize_variable-_varSiteURL</td><td>InitializeVariable</td><td>URL-Variable initialisieren</td></tr>
+      <tr><td>Initialize_variable-_varContentTypeName</td><td>InitializeVariable</td><td>Event-Typ speichern</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">2. URL-Bereinigung</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>SharePoint-URLs dürfen bestimmte Zeichen nicht enthalten (Leerzeichen, #, %, etc.)</li>
+        <li>Event-Titel wird iterativ von ungültigen Zeichen bereinigt</li>
+        <li>Ergebnis ist ein URL-sicherer Site-Name</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Compose-_Create_FilterCharArray</td><td>Compose</td><td>Array mit ungültigen Zeichen</td></tr>
+      <tr><td>Apply_to_each (Filter)</td><td>Foreach</td><td>Entfernt jedes ungültige Zeichen</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">3. SharePoint-Subsite erstellen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>HTTP POST an SharePoint REST API erstellt neue Subsite</li>
+        <li>Template STS#3 (Team Site ohne M365 Gruppe) wird verwendet</li>
+        <li>ServerRelativeUrl wird aus API-Antwort extrahiert</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Send_an_HTTP_request-_Create_New_Sub_Site</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/webinfos/add</td></tr>
+      <tr><td>Parse_JSON-_Parse_Response</td><td>ParseJson</td><td>Extrahiert ServerRelativeUrl</td></tr>
+      <tr><td>Compose-_FinalURL</td><td>Compose</td><td>Kombiniert zu finaler URL</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">4. Template-Flow aufrufen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Switch verzweigt basierend auf Content Type (Event-Typ)</li>
+        <li>B2Run Events → ApplyTemplateB2Run (Spezialfelder für Laufstrecke, Team)</li>
+        <li>Andere Events → ApplyTemplateOtherEvent (Standardfelder)</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Switch</td><td>Switch</td><td>Verzweigt nach Event-Typ</td></tr>
+      <tr><td>Run_a_Child_Flow (Template)</td><td>Workflow</td><td>Ruft Template-Flow auf</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">5. Outlook-Kalendereintrag erstellen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Start-/Endzeit werden in ISO-Format konvertiert</li>
+        <li>CreateOutlookEventSharedMailbox erstellt Termin in Shared Mailbox</li>
+        <li>Outlook-Event-ID wird für spätere Teilnehmer-Einladungen gespeichert</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Compose_2, Compose_3</td><td>Compose</td><td>Formatiert Datum in ISO</td></tr>
+      <tr><td>Run_a_Child_Flow_1 (Outlook)</td><td>Workflow</td><td>Erstellt Outlook-Termin</td></tr>
+      <tr><td>Update_item_-_Events</td><td>SharePoint PatchItem</td><td>Speichert Outlook-ID</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">6. Organizer benachrichtigen & Berechtigungen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Logos werden geladen und als Data-URI für E-Mail vorbereitet</li>
+        <li>Jeder Organizer erhält Bestätigungsmail mit Link zur Teilnehmerliste</li>
+        <li>Bei definierter Audience wird EventPermission aufgerufen</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Get_file_content-_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Event-Logo</td></tr>
+      <tr><td>For_each (Organizer)</td><td>Foreach</td><td>Iteriert über Organizer</td></tr>
+      <tr><td>Send_an_email_from_shared_mailbox</td><td>Office 365</td><td>Sendet Bestätigungsmail</td></tr>
+      <tr><td>Run_a_Child_Flow_3 (Permission)</td><td>Workflow</td><td>Setzt Berechtigungen</td></tr>
+    </table>
+  </div>
 </div>
 
 <!-- 4.2 ApplyTemplateB2Run -->
-<h2 id="flow-applytemplateb2run">4.2 ApplyTemplateB2Run</h2>
+<h2>4.2 ApplyTemplateB2Run</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>a95f473c-36d2-d9b3-e8fe-16896b20c492</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parameter (URL)</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>a95f473c-36d2-d9b3-e8fe-16896b20c492</td><td><strong>Status</strong></td><td>Started</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">Manual Button (Child Flow) mit Parameter URL</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Dieser Flow wird von NewEventAdded_SiteProvis als Child Flow aufgerufen, wenn ein B2Run-Event erstellt wird. Er erstellt die Teilnehmerliste in der neuen Subsite und konfiguriert alle erforderlichen Felder für B2Run-Events, einschließlich spezieller Felder wie Laufstrecke und Team-Zugehörigkeit.</p>
+  <h4>Beschreibung</h4>
+  <p>Wird von NewEventAdded aufgerufen für <strong>B2Run-Events</strong>. Erstellt die Teilnehmerliste mit allen B2Run-spezifischen Feldern.</p>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Initialize_variable-_varURL</td><td>InitializeVariable</td><td>Speichert die übergebene Subsite-URL.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Teilnehmerliste</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/lists um die Teilnehmerliste zu erstellen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Teilnehmername_Field</td><td>SharePoint HttpRequest</td><td>Erstellt das Feld "Teilnehmername" (Text).</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Email_Field</td><td>SharePoint HttpRequest</td><td>Erstellt das Feld "Email" (Text).</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Status_Field</td><td>SharePoint HttpRequest</td><td>Erstellt das Feld "Status" (Choice: Registered, Waitlist, Cancelled).</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Nr_Field</td><td>SharePoint HttpRequest</td><td>Erstellt das Feld "Nr" (Number) für Reihenfolge.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_CheckIn_Field</td><td>SharePoint HttpRequest</td><td>Erstellt das Feld "CheckIn" (Boolean).</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfelder</td><td>SharePoint HttpRequest</td><td>Erstellt Freitextfeld1-7 für B2Run-spezifische Daten.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint_-_Get_AllItems_View</td><td>SharePoint HttpRequest</td><td>Ruft die Standard-Ansicht ab für Anpassungen.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt erfolgreiche Ausführung an den aufrufenden Flow.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">1. Parameter empfangen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Empfängt Subsite-URL vom aufrufenden Flow</li>
+        <li>URL definiert wo die Teilnehmerliste erstellt wird</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Initialize_variable-_varURL</td><td>InitializeVariable</td><td>Speichert Subsite-URL</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">2. Teilnehmerliste & Felder erstellen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>POST an /_api/web/lists erstellt die Liste "Teilnehmerliste"</li>
+        <li>Standardfelder: Teilnehmername, Email, Status (Choice), Nr, CheckIn</li>
+        <li>B2Run-Felder: Freitextfeld1-7 für Laufstrecke, Team etc.</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Send_HTTP_request-_Create_Teilnehmerliste</td><td>SharePoint HttpRequest</td><td>Erstellt Liste</td></tr>
+      <tr><td>Send_HTTP_request-_Create_Fields</td><td>SharePoint HttpRequest</td><td>Erstellt alle Felder</td></tr>
+      <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Erfolg</td></tr>
+    </table>
+  </div>
 </div>
 
 <!-- 4.3 ApplyTemplateOtherEvent -->
-<h2 id="flow-applytemplateotherevent">4.3 ApplyTemplateOtherEvent</h2>
+<h2>4.3 ApplyTemplateOtherEvent</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>cfcce4df-e10c-eb93-b80e-b65c12c4de4c</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parameter (URL)</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>cfcce4df-e10c-eb93-b80e-b65c12c4de4c</td><td><strong>Status</strong></td><td>Started</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">Manual Button (Child Flow)</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Dieser Flow wird von NewEventAdded_SiteProvis aufgerufen für JP Morgan Run und andere Deloitte-Events. Er erstellt die Standard-Teilnehmerliste mit den Basisfeldern. Die Struktur ist identisch mit ApplyTemplateB2Run, kann aber für andere Event-Typen angepasst werden.</p>
-
-<h4>Actions</h4>
-<p>Identisch mit ApplyTemplateB2Run (siehe 4.2). Die Actions erstellen die gleiche Listenstruktur, können aber bei Bedarf für spezifische Event-Typen angepasst werden.</p>
+  <h4>Beschreibung</h4>
+  <p>Erstellt Standard-Teilnehmerliste für <strong>JP Morgan Run und andere Events</strong>. Struktur identisch mit ApplyTemplateB2Run, ermöglicht aber separate Anpassungen.</p>
 </div>
 
 <!-- 4.4 EventPermission -->
-<h2 id="flow-eventpermission">4.4 EventPermission</h2>
+<h2>4.4 EventPermission</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>8c702f7e-b925-6769-ba71-102a65c4d0be</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (ItemId, Audience)</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>8c702f7e-b925-6769-ba71-102a65c4d0be</td><td><strong>Status</strong></td><td>Started</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">Manual Button mit Parametern (ItemId, Audience)</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Verwaltet die Berechtigungen für Events mit eingeschränkter Zielgruppe. Wenn ein Event nur für eine bestimmte Audience (z.B. eine Abteilung) zugänglich sein soll, entfernt dieser Flow die Standardberechtigungen und setzt spezifische Rechte für die angegebene E-Mail-Gruppe.</p>
+  <h4>Beschreibung</h4>
+  <p>Verwaltet <strong>Berechtigungen für Events mit eingeschränkter Zielgruppe</strong>. Entfernt Standardfreigaben und setzt spezifische Rechte für die definierte Audience.</p>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Stop_sharing_an_item_or_a_file</td><td>SharePoint UnshareItem</td><td>Entfernt alle bestehenden Freigaben für das Event.</td></tr>
-  <tr><td>Grant_access_to_an_item_or_a_folder</td><td>SharePoint GrantAccess</td><td>Gewährt der Audience-Gruppe Lesezugriff auf das Event.</td></tr>
-  <tr><td>Grant_access_to_an_item_or_a_folder_2</td><td>SharePoint GrantAccess</td><td>Gewährt dem Organizer Vollzugriff.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt erfolgreiche Ausführung.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Berechtigungsmanagement</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Entfernt alle bestehenden Freigaben für das Event</li>
+        <li>Gewährt der Audience-Gruppe Lesezugriff</li>
+        <li>Gewährt dem Organizer Vollzugriff</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Stop_sharing_an_item</td><td>SharePoint UnshareItem</td><td>Entfernt Freigaben</td></tr>
+      <tr><td>Grant_access (Audience)</td><td>SharePoint GrantAccess</td><td>Lesezugriff für Audience</td></tr>
+      <tr><td>Grant_access (Organizer)</td><td>SharePoint GrantAccess</td><td>Vollzugriff für Organizer</td></tr>
+    </table>
+  </div>
 </div>
 
 <!-- 4.5 RegisterParticipant -->
 <div class="page-break"></div>
-<h2 id="flow-registerparticipant">4.5 RegisterParticipant</h2>
+<h2>4.5 RegisterParticipant</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>12db96ef-b7e7-6cf8-c1c4-24d7f9fb96c5</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>12db96ef-b7e7-6cf8-c1c4-24d7f9fb96c5</td><td><strong>Status</strong></td><td>Started</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Dieser Flow verarbeitet neue Teilnehmeranmeldungen. Wenn ein Eintrag in der Anmeldungs-Queue erstellt wird (durch die Power App), prüft der Flow die verfügbare Kapazität. Bei freien Plätzen wird der Teilnehmer registriert, andernfalls auf die Warteliste gesetzt. In beiden Fällen werden entsprechende E-Mails und bei Registrierung ein Outlook-Kalendereintrag erstellt.</p>
+  <h4>Beschreibung</h4>
+  <p>Das <strong>Herzstück des Anmeldeprozesses</strong>. Verarbeitet neue Teilnehmeranmeldungen, prüft Kapazität und entscheidet über Registrierung oder Warteliste.</p>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Initialize_Mail_Loeschen</td><td>InitializeVariable</td><td>Flag für E-Mail-Verarbeitung.</td></tr>
-  <tr><td>Initialize_varItemID</td><td>InitializeVariable</td><td>Speichert die ID des zu verarbeitenden Eintrags.</td></tr>
-  <tr><td>Initialize_variable-_varUserListId</td><td>InitializeVariable</td><td>Speichert die User-Listen-ID.</td></tr>
-  <tr><td>Initialize_variable-varRegisteredColumn</td><td>InitializeVariable</td><td>Speichert den Registrierungsstatus.</td></tr>
-  <tr><td>Get_item</td><td>SharePoint GetItem</td><td>Ruft die Event-Details ab (Kapazität, aktuelle Teilnehmerzahl).</td></tr>
-  <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Zählt die aktuellen Registrierungen für das Event.</td></tr>
-  <tr><td>Condition (Kapazität)</td><td>If</td><td>Prüft ob die Kapazität erreicht ist.</td></tr>
-  <tr><td>Update_item (Registered)</td><td>SharePoint PatchItem</td><td>Erstellt Teilnehmereintrag mit Status "Registered".</td></tr>
-  <tr><td>Update_item (Waitlist)</td><td>SharePoint PatchItem</td><td>Erstellt Teilnehmereintrag mit Status "Waitlist".</td></tr>
-  <tr><td>Run_a_Child_Flow (Outlook)</td><td>Workflow</td><td>Ruft RegisterOutlookEventParticipant auf für Kalendereintrag.</td></tr>
-  <tr><td>Run_a_Child_Flow (Mail)</td><td>Workflow</td><td>Ruft SendMailSharedMailbox auf für Bestätigung.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Verarbeitet mehrere Anmeldungen in der Queue.</td></tr>
-  <tr><td>Scope</td><td>Scope</td><td>Gruppiert zusammengehörige Actions für Fehlerbehandlung.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">1. Initialisierung & Datenabfrage</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Initialisiert Variablen für Item-ID, User-Listen-ID, Status</li>
+        <li>Lädt Event-Details aus SharePoint (Kapazität, aktuelle Teilnehmerzahl)</li>
+        <li>Zählt bereits registrierte Teilnehmer</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Initialize_variables</td><td>InitializeVariable</td><td>Arbeitsvariablen</td></tr>
+      <tr><td>Get_item (Event)</td><td>SharePoint GetItem</td><td>Lädt Event-Details</td></tr>
+      <tr><td>Get_items (Registrations)</td><td>SharePoint GetItems</td><td>Zählt Registrierungen</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">2. Kapazitätsprüfung & Entscheidung</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Vergleicht aktuelle Teilnehmerzahl mit maximaler Kapazität</li>
+        <li>Platz frei → Status "Registered", E-Mail + Kalendereintrag</li>
+        <li>Event voll → Status "Waitlist", Info über Position</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Condition (Kapazität)</td><td>If</td><td>Prüft: Registrierte < Kapazität?</td></tr>
+      <tr><td>Update_item (Registered)</td><td>SharePoint PatchItem</td><td>Status → "Registered"</td></tr>
+      <tr><td>Update_item (Waitlist)</td><td>SharePoint PatchItem</td><td>Status → "Waitlist"</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">3. E-Mail & Kalender-Integration</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Bei Registrierung: Teilnehmer wird zu Outlook-Event hinzugefügt</li>
+        <li>Bestätigungsmail über Shared Mailbox</li>
+        <li>Bei Warteliste: Info-Mail mit Position</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Run_a_Child_Flow (Outlook)</td><td>Workflow</td><td>RegisterOutlookEventParticipant</td></tr>
+      <tr><td>Run_a_Child_Flow (Mail)</td><td>Workflow</td><td>SendMailSharedMailbox</td></tr>
+    </table>
+  </div>
 </div>
 
 <!-- 4.6 DeregisterParticipant -->
-<h2 id="flow-deregisterparticipant">4.6 DeregisterParticipant</h2>
+<h2>4.6 DeregisterParticipant</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>b2a06173-2d29-950e-7470-24cbd2a4c247</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
-</table>
+  <div class="flow-meta">
+    <table>
+      <tr><td><strong>Flow-ID</strong></td><td>b2a06173-2d29-950e-7470-24cbd2a4c247</td><td><strong>Status</strong></td><td>Started</td></tr>
+      <tr><td><strong>Trigger</strong></td><td colspan="3">SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
+    </table>
+  </div>
 
-<h4>Beschreibung</h4>
-<p>Verarbeitet Abmeldungen von Events. Der Flow entfernt den Teilnehmereintrag, löscht den zugehörigen Outlook-Kalendereintrag und triggert das Nachrücken von der Warteliste. Der erste Wartelisten-Teilnehmer wird automatisch auf "Registered" gesetzt und erhält Bestätigungsmail und Kalendereintrag.</p>
+  <h4>Beschreibung</h4>
+  <p>Verarbeitet Abmeldungen und löst <strong>automatisches Wartelisten-Nachrücken</strong> aus. Der erste Wartelisten-Teilnehmer wird automatisch registriert.</p>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_item_-_Event_Visitors</td><td>SharePoint GetItem</td><td>Ruft Details des abzumeldenden Teilnehmers ab.</td></tr>
-  <tr><td>Get_file_content_-_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Logo für Abmelde-E-Mail.</td></tr>
-  <tr><td>Get_file_content_-_Deloitte_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Deloitte-Logo für E-Mail.</td></tr>
-  <tr><td>Compose, Compose_1</td><td>Compose</td><td>Konvertiert Logos in Data-URIs.</td></tr>
-  <tr><td>Initialize_variable</td><td>InitializeVariable</td><td>Initialisiert Variablen für Verarbeitung.</td></tr>
-  <tr><td>Condition (Valid)</td><td>If</td><td>Prüft ob die Abmeldung gültig ist.</td></tr>
-  <tr><td>Update_item (Cancel)</td><td>SharePoint PatchItem</td><td>Setzt Status auf "Cancelled" oder löscht Eintrag.</td></tr>
-  <tr><td>Apply_to_each (Waitlist)</td><td>Foreach</td><td>Sucht ersten Wartelisten-Teilnehmer für Nachrücken.</td></tr>
-  <tr><td>Run_a_Child_Flow (Promote)</td><td>Workflow</td><td>Führt Nachrücken durch: Update Status, Mail, Kalender.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">1. Daten laden & Abmeldung validieren</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Lädt Teilnehmerdaten und Event-Logos</li>
+        <li>Prüft ob Abmeldung gültig ist</li>
+        <li>Setzt Status auf "Cancelled" oder löscht Eintrag</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Get_item_-_Event_Visitors</td><td>SharePoint GetItem</td><td>Lädt Teilnehmerdaten</td></tr>
+      <tr><td>Condition (Valid)</td><td>If</td><td>Prüft Gültigkeit</td></tr>
+      <tr><td>Update_item (Cancel)</td><td>SharePoint PatchItem</td><td>Status → "Cancelled"</td></tr>
+    </table>
+  </div>
+
+  <div class="action-cluster">
+    <div class="cluster-header">2. Wartelisten-Nachrücken (FIFO)</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Warteliste wird nach Erstellungsdatum sortiert abgefragt</li>
+        <li>Erster Eintrag (ältester) wird für Nachrücken ausgewählt</li>
+        <li>Status → "Registered", E-Mail + Kalendereintrag für Nachrücker</li>
+      </ul>
+    </div>
+    <table>
+      <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td>Apply_to_each (Waitlist)</td><td>Foreach</td><td>Sucht ersten Wartelisten-Teilnehmer</td></tr>
+      <tr><td>Run_a_Child_Flow (Promote)</td><td>Workflow</td><td>Status, Mail, Kalender für Nachrücker</td></tr>
+    </table>
+  </div>
 </div>
 
-<!-- 4.7-4.9 kurz -->
-<h2 id="flow-checkregistrationstatus">4.7 CheckRegistrationStatusParticipant</h2>
+<!-- 4.7-4.9 Registrierung (kompakt) -->
+<h2>4.7 CheckRegistrationStatusParticipant</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>d9455ec1-88c3-4ebe-bcd7-63b50146c3cc</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Power App mit Parametern (userEmail, eventID)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Prüft den Registrierungsstatus eines Users für ein Event. Gibt zurück: <code>registered</code>, <code>waitlist</code> oder <code>not_registered</code>.</p>
 
-<h4>Beschreibung</h4>
-<p>Prüft den Registrierungsstatus eines Users für ein bestimmtes Event. Gibt einen von drei Status zurück: "registered" (angemeldet), "waitlist" (auf Warteliste) oder "not_registered" (nicht angemeldet). Wird von der Power App verwendet um den korrekten Button anzuzeigen.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items_-_Event_visitors</td><td>SharePoint GetItems</td><td>Sucht Einträge mit der User-Email für das Event.</td></tr>
-  <tr><td>Initialize_variable (isRegistered)</td><td>InitializeVariable</td><td>Variable für Ergebnis-Status.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Prüft gefundene Einträge.</td></tr>
-  <tr><td>Condition</td><td>If</td><td>Setzt Status basierend auf gefundenem Eintrag.</td></tr>
-  <tr><td>Set_variable</td><td>SetVariable</td><td>Setzt den Ergebnis-Status.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Status an Power App zurück.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Statusprüfung</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Sucht in Teilnehmerliste nach User-E-Mail</li>
+        <li>Liest Status-Wert aus gefundenem Eintrag</li>
+        <li>Gibt Status an Power App zurück</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-getwaitinglistposition">4.8 GetWaitinglistPosition</h2>
+<h2>4.8 GetWaitinglistPosition</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>ba3ea4c3-d4eb-3a32-58ee-961cc13d727f</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Power App mit Parametern (Email, EventId)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Ermittelt die aktuelle <strong>Wartelisten-Position</strong> eines Teilnehmers (FIFO-Prinzip).</p>
 
-<h4>Beschreibung</h4>
-<p>Ermittelt die aktuelle Position eines Teilnehmers auf der Warteliste. Die Position wird basierend auf dem Erstellungszeitpunkt des Eintrags berechnet (FIFO-Prinzip). Wird in der Power App angezeigt um Teilnehmern Transparenz über ihre Chancen auf Nachrücken zu geben.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items-_Event_User</td><td>SharePoint GetItems</td><td>Ruft alle Wartelisten-Einträge sortiert nach Created ab.</td></tr>
-  <tr><td>Initialize_variable (varPosition)</td><td>InitializeVariable</td><td>Zähler für Position.</td></tr>
-  <tr><td>Initialize_variable_1 (varResult)</td><td>InitializeVariable</td><td>Speichert gefundene Position.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert durch Warteliste und zählt Position.</td></tr>
-  <tr><td>Condition</td><td>If</td><td>Prüft ob aktueller Eintrag der gesuchte User ist.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Position als Number zurück.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Positionsberechnung</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Lädt alle Wartelisten-Einträge sortiert nach Created</li>
+        <li>Zählt Position bis zur gesuchten E-Mail</li>
+        <li>Position 1 = nächster Nachrücker</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-getparticipantevents">4.9 GetParticipantEvents</h2>
+<h2>4.9 GetParticipantEvents</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>c87a1179-9ee3-8395-cbcb-f541175cdca6</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Power App mit Parameter (userEmail)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Listet alle Events für die <strong>"Meine Events"</strong>-Ansicht in der Power App.</p>
 
-<h4>Beschreibung</h4>
-<p>Listet alle Events auf, bei denen ein User registriert ist oder auf der Warteliste steht. Wird für die "Meine Events"-Ansicht in der Power App verwendet. Gibt zwei Arrays zurück: Event-IDs für registrierte Events und Event-IDs für Wartelisten-Events.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Sucht alle Einträge mit Filter: Email eq userEmail.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt eventids (Array) und waitlistids (Array) zurück.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Event-Abfrage</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Prüft alle aktiven Events auf Teilnahme des Users</li>
+        <li>Gibt Liste mit Event-Details und Status zurück</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<!-- 4.10-4.12 Check-In Flows -->
+<!-- 4.10-4.12 Check-In -->
 <div class="page-break"></div>
-<h2 id="flow-checkin">4.10 Check-In</h2>
+<h2>4.10 Check-In</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>0d78b8a2-3933-6c7b-c899-0a61241589d0</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>SharePoint - When an item is created (Intervall: 5 Minuten)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p><strong>Manueller Check-In</strong> am Veranstaltungstag. Fallback wenn QR-Code nicht funktioniert.</p>
 
-<h4>Beschreibung</h4>
-<p>Verarbeitet manuelle Check-Ins von Teilnehmern am Veranstaltungstag. Der Flow wird ausgelöst wenn das Check-In-Team über die Power App einen Teilnehmer eincheckt. Er aktualisiert den Check-In-Status und speichert den Zeitstempel in der Teilnehmerliste.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items_-_Check_in</td><td>SharePoint GetItems</td><td>Ruft die Check-In-Queue ab.</td></tr>
-  <tr><td>Initialize_variable (varEventID)</td><td>InitializeVariable</td><td>Speichert die Event-ID für die Verarbeitung.</td></tr>
-  <tr><td>For_each</td><td>Foreach</td><td>Verarbeitet alle Check-Ins in der Queue.</td></tr>
-  <tr><td>Set_variable</td><td>SetVariable</td><td>Setzt die aktuelle Event-ID.</td></tr>
-  <tr><td>Get_item-_Events</td><td>SharePoint GetItem</td><td>Ruft Event-Details für Teilnehmerlisten-URL ab.</td></tr>
-  <tr><td>GetList</td><td>SharePoint HttpRequest</td><td>Ruft Listen-Informationen für Update ab.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint</td><td>SharePoint HttpRequest</td><td>PATCH-Request um CheckIn=true und CheckInTime zu setzen.</td></tr>
-  <tr><td>Delete_item</td><td>SharePoint DeleteItem</td><td>Löscht den verarbeiteten Eintrag aus der Queue.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Check-In durchführen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Identifiziert Teilnehmer aus Check-In-Queue</li>
+        <li>Setzt CheckIn-Feld auf true</li>
+        <li>Speichert Check-In-Zeitstempel</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-checkinfromqrcode">4.11 CheckInFromQRCode</h2>
+<h2>4.11 CheckInFromQRCode</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>94af55a9-99e6-cbfe-e4b6-3822785f0183</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Power App mit Parametern (Email, EventID, CheckInStatus)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p><strong>Check-In per QR-Code-Scan</strong>. Das Check-In-Team scannt den QR-Code, der Flow identifiziert und checkt den Teilnehmer ein.</p>
 
-<h4>Beschreibung</h4>
-<p>Verarbeitet Check-Ins per QR-Code-Scan. Die Power App scannt den QR-Code des Teilnehmers, dekodiert die enthaltene E-Mail und Event-ID und ruft diesen Flow auf. Der Flow sucht den Teilnehmer und führt den Check-In durch.</p>
+  <div class="action-cluster">
+    <div class="cluster-header">1. QR-Code verarbeiten</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Empfängt QR-Code-Inhalt von Power App</li>
+        <li>Parst JSON um participantId und eventId zu extrahieren</li>
+        <li>Validiert Format der QR-Daten</li>
+      </ul>
+    </div>
+  </div>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_item-_Event</td><td>SharePoint GetItem</td><td>Ruft Event-Details inkl. Teilnehmerlisten-URL ab.</td></tr>
-  <tr><td>Get_items-_From_Teilnehmerliste</td><td>SharePoint GetItems</td><td>Sucht Teilnehmer mit der gescannten E-Mail.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Verarbeitet gefundenen Teilnehmer.</td></tr>
-  <tr><td>Update_item</td><td>SharePoint PatchItem</td><td>Setzt CheckIn auf true und speichert Zeitstempel.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt Check-In an Power App.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">2. Validierung & Check-In</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Prüft ob Teilnehmer registriert und noch nicht eingecheckt ist</li>
+        <li>Setzt CheckIn=true, speichert Zeitstempel</li>
+        <li>Gibt Erfolg/Fehler mit Teilnehmername zurück</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-qrcode">4.12 EventQRCodeGenerator</h2>
+<h2>4.12 EventQRCodeGenerator</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>3cbcc422-e661-4a41-8c90-bc094d43fd4c</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parameter (EventID)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Generiert für alle registrierten Teilnehmer <strong>individuelle QR-Codes</strong> und versendet diese per E-Mail.</p>
 
-<h4>Beschreibung</h4>
-<p>Generiert individuelle QR-Codes für alle registrierten Teilnehmer eines Events und versendet diese per E-Mail. Der QR-Code enthält kodierte Daten (Teilnehmer-Email und Event-ID), die beim Scan durch die Check-In-App dekodiert werden. Dieser Flow wird typischerweise 1-2 Tage vor dem Event ausgeführt.</p>
+  <div class="action-cluster">
+    <div class="cluster-header">1. Teilnehmer laden</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Lädt Event-Details und alle Teilnehmer mit Status "Registered"</li>
+        <li>Bereitet E-Mail-Assets vor</li>
+      </ul>
+    </div>
+  </div>
 
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_Event</td><td>SharePoint GetItem</td><td>Ruft Event-Details für E-Mail-Inhalt ab.</td></tr>
-  <tr><td>Get_file_content_Logo</td><td>SharePoint GetFileContent</td><td>Lädt Event-Logo für E-Mail.</td></tr>
-  <tr><td>Get_file_content_Deloitte</td><td>SharePoint GetFileContent</td><td>Lädt Deloitte-Logo für E-Mail.</td></tr>
-  <tr><td>Compose_Logo_DataUri</td><td>Compose</td><td>Konvertiert Logo in Data-URI.</td></tr>
-  <tr><td>Compose_Deloitte_DataUri</td><td>Compose</td><td>Konvertiert Deloitte-Logo in Data-URI.</td></tr>
-  <tr><td>Initialize_variable_-_var_LogoSchuh</td><td>InitializeVariable</td><td>HTML img-Tag für Logo.</td></tr>
-  <tr><td>Initialize_variable_-_Var_Deloitte</td><td>InitializeVariable</td><td>HTML img-Tag für Deloitte-Logo.</td></tr>
-  <tr><td>Get_Teilnehmer_Angemeldet</td><td>SharePoint GetItems</td><td>Ruft alle Teilnehmer mit Status "Registered" ab.</td></tr>
-  <tr><td>For_each_Teilnehmer</td><td>Foreach</td><td>Iteriert über alle registrierten Teilnehmer.</td></tr>
-  <tr><td>Compose_QR_Data</td><td>Compose</td><td>Erstellt QR-Code-Daten: Email|EventID.</td></tr>
-  <tr><td>Compose_QR_URL</td><td>Compose</td><td>Generiert URL für QR-Code-Image via API.</td></tr>
-  <tr><td>Send_an_email_from_a_shared_mailbox_(V2)</td><td>Office 365 SharedMailboxSendEmailV2</td><td>Sendet E-Mail mit eingebettetem QR-Code an Teilnehmer.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint</td><td>SharePoint HttpRequest</td><td>Aktualisiert Status "QR-Code gesendet" in Liste.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">2. QR-Codes generieren & versenden</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Für jeden Teilnehmer: JSON-Payload mit ID und E-Mail erstellen</li>
+        <li>QR-Code via API generieren, als Base64 kodieren</li>
+        <li>E-Mail mit eingebettetem QR-Code versenden</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<!-- 4.13-4.17 E-Mail Flows -->
+<!-- 4.13-4.17 E-Mail & Kalender -->
+<h2>4.13 SendMailSharedMailbox</h2>
+
+<div class="flow-section">
+  <h4>Beschreibung</h4>
+  <p><strong>Zentrale E-Mail-Funktion</strong>. Sendet E-Mails über die Shared Mailbox <code>no_reply.events@deloitte.de</code>.</p>
+
+  <div class="action-cluster">
+    <div class="cluster-header">E-Mail-Versand</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Empfängt Parameter: Empfänger, Betreff, HTML-Body</li>
+        <li>Sendet über Office 365 Outlook Connector</li>
+        <li>Wird von anderen Flows als Child Flow aufgerufen</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>4.14 SendMailParticipantList</h2>
+
+<div class="flow-section">
+  <h4>Beschreibung</h4>
+  <p><strong>Massen-E-Mail</strong> an alle Teilnehmer oder nur Warteliste eines Events.</p>
+
+  <div class="action-cluster">
+    <div class="cluster-header">Batch-Versand</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Filter-Optionen: all, registered, waitlist</li>
+        <li>Iteriert über Teilnehmer, sendet individuelle E-Mails</li>
+        <li>Gibt Anzahl versendeter E-Mails zurück</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>4.15 RegisterOutlookEventParticipant</h2>
+
+<div class="flow-section">
+  <h4>Beschreibung</h4>
+  <p>Fügt Teilnehmer zu bestehendem <strong>Outlook-Kalendereintrag</strong> hinzu via Graph API.</p>
+
+  <div class="action-cluster">
+    <div class="cluster-header">Attendee hinzufügen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Ruft bestehendes Event via Graph API ab</li>
+        <li>Fügt E-Mail zur Attendee-Liste hinzu</li>
+        <li>PATCH Request aktualisiert Event</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>4.16 CreateOutlookEventSharedMailbox</h2>
+
+<div class="flow-section">
+  <h4>Beschreibung</h4>
+  <p>Erstellt neuen <strong>Outlook-Termin im Shared Mailbox Kalender</strong>. Basis-Termin für Teilnehmer-Einladungen.</p>
+
+  <div class="action-cluster">
+    <div class="cluster-header">Event erstellen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Empfängt Event-Details (Titel, Start, Ende, Ort)</li>
+        <li>Erstellt Kalendereintrag via Outlook Connector</li>
+        <li>Gibt Event-ID für spätere Referenz zurück</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>4.17 HelperFlowMailToRegistered</h2>
+
+<div class="flow-section">
+  <h4>Beschreibung</h4>
+  <p><strong>Hilfsflow</strong> für spezielle E-Mail-Szenarien an registrierte Teilnehmer.</p>
+</div>
+
+<!-- 4.18-4.23 Utility -->
 <div class="page-break"></div>
-<h2 id="flow-sendmail">4.13 SendMailSharedMailbox</h2>
+<h2>4.18 Flow-Dokumentation-Export</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>1d0481d1-1393-3fb0-1946-a01257e742be</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (Name, Input, Subject, Email)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Exportiert die <strong>Definitionen aller Flows</strong> in eine Textdatei für Dokumentationszwecke.</p>
 
-<h4>Beschreibung</h4>
-<p>Dies ist der zentrale E-Mail-Flow der DEX-Plattform. Er sendet E-Mails über die Shared Mailbox no_reply.events@deloitte.de. Der Flow wird von anderen Flows als Child Flow aufgerufen (z.B. von RegisterParticipant für Bestätigungsmails) oder kann direkt für manuelle E-Mails verwendet werden.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Send_an_email_from_a_shared_mailbox_(V2)</td><td>Office 365 SharedMailboxSendEmailV2</td><td>Sendet E-Mail über no_reply.events@deloitte.de. Parameter: To (Email), Subject, Body (HTML aus Input).</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt erfolgreichen Versand an aufrufenden Flow.</td></tr>
-</table>
-
-<div class="info-box">
-<h4>Shared Mailbox Konfiguration</h4>
-<p><strong>Absender:</strong> no_reply.events@deloitte.de<br>
-<strong>Connector:</strong> Office 365 Outlook<br>
-<strong>Operation:</strong> SharedMailboxSendEmailV2</p>
-</div>
+  <div class="action-cluster">
+    <div class="cluster-header">Export-Prozess</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Listet alle Flows der Umgebung auf</li>
+        <li>Liest JSON-Definition jedes Flows</li>
+        <li>Schreibt alle Definitionen in SharePoint-Datei</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-sendmailparticipantlist">4.14 SendMailParticipantList</h2>
+<h2>4.19 SharePoint_Batch_Update_V2</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>f245125b-f71d-9794-0647-8217f2b6d393</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Power App mit Parametern (EventID, Email Text, To, Subject)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p><strong>Batch-Updates</strong> auf SharePoint-Listen via REST Batch API für bessere Performance.</p>
 
-<h4>Beschreibung</h4>
-<p>Ermöglicht Organizern das Versenden von Massen-E-Mails an alle Teilnehmer oder nur an die Warteliste eines Events. Der Parameter "To" bestimmt die Zielgruppe: "participants" für alle Registrierten, "waitlist" für nur Warteliste, "all" für beide. Der E-Mail-Text wird mit den Deloitte-Templates formatiert.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_item-_Event</td><td>SharePoint GetItem</td><td>Ruft Event-Details inkl. Teilnehmerlisten-URL ab.</td></tr>
-  <tr><td>Get_items_-_Teilnehmerliste</td><td>SharePoint GetItems</td><td>Ruft alle Teilnehmer basierend auf "To"-Parameter ab.</td></tr>
-  <tr><td>Get_file_content-_LogoSchuh</td><td>SharePoint GetFileContent</td><td>Lädt Event-Logo.</td></tr>
-  <tr><td>Get_file_content_-_Deloitte</td><td>SharePoint GetFileContent</td><td>Lädt Deloitte-Logo.</td></tr>
-  <tr><td>Compose-var_LogoSchuh, Compose_-_Deloitte</td><td>Compose</td><td>Konvertiert Logos in Data-URIs.</td></tr>
-  <tr><td>Initialize_variable_-_HTML</td><td>InitializeVariable</td><td>Initialisiert HTML-Template für E-Mail.</td></tr>
-  <tr><td>Apply_to_each-_For_all_Teilnehmer</td><td>Foreach</td><td>Iteriert über alle Empfänger.</td></tr>
-  <tr><td>Condition_Participant</td><td>If</td><td>Prüft ob Empfänger Participant ist (für Filter).</td></tr>
-  <tr><td>Condition_Waitinglist</td><td>If</td><td>Prüft ob Empfänger auf Warteliste ist (für Filter).</td></tr>
-  <tr><td>Run_a_Child_Flow</td><td>Workflow</td><td>Ruft SendMailSharedMailbox für jeden Empfänger auf.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Batch-Verarbeitung</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Bündelt mehrere Updates in einen Request</li>
+        <li>POST an /_api/$batch Endpoint</li>
+        <li>Bis zu 1000 Operationen pro Batch</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-registeroutlook">4.15 RegisterOutlookEventParticipant</h2>
+<h2>4.20 SetPermissionForSubWeb</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>9bb8f1e4-946b-9157-a7c5-7a8773b54cc1</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (EventID, ParcipientMail)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Setzt <strong>Berechtigungen auf SharePoint-Subsites</strong>. Bricht Vererbung und weist spezifische Rechte zu.</p>
 
-<h4>Beschreibung</h4>
-<p>Fügt einen Teilnehmer zu einem bestehenden Outlook-Kalendereintrag hinzu. Der Flow nutzt die Microsoft Graph API um den Teilnehmer als Attendee zum Event hinzuzufügen. Dadurch erscheint der Termin im persönlichen Kalender des Teilnehmers.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Send_an_HTTP_request_1</td><td>Office 365 HttpRequest</td><td>GET-Request um die echte Outlook-Event-ID zu ermitteln.</td></tr>
-  <tr><td>Initialize_variable_1 (varRealEventId)</td><td>InitializeVariable</td><td>Speichert die ermittelte Event-ID.</td></tr>
-  <tr><td>HTTP_GET_EVENT</td><td>Office 365 HttpRequest</td><td>Ruft aktuelle Attendees des Events ab.</td></tr>
-  <tr><td>Initialize_variable (var_Attendees)</td><td>InitializeVariable</td><td>Array für Attendees.</td></tr>
-  <tr><td>Append_to_array_variable</td><td>AppendToArrayVariable</td><td>Fügt neuen Teilnehmer zum Attendees-Array hinzu.</td></tr>
-  <tr><td>Send_an_HTTP_request</td><td>Office 365 HttpRequest</td><td>PATCH-Request um Attendees zu aktualisieren.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Bestätigt erfolgreiche Hinzufügung.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Berechtigungen setzen</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Bricht Berechtigungsvererbung der Subsite</li>
+        <li>Weist Benutzer/Gruppen spezifische Rechte zu</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-createoutlook">4.16 CreateOutlookEventSharedMailbox</h2>
+<h2>4.21 UpdateAllEventsWithNewFields</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>c474ce34-3f5a-a0e8-c06c-8ddf85efea1a</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (Subject, Email, StartDateWithTime, EndDateWithTime)</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p><strong>Migrationsflow</strong>: Fügt neue Felder (Freitextfeld3-7) zu allen bestehenden Teilnehmerlisten hinzu.</p>
 
-<h4>Beschreibung</h4>
-<p>Erstellt einen neuen Outlook-Termin im Kalender der Shared Mailbox. Wird von NewEventAdded_SiteProvis aufgerufen wenn ein neues Event erstellt wird. Der Termin dient als zentraler Kalendereintrag für das Event.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Convert_time_zone</td><td>ConvertTimeZone</td><td>Konvertiert Startzeit in W. Europe Standard Time.</td></tr>
-  <tr><td>Convert_time_zone_2</td><td>ConvertTimeZone</td><td>Konvertiert Endzeit in W. Europe Standard Time.</td></tr>
-  <tr><td>Initialize_variable_1</td><td>InitializeVariable</td><td>Variable für Event-ID-Speicherung.</td></tr>
-  <tr><td>Create_event_(V4)_1</td><td>Office 365 CalendarPostItem</td><td>Erstellt Kalendereintrag in Shared Mailbox mit Subject, Start, End.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt die erstellte Event-ID zurück.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Migration</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Iteriert über alle Event-Subsites</li>
+        <li>Erstellt fehlende Felder via SharePoint REST API</li>
+        <li>Fehlerbehandlung wenn Feld bereits existiert</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<h2 id="flow-helpermailtoregistered">4.17 HelperFlowMailToRegistered</h2>
+<h2>4.22 CorrectOutlookID</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>9d03f5ba-bcb6-23ee-bbf5-5092c968c32c</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p><strong>Korrigiert fehlerhafte Outlook-Event-IDs</strong> in der Events-Liste durch Abgleich mit Graph API.</p>
 
-<h4>Beschreibung</h4>
-<p>Hilfsflow für spezielle E-Mail-Szenarien. Enthält aktuell nur eine Compose-Action und wird für zukünftige Erweiterungen vorgehalten.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Compose</td><td>Compose</td><td>Platzhalter für E-Mail-Template-Logik.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">ID-Korrektur</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Identifiziert Events mit fehlerhafter/fehlender Outlook-ID</li>
+        <li>Sucht passenden Termin im Shared Mailbox Kalender</li>
+        <li>Aktualisiert OutlookEventID in SharePoint</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
-<!-- 4.18-4.23 Utility Flows -->
-<div class="page-break"></div>
-<h2 id="flow-dokumentation">4.18 Flow-Dokumentation-Export</h2>
+<h2>4.23 SP Liste Nummerierung korrigieren</h2>
 
 <div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>2ea78ef7-b176-8bcd-7d20-26f654d05fe9</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
-</table>
+  <h4>Beschreibung</h4>
+  <p>Korrigiert die <strong>Nummerierung (Nr.-Feld)</strong> in Teilnehmerlisten nach manuellen Änderungen.</p>
 
-<h4>Beschreibung</h4>
-<p>Exportiert die Definitionen aller Power Automate Flows in eine Textdatei für Dokumentationszwecke. Der Flow nutzt den Power Automate Management Connector um alle Flows im Environment aufzulisten und deren JSON-Definitionen abzurufen. Das Ergebnis wird als Textdatei in SharePoint gespeichert.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Initialize_variable (FlowDoku)</td><td>InitializeVariable</td><td>String-Variable für gesammelte Dokumentation.</td></tr>
-  <tr><td>List_My_Flows</td><td>OpenApiConnection</td><td>Listet alle Flows im Environment auf via Flow Management Connector.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über alle gefundenen Flows.</td></tr>
-  <tr><td>Get_Flow</td><td>OpenApiConnection</td><td>Ruft die vollständige Flow-Definition ab.</td></tr>
-  <tr><td>Append_to_string_variable</td><td>AppendToStringVariable</td><td>Fügt Flow-Name, ID, Trigger, Actions, Definition zur Dokumentation hinzu.</td></tr>
-  <tr><td>Create_file</td><td>SharePoint CreateFile</td><td>Speichert die Dokumentation als FlowExport_[Datum].txt in SharePoint.</td></tr>
-</table>
-</div>
-
-<h2 id="flow-batchupdate">4.19 SharePoint_Batch_Update_V2</h2>
-
-<div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>7ca8e381-3fea-138b-c2b8-66c4e4401ed5</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (SubwebURL, Listname, ParcipientNumber)</td></tr>
-</table>
-
-<h4>Beschreibung</h4>
-<p>Führt performante Batch-Updates auf SharePoint-Listen durch. Nutzt die SharePoint REST $batch API um mehrere Operationen in einem Request zu bündeln. Dies ist deutlich schneller als einzelne Updates und wird für Massenänderungen verwendet.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>settings</td><td>Compose</td><td>Konfiguriert Batch-Parameter (Batch-Größe, etc.).</td></tr>
-  <tr><td>HTTP_Get_backend_listName</td><td>SharePoint HttpRequest</td><td>Ermittelt den internen Listennamen.</td></tr>
-  <tr><td>Initialize_variable (Errors)</td><td>InitializeVariable</td><td>String für Fehlerprotokoll.</td></tr>
-  <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Ruft zu aktualisierende Items ab.</td></tr>
-  <tr><td>GenerateSPData</td><td>Select</td><td>Transformiert Items in Batch-Format.</td></tr>
-  <tr><td>Batch_Update (Scope)</td><td>Scope</td><td>Gruppiert Batch-Logik.</td></tr>
-  <tr><td>Filter_array</td><td>Filter array</td><td>Filtert Items für aktuellen Batch.</td></tr>
-  <tr><td>batchTemplate</td><td>Compose</td><td>Erstellt Batch-Request-Body.</td></tr>
-  <tr><td>Apply_to_each (Batches)</td><td>Foreach</td><td>Führt jeden Batch aus.</td></tr>
-  <tr><td>SendBatch</td><td>SharePoint HttpRequest</td><td>POST an /_api/$batch.</td></tr>
-  <tr><td>Condition</td><td>If</td><td>Prüft auf Fehler.</td></tr>
-  <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Gibt Ergebnis zurück.</td></tr>
-</table>
-</div>
-
-<h2 id="flow-setpermission">4.20 SetPermissionForSubWeb</h2>
-
-<div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>fa4be831-839b-9563-c02d-c6fe3e4a2bed</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parametern (URL, Email)</td></tr>
-</table>
-
-<h4>Beschreibung</h4>
-<p>Setzt Berechtigungen auf SharePoint-Subsites mittels REST API. Bricht zunächst die Vererbung der Berechtigungen und weist dann spezifische Rechte für die angegebene E-Mail-Adresse/Gruppe zu. Wird für Event-Subsites mit eingeschränktem Zugriff verwendet.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Compose</td><td>Compose</td><td>Bereitet Parameter für API-Aufrufe vor.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/breakroleinheritance(true) - Bricht Vererbung.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint_1</td><td>SharePoint HttpRequest</td><td>POST an /_api/web/roleassignments/addroleassignment - Weist Berechtigung zu.</td></tr>
-</table>
-</div>
-
-<h2 id="flow-updatefields">4.21 UpdateAllEventsWithNewFields</h2>
-
-<div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>5d529f0a-fa82-0561-cf07-f0221be77b61</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
-</table>
-
-<h4>Beschreibung</h4>
-<p>Migrationsflow um neue Felder (Freitextfeld3-7) zu allen bestehenden Event-Teilnehmerlisten hinzuzufügen. Wird nach Schema-Änderungen ausgeführt um Konsistenz über alle Events sicherzustellen.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Ruft alle Events mit Teilnehmerlisten-URL ab.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über alle Events.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfeld_3</td><td>SharePoint HttpRequest</td><td>POST um Freitextfeld3 zur Liste hinzuzufügen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfeld_4</td><td>SharePoint HttpRequest</td><td>POST um Freitextfeld4 zur Liste hinzuzufügen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfeld_5</td><td>SharePoint HttpRequest</td><td>POST um Freitextfeld5 zur Liste hinzuzufügen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfeld_6</td><td>SharePoint HttpRequest</td><td>POST um Freitextfeld6 zur Liste hinzuzufügen.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint-_Create_Freitextfeld_7</td><td>SharePoint HttpRequest</td><td>POST um Freitextfeld7 zur Liste hinzuzufügen.</td></tr>
-</table>
-</div>
-
-<h2 id="flow-correctoutlook">4.22 CorrectOutlookID</h2>
-
-<div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>4d185745-84cc-5844-be51-cf1e2f8bf1c2</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button</td></tr>
-</table>
-
-<h4>Beschreibung</h4>
-<p>Korrigiert fehlerhafte Outlook-Event-IDs in der Events-Liste. Manchmal stimmen die gespeicherten IDs nicht mit den tatsächlichen Outlook-Events überein. Dieser Flow gleicht alle Events ab und aktualisiert die IDs basierend auf dem Event-Titel.</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_items</td><td>SharePoint GetItems</td><td>Ruft alle Events mit OutlookEventID ab (Filter: ne null).</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über alle Events.</td></tr>
-  <tr><td>Send_an_HTTP_request</td><td>Office 365 HttpRequest</td><td>GET-Request um echtes Outlook-Event zu finden.</td></tr>
-  <tr><td>Update_item</td><td>SharePoint PatchItem</td><td>Aktualisiert OutlookEventID mit korrektem Wert.</td></tr>
-</table>
-</div>
-
-<h2 id="flow-nummerierung">4.23 SP Liste Nummerierung korrigieren</h2>
-
-<div class="flow-section">
-<table>
-  <tr><td><strong>Flow-ID</strong></td><td>0a18b534-d635-477e-8f75-346696c1caeb</td></tr>
-  <tr><td><strong>Status</strong></td><td>Started</td></tr>
-  <tr><td><strong>Trigger</strong></td><td>Manual Button mit Parameter (EventID)</td></tr>
-</table>
-
-<h4>Beschreibung</h4>
-<p>Korrigiert die fortlaufende Nummerierung (Nr.-Feld) in Teilnehmerlisten. Nach manuellen Änderungen oder Löschungen kann die Nummerierung lückenhaft sein. Dieser Flow setzt sie zurück auf eine durchgehende Sequenz 1, 2, 3, ...</p>
-
-<h4>Actions</h4>
-<table class="action-table">
-  <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-  <tr><td>Get_Event</td><td>SharePoint GetItem</td><td>Ruft Event-Details inkl. Teilnehmerlisten-URL ab.</td></tr>
-  <tr><td>Get_Teilnehmer</td><td>SharePoint GetItems</td><td>Ruft alle Teilnehmer sortiert nach aktuellem Nr.-Feld ab.</td></tr>
-  <tr><td>Initialize_variable (Zaehler)</td><td>InitializeVariable</td><td>Zähler-Variable, startet bei 1.</td></tr>
-  <tr><td>Apply_to_each</td><td>Foreach</td><td>Iteriert über alle Teilnehmer.</td></tr>
-  <tr><td>Send_an_HTTP_request_to_SharePoint</td><td>SharePoint HttpRequest</td><td>PATCH um Nr.-Feld auf aktuellen Zähler-Wert zu setzen.</td></tr>
-  <tr><td>Increment_variable</td><td>IncrementVariable</td><td>Erhöht Zähler um 1.</td></tr>
-</table>
+  <div class="action-cluster">
+    <div class="cluster-header">Nummerierung korrigieren</div>
+    <div class="cluster-desc">
+      <ul>
+        <li>Lädt Teilnehmer sortiert nach Erstellungsdatum</li>
+        <li>Setzt Nr.-Feld auf fortlaufende Nummer (1, 2, 3...)</li>
+        <li>Stellt durchgehende Nummerierung ohne Lücken sicher</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
 <!-- 5. ANHANG -->
 <div class="page-break"></div>
 <h1>5. Anhang</h1>
 
-<h2>5.1 Connector-Übersicht</h2>
-
+<h2>5.1 Glossar</h2>
 <table>
-  <tr>
-    <th>Connector</th>
-    <th>Verwendung</th>
-    <th>Flows</th>
-  </tr>
-  <tr>
-    <td><strong>SharePoint</strong></td>
-    <td>Listen-Operationen (GetItems, PatchItem, DeleteItem), HTTP-Requests für REST API, Datei-Operationen</td>
-    <td>22 von 23 Flows</td>
-  </tr>
-  <tr>
-    <td><strong>Office 365 Outlook</strong></td>
-    <td>E-Mail-Versand über Shared Mailbox, Kalender-Operationen</td>
-    <td>8 Flows</td>
-  </tr>
-  <tr>
-    <td><strong>Power Automate Management</strong></td>
-    <td>Flow-Auflistung und -Export</td>
-    <td>1 Flow</td>
-  </tr>
+  <tr><th>Begriff</th><th>Erklärung</th></tr>
+  <tr><td>Child Flow</td><td>Ein Flow der von einem anderen Flow aufgerufen wird</td></tr>
+  <tr><td>Shared Mailbox</td><td>Gemeinsam genutztes Postfach (no_reply.events@deloitte.de)</td></tr>
+  <tr><td>Subsite</td><td>Unterwebsite innerhalb einer SharePoint Site Collection</td></tr>
+  <tr><td>FIFO</td><td>First In, First Out - Warteschlangenprinzip</td></tr>
+  <tr><td>Graph API</td><td>Microsoft Graph REST API für Office 365 Dienste</td></tr>
 </table>
 
-<h2>5.2 Shared Mailbox</h2>
-
-<div class="info-box">
-<p><strong>Adresse:</strong> no_reply.events@deloitte.de<br>
-<strong>Zweck:</strong> Absender für alle automatischen E-Mails der DEX-Plattform<br>
-<strong>Verwendende Flows:</strong> SendMailSharedMailbox, SendMailParticipantList, EventQRCodeGenerator, NewEventAdded_SiteProvis, DeregisterParticipant</p>
-</div>
-
-<h2>5.3 SharePoint-URLs</h2>
-
+<h2>5.2 Technische Referenzen</h2>
 <table>
-  <tr>
-    <th>Ressource</th>
-    <th>URL</th>
-  </tr>
-  <tr>
-    <td>Basis-Site</td>
-    <td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td>
-  </tr>
-  <tr>
-    <td>Events-Liste</td>
-    <td>/sites/DOL-c-DE-B2Run/Lists/Events</td>
-  </tr>
-  <tr>
-    <td>Event-Subsite (Muster)</td>
-    <td>/sites/DOL-c-DE-B2Run/[EventName]/</td>
-  </tr>
-  <tr>
-    <td>Teilnehmerliste (Muster)</td>
-    <td>/sites/DOL-c-DE-B2Run/[EventName]/Lists/Teilnehmerliste</td>
-  </tr>
+  <tr><th>Ressource</th><th>URL / Wert</th></tr>
+  <tr><td>SharePoint Basis-Site</td><td>https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run/</td></tr>
+  <tr><td>Shared Mailbox</td><td>no_reply.events@deloitte.de</td></tr>
+  <tr><td>Power Apps Umgebung</td><td>Default Environment</td></tr>
 </table>
 
-<h2>5.4 Trigger-Typen Übersicht</h2>
+<h2>5.3 Kontakt</h2>
+<p>Bei Fragen zur Plattform oder technischen Problemen:</p>
+<ul>
+  <li><strong>Eike Brenneisen</strong> - Product Owner</li>
+  <li><strong>Andreas Enk</strong> - Entwicklung</li>
+  <li><strong>Nils Felten</strong> - Entwicklung</li>
+</ul>
 
-<table>
-  <tr>
-    <th>Trigger-Typ</th>
-    <th>Anzahl</th>
-    <th>Flows</th>
-  </tr>
-  <tr>
-    <td>Manual Button</td>
-    <td>12</td>
-    <td>ApplyTemplateB2Run, ApplyTemplateOtherEvent, EventPermission, SendMailSharedMailbox, RegisterOutlookEventParticipant, CreateOutlookEventSharedMailbox, HelperFlowMailToRegistered, Flow-Dokumentation-Export, SharePoint_Batch_Update_V2, SetPermissionForSubWeb, UpdateAllEventsWithNewFields, CorrectOutlookID, EventQRCodeGenerator, SP Liste Nummerierung korrigieren</td>
-  </tr>
-  <tr>
-    <td>SharePoint Item Created</td>
-    <td>4</td>
-    <td>NewEventAdded_SiteProvis (1 min), RegisterParticipant (5 min), DeregisterParticipant (5 min), Check-In (5 min)</td>
-  </tr>
-  <tr>
-    <td>Power App (PowerAppV2)</td>
-    <td>7</td>
-    <td>SendMailParticipantList, CheckRegistrationStatusParticipant, GetWaitinglistPosition, GetParticipantEvents, CheckInFromQRCode</td>
-  </tr>
-</table>
-
-<h2>5.5 Dokumentversionen</h2>
-
-<table>
-  <tr>
-    <th>Version</th>
-    <th>Datum</th>
-    <th>Änderungen</th>
-  </tr>
-  <tr>
-    <td>1.0</td>
-    <td>08.01.2026</td>
-    <td>Initiale Dokumentation aller 23 Flows</td>
-  </tr>
-</table>
-
-<div style="margin-top: 3rem; text-align: center; color: var(--gray-600); font-size: 10pt;">
-  <p>— Ende der Dokumentation —</p>
-  <p style="margin-top: 1rem;">DEX Event Experience Platform<br>Deloitte Deutschland GmbH</p>
-</div>
+<p style="margin-top: 3rem; text-align: center; color: var(--gray-600); font-size: 9pt;">
+  DEX Event Experience Platform - Anwenderdokumentation v2.0<br>
+  Generiert: Januar 2026
+</p>
 
 </body>
 </html>
