@@ -1,10 +1,29 @@
 # Cloudflare Pages Redirects
-# Falls jemand auf eine alte/nicht existierende Seite geht
+# Alle nicht existierenden Flow-Detailseiten zur Dokumentation umleiten
 
+/flows/neweventadded-siteprovis.html    /dokumentation.html#flow-neweventadded    301
+/flows/applytemplateb2run.html          /dokumentation.html#flow-weitere          301
+/flows/applytemplateotherevent.html     /dokumentation.html#flow-weitere          301
+/flows/eventpermission.html             /dokumentation.html#flow-weitere          301
+/flows/registerparticipant.html         /dokumentation.html#flow-registerparticipant    301
+/flows/deregisterparticipant.html       /dokumentation.html#flow-deregisterparticipant  301
+/flows/checkregistrationstatusparticipant.html  /dokumentation.html#flow-weitere  301
+/flows/getwaitinglistposition.html      /dokumentation.html#flow-weitere          301
+/flows/getparticipantevents.html        /dokumentation.html#flow-weitere          301
+/flows/check-in.html                    /dokumentation.html#flow-checkin          301
+/flows/checkinfromqrcode.html           /dokumentation.html#flow-weitere          301
+/flows/eventqrcodegenerator.html        /dokumentation.html#flow-qrcode           301
+/flows/sendmailsharedmailbox.html       /dokumentation.html#flow-sendmail         301
+/flows/sendmailparticipantlist.html     /dokumentation.html#flow-weitere          301
+/flows/registeroutlookeventparticipant.html  /dokumentation.html#flow-weitere     301
+/flows/createoutlookeventsharedmailbox.html  /dokumentation.html#flow-weitere     301
+/flows/helperflowmailtoregistered.html  /dokumentation.html#flow-weitere          301
+
+# Alte Seiten
 /flows/registrierung.html    /dokumentation.html#flow-registerparticipant    301
 /flows/abmeldung.html        /dokumentation.html#flow-deregisterparticipant  301
 /flows/warteliste.html       /dokumentation.html#flow-weitere                301
 /flows/email.html            /dokumentation.html#flow-sendmail               301
 
-# Fallback: 404 zur Startseite
-/*    /index.html    404
+# Fallback für alle anderen nicht existierenden Seiten
+/flows/*    /flows/index.html    302

@@ -14,6 +14,7 @@
         <ul>
           <li><a href="../index.html">Übersicht</a></li>
           <li><a href="index.html">Flows</a></li>
+          <li><a href="../dokumentation.html">Dokumentation</a></li>
         </ul>
       </nav>
     </div>
@@ -30,6 +31,12 @@
       <h1>Power Automate Flows</h1>
       <p>Übersicht aller 23 Flows der DEX Event Experience Platform, kategorisiert nach Funktionsbereich.</p>
 
+      <div class="info-box">
+        <h4>Vollständige Dokumentation</h4>
+        <p>Detaillierte Flow-Dokumentation mit Flowcharts, Aktionen und Expressions findest du in der <a href="../dokumentation.html"><strong>Gesamtdokumentation</strong></a>.</p>
+        <p style="margin-top: 0.5rem;"><a href="../dokumentation.html" style="display: inline-block; background: #1a365d; color: white; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none;">PDF-Version öffnen (Drucken → Als PDF speichern)</a></p>
+      </div>
+
       <section>
         <h2>Flow-Architektur</h2>
         <pre class="mermaid">
@@ -45,8 +52,8 @@ flowchart LR
         C1[Event-Verwaltung<br/>4 Flows]
         C2[Registrierung<br/>5 Flows]
         C3[Check-In<br/>3 Flows]
-        C4[E-Mail & Kalender<br/>4 Flows]
-        C5[Utility<br/>7 Flows]
+        C4[E-Mail & Kalender<br/>5 Flows]
+        C5[Utility<br/>6 Flows]
     end
 
     T1 --> C1
@@ -72,28 +79,28 @@ flowchart LR
           </thead>
           <tbody>
             <tr>
-              <td><a href="neweventadded-siteprovis.html"><strong>NewEventAdded_SiteProvis</strong></a></td>
+              <td><strong>NewEventAdded_SiteProvis</strong></td>
               <td><code>9722b1ef...</code></td>
               <td>SharePoint Item Created (1 min)</td>
               <td><span class="tag">Stopped</span></td>
               <td>Erstellt Subsite, wendet Template an, sendet Organizer-Mail</td>
             </tr>
             <tr>
-              <td><a href="applytemplateb2run.html"><strong>ApplyTemplateB2Run</strong></a></td>
+              <td><strong>ApplyTemplateB2Run</strong></td>
               <td><code>a95f473c...</code></td>
               <td>Child Flow (URL)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Wendet B2Run-Template auf neue Subsite an</td>
             </tr>
             <tr>
-              <td><a href="applytemplateotherevent.html"><strong>ApplyTemplateOtherEvent</strong></a></td>
+              <td><strong>ApplyTemplateOtherEvent</strong></td>
               <td><code>cfcce4df...</code></td>
               <td>Child Flow (URL)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Wendet Standard-Template auf neue Subsite an</td>
             </tr>
             <tr>
-              <td><a href="eventpermission.html"><strong>EventPermission</strong></a></td>
+              <td><strong>EventPermission</strong></td>
               <td><code>8c702f7e...</code></td>
               <td>Button (ItemId, Audience)</td>
               <td><span class="tag tag-primary">Started</span></td>
@@ -118,35 +125,35 @@ flowchart LR
           </thead>
           <tbody>
             <tr>
-              <td><a href="registerparticipant.html"><strong>RegisterParticipant</strong></a></td>
+              <td><strong>RegisterParticipant</strong></td>
               <td><code>12db96ef...</code></td>
               <td>Power App</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Registriert Teilnehmer für Event</td>
             </tr>
             <tr>
-              <td><a href="deregisterparticipant.html"><strong>DeregisterParticipant</strong></a></td>
+              <td><strong>DeregisterParticipant</strong></td>
               <td><code>b2a06173...</code></td>
               <td>Power App</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Meldet Teilnehmer von Event ab</td>
             </tr>
             <tr>
-              <td><a href="checkregistrationstatusparticipant.html"><strong>CheckRegistrationStatusParticipant</strong></a></td>
+              <td><strong>CheckRegistrationStatusParticipant</strong></td>
               <td><code>d9455ec1...</code></td>
               <td>Power App (userEmail, eventID)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Prüft Registrierungsstatus eines Users</td>
             </tr>
             <tr>
-              <td><a href="getwaitinglistposition.html"><strong>GetWaitinglistPosition</strong></a></td>
+              <td><strong>GetWaitinglistPosition</strong></td>
               <td><code>ba3ea4c3...</code></td>
               <td>Power App (Email, EventId)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Gibt Wartelistenposition zurück</td>
             </tr>
             <tr>
-              <td><a href="getparticipantevents.html"><strong>GetParticipantEvents</strong></a></td>
+              <td><strong>GetParticipantEvents</strong></td>
               <td><code>c87a1179...</code></td>
               <td>Power App (userEmail)</td>
               <td><span class="tag tag-primary">Started</span></td>
@@ -171,21 +178,21 @@ flowchart LR
           </thead>
           <tbody>
             <tr>
-              <td><a href="check-in.html"><strong>Check-In</strong></a></td>
+              <td><strong>Check-In</strong></td>
               <td><code>0d78b8a2...</code></td>
               <td>Power App</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Manueller Check-In von Teilnehmern</td>
             </tr>
             <tr>
-              <td><a href="checkinfromqrcode.html"><strong>CheckInFromQRCode</strong></a></td>
+              <td><strong>CheckInFromQRCode</strong></td>
               <td><code>94af55a9...</code></td>
               <td>Power App</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Check-In per QR-Code-Scan</td>
             </tr>
             <tr>
-              <td><a href="eventqrcodegenerator.html"><strong>EventQRCodeGenerator</strong></a></td>
+              <td><strong>EventQRCodeGenerator</strong></td>
               <td><code>3cbcc422...</code></td>
               <td>Button (EventID)</td>
               <td><span class="tag tag-primary">Started</span></td>
@@ -210,35 +217,35 @@ flowchart LR
           </thead>
           <tbody>
             <tr>
-              <td><a href="sendmailsharedmailbox.html"><strong>SendMailSharedMailbox</strong></a></td>
+              <td><strong>SendMailSharedMailbox</strong></td>
               <td><code>1d0481d1...</code></td>
               <td>Button (name, content, subject, email)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Sendet E-Mail über no_reply.events@deloitte.de</td>
             </tr>
             <tr>
-              <td><a href="sendmailparticipantlist.html"><strong>SendMailParticipantList</strong></a></td>
+              <td><strong>SendMailParticipantList</strong></td>
               <td><code>f245125b...</code></td>
               <td>Power App (eventId, text, type, subject)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Massen-E-Mail an Teilnehmer/Warteliste</td>
             </tr>
             <tr>
-              <td><a href="registeroutlookeventparticipant.html"><strong>RegisterOutlookEventParticipant</strong></a></td>
+              <td><strong>RegisterOutlookEventParticipant</strong></td>
               <td><code>9bb8f1e4...</code></td>
               <td>Button (EventID, ParticipantMail)</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Erstellt Outlook-Kalendereintrag für Teilnehmer</td>
             </tr>
             <tr>
-              <td><a href="createoutlookeventsharedmailbox.html"><strong>CreateOutlookEventSharedMailbox</strong></a></td>
+              <td><strong>CreateOutlookEventSharedMailbox</strong></td>
               <td><code>c474ce34...</code></td>
               <td>Child Flow</td>
               <td><span class="tag tag-primary">Started</span></td>
               <td>Erstellt Event in Shared Mailbox Kalender</td>
             </tr>
             <tr>
-              <td><a href="helperflowmailtoregistered.html"><strong>HelperFlowMailToRegistered</strong></a></td>
+              <td><strong>HelperFlowMailToRegistered</strong></td>
               <td><code>9d03f5ba...</code></td>
               <td>Button</td>
               <td><span class="tag tag-primary">Started</span></td>
