@@ -17,6 +17,8 @@
     .nav-flow { display: flex; justify-content: space-between; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--gray-200); }
     .breadcrumb { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; }
     .breadcrumb a { color: var(--primary); }
+    .code-block { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 0.9rem; margin: 1rem 0; }
+    .status-example { background: var(--gray-100); padding: 0.5rem 1rem; border-left: 3px solid var(--primary); margin: 0.5rem 0; font-family: monospace; }
   </style>
 </head>
 <body>
@@ -29,28 +31,42 @@
     <p class="breadcrumb"><a href="../index.html">Dokumentation</a> / CheckInFromQRCode</p>
 
     <h1>CheckInFromQRCode</h1>
-    <p class="subtitle">Check-In per QR-Code-Scan</p>
+    <p class="subtitle">Check-In per QR-Code-Scan mit Sub-Event-Unterstützung</p>
 
     <div class="flow-meta">
       <table>
-        <tr><td><strong>Flow-ID</strong></td><td><code>qr-checkin-flow-id</code></td></tr>
+        <tr><td><strong>Flow-ID</strong></td><td><code>94af55a9-99e6-cbfe-e4b6-3822785f0183</code></td></tr>
         <tr><td><strong>Status</strong></td><td>Started</td></tr>
         <tr><td><strong>Trigger</strong></td><td>Power App V2</td></tr>
         <tr><td><strong>Kategorie</strong></td><td>Check-In</td></tr>
+        <tr><td><strong>Erstellt</strong></td><td>2025-12-03</td></tr>
+        <tr><td><strong>Geändert</strong></td><td>2026-01-07</td></tr>
       </table>
     </div>
 
     <h2>Beschreibung</h2>
-    <p>Verarbeitet Check-Ins per QR-Code-Scan. Das Check-In-Team scannt den QR-Code des Teilnehmers mit der Power App, der Flow identifiziert den Teilnehmer und führt den Check-In durch.</p>
+    <p>Verarbeitet Check-Ins per QR-Code-Scan für Sub-Events (z.B. "Vormittag", "Nachmittag"). Das Check-In-Team scannt den QR-Code des Teilnehmers mit der Power App, der Flow identifiziert den Teilnehmer per E-Mail und aktualisiert den Check-In-Status.</p>
 
-    <h3>Was dieser Flow macht</h3>
-    <ul>
-      <li><strong>QR-Daten parsen:</strong> Extrahiert Teilnehmer-ID und Event-ID aus dem gescannten QR-Code</li>
-      <li><strong>Teilnehmer identifizieren:</strong> Findet den Teilnehmer in der Teilnehmerliste</li>
-      <li><strong>Validierung:</strong> Prüft ob Teilnehmer registriert und noch nicht eingecheckt ist</li>
-      <li><strong>Check-In:</strong> Aktualisiert Status und Zeitstempel</li>
-      <li><strong>Feedback:</strong> Gibt Erfolg/Fehler an die Power App zurück</li>
-    </ul>
+    <h3>Sub-Event Check-In Konzept</h3>
+    <p>Ein Event kann mehrere Sub-Events/Zeitslots haben. Teilnehmer können sich für jeden Slot separat einchecken. Der Status wird dabei <strong>akkumuliert</strong>:</p>
+
+    <table>
+      <tr><th>Check-In</th><th>Sub-Event</th><th>Status nachher</th></tr>
+      <tr><td>1. Check-In</td><td>Vormittag</td><td class="status-example">Check-In: Vormittag</td></tr>
+      <tr><td>2. Check-In</td><td>Nachmittag</td><td class="status-example">Check-In: Vormittag ; Check-In: Nachmittag</td></tr>
+      <tr><td>3. Check-In</td><td>Abendveranstaltung</td><td class="status-example">Check-In: Vormittag ; Check-In: Nachmittag ; Check-In: Abendveranstaltung</td></tr>
+    </table>
+
+    <hr>
+
+    <h2>Trigger-Parameter</h2>
+    <p>Der Flow wird von der Power App mit folgenden Parametern aufgerufen:</p>
+    <table>
+      <tr><th>Parameter</th><th>Interner Name</th><th>Typ</th><th>Beschreibung</th></tr>
+      <tr><td><strong>Email</strong></td><td><code>text</code></td><td>string</td><td>E-Mail-Adresse des Teilnehmers (aus QR-Code)</td></tr>
+      <tr><td><strong>EventID</strong></td><td><code>number</code></td><td>number</td><td>ID des Events</td></tr>
+      <tr><td><strong>CheckInStatus</strong></td><td><code>text_1</code></td><td>string</td><td>Name des Sub-Events (z.B. "Vormittag", "Nachmittag")</td></tr>
+    </table>
 
     <hr>
 
@@ -58,72 +74,162 @@
 
     <div class="action-cluster">
       <div class="cluster-header">
-        <h4>1. QR-Code verarbeiten</h4>
+        <h4>1. Get_item - Event</h4>
       </div>
       <div class="cluster-desc">
-        <ul>
-          <li>Empfängt den gescannten QR-Code-Inhalt von der Power App</li>
-          <li>Parst das JSON um Teilnehmer-ID und Event-ID zu extrahieren</li>
-          <li>Validiert das Format der QR-Daten</li>
-        </ul>
+        <p>Lädt das Event aus SharePoint, um die URL der event-spezifischen Teilnehmerliste zu erhalten.</p>
       </div>
       <table class="action-table">
-        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-        <tr><td>Initialize_variable (qrData)</td><td>InitializeVariable</td><td>Speichert QR-Code-Inhalt</td></tr>
-        <tr><td>Parse_JSON</td><td>ParseJson</td><td>Extrahiert participantId, eventId</td></tr>
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>SharePoint GetItem</td></tr>
+        <tr><td>Site</td><td><code>PP_DEX_SharePointURL</code> (Parameter)</td></tr>
+        <tr><td>Liste</td><td><code>PP_DEX_Events_Listname</code> (Parameter)</td></tr>
+        <tr><td>ID</td><td><code>triggerBody()?['number']</code> (EventID)</td></tr>
+        <tr><td>Output</td><td><code>Teilnehmerliste_x0020_URL</code> - URL zur Teilnehmerliste</td></tr>
       </table>
     </div>
 
     <div class="action-cluster">
       <div class="cluster-header">
-        <h4>2. Teilnehmer validieren</h4>
+        <h4>2. Get_items - From Teilnehmerliste</h4>
       </div>
       <div class="cluster-desc">
-        <ul>
-          <li>Sucht den Teilnehmer in der Teilnehmerliste des Events</li>
-          <li>Prüft ob Status "Registered" ist</li>
-          <li>Prüft ob noch nicht eingecheckt (CheckIn = false)</li>
-          <li>Gibt Fehlermeldung bei ungültigem QR-Code zurück</li>
-        </ul>
+        <p>Sucht den Teilnehmer anhand der E-Mail-Adresse in der event-spezifischen Teilnehmerliste.</p>
       </div>
       <table class="action-table">
-        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-        <tr><td>Get_item</td><td>SharePoint GetItem</td><td>Lädt Teilnehmereintrag</td></tr>
-        <tr><td>Condition (Registered)</td><td>If</td><td>Prüft Status = Registered</td></tr>
-        <tr><td>Condition (Not CheckedIn)</td><td>If</td><td>Prüft CheckIn = false</td></tr>
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>SharePoint GetItems</td></tr>
+        <tr><td>Site</td><td><code>outputs('Get_item-_Event')?['body/Teilnehmerliste_x0020_URL']</code></td></tr>
+        <tr><td>Liste</td><td><code>Teilnehmerliste</code></td></tr>
+        <tr><td>Filter</td><td><code>E_x002d_Mail eq '@{triggerBody()?['text']}'</code></td></tr>
       </table>
     </div>
 
     <div class="action-cluster">
       <div class="cluster-header">
-        <h4>3. Check-In durchführen</h4>
+        <h4>3. Apply to each</h4>
       </div>
       <div class="cluster-desc">
-        <ul>
-          <li>Setzt CheckIn-Feld auf true</li>
-          <li>Speichert aktuellen Zeitstempel als Check-In-Zeit</li>
-          <li>Gibt Erfolgsmeldung mit Teilnehmername an Power App zurück</li>
-        </ul>
+        <p>Iteriert über die gefundenen Teilnehmer (normalerweise genau einer) und führt das Check-In durch.</p>
       </div>
       <table class="action-table">
-        <tr><th>Action</th><th>Typ</th><th>Beschreibung</th></tr>
-        <tr><td>Update_item</td><td>SharePoint PatchItem</td><td>Setzt CheckIn=true, Timestamp</td></tr>
-        <tr><td>Respond_to_a_Power_App_or_flow</td><td>Response</td><td>Erfolg + Teilnehmername</td></tr>
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>Foreach</td></tr>
+        <tr><td>Input</td><td><code>outputs('Get_items-_From_Teilnhemerliste')?['body/value']</code></td></tr>
       </table>
     </div>
 
-    <h2>Mögliche Rückgabewerte</h2>
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3a. Get_item (innerhalb Apply to each)</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Lädt den vollständigen Teilnehmer-Datensatz inkl. aktuellem Status.</p>
+      </div>
+      <table class="action-table">
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>SharePoint GetItem</td></tr>
+        <tr><td>Site</td><td>Event's Teilnehmerliste URL</td></tr>
+        <tr><td>Liste</td><td><code>Teilnehmerliste</code></td></tr>
+        <tr><td>ID</td><td><code>item()['Id']</code></td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3b. Compose_1 (innerhalb Apply to each)</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Erstellt den neuen Status-String. <strong>Wichtig:</strong> Wenn bereits ein Check-In existiert, wird der neue Sub-Event angehängt. Ansonsten wird der bisherige Status (z.B. "QR Code versendet") komplett ersetzt.</p>
+      </div>
+      <table class="action-table">
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>Compose</td></tr>
+        <tr><td>Expression</td><td>Siehe unten</td></tr>
+      </table>
+      <div class="code-block">
+<pre>if(
+  startsWith(body('Get_item')['Status'], 'Check-In:'),
+  concat(body('Get_item')['Status'], ' ; Check-In: ', triggerBody()?['text_1']),
+  concat('Check-In: ', triggerBody()?['text_1'])
+)</pre>
+      </div>
+      <p><strong>Logik:</strong></p>
+      <ul>
+        <li>Wenn Status mit "Check-In:" beginnt → Anhängen: <code>[Alter Status] ; Check-In: [Neuer Sub-Event]</code></li>
+        <li>Sonst → Ersetzen: <code>Check-In: [Neuer Sub-Event]</code></li>
+      </ul>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>3c. Update_item (innerhalb Apply to each)</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Aktualisiert das Status-Feld des Teilnehmers mit dem neuen Check-In-Status.</p>
+      </div>
+      <table class="action-table">
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>SharePoint PatchItem</td></tr>
+        <tr><td>Site</td><td>Event's Teilnehmerliste URL</td></tr>
+        <tr><td>Liste</td><td><code>Teilnehmerliste</code></td></tr>
+        <tr><td>ID</td><td><code>item()['Id']</code></td></tr>
+        <tr><td>Felder</td><td><code>{ "Status": outputs('Compose_1') }</code></td></tr>
+      </table>
+    </div>
+
+    <div class="action-cluster">
+      <div class="cluster-header">
+        <h4>4. Respond to a Power App or flow</h4>
+      </div>
+      <div class="cluster-desc">
+        <p>Gibt das Ergebnis an die Power App zurück.</p>
+      </div>
+      <table class="action-table">
+        <tr><th>Eigenschaft</th><th>Wert</th></tr>
+        <tr><td>Typ</td><td>Response (PowerApp)</td></tr>
+        <tr><td>Status Code</td><td>200</td></tr>
+        <tr><td>Body</td><td><code>{ "result": "Successful" }</code></td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Status-Verlauf Beispiel</h2>
     <table>
-      <tr><th>Status</th><th>Beschreibung</th></tr>
-      <tr><td>success</td><td>Check-In erfolgreich, enthält Teilnehmername</td></tr>
-      <tr><td>already_checked_in</td><td>Teilnehmer war bereits eingecheckt</td></tr>
-      <tr><td>not_registered</td><td>Teilnehmer nicht für dieses Event registriert</td></tr>
-      <tr><td>invalid_qr</td><td>QR-Code ungültig oder nicht lesbar</td></tr>
+      <tr><th>Zeitpunkt</th><th>Aktion</th><th>Status</th></tr>
+      <tr><td>Anmeldung</td><td>Teilnehmer registriert sich</td><td><code>Registered</code></td></tr>
+      <tr><td>Vor Event</td><td>QR-Code wird versendet</td><td><code>QR Code versendet</code></td></tr>
+      <tr><td>09:00</td><td>Check-In Vormittag</td><td><code>Check-In: Vormittag</code></td></tr>
+      <tr><td>14:00</td><td>Check-In Nachmittag</td><td><code>Check-In: Vormittag ; Check-In: Nachmittag</code></td></tr>
+    </table>
+
+    <hr>
+
+    <h2>Power Automate Änderung</h2>
+    <p>Um die Compose_1 Action anzupassen, ersetze den aktuellen Input:</p>
+
+    <p><strong>Alt (aktuell):</strong></p>
+    <div class="code-block">
+<pre>@{body('Get_item')['Status']};  CheckIn:@{triggerBody()?['text_1']}</pre>
+    </div>
+
+    <p><strong>Neu:</strong></p>
+    <div class="code-block">
+<pre>@{if(startsWith(body('Get_item')['Status'], 'Check-In:'), concat(body('Get_item')['Status'], ' ; Check-In: ', triggerBody()?['text_1']), concat('Check-In: ', triggerBody()?['text_1']))}</pre>
+    </div>
+
+    <hr>
+
+    <h2>Rückgabewert</h2>
+    <table>
+      <tr><th>Feld</th><th>Wert</th><th>Beschreibung</th></tr>
+      <tr><td><code>result</code></td><td><code>"Successful"</code></td><td>Check-In wurde durchgeführt</td></tr>
     </table>
 
     <div class="nav-flow">
-      <a href="10-checkin.html">← Check-In</a>
-      <a href="12-eventqrcodegenerator.html">EventQRCodeGenerator →</a>
+      <a href="10-checkin.html">&larr; Check-In</a>
+      <a href="12-eventqrcodegenerator.html">EventQRCodeGenerator &rarr;</a>
     </div>
   </main>
 </body>
