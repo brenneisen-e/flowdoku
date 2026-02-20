@@ -1,0 +1,16 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+.wrangler/
+
+# Temp files
+*.tmp
+*.bak
+*.swp
