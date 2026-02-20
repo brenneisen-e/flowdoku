@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event-Erstellung: Ist-Zustand & Anforderungen Optimierung - DEX Dokumentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .breadcrumb { font-size: 0.9rem; color: var(--color-gray-500); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--color-gray-500); }
+    .subtitle { color: var(--color-gray-600); font-size: 1.1rem; margin-bottom: 2rem; }
+    .nav-header { background: var(--color-primary, #1a365d); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .nav-header a { color: white; text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    .logo { font-size: 1.25rem; font-weight: 600; }
+
+    /* Section styling */
+    .section-box { background: var(--color-gray-50, #f9fafb); border: 1px solid var(--color-gray-200, #e5e7eb); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+    .problem-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .problem-box h4 { color: #dc2626; margin-top: 0; }
+    .solution-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .solution-box h4 { color: #16a34a; margin-top: 0; }
+    .req-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .req-box h4 { color: #2563eb; margin-top: 0; }
+
+    /* Flow diagram styling */
+    .flow-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0; }
+    .flow-col { border: 1px solid var(--color-gray-200, #e5e7eb); border-radius: 8px; padding: 1.5rem; }
+    .flow-col.current { border-color: #dc2626; }
+    .flow-col.target { border-color: #16a34a; }
+    .flow-col h4 { margin-top: 0; }
+    .flow-col.current h4 { color: #dc2626; }
+    .flow-col.target h4 { color: #16a34a; }
+
+    /* Step numbering */
+    .req-list { counter-reset: req; list-style: none; padding-left: 0; }
+    .req-list > li { counter-increment: req; padding: 1rem 1rem 1rem 3.5rem; position: relative; border-bottom: 1px solid var(--color-gray-200, #e5e7eb); }
+    .req-list > li::before { content: "ANF-" counter(req, decimal-leading-zero); position: absolute; left: 0; top: 1rem; font-weight: 700; color: #2563eb; font-size: 0.85rem; font-family: monospace; }
+    .req-list > li:last-child { border-bottom: none; }
+
+    .priority-high { display: inline-block; background: #dc2626; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+    .priority-mid { display: inline-block; background: #f59e0b; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+    .priority-low { display: inline-block; background: #6b7280; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .flow-compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Startseite</a>
+      <a href="index.html">Dokumentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="index.html">Dokumentation</a> / Event-Erstellung: Ist-Zustand & Anforderungen</p>
+
+    <h1>Event-Erstellung: Ist-Zustand & Anforderungen zur Optimierung</h1>
+    <p class="subtitle">Analyse des aktuellen Prozesses und Anforderungskatalog f&uuml;r eine dynamische, modulare Event-Erstellung</p>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 1: IST-ZUSTAND -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 1: Ist-Zustand &ndash; Was passiert aktuell bei der Event-Erstellung?</h2>
+
+    <h3>1.1 &Uuml;bersicht Gesamtprozess</h3>
+    <p>Die Event-Erstellung durchl&auml;uft <strong>zwei Phasen</strong>: eine manuelle Eingabe in der Power App und eine automatische Backend-Verarbeitung durch Power Automate Flows.</p>
+
+    <div class="section-box">
+      <h4>Gesamtablauf auf einen Blick</h4>
+      <ol>
+        <li>Organizer &ouml;ffnet die App &rarr; Navigiert zu &bdquo;Create new event&ldquo;</li>
+        <li>W&auml;hlt einen von 3 Event-Typen (B2Run, JP Morgan, Other Deloitte Event)</li>
+        <li>F&uuml;llt das jeweilige feste Formular aus</li>
+        <li>Klickt &bdquo;Submit&ldquo; &rarr; Datensatz wird in SharePoint-Liste <code>Events</code> gespeichert</li>
+        <li>SharePoint-Trigger l&ouml;st den Hauptflow <strong>NewEventAdded_SiteProvis</strong> aus</li>
+        <li>Flow erstellt automatisch: Subsite, Teilnehmerliste, Outlook-Termin, Benachrichtigung, Berechtigungen</li>
+      </ol>
+    </div>
+
+    <!-- Phase 1: App -->
+    <h3>1.2 Phase 1: Eingabe in der Power App</h3>
+
+    <h4>1.2.1 Event-Typ-Auswahl (EventCreationSelectionScreen)</h4>
+    <p>Der Organizer sieht drei Kacheln mit Logo und Beschreibung:</p>
+    <table>
+      <tr><th>Kachel</th><th>Navigiert zu</th><th>Setzt Content Type auf</th></tr>
+      <tr><td>B2Run</td><td><code>EventCreationB2EventForm</code></td><td>B2Run Event</td></tr>
+      <tr><td>J.P. Morgan Lauf</td><td><code>EventCreationJPMorgan</code></td><td>JP Morgan Run</td></tr>
+      <tr><td>Other Deloitte Events</td><td><code>EventCreationOtherEventForm</code></td><td>Other Deloitte Event</td></tr>
+    </table>
+    <p>Jeder Event-Typ hat ein <strong>eigenes, fest codiertes Formular</strong> (separate YAML-Datei mit eigener DataCard-Struktur).</p>
+
+    <h4>1.2.2 Formularfelder im Detail</h4>
+    <p>Die drei Formulare teilen sich einen gemeinsamen Kern, haben aber je nach Typ zus&auml;tzliche Felder:</p>
+
+    <table>
+      <tr>
+        <th>Feld</th>
+        <th>Typ</th>
+        <th>Pflicht?</th>
+        <th>B2Run</th>
+        <th>JP Morgan</th>
+        <th>Other</th>
+      </tr>
+      <tr><td><strong>Title</strong></td><td>Text</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Organizer</strong></td><td>Multi-Person</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Standort</strong></td><td>Choice / Text</td><td>B2Run: Nein, JP: Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Standort Filter</strong></td><td>Dropdown</td><td>Nein</td><td>&#10003;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event time</strong> (Start)</td><td>DateTime</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event end time</strong></td><td>DateTime</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Last Register Date Time</strong></td><td>DateTime</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Last Deregister Event Time</strong></td><td>DateTime</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event description</strong></td><td>Mehrzeil. Text</td><td>Ja</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Max. parcipients</strong></td><td>Number</td><td>Ja</td><td>&#10003; (berechnet)</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event image</strong></td><td>Attachment</td><td>Nein</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Content type</strong></td><td>Dropdown (hidden)</td><td>Nein (auto)</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Current parcipients</strong></td><td>Number</td><td>Nein (auto: 0)</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Wait list</strong></td><td>Number</td><td>Nein (auto: 0)</td><td>&#10003;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td colspan="6" style="background: var(--color-gray-100, #f3f4f6); font-weight: 600;">Nur B2Run</td></tr>
+      <tr><td><strong>Max Fun-runner</strong></td><td>Number</td><td>Ja</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Durchstarter visible</strong></td><td>Toggle</td><td>Nein</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Max Durchstarter</strong></td><td>Number</td><td>Bedingt</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Startblock</strong></td><td>Multi-Choice</td><td>Ja</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>T-Shirt Gr&ouml;&szlig;e visible</strong></td><td>Toggle</td><td>Nein</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>T-Shirtgr&ouml;&szlig;en</strong></td><td>Multi-Choice</td><td>Bedingt</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Nordic Walker visible</strong></td><td>Toggle</td><td>Nein</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Age Group visible</strong></td><td>Toggle</td><td>Nein</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td colspan="6" style="background: var(--color-gray-100, #f3f4f6); font-weight: 600;">Nur Other Event / OtherEventForm</td></tr>
+      <tr><td><strong>Audience Mail</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Allergien visible</strong></td><td>Toggle</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Essensw&uuml;nsche visible</strong></td><td>Toggle</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Hotelwunsch visible</strong></td><td>Toggle</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Info Hotel / Einzelzimmer / Doppelzimmer / Location Hotel</strong></td><td>Diverse</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Frage Freitextfeld 1&ndash;7</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Info Freitextfeld 1&ndash;7</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Frage Dropdownfeld 1&ndash;2</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Dropdownfeld 1&ndash;2</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Info Dropdownfeld 1&ndash;2</strong></td><td>Text</td><td>Nein</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+    </table>
+
+    <h4>1.2.3 Validierung & Submit</h4>
+    <p>Alle drei Formulare verwenden die gleiche Logik:</p>
+    <div class="section-box">
+      <p><strong>Submit-Button wird erst aktiv</strong>, wenn alle Pflichtfelder ausgef&uuml;llt sind (DisplayMode-Pr&uuml;fung auf <code>IsBlank</code>/<code>IsEmpty</code>).</p>
+      <p><strong>Bei Klick auf Submit:</strong></p>
+      <ol>
+        <li><code>SubmitForm(Form)</code> &ndash; Datensatz wird in SharePoint-Liste <code>Events</code> geschrieben</li>
+        <li><code>ResetForm(Form)</code> &ndash; Formular wird zur&uuml;ckgesetzt</li>
+        <li><code>Navigate(StartScreen)</code> &ndash; Weiterleitung zum Startbildschirm</li>
+        <li><code>Notify("Das Event wurde erfolgreich angelegt...")</code> &ndash; Erfolgsmeldung</li>
+      </ol>
+    </div>
+
+    <!-- Phase 2: Flows -->
+    <h3>1.3 Phase 2: Automatische Backend-Verarbeitung (Power Automate)</h3>
+
+    <h4>1.3.1 Hauptflow: NewEventAdded_SiteProvis</h4>
+    <p>Wird automatisch ausgel&ouml;st durch SharePoint-Trigger <em>&bdquo;When an item is created&ldquo;</em> auf der Events-Liste (Pr&uuml;fintervall: 1 Minute). Besteht aus <strong>25 Actions in 6 Clustern</strong>:</p>
+
+    <table>
+      <tr><th>Cluster</th><th>Was passiert</th><th>Technische Details</th></tr>
+      <tr>
+        <td><strong>1. Initialisierung</strong></td>
+        <td>Event-Status wird auf &bdquo;Under Construction&ldquo; gesetzt, 6 Workflow-Variablen werden initialisiert</td>
+        <td>SharePoint PatchItem + 5x InitializeVariable (varSiteTitle, varSiteURL, varSubject-Name, varFinalURL, varContentTypeName)</td>
+      </tr>
+      <tr>
+        <td><strong>2. URL-Bereinigung</strong></td>
+        <td>Event-Titel wird von Sonderzeichen bereinigt f&uuml;r g&uuml;ltige SharePoint-URL</td>
+        <td>Compose erstellt Filter-Array (Leerzeichen, :, #, %, ", *, ?, /, \, |), Foreach-Loop entfernt jedes Zeichen iterativ</td>
+      </tr>
+      <tr>
+        <td><strong>3. Subsite erstellen</strong></td>
+        <td>Eigene SharePoint-Subsite f&uuml;r das Event wird angelegt</td>
+        <td>HTTP POST an <code>/_api/web/webinfos/add</code> mit Template STS#3 (Team Site). Response wird geparst f&uuml;r ServerRelativeUrl</td>
+      </tr>
+      <tr>
+        <td><strong>4. Template anwenden</strong></td>
+        <td>Teilnehmerliste mit passendem Spalten-Schema wird erstellt</td>
+        <td>Switch auf Content Type &rarr; Child Flow <strong>ApplyTemplateB2Run</strong> oder <strong>ApplyTemplateOtherEvent</strong></td>
+      </tr>
+      <tr>
+        <td><strong>5. Outlook-Termin</strong></td>
+        <td>Kalender-Event in Shared Mailbox wird erstellt (Basis f&uuml;r sp&auml;tere Teilnehmer-Einladungen)</td>
+        <td>Child Flow <strong>CreateOutlookEventSharedMailbox</strong>. Zur&uuml;ckgegebene Outlook-Event-ID wird in Events-Liste gespeichert. URL bekommt <code>/Lists/Teilnehmerliste</code> angeh&auml;ngt</td>
+      </tr>
+      <tr>
+        <td><strong>6. Benachrichtigung &amp; Berechtigungen</strong></td>
+        <td>Organizer erh&auml;lt Best&auml;tigungsmail mit Link. Bei definierter Audience werden Zugriffsrechte gesetzt</td>
+        <td>Logos laden (Data-URI), Foreach &uuml;ber Organizer &rarr; E-Mail aus Shared Mailbox. Condition pr&uuml;ft Audience Mail &rarr; Child Flow <strong>EventPermission</strong></td>
+      </tr>
+    </table>
+
+    <h4>1.3.2 Child Flow: ApplyTemplateB2Run</h4>
+    <p>Empf&auml;ngt die Subsite-URL und erstellt die Teilnehmerliste via SharePoint REST API:</p>
+    <ol>
+      <li>POST an <code>/_api/web/lists</code> &rarr; erstellt Liste &bdquo;Teilnehmerliste&ldquo; (Template 100)</li>
+      <li>Einzelne HTTP-Requests erstellen Felder: Teilnehmername, Email, Status (Choice: Registered/Waitlist/Cancelled), Nr, CheckIn</li>
+      <li>7 Freitextfelder (Freitextfeld1&ndash;7) werden <strong>immer</strong> erstellt</li>
+      <li>Standard-Ansicht wird abgerufen, Erfolg wird best&auml;tigt</li>
+    </ol>
+
+    <h4>1.3.3 Child Flow: ApplyTemplateOtherEvent</h4>
+    <p>Identische Struktur wie ApplyTemplateB2Run. Erstellt die gleichen Basis- und Freitextfelder. Separater Flow f&uuml;r potenzielle zuk&uuml;nftige Unterscheidung.</p>
+
+    <h4>1.3.4 Child Flow: CreateOutlookEventSharedMailbox</h4>
+    <p>Empf&auml;ngt Event-Details (Titel, Beschreibung, Start, Ende, Ort) &rarr; erstellt Outlook-Kalendereintrag via Office 365 Connector &rarr; gibt Event-ID zur&uuml;ck.</p>
+
+    <h4>1.3.5 Child Flow: EventPermission</h4>
+    <p>Wird nur aufgerufen wenn <code>Audience Mail</code> gesetzt ist:</p>
+    <ol>
+      <li>Bestehende Freigaben entfernen</li>
+      <li>Audience-Gruppe erh&auml;lt Lesezugriff</li>
+      <li>Organizer erh&auml;lt Vollzugriff</li>
+    </ol>
+
+    <!-- Datenmodell -->
+    <h3>1.4 Datenmodell</h3>
+
+    <h4>1.4.1 SharePoint-Liste: Events (Master)</h4>
+    <p>Enth&auml;lt <strong>38+ Spalten</strong>, unabh&auml;ngig davon ob der Event-Typ sie ben&ouml;tigt:</p>
+    <div class="section-box">
+      <code>Titel, Status, Teilnehmerliste URL, Event image, Current parcipients, Max. parcipients, Wait list, Outlook EventID, T-Shirtgr&ouml;&szlig;en, Event end time, ID, Last Deregister Event Time, Organzier, Erstellt von, Max Fun-runner, Current Fun-Runner, Max Durchstarter, Inhaltstyp, Standort, Standort Filter, Last Register Date Time, Startblock, T Shirt Gr&ouml;&szlig;e visible, Allergien visible, Essensw&uuml;nsche visible, Audience, Frage Freitextfeld 1&ndash;2, Dropdownfeld 1&ndash;2, Frage Dropdownfeld 1&ndash;2, Info Freitextfeld 1&ndash;2, Info Dropdownfeld 1&ndash;2, Audience Mail, Location Hotel, Event description</code>
+    </div>
+
+    <h4>1.4.2 SharePoint-Liste: Teilnehmerliste (pro Event-Subsite)</h4>
+    <p>Jedes Event bekommt eine eigene Teilnehmerliste mit <strong>immer denselben Spalten</strong>:</p>
+    <table>
+      <tr><th>Spalte</th><th>Typ</th><th>Immer vorhanden?</th></tr>
+      <tr><td>Teilnehmername</td><td>Text</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Email</td><td>Text</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Status</td><td>Choice</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Nr.</td><td>Number</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>CheckIn</td><td>Boolean</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Anrede</td><td>Text</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Vorname / Nachname</td><td>Text</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>HotelRequired / RoomType / PreferredRoommate</td><td>Diverse</td><td>Ja &ndash; auch wenn nicht ben&ouml;tigt</td></tr>
+      <tr><td>Allergies / FoodPreferences</td><td>Text</td><td>Ja &ndash; auch wenn nicht ben&ouml;tigt</td></tr>
+      <tr><td>TShirtGroesse</td><td>Text</td><td>Ja &ndash; auch wenn nicht ben&ouml;tigt</td></tr>
+      <tr><td>Freitextfeld1&ndash;7</td><td>Text</td><td>Ja &ndash; immer alle 7</td></tr>
+      <tr><td>Dropdownfeld1</td><td>Text</td><td>Ja &ndash; auch wenn nicht ben&ouml;tigt</td></tr>
+      <tr><td>LocationHotel</td><td>Text</td><td>Ja &ndash; auch wenn nicht ben&ouml;tigt</td></tr>
+      <tr><td>JobTitle / CompanyName / Department / Office*</td><td>Text</td><td>Ja &ndash; immer</td></tr>
+      <tr><td>Abmeldung am</td><td>DateTime</td><td>Ja &ndash; immer</td></tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 2: PROBLEME -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 2: Identifizierte Probleme</h2>
+
+    <div class="problem-box">
+      <h4>P1: Starre, dreifach duplizierte Formulare</h4>
+      <p>Es existieren <strong>3 separate Formular-Screens</strong> (B2Run: ~1.900 Zeilen YAML, Other: ~3.500 Zeilen, JP Morgan: ~1.200 Zeilen) mit gro&szlig;er &Uuml;berschneidung. Jede &Auml;nderung an gemeinsamen Feldern muss in allen drei Formularen nachgezogen werden.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P2: 4-facher &Auml;nderungsaufwand bei Feld-Erweiterungen</h4>
+      <p>Wenn ein neues Feld ben&ouml;tigt wird (z.B. &bdquo;Dietary Requirements&ldquo;), muss es an <strong>4 Stellen</strong> angepasst werden:</p>
+      <ol>
+        <li><strong>Event-Erstellungsformular</strong> in der Power App (DataCard hinzuf&uuml;gen)</li>
+        <li><strong>Event-Erstellungsflow</strong> (Template-Flow muss Spalte in Teilnehmerliste erstellen)</li>
+        <li><strong>Anmeldeformular</strong> in der Power App (Teilnehmer m&uuml;ssen das Feld sehen und ausf&uuml;llen)</li>
+        <li><strong>Anmeldeflow</strong> (RegisterParticipant muss das Feld in die Teilnehmerliste schreiben)</li>
+      </ol>
+    </div>
+
+    <div class="problem-box">
+      <h4>P3: &Uuml;berladene Teilnehmerliste</h4>
+      <p>Jedes Event erh&auml;lt <strong>immer alle m&ouml;glichen Spalten</strong> in der Teilnehmerliste &ndash; auch wenn es ein kleines Firmenfest ist, das nur Name und E-Mail braucht. Das f&uuml;hrt zu un&uuml;bersichtlichen Listen mit vielen leeren Spalten.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P4: Keine Vorschau der Anmeldeseite</h4>
+      <p>Der Organizer sieht beim Erstellen eines Events <strong>nicht</strong>, wie die Anmeldeseite f&uuml;r Teilnehmer sp&auml;ter aussehen wird. Fehler in der Konfiguration fallen erst auf, wenn Teilnehmer sich anmelden.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P5: Keine nachtr&auml;gliche &Auml;nderung</h4>
+      <p>Einmal erstellte Events k&ouml;nnen <strong>nicht &uuml;ber die App angepasst</strong> werden. Wenn z.B. ein zus&auml;tzliches Feld gebraucht wird oder sich die Max-Teilnehmerzahl &auml;ndert, muss dies manuell in SharePoint ge&auml;ndert werden.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P6: Zwei nahezu identische Template-Flows</h4>
+      <p><strong>ApplyTemplateB2Run</strong> und <strong>ApplyTemplateOtherEvent</strong> haben die gleiche Struktur und erstellen die gleichen Felder. Zwei Flows zu pflegen f&uuml;r faktisch dieselbe Logik erh&ouml;ht den Wartungsaufwand unn&ouml;tig.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 3: ANFORDERUNGEN -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 3: Anforderungskatalog &ndash; Dynamische Event-Erstellung</h2>
+
+    <h3>3.1 &Uuml;bersicht Ziel-Architektur</h3>
+
+    <div class="flow-compare">
+      <div class="flow-col current">
+        <h4>Ist-Zustand</h4>
+        <ul>
+          <li>3 feste Formulare</li>
+          <li>2 Template-Flows</li>
+          <li>Immer alle Spalten in Teilnehmerliste</li>
+          <li>Keine Vorschau</li>
+          <li>Keine nachtr&auml;gliche &Auml;nderung</li>
+          <li>4-facher &Auml;nderungsaufwand</li>
+        </ul>
+      </div>
+      <div class="flow-col target">
+        <h4>Soll-Zustand</h4>
+        <ul>
+          <li><strong>1 dynamisches Formular</strong> mit Men&uuml;karten-Prinzip</li>
+          <li><strong>1 universeller Template-Flow</strong> mit dynamischer Spaltenliste</li>
+          <li>Teilnehmerliste <strong>nur mit ben&ouml;tigten Spalten</strong></li>
+          <li><strong>Live-Vorschau</strong> der Anmeldeseite</li>
+          <li><strong>Event nachtr&auml;glich bearbeitbar</strong></li>
+          <li><strong>1-facher &Auml;nderungsaufwand</strong> (Feld-Konfiguration steuert alles)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>3.2 Detaillierte Anforderungen</h3>
+
+    <ul class="req-list">
+
+      <!-- ANF-01 -->
+      <li>
+        <strong>Dynamisches Formular mit Men&uuml;karten-Prinzip</strong> <span class="priority-high">Hoch</span>
+        <p>Das bisherige System mit 3 festen Formularen wird durch <strong>ein einziges, dynamisches Formular</strong> ersetzt. Der Organizer sieht zun&auml;chst nur die Basisfelder (Titel, Organizer, Datum, Beschreibung, Max. Teilnehmer, Event-Bild). Darunter befindet sich ein Bereich <strong>&bdquo;Weitere Felder hinzuf&uuml;gen&ldquo;</strong> mit einer Men&uuml;karte.</p>
+        <p><strong>Men&uuml;karte:</strong> Verf&uuml;gbare Feld-Module werden als Kacheln/Chips angezeigt. Per Klick auf <strong>&bdquo;+&ldquo;</strong> wird das Modul dem Formular hinzugef&uuml;gt. Beispiele f&uuml;r Module:</p>
+        <ul>
+          <li>T-Shirt-Gr&ouml;&szlig;e (mit konfigurierbaren Optionen)</li>
+          <li>Allergien / Ern&auml;hrungsw&uuml;nsche</li>
+          <li>Hotel-Buchung (Einzel-/Doppelzimmer, Standort)</li>
+          <li>Laufstrecke / Startblock (f&uuml;r Lauf-Events)</li>
+          <li>Benutzerdefiniertes Freitextfeld (Frage frei eingebbar)</li>
+          <li>Benutzerdefiniertes Dropdown (Frage + Optionen frei eingebbar)</li>
+          <li>Audience-Beschr&auml;nkung</li>
+        </ul>
+        <p>Hinzugef&uuml;gte Module erscheinen im Formular und k&ouml;nnen per <strong>&bdquo;&times;&ldquo;</strong> wieder entfernt werden.</p>
+      </li>
+
+      <!-- ANF-02 -->
+      <li>
+        <strong>Feld-Konfiguration als Datenmodell</strong> <span class="priority-high">Hoch</span>
+        <p>Die ausgew&auml;hlten Felder/Module werden als <strong>strukturierte Konfiguration</strong> gespeichert (z.B. als JSON-String oder in einer separaten SharePoint-Liste <code>EventFieldConfig</code>). Diese Konfiguration ist die <strong>Single Source of Truth</strong> und steuert:</p>
+        <ul>
+          <li>Welche Spalten in der Teilnehmerliste erstellt werden (Event-Erstellungsflow)</li>
+          <li>Welche Felder im Anmeldeformular angezeigt werden</li>
+          <li>Welche Felder der Anmeldeflow in die Teilnehmerliste schreibt</li>
+        </ul>
+        <p><strong>Damit entf&auml;llt der 4-fache &Auml;nderungsaufwand.</strong> Ein neues Feld-Modul muss nur einmal als Vorlage definiert werden.</p>
+      </li>
+
+      <!-- ANF-03 -->
+      <li>
+        <strong>Dynamische Teilnehmerliste (nur ben&ouml;tigte Spalten)</strong> <span class="priority-high">Hoch</span>
+        <p>Der Template-Flow (neu: <strong>ein einziger universeller Flow</strong>, ersetzt ApplyTemplateB2Run und ApplyTemplateOtherEvent) liest die Feld-Konfiguration des Events und erstellt die Teilnehmerliste <strong>nur mit den Spalten, die tats&auml;chlich konfiguriert wurden</strong>.</p>
+        <p><strong>Immer erstellt (Basis-Spalten):</strong> Teilnehmername, Email, Status, Nr, CheckIn, Anrede, Vorname, Nachname</p>
+        <p><strong>Nur wenn konfiguriert:</strong> HotelRequired, RoomType, TShirtGroesse, Allergies, FoodPreferences, Freitextfeld1&ndash;n, Dropdownfeld1&ndash;n, etc.</p>
+      </li>
+
+      <!-- ANF-04 -->
+      <li>
+        <strong>Live-Vorschau der Anmeldeseite</strong> <span class="priority-high">Hoch</span>
+        <p>W&auml;hrend der Event-Erstellung sieht der Organizer in einem <strong>Vorschau-Panel</strong> (z.B. rechte Seite oder unterer Bereich), wie das Anmeldeformular f&uuml;r Teilnehmer aussehen wird. Die Vorschau aktualisiert sich in Echtzeit wenn Module hinzugef&uuml;gt oder entfernt werden.</p>
+        <p>Dies umfasst:</p>
+        <ul>
+          <li>Alle sichtbaren Felder in der Reihenfolge wie sie Teilnehmer sehen</li>
+          <li>Pflicht-Markierungen</li>
+          <li>Dropdown-Optionen (wenn definiert)</li>
+          <li>Info-Texte / Hilfetexte zu Feldern</li>
+        </ul>
+      </li>
+
+      <!-- ANF-05 -->
+      <li>
+        <strong>Nachtr&auml;gliche Bearbeitung von Events</strong> <span class="priority-high">Hoch</span>
+        <p>Organizer k&ouml;nnen bestehende Events &uuml;ber die App &ouml;ffnen und bearbeiten:</p>
+        <ul>
+          <li><strong>Basis-Daten &auml;ndern:</strong> Titel, Datum, Max. Teilnehmer, Beschreibung etc.</li>
+          <li><strong>Felder hinzuf&uuml;gen:</strong> Neue Module k&ouml;nnen auch nachtr&auml;glich zum Event hinzugef&uuml;gt werden. Der Flow erstellt dann die fehlende(n) Spalte(n) in der bestehenden Teilnehmerliste.</li>
+          <li><strong>Felder entfernen:</strong> Nur m&ouml;glich wenn noch keine Daten in der Spalte vorhanden sind (oder mit Warnung). Alternativ wird die Spalte nur ausgeblendet aber nicht gel&ouml;scht.</li>
+        </ul>
+        <p><strong>Hinweis:</strong> Bei nachtr&auml;glichem Hinzuf&uuml;gen von Spalten haben bereits registrierte Teilnehmer dort keinen Wert &ndash; dies muss in der App / Ansicht sauber behandelt werden.</p>
+      </li>
+
+      <!-- ANF-06 -->
+      <li>
+        <strong>Universeller Template-Flow (Zusammenf&uuml;hrung)</strong> <span class="priority-mid">Mittel</span>
+        <p>Die beiden bestehenden Flows <strong>ApplyTemplateB2Run</strong> und <strong>ApplyTemplateOtherEvent</strong> werden zu <strong>einem einzigen Flow</strong> zusammengef&uuml;hrt. Dieser erh&auml;lt als Parameter:</p>
+        <ul>
+          <li>Subsite-URL</li>
+          <li>Feld-Konfiguration (welche Spalten erstellt werden sollen, inkl. Typ und ggf. Choice-Optionen)</li>
+        </ul>
+        <p>Der Flow iteriert dynamisch &uuml;ber die Konfiguration und erstellt nur die definierten Spalten.</p>
+      </li>
+
+      <!-- ANF-07 -->
+      <li>
+        <strong>Dynamisches Anmeldeformular (Teilnehmer-Seite)</strong> <span class="priority-high">Hoch</span>
+        <p>Das Anmeldeformular f&uuml;r Teilnehmer wird ebenfalls <strong>dynamisch</strong> aus der Feld-Konfiguration des Events generiert. Teilnehmer sehen nur die Felder, die f&uuml;r dieses spezifische Event konfiguriert wurden.</p>
+        <p>Analog muss der <strong>RegisterParticipant-Flow</strong> die Konfiguration lesen und nur die relevanten Felder in die Teilnehmerliste schreiben.</p>
+      </li>
+
+      <!-- ANF-08 -->
+      <li>
+        <strong>&Uuml;bersichtliches, sauberes UI-Design</strong> <span class="priority-mid">Mittel</span>
+        <p>Das neue Formular soll &uuml;bersichtlich und intuitiv sein:</p>
+        <ul>
+          <li>Klare Gruppierung: Basis-Informationen oben, optionale Module darunter</li>
+          <li>Men&uuml;karte mit Kategorien (z.B. &bdquo;Verpflegung&ldquo;, &bdquo;Unterkunft&ldquo;, &bdquo;Sport&ldquo;, &bdquo;Benutzerdefiniert&ldquo;)</li>
+          <li>Visuelles Feedback beim Hinzuf&uuml;gen/Entfernen von Modulen</li>
+          <li>Responsive Design f&uuml;r mobile Nutzung</li>
+          <li>Vorschau-Panel klar abgegrenzt (z.B. als Side-Panel oder Tab)</li>
+        </ul>
+      </li>
+
+      <!-- ANF-09 -->
+      <li>
+        <strong>Event-Vorlagen / Schnellstart</strong> <span class="priority-low">Nice-to-have</span>
+        <p>Vordefinierte Vorlagen f&uuml;r h&auml;ufige Event-Typen (z.B. &bdquo;Lauf-Event&ldquo;, &bdquo;Firmenfest&ldquo;, &bdquo;Konferenz&ldquo;), die beim Start ausgew&auml;hlt werden k&ouml;nnen und das Formular mit den typischen Modulen vorbef&uuml;llen. Der Organizer kann danach noch Module hinzuf&uuml;gen oder entfernen.</p>
+      </li>
+
+      <!-- ANF-10 -->
+      <li>
+        <strong>R&uuml;ckw&auml;rtskompatibilit&auml;t</strong> <span class="priority-mid">Mittel</span>
+        <p>Bestehende Events (mit dem alten System erstellt) m&uuml;ssen weiterhin funktionieren. Die Events-Liste und bestehende Teilnehmerlisten d&uuml;rfen nicht besch&auml;digt werden. Ideal: Ein Migrations-Mechanismus, der bestehende Events nachtr&auml;glich mit einer Feld-Konfiguration versieht.</p>
+      </li>
+
+    </ul>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 4: ARCHITEKTURSKIZZE -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 4: Architekturskizze Soll-Zustand</h2>
+
+    <h3>4.1 Ablauf Event-Erstellung (Neu)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li><strong>Organizer &ouml;ffnet App</strong> &rarr; Klickt &bdquo;Neues Event erstellen&ldquo;</li>
+        <li><strong>Optional: Vorlage w&auml;hlen</strong> (B2Run, Firmenfest, Leer, ...) &rarr; Formular wird vorbef&uuml;llt</li>
+        <li><strong>Basisfelder ausf&uuml;llen</strong> (Titel, Organizer, Datum, Max. Teilnehmer, Beschreibung, Bild)</li>
+        <li><strong>Module aus Men&uuml;karte hinzuf&uuml;gen</strong> per &bdquo;+&ldquo;-Klick:
+          <ul>
+            <li>z.B. + T-Shirt &rarr; Konfiguration: Welche Gr&ouml;&szlig;en?</li>
+            <li>z.B. + Hotel &rarr; Konfiguration: Nur Einzelzimmer? Standort?</li>
+            <li>z.B. + Freitextfeld &rarr; Eingabe: Frage + Info-Text</li>
+          </ul>
+        </li>
+        <li><strong>Vorschau pr&uuml;fen:</strong> Anmeldeseite wird live im Vorschau-Panel angezeigt</li>
+        <li><strong>Submit:</strong> Event + Feld-Konfiguration werden gespeichert</li>
+        <li><strong>Flow wird ausgel&ouml;st:</strong>
+          <ul>
+            <li>Subsite erstellen (wie bisher)</li>
+            <li><strong>Universeller Template-Flow</strong> liest Feld-Konfiguration &rarr; erstellt nur ben&ouml;tigte Spalten</li>
+            <li>Outlook-Termin erstellen (wie bisher)</li>
+            <li>Benachrichtigung + Berechtigungen (wie bisher)</li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+
+    <h3>4.2 Ablauf Teilnehmer-Anmeldung (Neu)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li>Teilnehmer &ouml;ffnet Event in der App</li>
+        <li>App liest <strong>Feld-Konfiguration</strong> des Events</li>
+        <li>Anmeldeformular wird <strong>dynamisch</strong> generiert &ndash; nur die konfigurierten Felder</li>
+        <li>Teilnehmer f&uuml;llt aus und klickt &bdquo;Anmelden&ldquo;</li>
+        <li>RegisterParticipant-Flow liest Konfiguration und schreibt nur relevante Felder</li>
+      </ol>
+    </div>
+
+    <h3>4.3 Ablauf Event nachtr&auml;glich bearbeiten (Neu)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li>Organizer &ouml;ffnet bestehendes Event in der App</li>
+        <li>Formular l&auml;dt im Edit-Modus mit bestehender Konfiguration</li>
+        <li>Organizer kann Basis-Daten &auml;ndern und Module hinzuf&uuml;gen/entfernen</li>
+        <li>Bei &bdquo;Speichern&ldquo;: Flow pr&uuml;ft Delta (neue Spalten? entfernte Spalten?) und passt Teilnehmerliste an</li>
+        <li>Outlook-Termin wird bei Bedarf aktualisiert</li>
+      </ol>
+    </div>
+
+    <h3>4.4 Neues Datenmodell (Entwurf)</h3>
+
+    <table>
+      <tr><th>Komponente</th><th>Beschreibung</th></tr>
+      <tr>
+        <td><strong>Events-Liste</strong> (angepasst)</td>
+        <td>Enth&auml;lt nur noch Basis-Felder + eine Spalte <code>FieldConfig</code> (JSON-String oder Verweis auf Config-Liste). Alle event-typ-spezifischen &bdquo;visible&ldquo;-Toggle-Spalten entfallen.</td>
+      </tr>
+      <tr>
+        <td><strong>FieldConfig</strong> (neu)</td>
+        <td>
+          Speichert pro Event, welche Module/Felder aktiv sind. M&ouml;gliche Struktur:<br>
+          <code>[{"module": "tshirt", "options": ["S","M","L","XL"], "required": true}, {"module": "freitext", "label": "Allergie?", "info": "Bitte angeben"}, ...]</code>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Teilnehmerliste</strong> (dynamisch)</td>
+        <td>Wird pro Event individuell zusammengestellt. Nur Basis-Spalten + die aus der FieldConfig abgeleiteten Spalten.</td>
+      </tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 5: WAS ENTFÄLLT -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 5: Was entf&auml;llt / sich vereinfacht</h2>
+
+    <table>
+      <tr><th>Aktuell</th><th>Neu</th><th>&Auml;nderung</th></tr>
+      <tr>
+        <td>3 Formular-Screens (B2Run, JP Morgan, Other)</td>
+        <td>1 dynamischer Formular-Screen</td>
+        <td style="color: #16a34a; font-weight: 600;">Entf&auml;llt: 2 Screens + ~4.700 Zeilen YAML</td>
+      </tr>
+      <tr>
+        <td>EventCreationSelectionScreen (Event-Typ-Auswahl)</td>
+        <td>Optionale Vorlagen-Auswahl im neuen Formular</td>
+        <td style="color: #16a34a; font-weight: 600;">Entf&auml;llt als separater Screen</td>
+      </tr>
+      <tr>
+        <td>ApplyTemplateB2Run (Child Flow)</td>
+        <td rowspan="2">1 universeller ApplyTemplateDynamic Flow</td>
+        <td rowspan="2" style="color: #16a34a; font-weight: 600;">2 Flows &rarr; 1 Flow</td>
+      </tr>
+      <tr>
+        <td>ApplyTemplateOtherEvent (Child Flow)</td>
+      </tr>
+      <tr>
+        <td>Switch-Logik im Hauptflow (Content Type)</td>
+        <td>Entf&auml;llt &ndash; universeller Flow wird immer aufgerufen</td>
+        <td style="color: #16a34a; font-weight: 600;">Vereinfacht</td>
+      </tr>
+      <tr>
+        <td>~20 &bdquo;visible&ldquo;-Toggle-Spalten in Events-Liste</td>
+        <td>1 FieldConfig-Spalte (JSON)</td>
+        <td style="color: #16a34a; font-weight: 600;">Entf&auml;llt: ~20 Spalten</td>
+      </tr>
+      <tr>
+        <td>Statisches Anmeldeformular</td>
+        <td>Dynamisches Anmeldeformular aus FieldConfig</td>
+        <td style="color: #16a34a; font-weight: 600;">Einmalig umbauen, danach wartungsfrei</td>
+      </tr>
+      <tr>
+        <td>4-facher &Auml;nderungsaufwand bei neuem Feld</td>
+        <td>1x Modul-Definition anlegen</td>
+        <td style="color: #16a34a; font-weight: 600;">75% weniger Aufwand</td>
+      </tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- TEIL 6: ZUSAMMENFASSUNG -->
+    <!-- ============================================================ -->
+
+    <h2>Teil 6: Zusammenfassung der Anforderungen</h2>
+
+    <table>
+      <tr><th>ID</th><th>Anforderung</th><th>Priorit&auml;t</th><th>L&ouml;st Problem</th></tr>
+      <tr><td>ANF-01</td><td>Dynamisches Formular mit Men&uuml;karten-Prinzip</td><td><span class="priority-high">Hoch</span></td><td>P1, P2</td></tr>
+      <tr><td>ANF-02</td><td>Feld-Konfiguration als Single Source of Truth</td><td><span class="priority-high">Hoch</span></td><td>P2, P3</td></tr>
+      <tr><td>ANF-03</td><td>Dynamische Teilnehmerliste (nur ben&ouml;tigte Spalten)</td><td><span class="priority-high">Hoch</span></td><td>P3</td></tr>
+      <tr><td>ANF-04</td><td>Live-Vorschau der Anmeldeseite</td><td><span class="priority-high">Hoch</span></td><td>P4</td></tr>
+      <tr><td>ANF-05</td><td>Nachtr&auml;gliche Bearbeitung von Events</td><td><span class="priority-high">Hoch</span></td><td>P5</td></tr>
+      <tr><td>ANF-06</td><td>Universeller Template-Flow</td><td><span class="priority-mid">Mittel</span></td><td>P6, P2</td></tr>
+      <tr><td>ANF-07</td><td>Dynamisches Anmeldeformular</td><td><span class="priority-high">Hoch</span></td><td>P2, P3</td></tr>
+      <tr><td>ANF-08</td><td>&Uuml;bersichtliches UI-Design</td><td><span class="priority-mid">Mittel</span></td><td>P1</td></tr>
+      <tr><td>ANF-09</td><td>Event-Vorlagen / Schnellstart</td><td><span class="priority-low">Nice-to-have</span></td><td>P1</td></tr>
+      <tr><td>ANF-10</td><td>R&uuml;ckw&auml;rtskompatibilit&auml;t</td><td><span class="priority-mid">Mittel</span></td><td>&ndash;</td></tr>
+    </table>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DEX Event Experience Platform &ndash; Anforderungsdokumentation</p>
+    </div>
+  </footer>
+</body>
+</html>
