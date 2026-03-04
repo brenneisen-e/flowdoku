@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Creation: Current State &amp; Optimization Requirements - DEX Documentation</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <style>
+    .breadcrumb { font-size: 0.9rem; color: var(--color-gray-500); margin-bottom: 1rem; }
+    .breadcrumb a { color: var(--color-gray-500); }
+    .subtitle { color: var(--color-gray-600); font-size: 1.1rem; margin-bottom: 2rem; }
+    .nav-header { background: var(--color-primary, #1a365d); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .nav-header a { color: white; text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    .logo { font-size: 1.25rem; font-weight: 600; }
+
+    /* Section styling */
+    .section-box { background: var(--color-gray-50, #f9fafb); border: 1px solid var(--color-gray-200, #e5e7eb); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+    .problem-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .problem-box h4 { color: #dc2626; margin-top: 0; }
+    .solution-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .solution-box h4 { color: #16a34a; margin-top: 0; }
+    .req-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 1rem 1.5rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+    .req-box h4 { color: #2563eb; margin-top: 0; }
+
+    /* Flow diagram styling */
+    .flow-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0; }
+    .flow-col { border: 1px solid var(--color-gray-200, #e5e7eb); border-radius: 8px; padding: 1.5rem; }
+    .flow-col.current { border-color: #dc2626; }
+    .flow-col.target { border-color: #16a34a; }
+    .flow-col h4 { margin-top: 0; }
+    .flow-col.current h4 { color: #dc2626; }
+    .flow-col.target h4 { color: #16a34a; }
+
+    /* Step numbering */
+    .req-list { counter-reset: req; list-style: none; padding-left: 0; }
+    .req-list > li { counter-increment: req; padding: 1rem 1rem 1rem 3.5rem; position: relative; border-bottom: 1px solid var(--color-gray-200, #e5e7eb); }
+    .req-list > li::before { content: "REQ-" counter(req, decimal-leading-zero); position: absolute; left: 0; top: 1rem; font-weight: 700; color: #2563eb; font-size: 0.85rem; font-family: monospace; }
+    .req-list > li:last-child { border-bottom: none; }
+
+    .priority-high { display: inline-block; background: #dc2626; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+    .priority-mid { display: inline-block; background: #f59e0b; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+    .priority-low { display: inline-block; background: #6b7280; color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .flow-compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav-header">
+    <span class="logo">DEX Documentation</span>
+    <div>
+      <a href="../index.html">Home</a>
+      <a href="index.html">Documentation</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="breadcrumb"><a href="index.html">Documentation</a> / Event Creation: Current State &amp; Requirements</p>
+
+    <h1>Event Creation: Current State &amp; Optimization Requirements</h1>
+    <p class="subtitle">Analysis of the current process and requirements catalog for a dynamic, modular event creation system</p>
+
+    <!-- ============================================================ -->
+    <!-- PART 1: CURRENT STATE -->
+    <!-- ============================================================ -->
+
+    <div class="section-box" style="display: flex; align-items: center; justify-content: space-between;">
+      <span>This document is also available as a Word file:</span>
+      <a href="04-event-creation-requirements-en.docx" download style="background: var(--color-primary, #1a365d); color: white; padding: 0.5rem 1.2rem; border-radius: 6px; text-decoration: none; font-weight: 500;">Download DOCX</a>
+    </div>
+
+    <h2>Part 1: Current State &ndash; What happens during event creation today?</h2>
+
+    <h3>1.1 Overall Process Overview</h3>
+    <p>Event creation goes through <strong>two phases</strong>: manual input in the Power App and automatic backend processing by Power Automate flows.</p>
+
+    <div class="section-box">
+      <h4>Overall Process at a Glance</h4>
+      <ol>
+        <li>Organizer opens the app &rarr; Navigates to &ldquo;Create new event&rdquo;</li>
+        <li>Selects one of 3 event types (B2Run, JP Morgan, Other Deloitte Event)</li>
+        <li>Fills out the respective fixed form</li>
+        <li>Clicks &ldquo;Submit&rdquo; &rarr; Record is saved to SharePoint list <code>Events</code></li>
+        <li>SharePoint trigger fires the main flow <strong>NewEventAdded_SiteProvis</strong></li>
+        <li>Flow automatically creates: Subsite, participant list, Outlook calendar event, notification, permissions</li>
+      </ol>
+    </div>
+
+    <!-- Phase 1: App -->
+    <h3>1.2 Phase 1: Input in the Power App</h3>
+
+    <h4>1.2.1 Event Type Selection (EventCreationSelectionScreen)</h4>
+    <p>The organizer sees three tiles with logo and description:</p>
+    <table>
+      <tr><th>Tile</th><th>Navigates to</th><th>Sets Content Type to</th></tr>
+      <tr><td>B2Run</td><td><code>EventCreationB2EventForm</code></td><td>B2Run Event</td></tr>
+      <tr><td>J.P. Morgan Run</td><td><code>EventCreationJPMorgan</code></td><td>JP Morgan Run</td></tr>
+      <tr><td>Other Deloitte Events</td><td><code>EventCreationOtherEventForm</code></td><td>Other Deloitte Event</td></tr>
+    </table>
+    <p>Each event type has its own <strong>hard-coded form</strong> (separate YAML file with its own DataCard structure).</p>
+
+    <h4>1.2.2 Form Fields in Detail</h4>
+    <p>The three forms share a common core but have additional fields depending on the type:</p>
+
+    <table>
+      <tr>
+        <th>Field</th>
+        <th>Type</th>
+        <th>Required?</th>
+        <th>B2Run</th>
+        <th>JP Morgan</th>
+        <th>Other</th>
+      </tr>
+      <tr><td><strong>Title</strong></td><td>Text</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Organizer</strong></td><td>Multi-Person</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Location</strong></td><td>Choice / Text</td><td>B2Run: No, JP: Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Location Filter</strong></td><td>Dropdown</td><td>No</td><td>&#10003;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event time</strong> (Start)</td><td>DateTime</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event end time</strong></td><td>DateTime</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Last Register Date Time</strong></td><td>DateTime</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Last Deregister Event Time</strong></td><td>DateTime</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event description</strong></td><td>Multi-line Text</td><td>Yes</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Max. participants</strong></td><td>Number</td><td>Yes</td><td>&#10003; (calculated)</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Event image</strong></td><td>Attachment</td><td>No</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Content type</strong></td><td>Dropdown (hidden)</td><td>No (auto)</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Current participants</strong></td><td>Number</td><td>No (auto: 0)</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Wait list</strong></td><td>Number</td><td>No (auto: 0)</td><td>&#10003;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td colspan="6" style="background: var(--color-gray-100, #f3f4f6); font-weight: 600;">B2Run only</td></tr>
+      <tr><td><strong>Max Fun-runner</strong></td><td>Number</td><td>Yes</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Durchstarter visible</strong></td><td>Toggle</td><td>No</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Max Durchstarter</strong></td><td>Number</td><td>Conditional</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Start block</strong></td><td>Multi-Choice</td><td>Yes</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>T-Shirt size visible</strong></td><td>Toggle</td><td>No</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>T-Shirt sizes</strong></td><td>Multi-Choice</td><td>Conditional</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Nordic Walker visible</strong></td><td>Toggle</td><td>No</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Age Group visible</strong></td><td>Toggle</td><td>No</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td colspan="6" style="background: var(--color-gray-100, #f3f4f6); font-weight: 600;">Other Event / OtherEventForm only</td></tr>
+      <tr><td><strong>Audience Mail</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Allergies visible</strong></td><td>Toggle</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Food preferences visible</strong></td><td>Toggle</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Hotel request visible</strong></td><td>Toggle</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Hotel info / Single room / Double room / Hotel location</strong></td><td>Various</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Free text field question 1&ndash;7</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Free text field info 1&ndash;7</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Dropdown field question 1&ndash;2</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Dropdown field 1&ndash;2</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+      <tr><td><strong>Dropdown field info 1&ndash;2</strong></td><td>Text</td><td>No</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td></tr>
+    </table>
+
+    <h4>1.2.3 Validation &amp; Submit</h4>
+    <p>All three forms use the same logic:</p>
+    <div class="section-box">
+      <p><strong>Submit button only becomes active</strong> when all required fields are filled (DisplayMode check on <code>IsBlank</code>/<code>IsEmpty</code>).</p>
+      <p><strong>On Submit click:</strong></p>
+      <ol>
+        <li><code>SubmitForm(Form)</code> &ndash; Record is written to SharePoint list <code>Events</code></li>
+        <li><code>ResetForm(Form)</code> &ndash; Form is reset</li>
+        <li><code>Navigate(StartScreen)</code> &ndash; Redirect to start screen</li>
+        <li><code>Notify("The event has been created successfully...")</code> &ndash; Success notification</li>
+      </ol>
+    </div>
+
+    <!-- Phase 2: Flows -->
+    <h3>1.3 Phase 2: Automatic Backend Processing (Power Automate)</h3>
+
+    <h4>1.3.1 Main Flow: NewEventAdded_SiteProvis</h4>
+    <p>Automatically triggered by SharePoint trigger <em>&ldquo;When an item is created&rdquo;</em> on the Events list (check interval: 1 minute). Consists of <strong>25 actions in 6 clusters</strong>:</p>
+
+    <table>
+      <tr><th>Cluster</th><th>What happens</th><th>Technical details</th></tr>
+      <tr>
+        <td><strong>1. Initialization</strong></td>
+        <td>Event status is set to &ldquo;Under Construction&rdquo;, 6 workflow variables are initialized</td>
+        <td>SharePoint PatchItem + 5x InitializeVariable (varSiteTitle, varSiteURL, varSubject-Name, varFinalURL, varContentTypeName)</td>
+      </tr>
+      <tr>
+        <td><strong>2. URL Sanitization</strong></td>
+        <td>Event title is cleaned of special characters for a valid SharePoint URL</td>
+        <td>Compose creates filter array (spaces, :, #, %, ", *, ?, /, \, |), Foreach loop removes each character iteratively</td>
+      </tr>
+      <tr>
+        <td><strong>3. Create Subsite</strong></td>
+        <td>A dedicated SharePoint subsite is created for the event</td>
+        <td>HTTP POST to <code>/_api/web/webinfos/add</code> with Template STS#3 (Team Site). Response is parsed for ServerRelativeUrl</td>
+      </tr>
+      <tr>
+        <td><strong>4. Apply Template</strong></td>
+        <td>Participant list with the appropriate column schema is created</td>
+        <td>Switch on Content Type &rarr; Child Flow <strong>ApplyTemplateB2Run</strong> or <strong>ApplyTemplateOtherEvent</strong></td>
+      </tr>
+      <tr>
+        <td><strong>5. Outlook Calendar Event</strong></td>
+        <td>Calendar event in shared mailbox is created (basis for later participant invitations)</td>
+        <td>Child Flow <strong>CreateOutlookEventSharedMailbox</strong>. Returned Outlook Event ID is stored in Events list. URL gets <code>/Lists/Teilnehmerliste</code> appended</td>
+      </tr>
+      <tr>
+        <td><strong>6. Notification &amp; Permissions</strong></td>
+        <td>Organizer receives confirmation email with link. If audience is defined, access permissions are set</td>
+        <td>Load logos (Data-URI), Foreach over Organizer &rarr; Email from shared mailbox. Condition checks Audience Mail &rarr; Child Flow <strong>EventPermission</strong></td>
+      </tr>
+    </table>
+
+    <h4>1.3.2 Child Flow: ApplyTemplateB2Run</h4>
+    <p>Receives the subsite URL and creates the participant list via SharePoint REST API:</p>
+    <ol>
+      <li>POST to <code>/_api/web/lists</code> &rarr; creates list &ldquo;Teilnehmerliste&rdquo; (Template 100)</li>
+      <li>Individual HTTP requests create fields: Teilnehmername, Email, Status (Choice: Registered/Waitlist/Cancelled), Nr, CheckIn</li>
+      <li>7 free text fields (Freitextfeld1&ndash;7) are <strong>always</strong> created</li>
+      <li>Default view is retrieved, success is confirmed</li>
+    </ol>
+
+    <h4>1.3.3 Child Flow: ApplyTemplateOtherEvent</h4>
+    <p>Identical structure to ApplyTemplateB2Run. Creates the same base and free text fields. Separate flow for potential future differentiation.</p>
+
+    <h4>1.3.4 Child Flow: CreateOutlookEventSharedMailbox</h4>
+    <p>Receives event details (title, description, start, end, location) &rarr; creates Outlook calendar entry via Office 365 Connector &rarr; returns Event ID.</p>
+
+    <h4>1.3.5 Child Flow: EventPermission</h4>
+    <p>Only called when <code>Audience Mail</code> is set:</p>
+    <ol>
+      <li>Remove existing sharing permissions</li>
+      <li>Audience group receives read access</li>
+      <li>Organizer receives full access</li>
+    </ol>
+
+    <!-- Data Model -->
+    <h3>1.4 Data Model</h3>
+
+    <h4>1.4.1 SharePoint List: Events (Master)</h4>
+    <p>Contains <strong>38+ columns</strong>, regardless of whether the event type needs them:</p>
+    <div class="section-box">
+      <code>Title, Status, Participant List URL, Event image, Current participants, Max. participants, Wait list, Outlook EventID, T-Shirt sizes, Event end time, ID, Last Deregister Event Time, Organizer, Created by, Max Fun-runner, Current Fun-Runner, Max Durchstarter, Content Type, Location, Location Filter, Last Register Date Time, Start block, T-Shirt size visible, Allergies visible, Food preferences visible, Audience, Free text field question 1&ndash;2, Dropdown field 1&ndash;2, Dropdown field question 1&ndash;2, Free text field info 1&ndash;2, Dropdown field info 1&ndash;2, Audience Mail, Hotel Location, Event description</code>
+    </div>
+
+    <h4>1.4.2 SharePoint List: Participant List (per Event Subsite)</h4>
+    <p>Each event gets its own participant list with <strong>always the same columns</strong>:</p>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Always present?</th></tr>
+      <tr><td>Participant name</td><td>Text</td><td>Yes &ndash; always</td></tr>
+      <tr><td>Email</td><td>Text</td><td>Yes &ndash; always</td></tr>
+      <tr><td>Status</td><td>Choice</td><td>Yes &ndash; always</td></tr>
+      <tr><td>Nr.</td><td>Number</td><td>Yes &ndash; always</td></tr>
+      <tr><td>CheckIn</td><td>Boolean</td><td>Yes &ndash; always</td></tr>
+      <tr><td>Salutation</td><td>Text</td><td>Yes &ndash; always</td></tr>
+      <tr><td>First name / Last name</td><td>Text</td><td>Yes &ndash; always</td></tr>
+      <tr><td>HotelRequired / RoomType / PreferredRoommate</td><td>Various</td><td>Yes &ndash; even if not needed</td></tr>
+      <tr><td>Allergies / FoodPreferences</td><td>Text</td><td>Yes &ndash; even if not needed</td></tr>
+      <tr><td>TShirtGroesse</td><td>Text</td><td>Yes &ndash; even if not needed</td></tr>
+      <tr><td>Freitextfeld1&ndash;7</td><td>Text</td><td>Yes &ndash; always all 7</td></tr>
+      <tr><td>Dropdownfeld1</td><td>Text</td><td>Yes &ndash; even if not needed</td></tr>
+      <tr><td>LocationHotel</td><td>Text</td><td>Yes &ndash; even if not needed</td></tr>
+      <tr><td>JobTitle / CompanyName / Department / Office*</td><td>Text</td><td>Yes &ndash; always</td></tr>
+      <tr><td>Deregistered on</td><td>DateTime</td><td>Yes &ndash; always</td></tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- PART 2: IDENTIFIED PROBLEMS -->
+    <!-- ============================================================ -->
+
+    <h2>Part 2: Identified Problems</h2>
+
+    <div class="problem-box">
+      <h4>P1: Rigid, triple-duplicated forms</h4>
+      <p>There are <strong>3 separate form screens</strong> (B2Run: ~1,900 lines YAML, Other: ~3,500 lines, JP Morgan: ~1,200 lines) with significant overlap. Any change to shared fields must be replicated across all three forms.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P2: 4x effort for field extensions</h4>
+      <p>When a new field is needed (e.g. &ldquo;Dietary Requirements&rdquo;), it must be adapted in <strong>4 places</strong>:</p>
+      <ol>
+        <li><strong>Event creation form</strong> in the Power App (add DataCard)</li>
+        <li><strong>Event creation flow</strong> (template flow must create column in participant list)</li>
+        <li><strong>Registration form</strong> in the Power App (participants must see and fill in the field)</li>
+        <li><strong>Registration flow</strong> (RegisterParticipant must write the field to the participant list)</li>
+      </ol>
+    </div>
+
+    <div class="problem-box">
+      <h4>P3: Overloaded participant list</h4>
+      <p>Every event receives <strong>all possible columns</strong> in the participant list &ndash; even if it is a small company party that only needs name and email. This leads to cluttered lists with many empty columns.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P4: No preview of registration page</h4>
+      <p>The organizer <strong>cannot see</strong> during event creation how the registration page will look for participants. Configuration errors only become apparent when participants try to register.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P5: No post-creation editing</h4>
+      <p>Once created, events <strong>cannot be modified through the app</strong>. If an additional field is needed or the maximum number of participants changes, this must be changed manually in SharePoint.</p>
+    </div>
+
+    <div class="problem-box">
+      <h4>P6: Two nearly identical template flows</h4>
+      <p><strong>ApplyTemplateB2Run</strong> and <strong>ApplyTemplateOtherEvent</strong> have the same structure and create the same fields. Maintaining two flows for effectively the same logic unnecessarily increases maintenance effort.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PART 3: REQUIREMENTS -->
+    <!-- ============================================================ -->
+
+    <h2>Part 3: Requirements Catalog &ndash; Dynamic Event Creation</h2>
+
+    <h3>3.1 Target Architecture Overview</h3>
+
+    <div class="flow-compare">
+      <div class="flow-col current">
+        <h4>Current State</h4>
+        <ul>
+          <li>3 fixed forms</li>
+          <li>2 template flows</li>
+          <li>Always all columns in participant list</li>
+          <li>No preview</li>
+          <li>No post-creation editing</li>
+          <li>4x change effort</li>
+        </ul>
+      </div>
+      <div class="flow-col target">
+        <h4>Target State</h4>
+        <ul>
+          <li><strong>1 dynamic form</strong> with menu card principle</li>
+          <li><strong>1 universal template flow</strong> with dynamic column list</li>
+          <li>Participant list <strong>with only required columns</strong></li>
+          <li><strong>Live preview</strong> of registration page</li>
+          <li><strong>Events editable after creation</strong></li>
+          <li><strong>1x change effort</strong> (field configuration controls everything)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>3.2 Detailed Requirements</h3>
+
+    <ul class="req-list">
+
+      <!-- REQ-01 -->
+      <li>
+        <strong>Dynamic Form with Menu Card Principle</strong> <span class="priority-high">High</span>
+        <p>The existing system of 3 fixed forms is replaced by <strong>a single, dynamic form</strong>. The organizer initially sees only the base fields (title, organizer, date, description, max. participants, event image). Below that is a section <strong>&ldquo;Add more fields&rdquo;</strong> with a menu card.</p>
+        <p><strong>Menu card:</strong> Available field modules are displayed as tiles/chips. Clicking <strong>&ldquo;+&rdquo;</strong> adds the module to the form. Examples of modules:</p>
+        <ul>
+          <li>T-shirt size (with configurable options)</li>
+          <li>Allergies / dietary preferences</li>
+          <li>Hotel booking (single/double room, location)</li>
+          <li>Running track / start block (for running events)</li>
+          <li>Custom free text field (question freely definable)</li>
+          <li>Custom dropdown (question + options freely definable)</li>
+          <li>Audience restriction</li>
+        </ul>
+        <p>Added modules appear in the form and can be removed by clicking <strong>&ldquo;&times;&rdquo;</strong>.</p>
+      </li>
+
+      <!-- REQ-02 -->
+      <li>
+        <strong>Field Configuration as Data Model</strong> <span class="priority-high">High</span>
+        <p>The selected fields/modules are stored as a <strong>structured configuration</strong> (e.g. as JSON string or in a separate SharePoint list <code>EventFieldConfig</code>). This configuration is the <strong>Single Source of Truth</strong> and controls:</p>
+        <ul>
+          <li>Which columns are created in the participant list (event creation flow)</li>
+          <li>Which fields are displayed in the registration form</li>
+          <li>Which fields the registration flow writes to the participant list</li>
+        </ul>
+        <p><strong>This eliminates the 4x change effort.</strong> A new field module only needs to be defined once as a template.</p>
+      </li>
+
+      <!-- REQ-03 -->
+      <li>
+        <strong>Dynamic Participant List (only required columns)</strong> <span class="priority-high">High</span>
+        <p>The template flow (new: <strong>a single universal flow</strong>, replaces ApplyTemplateB2Run and ApplyTemplateOtherEvent) reads the field configuration of the event and creates the participant list <strong>only with the columns that were actually configured</strong>.</p>
+        <p><strong>Always created (base columns):</strong> Participant name, Email, Status, Nr, CheckIn, Salutation, First name, Last name</p>
+        <p><strong>Only when configured:</strong> HotelRequired, RoomType, TShirtGroesse, Allergies, FoodPreferences, FreeTextField1&ndash;n, DropdownField1&ndash;n, etc.</p>
+        <p><strong>Column name synchronization:</strong> The column names in the SharePoint participant list must <strong>exactly match the labels assigned by the organizer</strong>. If the organizer names a field e.g. &ldquo;Travel Expenses&rdquo;, the corresponding column in the participant list must also be called &ldquo;Travel Expenses&rdquo; &ndash; not a technical or deviating name.</p>
+      </li>
+
+      <!-- REQ-04 -->
+      <li>
+        <strong>Live Preview of Registration Page</strong> <span class="priority-high">High</span>
+        <p>During event creation, the organizer sees in a <strong>preview panel</strong> (e.g. right side or lower area) how the registration form will look for participants. The preview updates in real-time when modules are added or removed.</p>
+        <p>This includes:</p>
+        <ul>
+          <li>All visible fields in the order participants will see them</li>
+          <li>Required field markers</li>
+          <li>Dropdown options (when defined)</li>
+          <li>Info texts / help texts for fields</li>
+        </ul>
+      </li>
+
+      <!-- REQ-05 -->
+      <li>
+        <strong>Post-Creation Event Editing</strong> <span class="priority-high">High</span>
+        <p>Organizers can open and edit existing events through the app:</p>
+        <ul>
+          <li><strong>Modify base data:</strong> Title, date, max. participants, description, etc.</li>
+          <li><strong>Add fields:</strong> New modules can be added to the event even after creation. The flow then creates the missing column(s) in the existing participant list.</li>
+          <li><strong>Remove fields:</strong> Only possible if no data exists in the column yet (or with a warning). Alternatively, the column is only hidden but not deleted.</li>
+        </ul>
+        <p><strong>Note:</strong> When columns are added after the fact, already registered participants will have no value there &ndash; this must be handled cleanly in the app / view.</p>
+      </li>
+
+      <!-- REQ-06 -->
+      <li>
+        <strong>Universal Template Flow (Consolidation)</strong> <span class="priority-mid">Medium</span>
+        <p>The two existing flows <strong>ApplyTemplateB2Run</strong> and <strong>ApplyTemplateOtherEvent</strong> are merged into <strong>a single flow</strong>. It receives as parameters:</p>
+        <ul>
+          <li>Subsite URL</li>
+          <li>Field configuration (which columns to create, including type and optional choice options)</li>
+        </ul>
+        <p>The flow dynamically iterates over the configuration and creates only the defined columns.</p>
+      </li>
+
+      <!-- REQ-07 -->
+      <li>
+        <strong>Dynamic Registration Form (Participant Side)</strong> <span class="priority-high">High</span>
+        <p>The registration form for participants is also generated <strong>dynamically</strong> from the event&rsquo;s field configuration. Participants only see the fields that were configured for this specific event.</p>
+        <p>Similarly, the <strong>RegisterParticipant flow</strong> must read the configuration and write only the relevant fields to the participant list.</p>
+      </li>
+
+      <!-- REQ-08 -->
+      <li>
+        <strong>Clean, Intuitive UI Design</strong> <span class="priority-mid">Medium</span> &mdash; <strong>TO BE COORDINATED WITH PROJECT TEAM GERMANY</strong>
+        <p>The new form should be clear and intuitive:</p>
+        <ul>
+          <li>Clear grouping: base information at top, optional modules below</li>
+          <li>Menu card with categories (e.g. &ldquo;Catering&rdquo;, &ldquo;Accommodation&rdquo;, &ldquo;Sports&rdquo;, &ldquo;Custom&rdquo;)</li>
+          <li>Visual feedback when adding/removing modules</li>
+          <li>Responsive design for mobile use</li>
+          <li>Preview panel clearly separated (e.g. as side panel or tab)</li>
+        </ul>
+      </li>
+
+      <!-- REQ-09 -->
+      <li>
+        <strong>Event Templates / Quick Start</strong> <span class="priority-low">Nice-to-have</span> &mdash; <strong>TO BE COORDINATED WITH PROJECT TEAM GERMANY</strong>
+        <p>Pre-defined templates for common event types (e.g. &ldquo;Running event&rdquo;, &ldquo;Company party&rdquo;, &ldquo;Conference&rdquo;) that can be selected at the start and pre-populate the form with typical modules. The organizer can still add or remove modules afterwards.</p>
+      </li>
+
+      <!-- REQ-10 -->
+      <li>
+        <strong>Backward Compatibility</strong> <span class="priority-mid">Medium</span>
+        <p>Existing events (created with the old system) must continue to function. The Events list and existing participant lists must not be damaged. Ideal: A migration mechanism that retroactively provides existing events with a field configuration.</p>
+      </li>
+
+    </ul>
+
+    <!-- ============================================================ -->
+    <!-- PART 4: ARCHITECTURE SKETCH -->
+    <!-- ============================================================ -->
+
+    <h2>Part 4: Target State Architecture Sketch</h2>
+
+    <h3>4.1 Event Creation Process (New)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li><strong>Organizer opens app</strong> &rarr; Clicks &ldquo;Create new event&rdquo;</li>
+        <li><strong>Optional: Select template</strong> (B2Run, Company party, Blank, ...) &rarr; Form is pre-populated</li>
+        <li><strong>Fill in base fields</strong> (title, organizer, date, max. participants, description, image)</li>
+        <li><strong>Add modules from menu card</strong> via &ldquo;+&rdquo; click:
+          <ul>
+            <li>e.g. + T-Shirt &rarr; Configuration: Which sizes?</li>
+            <li>e.g. + Hotel &rarr; Configuration: Single room only? Location?</li>
+            <li>e.g. + Free text field &rarr; Input: Question + info text</li>
+          </ul>
+        </li>
+        <li><strong>Check preview:</strong> Registration page is displayed live in the preview panel</li>
+        <li><strong>Submit:</strong> Event + field configuration are saved</li>
+        <li><strong>Flow is triggered:</strong>
+          <ul>
+            <li>Create subsite (as before)</li>
+            <li><strong>Universal template flow</strong> reads field configuration &rarr; creates only required columns</li>
+            <li>Create Outlook calendar event (as before)</li>
+            <li>Notification + permissions (as before)</li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+
+    <h3>4.2 Participant Registration Process (New)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li>Participant opens event in the app</li>
+        <li>App reads the event&rsquo;s <strong>field configuration</strong></li>
+        <li>Registration form is <strong>dynamically</strong> generated &ndash; only the configured fields</li>
+        <li>Participant fills in and clicks &ldquo;Register&rdquo;</li>
+        <li>RegisterParticipant flow reads configuration and writes only relevant fields</li>
+      </ol>
+    </div>
+
+    <h3>4.3 Post-Creation Event Editing Process (New)</h3>
+
+    <div class="section-box">
+      <ol>
+        <li>Organizer opens existing event in the app</li>
+        <li>Form loads in edit mode with existing configuration</li>
+        <li>Organizer can modify base data and add/remove modules</li>
+        <li>On &ldquo;Save&rdquo;: Flow checks delta (new columns? removed columns?) and adjusts participant list</li>
+        <li>Outlook calendar event is updated if needed</li>
+      </ol>
+    </div>
+
+    <h3>4.4 New Data Model (Draft)</h3>
+
+    <table>
+      <tr><th>Component</th><th>Description</th></tr>
+      <tr>
+        <td><strong>Events list</strong> (adapted)</td>
+        <td>Contains only base fields + a column <code>FieldConfig</code> (JSON string or reference to config list). All event-type-specific &ldquo;visible&rdquo; toggle columns are eliminated.</td>
+      </tr>
+      <tr>
+        <td><strong>FieldConfig</strong> (new)</td>
+        <td>
+          Stores per event which modules/fields are active. Possible structure:<br>
+          <code>[{"module": "tshirt", "options": ["S","M","L","XL"], "required": true}, {"module": "freetext", "label": "Allergies?", "info": "Please specify"}, ...]</code>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Participant list</strong> (dynamic)</td>
+        <td>Individually composed per event. Only base columns + the columns derived from FieldConfig.</td>
+      </tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- PART 5: WHAT IS ELIMINATED -->
+    <!-- ============================================================ -->
+
+    <h2>Part 5: What Is Eliminated / Simplified</h2>
+
+    <table>
+      <tr><th>Current</th><th>New</th><th>Change</th></tr>
+      <tr>
+        <td>3 form screens (B2Run, JP Morgan, Other)</td>
+        <td>1 dynamic form screen</td>
+        <td style="color: #16a34a; font-weight: 600;">Eliminated: 2 screens + ~4,700 lines YAML</td>
+      </tr>
+      <tr>
+        <td>EventCreationSelectionScreen (event type selection)</td>
+        <td>Optional template selection in the new form</td>
+        <td style="color: #16a34a; font-weight: 600;">Eliminated as separate screen</td>
+      </tr>
+      <tr>
+        <td>ApplyTemplateB2Run (child flow)</td>
+        <td rowspan="2">1 universal ApplyTemplateDynamic flow</td>
+        <td rowspan="2" style="color: #16a34a; font-weight: 600;">2 flows &rarr; 1 flow</td>
+      </tr>
+      <tr>
+        <td>ApplyTemplateOtherEvent (child flow)</td>
+      </tr>
+      <tr>
+        <td>Switch logic in main flow (Content Type)</td>
+        <td>Eliminated &ndash; universal flow is always called</td>
+        <td style="color: #16a34a; font-weight: 600;">Simplified</td>
+      </tr>
+      <tr>
+        <td>~20 &ldquo;visible&rdquo; toggle columns in Events list</td>
+        <td>1 FieldConfig column (JSON)</td>
+        <td style="color: #16a34a; font-weight: 600;">Eliminated: ~20 columns</td>
+      </tr>
+      <tr>
+        <td>Static registration form</td>
+        <td>Dynamic registration form from FieldConfig</td>
+        <td style="color: #16a34a; font-weight: 600;">One-time rebuild, then maintenance-free</td>
+      </tr>
+      <tr>
+        <td>4x change effort for new field</td>
+        <td>1x module definition</td>
+        <td style="color: #16a34a; font-weight: 600;">75% less effort</td>
+      </tr>
+    </table>
+
+    <!-- ============================================================ -->
+    <!-- PART 6: SUMMARY -->
+    <!-- ============================================================ -->
+
+    <h2>Part 6: Requirements Summary</h2>
+
+    <table>
+      <tr><th>ID</th><th>Requirement</th><th>Priority</th><th>Addresses Problem</th></tr>
+      <tr><td>REQ-01</td><td>Dynamic form with menu card principle</td><td><span class="priority-high">High</span></td><td>P1, P2</td></tr>
+      <tr><td>REQ-02</td><td>Field configuration as Single Source of Truth</td><td><span class="priority-high">High</span></td><td>P2, P3</td></tr>
+      <tr><td>REQ-03</td><td>Dynamic participant list (only required columns)</td><td><span class="priority-high">High</span></td><td>P3</td></tr>
+      <tr><td>REQ-04</td><td>Live preview of registration page</td><td><span class="priority-high">High</span></td><td>P4</td></tr>
+      <tr><td>REQ-05</td><td>Post-creation event editing</td><td><span class="priority-high">High</span></td><td>P5</td></tr>
+      <tr><td>REQ-06</td><td>Universal template flow</td><td><span class="priority-mid">Medium</span></td><td>P6, P2</td></tr>
+      <tr><td>REQ-07</td><td>Dynamic registration form</td><td><span class="priority-high">High</span></td><td>P2, P3</td></tr>
+      <tr><td>REQ-08</td><td>Clean, intuitive UI design</td><td><span class="priority-mid">Medium</span></td><td>P1</td></tr>
+      <tr><td>REQ-09</td><td>Event templates / Quick start</td><td><span class="priority-low">Nice-to-have</span></td><td>P1</td></tr>
+      <tr><td>REQ-10</td><td>Backward compatibility</td><td><span class="priority-mid">Medium</span></td><td>&ndash;</td></tr>
+    </table>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DEX Event Experience Platform &ndash; Requirements Documentation</p>
+    </div>
+  </footer>
+</body>
+</html>
