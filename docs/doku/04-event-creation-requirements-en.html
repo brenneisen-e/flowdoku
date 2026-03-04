@@ -255,6 +255,105 @@
     </table>
 
     <!-- ============================================================ -->
+    <!-- 1.5: REGISTRATION & DEREGISTRATION -->
+    <!-- ============================================================ -->
+
+    <h3>1.5 Registration and Deregistration Process Based on Event Creation</h3>
+
+    <p>After event creation (subsite + participant list + Outlook calendar event), the event is ready for participant registration. The entire registration and deregistration process is based on the <strong>participant list created during event creation</strong> and is controlled by several Power Automate flows.</p>
+
+    <h4>1.5.1 Registration (RegisterParticipant)</h4>
+    <p>When a participant signs up for an event via the Power App, an entry is created in a <strong>queue list</strong>. The flow <strong>RegisterParticipant</strong> (SharePoint trigger, 5-minute interval) processes these entries:</p>
+
+    <div class="section-box">
+      <h4>Decision Logic</h4>
+      <ol>
+        <li><strong>Load event data:</strong> Retrieve current participant count and maximum capacity from the Events list</li>
+        <li><strong>Capacity check:</strong> Is <code>Current participants &lt; Max. participants</code>?</li>
+        <li><strong>Space available &rarr; Status &ldquo;Registered&rdquo;:</strong> Entry in participant list with status &ldquo;Registered&rdquo;, confirmation email via shared mailbox, Outlook calendar entry via child flow <strong>RegisterOutlookEventParticipant</strong></li>
+        <li><strong>No space &rarr; Status &ldquo;Waitlist&rdquo;:</strong> Entry in participant list with status &ldquo;Waitlist&rdquo;, waitlist info sent to participant</li>
+      </ol>
+    </div>
+
+    <p><strong>Important:</strong> Registration data is written to the <strong>participant list that was created with a fixed schema during event creation</strong>. Since this list always contains all possible columns (see section 1.4.2), fields are also populated that are not relevant for the specific event &ndash; and conversely, unneeded columns remain empty.</p>
+
+    <h4>1.5.2 Registration Form (Participant Side)</h4>
+    <p>The registration form in the Power App is currently <strong>statically</strong> structured. The app displays certain fields depending on the event type and the &ldquo;visible&rdquo; toggle columns in the Events list:</p>
+    <ul>
+      <li><strong>Base fields</strong> (always visible): Salutation, first name, last name</li>
+      <li><strong>Conditional fields</strong> (depending on toggle): T-shirt size, allergies, food preferences, hotel request, free text fields 1&ndash;7, dropdown fields 1&ndash;2</li>
+    </ul>
+    <p>Visibility is controlled via <code>If(LookUp(Events, ID=varEventID, 'T Shirt Gr&ouml;&szlig;e visible'), DisplayMode.Edit, DisplayMode.Disabled)</code> &ndash; each conditional field has its own visibility logic.</p>
+
+    <h4>1.5.3 Deregistration (DeregisterParticipant)</h4>
+    <p>When a participant cancels, the flow <strong>DeregisterParticipant</strong> (SharePoint trigger, 5-minute interval) is triggered:</p>
+
+    <div class="section-box">
+      <h4>Deregistration Process with Automatic Waitlist Promotion</h4>
+      <table>
+        <tr><th>Step</th><th>Action</th><th>Result</th></tr>
+        <tr>
+          <td>1</td>
+          <td>Participant A deregisters</td>
+          <td>Status &rarr; &ldquo;Cancelled&rdquo;, Outlook event removed</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Waitlist is checked</td>
+          <td>Participant B found (oldest entry, FIFO principle)</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Participant B is promoted</td>
+          <td>Status &rarr; &ldquo;Registered&rdquo;</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Notification</td>
+          <td>Confirmation email + Outlook calendar entry for B</td>
+        </tr>
+      </table>
+    </div>
+
+    <p><strong>FIFO Principle:</strong> Promotion strictly follows registration order &ndash; whoever joined the waitlist first is promoted first.</p>
+
+    <h4>1.5.4 Supporting Flows</h4>
+    <table>
+      <tr><th>Flow</th><th>Trigger</th><th>Function</th></tr>
+      <tr>
+        <td><strong>CheckRegistrationStatusParticipant</strong></td>
+        <td>Power App</td>
+        <td>Checks the registration status of a user (registered / waitlist / not_registered). Controls which button is displayed in the app (Sign up / Cancel / Remove from waitlist).</td>
+      </tr>
+      <tr>
+        <td><strong>GetWaitinglistPosition</strong></td>
+        <td>Power App</td>
+        <td>Determines the current position of a participant on the waitlist (FIFO sorting by creation date). Position 1 = next to be promoted.</td>
+      </tr>
+      <tr>
+        <td><strong>GetParticipantEvents</strong></td>
+        <td>Power App</td>
+        <td>Lists all events a user is registered for or on the waitlist for (&ldquo;My Events&rdquo; view).</td>
+      </tr>
+      <tr>
+        <td><strong>RegisterOutlookEventParticipant</strong></td>
+        <td>Child Flow</td>
+        <td>Adds a participant to the existing Outlook calendar entry (Microsoft Graph API). Called by RegisterParticipant and DeregisterParticipant (promotion).</td>
+      </tr>
+    </table>
+
+    <h4>1.5.5 Interplay: Event Creation &harr; Registration</h4>
+    <div class="section-box">
+      <p>The decisions made during event creation directly determine the behavior of the registration flows:</p>
+      <ul>
+        <li><strong>Participant list structure:</strong> The columns of the participant list (section 1.4.2) define what data the RegisterParticipant flow can write to the list. Since all columns are always created, the flow does not need dynamic column logic &ndash; it <em>always writes to the same fixed columns</em>.</li>
+        <li><strong>Capacity:</strong> <code>Max. participants</code> from the Events list controls the capacity check in the RegisterParticipant flow.</li>
+        <li><strong>Visibility:</strong> The &ldquo;visible&rdquo; toggle columns (e.g. <code>T Shirt Gr&ouml;&szlig;e visible</code>, <code>Allergien visible</code>) control which fields the registration form displays to the participant.</li>
+        <li><strong>Outlook event:</strong> The Outlook Event ID created during event creation is used by the RegisterOutlookEventParticipant flow to add participants to the existing calendar entry.</li>
+      </ul>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- PART 2: IDENTIFIED PROBLEMS -->
     <!-- ============================================================ -->
 

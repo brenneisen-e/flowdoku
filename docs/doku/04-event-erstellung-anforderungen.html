@@ -255,6 +255,105 @@
     </table>
 
     <!-- ============================================================ -->
+    <!-- 1.5: ANMELDUNG & ABMELDUNG -->
+    <!-- ============================================================ -->
+
+    <h3>1.5 Anmelde- und Abmeldeprozess auf Basis der Event-Erstellung</h3>
+
+    <p>Nach der Event-Erstellung (Subsite + Teilnehmerliste + Outlook-Termin) steht das Event f&uuml;r Teilnehmer zur Anmeldung bereit. Der gesamte Anmelde- und Abmeldeprozess basiert auf der bei der Event-Erstellung angelegten <strong>Teilnehmerliste</strong> und wird durch mehrere Power Automate Flows gesteuert.</p>
+
+    <h4>1.5.1 Anmeldung (RegisterParticipant)</h4>
+    <p>Wenn ein Teilnehmer sich &uuml;ber die Power App f&uuml;r ein Event anmeldet, wird ein Eintrag in einer <strong>Queue-Liste</strong> erstellt. Der Flow <strong>RegisterParticipant</strong> (SharePoint-Trigger, 5 Minuten Intervall) verarbeitet diese Eintr&auml;ge:</p>
+
+    <div class="section-box">
+      <h4>Entscheidungslogik</h4>
+      <ol>
+        <li><strong>Event-Daten laden:</strong> Aktuelle Teilnehmerzahl und Maximalkapazit&auml;t aus der Events-Liste abrufen</li>
+        <li><strong>Kapazit&auml;tspr&uuml;fung:</strong> Ist <code>Current parcipients &lt; Max. parcipients</code>?</li>
+        <li><strong>Platz frei &rarr; Status &bdquo;Registered&ldquo;:</strong> Eintrag in Teilnehmerliste mit Status &bdquo;Registered&ldquo;, Best&auml;tigungsmail &uuml;ber Shared Mailbox, Outlook-Kalender-Eintrag via Child Flow <strong>RegisterOutlookEventParticipant</strong></li>
+        <li><strong>Kein Platz &rarr; Status &bdquo;Waitlist&ldquo;:</strong> Eintrag in Teilnehmerliste mit Status &bdquo;Waitlist&ldquo;, Wartelisten-Info an Teilnehmer</li>
+      </ol>
+    </div>
+
+    <p><strong>Wichtig:</strong> Die Anmeldedaten werden in die <strong>bei der Event-Erstellung fest angelegte Teilnehmerliste</strong> geschrieben. Da diese immer alle m&ouml;glichen Spalten enth&auml;lt (vgl. Abschnitt 1.4.2), werden auch Felder bef&uuml;llt, die f&uuml;r das jeweilige Event gar nicht relevant sind &ndash; und umgekehrt bleiben nicht ben&ouml;tigte Spalten leer.</p>
+
+    <h4>1.5.2 Anmeldeformular (Teilnehmer-Seite)</h4>
+    <p>Das Anmeldeformular in der Power App ist aktuell <strong>statisch</strong> aufgebaut. Die App zeigt abh&auml;ngig vom Event-Typ und den &bdquo;visible&ldquo;-Toggle-Spalten in der Events-Liste bestimmte Felder an:</p>
+    <ul>
+      <li><strong>Basisfelder</strong> (immer sichtbar): Anrede, Vorname, Nachname</li>
+      <li><strong>Bedingte Felder</strong> (abh&auml;ngig von Toggle): T-Shirt-Gr&ouml;&szlig;e, Allergien, Essensw&uuml;nsche, Hotelwunsch, Freitextfelder 1&ndash;7, Dropdownfelder 1&ndash;2</li>
+    </ul>
+    <p>Die Steuerung erfolgt &uuml;ber <code>If(LookUp(Events, ID=varEventID, 'T Shirt Gr&ouml;&szlig;e visible'), DisplayMode.Edit, DisplayMode.Disabled)</code> &ndash; jedes bedingte Feld hat eine eigene Sichtbarkeitslogik.</p>
+
+    <h4>1.5.3 Abmeldung (DeregisterParticipant)</h4>
+    <p>Bei einer Abmeldung wird der Flow <strong>DeregisterParticipant</strong> (SharePoint-Trigger, 5 Minuten Intervall) ausgel&ouml;st:</p>
+
+    <div class="section-box">
+      <h4>Abmeldeprozess mit automatischer Wartelisten-Nachr&uuml;ckung</h4>
+      <table>
+        <tr><th>Schritt</th><th>Aktion</th><th>Ergebnis</th></tr>
+        <tr>
+          <td>1</td>
+          <td>Teilnehmer A meldet sich ab</td>
+          <td>Status &rarr; &bdquo;Cancelled&ldquo;, Outlook-Termin wird entfernt</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Warteliste wird gepr&uuml;ft</td>
+          <td>Teilnehmer B gefunden (&auml;ltester Eintrag, FIFO-Prinzip)</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Teilnehmer B r&uuml;ckt nach</td>
+          <td>Status &rarr; &bdquo;Registered&ldquo;</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Benachrichtigung</td>
+          <td>Best&auml;tigungsmail + Outlook-Kalendereintrag f&uuml;r B</td>
+        </tr>
+      </table>
+    </div>
+
+    <p><strong>FIFO-Prinzip:</strong> Die Nachr&uuml;ckung erfolgt strikt nach Eingangsreihenfolge &ndash; wer sich zuerst auf die Warteliste gesetzt hat, r&uuml;ckt zuerst nach.</p>
+
+    <h4>1.5.4 Unterst&uuml;tzende Flows</h4>
+    <table>
+      <tr><th>Flow</th><th>Trigger</th><th>Funktion</th></tr>
+      <tr>
+        <td><strong>CheckRegistrationStatusParticipant</strong></td>
+        <td>Power App</td>
+        <td>Pr&uuml;ft den Anmeldestatus eines Nutzers (registered / waitlist / not_registered). Steuert die Anzeige des passenden Buttons in der App (Anmelden / Abmelden / Von Warteliste entfernen).</td>
+      </tr>
+      <tr>
+        <td><strong>GetWaitinglistPosition</strong></td>
+        <td>Power App</td>
+        <td>Ermittelt die aktuelle Position eines Teilnehmers auf der Warteliste (FIFO-Sortierung nach Erstelldatum). Position 1 = n&auml;chster Nachr&uuml;cker.</td>
+      </tr>
+      <tr>
+        <td><strong>GetParticipantEvents</strong></td>
+        <td>Power App</td>
+        <td>Listet alle Events auf, f&uuml;r die ein Nutzer angemeldet ist oder auf der Warteliste steht (&bdquo;Meine Events&ldquo;-Ansicht).</td>
+      </tr>
+      <tr>
+        <td><strong>RegisterOutlookEventParticipant</strong></td>
+        <td>Child Flow</td>
+        <td>F&uuml;gt einen Teilnehmer zum bestehenden Outlook-Kalendereintrag hinzu (Microsoft Graph API). Wird von RegisterParticipant und DeregisterParticipant (Nachr&uuml;ckung) aufgerufen.</td>
+      </tr>
+    </table>
+
+    <h4>1.5.5 Zusammenspiel Event-Erstellung &harr; Anmeldung</h4>
+    <div class="section-box">
+      <p>Die bei der Event-Erstellung getroffenen Entscheidungen bestimmen direkt das Verhalten der Anmeldeflows:</p>
+      <ul>
+        <li><strong>Teilnehmerlisten-Struktur:</strong> Die Spalten der Teilnehmerliste (Abschnitt 1.4.2) definieren, welche Daten der RegisterParticipant-Flow in die Liste schreiben kann. Da alle Spalten immer erstellt werden, muss der Flow keine dynamische Spaltenlogik beherrschen &ndash; er schreibt <em>immer in dieselben festen Spalten</em>.</li>
+        <li><strong>Kapazit&auml;t:</strong> <code>Max. parcipients</code> aus der Events-Liste steuert die Kapazit&auml;tspr&uuml;fung im RegisterParticipant-Flow.</li>
+        <li><strong>Sichtbarkeit:</strong> Die &bdquo;visible&ldquo;-Toggle-Spalten (z.B. <code>T Shirt Gr&ouml;&szlig;e visible</code>, <code>Allergien visible</code>) steuern, welche Felder das Anmeldeformular dem Teilnehmer anzeigt.</li>
+        <li><strong>Outlook-Termin:</strong> Die bei der Event-Erstellung angelegte Outlook-Event-ID wird vom RegisterOutlookEventParticipant-Flow genutzt, um Teilnehmer zum bestehenden Termin hinzuzuf&uuml;gen.</li>
+      </ul>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- TEIL 2: PROBLEME -->
     <!-- ============================================================ -->
 
