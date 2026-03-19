@@ -63,6 +63,42 @@ export default function EventCreationPage(): React.ReactElement {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
+  const fillDemo = (): void => {
+    const now = new Date();
+    const nextWeek = new Date(now);
+    nextWeek.setDate(now.getDate() + 7);
+    const nextWeekEnd = new Date(nextWeek);
+    nextWeekEnd.setHours(nextWeek.getHours() + 4);
+    const deadline = new Date(nextWeek);
+    deadline.setDate(nextWeek.getDate() - 2);
+    const lastDereg = new Date(nextWeek);
+    lastDereg.setDate(nextWeek.getDate() - 1);
+
+    const toLocal = (d: Date): string => {
+      const pad = (n: number): string => (n < 10 ? '0' : '') + n;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    setTitle('Deloitte B2Run Koeln 2026');
+    setEventType('B2Run');
+    setDescription('Gemeinsam laufen wir beim B2Run in Koeln! 5,6 km durch den Rheinpark. Treffpunkt um 17:30 Uhr am Deloitte-Zelt. Laufshirts werden gestellt.');
+    setLocation('RheinEnergieStadion, Koeln');
+    setLocationFilter('Köln, Düsseldorf');
+    setAudience('All');
+    setStartDate(toLocal(nextWeek));
+    setEndDate(toLocal(nextWeekEnd));
+    setRegistrationDeadline(toLocal(deadline));
+    setLastDeregisterDate(toLocal(lastDereg));
+    setMaxParticipants('50');
+    setWaitlistEnabled(true);
+    setEventImageUrl('');
+    setCustomFields([
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Groesse', type: 'select', required: true, options: 'XS, S, M, L, XL, XXL', visible: true },
+      { id: `cf-${Date.now() + 1}`, label: 'Notfallkontakt (Name & Telefon)', type: 'text', required: true, options: '', visible: true },
+      { id: `cf-${Date.now() + 2}`, label: 'Ernaehrungsbesonderheiten', type: 'text', required: false, options: '', visible: true },
+    ]);
+  };
+
   const moveCustomField = (id: string, direction: 'up' | 'down'): void => {
     const idx = customFields.findIndex(f => f.id === id);
     if (idx < 0) return;
@@ -152,6 +188,16 @@ export default function EventCreationPage(): React.ReactElement {
                   {error}
                 </div>
               )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <button
+                  className="btn btn-outline"
+                  onClick={fillDemo}
+                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                >
+                  Demo
+                </button>
+              </div>
 
               <div className="form-group">
                 <label className="form-label"><span className="required">*</span> Event Titel</label>
