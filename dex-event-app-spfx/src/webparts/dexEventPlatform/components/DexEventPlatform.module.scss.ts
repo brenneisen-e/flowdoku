@@ -1,10 +1,10 @@
 
 require("./DexEventPlatform.module.css");
 const styles = {
-  dexApp: 'dexApp_569a57a0',
-  orbSpin: 'orbSpin_569a57a0',
-  orbPulse: 'orbPulse_569a57a0',
-  orbGlow: 'orbGlow_569a57a0'
+  dexApp: 'dexApp_ee0892b9',
+  orbSpin: 'orbSpin_ee0892b9',
+  orbPulse: 'orbPulse_ee0892b9',
+  orbGlow: 'orbGlow_ee0892b9'
 };
 
 export default styles;

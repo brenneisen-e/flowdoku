@@ -128,7 +128,7 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'EventStatus', 'EventType', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-      'WaitlistEnabled', 'Organizer',
+      'WaitlistEnabled', 'Organizer', 'RegistrationListName',
     ]);
   }
 

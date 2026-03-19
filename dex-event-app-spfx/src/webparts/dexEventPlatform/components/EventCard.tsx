@@ -12,7 +12,9 @@ import { DeloitteEvent } from '../types';
 
 // Deutsches Datumsformat
 function formatDate(iso: string): string {
+  if (!iso) return '';
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
@@ -80,9 +82,11 @@ export default function EventCard({ event, index }: Props): React.ReactElement {
           <br />
           {formatDate(event.endDate)}
         </div>
-        <div className="event-card__deadline">
-          Registration open until: {formatDate(event.registrationDeadline)}
-        </div>
+        {event.registrationDeadline && formatDate(event.registrationDeadline) && (
+          <div className="event-card__deadline">
+            Registration open until: {formatDate(event.registrationDeadline)}
+          </div>
+        )}
         <button
           className="btn btn-primary event-card__register-btn"
           onClick={(e: React.MouseEvent) => {
