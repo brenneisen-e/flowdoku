@@ -303,7 +303,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* Dynamische Felder */}
               <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 24, marginTop: 8 }}>
                 <div className="flex-between mb-16">
-                  <label className="form-label" style={{ marginBottom: 0 }}>Zusaetzliche Registrierungsfelder</label>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Zusätzliche Registrierungsfelder</label>
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
                     <Plus size={14} /> Feld hinzufuegen
                   </button>
