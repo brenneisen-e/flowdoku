@@ -33,8 +33,10 @@ function AppContent(): React.ReactElement {
   const { currentPage } = useNavigation();
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
-  // Dynamische Hoehe: misst wie viel Platz ueber der App ist
+  // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {
+    const overflowTargets: HTMLElement[] = [];
+
     function setHeight(): void {
       if (layoutRef.current) {
         const rect = layoutRef.current.getBoundingClientRect();
@@ -42,13 +44,39 @@ function AppContent(): React.ReactElement {
         layoutRef.current.style.height = `${Math.max(available, 400)}px`;
       }
     }
+
+    // SharePoint-Container finden und overflow unterdrücken
+    function suppressSpScroll(): void {
+      if (!layoutRef.current) return;
+      let el: HTMLElement | null = layoutRef.current.parentElement;
+      while (el && el !== document.body) {
+        const style = window.getComputedStyle(el);
+        if (style.overflowY === 'scroll' || style.overflowY === 'auto') {
+          el.style.overflowY = 'hidden';
+          overflowTargets.push(el);
+        }
+        el = el.parentElement;
+      }
+      // Auch den Body und HTML absichern
+      document.documentElement.style.overflowY = 'hidden';
+      document.body.style.overflowY = 'hidden';
+    }
+
     setHeight();
+    suppressSpScroll();
     window.addEventListener('resize', setHeight);
-    // Nochmal nach kurzer Verzoegerung (SP laedt Header nach)
-    const timer = setTimeout(setHeight, 500);
+    // Nochmal nach Verzögerung (SP lädt Header nach)
+    const timer = setTimeout(() => { setHeight(); suppressSpScroll(); }, 500);
+    const timer2 = setTimeout(() => { setHeight(); suppressSpScroll(); }, 1500);
+
     return () => {
       window.removeEventListener('resize', setHeight);
       clearTimeout(timer);
+      clearTimeout(timer2);
+      // Overflow wiederherstellen beim Unmount
+      overflowTargets.forEach(el => { el.style.overflowY = ''; });
+      document.documentElement.style.overflowY = '';
+      document.body.style.overflowY = '';
     };
   }, []);
 
