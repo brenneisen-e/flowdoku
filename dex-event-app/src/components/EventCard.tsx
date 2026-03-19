@@ -11,7 +11,7 @@ function formatDate(iso: string) {
   }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-function getEventGradient(type: string, index: number) {
+function getEventGradient(_type: string, index: number) {
   const gradients = [
     'linear-gradient(135deg, #0a2e1a 0%, #1a6b3c 40%, #00ff88 100%)',
     'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
