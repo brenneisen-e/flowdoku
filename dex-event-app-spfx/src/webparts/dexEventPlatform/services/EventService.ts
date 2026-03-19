@@ -75,7 +75,7 @@ export class EventService {
       await this.configureDefaultView(listName, [
         'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'RegistrationListName',
+        'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl',
       ]);
       // Prüfen ob Vererbung noch aktiv ist und ggf. Permissions fixen
       try {
@@ -122,6 +122,7 @@ export class EventService {
       { title: 'OutlookEventId', type: 2 },
       { title: 'CustomFields', type: 3 }, // Note (JSON)
       { title: 'RegistrationListName', type: 2 },
+      { title: 'RegistrationListUrl', type: 2 }, // Klickbarer Link zur Teilnehmerliste
     ];
 
     for (const f of fields) {
@@ -141,7 +142,7 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'EventStatus', 'EventType', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-      'WaitlistEnabled', 'Organizer', 'RegistrationListName',
+      'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl',
     ]);
 
     // Berechtigungen: Vererbung aufheben, Owners Full Control, Members Read
@@ -294,6 +295,7 @@ export class EventService {
         'OutlookEventId': event.outlookEventId,
         'CustomFields': JSON.stringify(event.customFields),
         'RegistrationListName': regListName,
+        'RegistrationListUrl': `${this.siteUrl}/Lists/${regListName}/AllItems.aspx`,
       };
 
       const response = await this._post(
@@ -532,7 +534,7 @@ export class EventService {
   ): Promise<SPRegistration | null> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items?$filter=ParticipantEmail eq '${encodeURIComponent(email)}'&$top=1`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;

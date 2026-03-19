@@ -177,6 +177,15 @@ export class SharePointService {
           {}
         );
       }
+
+      // 3. Aktuellen User individuell berechtigen (falls nicht in Owners-Gruppe)
+      const currentUserId = await this.getUserIdByEmail(this.context.pageContext.user.email);
+      if (currentUserId) {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${currentUserId}, roledefid=1073741829)`,
+          {}
+        );
+      }
     } catch {
       // Berechtigungen konnten nicht gesetzt werden
     }
@@ -207,6 +216,47 @@ export class SharePointService {
   }
 
   /**
+   * Einem Admin Full Control auf die DEX_Events-Liste geben.
+   */
+  public async grantFullControlOnEventsList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      // Full Control = 1073741829
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+        {}
+      );
+    } catch {
+      // Berechtigung konnte nicht gesetzt werden
+    }
+  }
+
+  /**
+   * Einem User die Berechtigung auf die DEX_Events-Liste entziehen.
+   */
+  public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      const headers: HeadersInit = {
+        'Accept': 'application/json;odata=verbose',
+        'X-HTTP-Method': 'DELETE',
+      };
+
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/getbyprincipalid(${userId})`,
+        SPHttpClient.configurations.v1,
+        { headers }
+      );
+    } catch {
+      // Ignorieren
+    }
+  }
+
+  /**
    * Einem User die Berechtigung auf die Rollen-Liste entziehen.
    */
   public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
@@ -231,9 +281,24 @@ export class SharePointService {
   }
 
   /**
-   * User-ID per E-Mail aus SharePoint ermitteln
+   * User-ID per E-Mail aus SharePoint ermitteln.
+   * Nutzt ensureuser um den User anzulegen falls er die Site noch nie besucht hat.
    */
   private async getUserIdByEmail(email: string): Promise<number | null> {
+    try {
+      // ensureuser legt den User in siteusers an falls noch nicht vorhanden
+      const ensureResponse = await this._post(
+        `${this.siteUrl}/_api/web/ensureuser`,
+        { 'logonName': `i:0#.f|membership|${email}` }
+      );
+      if (ensureResponse.ok) {
+        const ensureData = await ensureResponse.json();
+        const id = ensureData.d?.Id || ensureData.Id;
+        if (id) return id;
+      }
+    } catch { /* ensureuser fehlgeschlagen */ }
+
+    // Fallback: direkt per Email suchen
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Id`,
@@ -427,10 +492,16 @@ export class SharePointService {
           let location = '';
           if (data.UserProfileProperties) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const officeProp = data.UserProfileProperties.find((p: any) =>
-              p.Key === 'Office' || p.Key === 'SPS-Location'
-            );
-            if (officeProp) location = officeProp.Value || '';
+            // Versuche verschiedene Properties für den Standort
+            const locationKeys = ['Office', 'SPS-Location', 'SPS-City', 'City'];
+            for (const key of locationKeys) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const prop = data.UserProfileProperties.find((p: any) => p.Key === key);
+              if (prop && prop.Value) {
+                location = prop.Value;
+                break;
+              }
+            }
           }
           return { displayName: data.DisplayName, location };
         }
@@ -488,15 +559,27 @@ export class SharePointService {
       const results = JSON.parse(resultsStr);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return results
+      const mapped = results
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((r: any) => r.EntityData?.Email)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((r: any) => ({
           email: r.EntityData.Email || '',
           displayName: r.DisplayText || r.EntityData.Title || '',
-          location: r.EntityData.Department || '',
+          location: '', // Wird per User Profile nachgeladen
         }));
+
+      // Location per User Profile nachladen (Office-Standort)
+      for (const user of mapped) {
+        try {
+          const profile = await this.searchUserByEmail(user.email);
+          if (profile && profile.location) {
+            user.location = profile.location;
+          }
+        } catch { /* ignore */ }
+      }
+
+      return mapped;
     } catch {
       return [];
     }

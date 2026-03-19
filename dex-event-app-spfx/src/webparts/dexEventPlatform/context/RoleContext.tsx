@@ -117,9 +117,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   ): Promise<boolean> {
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
-      // SP-Berechtigung setzen: EventAdmin bekommt Read auf die Liste
+      // SP-Berechtigungen setzen
       if (role === 'EventAdmin') {
         await spService.grantReadOnRolesList(userEmail);
+      }
+      // SuperAdmin und EventAdmin: Full Control auf DEX_Events
+      if (role === 'SuperAdmin' || role === 'EventAdmin') {
+        await spService.grantFullControlOnEventsList(userEmail);
       }
       await refreshRoles();
     }
@@ -132,11 +136,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const success = await spService.updateRole(itemId, newRole);
     if (success && oldRole) {
       if (newRole === 'EventAdmin') {
-        // Read-Berechtigung geben
         await spService.grantReadOnRolesList(oldRole.userEmail);
+        await spService.grantFullControlOnEventsList(oldRole.userEmail);
+      } else if (newRole === 'SuperAdmin') {
+        await spService.grantFullControlOnEventsList(oldRole.userEmail);
       } else if (newRole === 'User') {
-        // Berechtigung entziehen
         await spService.revokeAccessOnRolesList(oldRole.userEmail);
+        await spService.revokeAccessOnEventsList(oldRole.userEmail);
       }
       await refreshRoles();
     }
@@ -151,6 +157,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       // Berechtigung entziehen
       if (roleEntry) {
         await spService.revokeAccessOnRolesList(roleEntry.userEmail);
+        await spService.revokeAccessOnEventsList(roleEntry.userEmail);
       }
       await refreshRoles();
     }
