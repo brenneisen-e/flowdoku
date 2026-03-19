@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { events } from '../data/mockData';
+import { useEvents } from '../context/EventContext';
 import EventCard from '../components/EventCard';
 
 export default function EventListPage() {
+  const { events } = useEvents();
   const [onlyActive, setOnlyActive] = useState(true);
 
   const filteredEvents = onlyActive
