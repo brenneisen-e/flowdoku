@@ -452,7 +452,58 @@ export class SharePointService {
   }
 
   /**
-   * Hilfsmethode fuer POST-Requests
+   * User-Suche mit Autocomplete: sucht nach Name oder Email-Fragment.
+   * Nutzt die SharePoint ClientPeoplePickerSearchUser API.
+   */
+  public async searchUsers(query: string): Promise<Array<{
+    email: string;
+    displayName: string;
+    location: string;
+  }>> {
+    if (!query || query.length < 2) return [];
+
+    try {
+      const body = {
+        'queryParams': {
+          '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
+          'AllowEmailAddresses': true,
+          'AllowMultipleEntities': false,
+          'MaximumEntitySuggestions': 10,
+          'QueryString': query,
+          'PrincipalType': 1, // Users only
+          'PrincipalSource': 15,
+          'SharePointGroupID': 0,
+        },
+      };
+
+      const response = await this._post(
+        `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
+        body
+      );
+
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
+      const results = JSON.parse(resultsStr);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return results
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((r: any) => r.EntityData?.Email)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => ({
+          email: r.EntityData.Email || '',
+          displayName: r.DisplayText || r.EntityData.Title || '',
+          location: r.EntityData.Department || '',
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Hilfsmethode für POST-Requests
    */
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {

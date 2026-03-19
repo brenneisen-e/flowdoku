@@ -101,3 +101,15 @@ export const Check = ({ size = 14 }: IconProps): React.ReactElement => (
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
+
+export const ChevronUp = ({ size = 16 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 15l-6-6-6 6" />
+  </svg>
+);
+
+export const ChevronDown = ({ size = 16 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);

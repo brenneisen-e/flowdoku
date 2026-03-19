@@ -70,7 +70,28 @@ export class EventService {
   public async ensureEventsList(): Promise<void> {
     const listName = 'DEX_Events';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // Bestehende Liste: Default View + Permissions sicherstellen
+      await this.configureDefaultView(listName, [
+        'EventStatus', 'EventType', 'Location', 'LocationFilter',
+        'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
+        'WaitlistEnabled', 'Organizer', 'RegistrationListName',
+      ]);
+      // Prüfen ob Vererbung noch aktiv ist und ggf. Permissions fixen
+      try {
+        const listInfo = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+          SPHttpClient.configurations.v1
+        );
+        if (listInfo.ok) {
+          const data = await listInfo.json();
+          if (!data.HasUniqueRoleAssignments) {
+            await this.setEventsListPermissions(listName);
+          }
+        }
+      } catch { /* ignore */ }
+      return;
+    }
 
     // Liste erstellen
     await this._post(`${this.siteUrl}/_api/web/lists`, {
@@ -114,6 +135,77 @@ export class EventService {
         (payload as Record<string, unknown>)['Choices'] = { 'results': f.choices };
       }
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    // Default View konfigurieren: wichtige Spalten einblenden
+    await this.configureDefaultView(listName, [
+      'EventStatus', 'EventType', 'Location', 'LocationFilter',
+      'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
+      'WaitlistEnabled', 'Organizer', 'RegistrationListName',
+    ]);
+
+    // Berechtigungen: Vererbung aufheben, Owners Full Control, Members Read
+    await this.setEventsListPermissions(listName);
+  }
+
+  /**
+   * Berechtigungen fuer DEX_Events setzen:
+   * - Vererbung aufheben (keine kopierten Rechte)
+   * - Site Owners: Full Control
+   * - Site Members: Read (koennen Events sehen, aber nicht bearbeiten)
+   * - Visitors: kein Zugriff
+   */
+  private async setEventsListPermissions(listName: string): Promise<void> {
+    try {
+      // Vererbung aufheben, KEINE bestehenden Berechtigungen kopieren
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+
+      // Site Owners: Full Control (1073741829)
+      const ownersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (ownersResponse.ok) {
+        const ownersData = await ownersResponse.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`,
+          {}
+        );
+      }
+
+      // Site Members: Read (1073741826)
+      const membersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (membersResponse.ok) {
+        const membersData = await membersResponse.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741826)`,
+          {}
+        );
+      }
+    } catch {
+      // Berechtigungen konnten nicht gesetzt werden
+    }
+  }
+
+  /**
+   * Default View einer Liste konfigurieren: Spalten hinzufuegen
+   */
+  private async configureDefaultView(listName: string, fieldNames: string[]): Promise<void> {
+    try {
+      for (const fieldName of fieldNames) {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
+          {}
+        );
+      }
+    } catch {
+      // View-Konfiguration ist optional
     }
   }
 
