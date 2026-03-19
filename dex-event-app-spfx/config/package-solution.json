@@ -3,7 +3,7 @@
   "solution": {
     "name": "dex-event-platform",
     "id": "a3f5c8e1-7d2b-4a9f-b6e3-1c8d9f0e2a4b",
-    "version": "1.0.31.0",
+    "version": "1.0.34.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -30,7 +30,7 @@
         "title": "DEX Event Platform Feature",
         "description": "Adds the DEX Event Experience Platform webpart",
         "id": "b4f6d9e2-8e3c-5b0a-c7f4-2d9e0a1f3b5c",
-        "version": "1.0.31.0"
+        "version": "1.0.34.0"
       }
     ]
   },

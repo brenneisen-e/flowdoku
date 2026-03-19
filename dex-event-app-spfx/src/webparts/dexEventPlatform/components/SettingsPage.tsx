@@ -79,10 +79,20 @@ export default function SettingsPage(): React.ReactElement {
     setTimeout(() => setStatusMsg(''), 4000);
   };
 
+  const [isRemoving, setIsRemoving] = React.useState<number | null>(null);
+
   const handleRemoveRole = async (itemId: number, userName: string): Promise<void> => {
-    const confirmed = confirm(`Remove role for "${userName}"?`);
+    const confirmed = confirm(`Rolle für "${userName}" entfernen?`);
     if (!confirmed) return;
-    await removeRole(itemId);
+    setIsRemoving(itemId);
+    const success = await removeRole(itemId);
+    setIsRemoving(null);
+    if (success) {
+      setStatusMsg(`Rolle für ${userName} entfernt.`);
+    } else {
+      setStatusMsg('Error: Rolle konnte nicht entfernt werden.');
+    }
+    setTimeout(() => setStatusMsg(''), 4000);
   };
 
   const handleChangeRole = async (itemId: number, role: UserRole): Promise<void> => {
@@ -219,13 +229,15 @@ export default function SettingsPage(): React.ReactElement {
                           {r.userEmail.toLowerCase() !== currentUser.email.toLowerCase() && (
                             <button
                               onClick={() => handleRemoveRole(r.id, r.userName)}
+                              disabled={isRemoving === r.id}
                               style={{
-                                border: 'none', background: 'none', cursor: 'pointer',
+                                border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer',
                                 color: 'var(--dex-danger, #e53935)', padding: 4,
+                                opacity: isRemoving === r.id ? 0.4 : 1,
                               }}
-                              title="Remove role"
+                              title="Rolle entfernen"
                             >
-                              <Trash2 size={16} />
+                              {isRemoving === r.id ? '...' : <Trash2 size={16} />}
                             </button>
                           )}
                         </td>

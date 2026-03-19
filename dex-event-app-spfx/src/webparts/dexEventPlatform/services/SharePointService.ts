@@ -220,16 +220,21 @@ export class SharePointService {
    */
   public async grantFullControlOnEventsList(userEmail: string): Promise<void> {
     try {
+      console.log('[DEX] grantFullControlOnEventsList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) return;
+      if (!userId) {
+        console.error('[DEX] grantFullControlOnEventsList: Keine User-ID für', userEmail);
+        return;
+      }
 
       // Full Control = 1073741829
-      await this._post(
+      const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
-    } catch {
-      // Berechtigung konnte nicht gesetzt werden
+      console.log('[DEX] grantFullControlOnEventsList Ergebnis:', response.ok, response.status);
+    } catch (e) {
+      console.error('[DEX] grantFullControlOnEventsList Error:', e);
     }
   }
 
@@ -285,20 +290,43 @@ export class SharePointService {
    * Nutzt ensureuser um den User anzulegen falls er die Site noch nie besucht hat.
    */
   private async getUserIdByEmail(email: string): Promise<number | null> {
+    // Versuch 1: ensureuser mit Email direkt
     try {
-      // ensureuser legt den User in siteusers an falls noch nicht vorhanden
       const ensureResponse = await this._post(
         `${this.siteUrl}/_api/web/ensureuser`,
-        { 'logonName': `i:0#.f|membership|${email}` }
+        { 'logonName': email }
       );
       if (ensureResponse.ok) {
         const ensureData = await ensureResponse.json();
         const id = ensureData.d?.Id || ensureData.Id;
-        if (id) return id;
+        if (id) {
+          console.log('[DEX] ensureuser OK:', email, 'ID:', id);
+          return id;
+        }
+      } else {
+        console.warn('[DEX] ensureuser fehlgeschlagen:', email, ensureResponse.status);
       }
-    } catch { /* ensureuser fehlgeschlagen */ }
+    } catch (e) {
+      console.warn('[DEX] ensureuser Error:', email, e);
+    }
 
-    // Fallback: direkt per Email suchen
+    // Versuch 2: ensureuser mit Claims-Format
+    try {
+      const ensureResponse2 = await this._post(
+        `${this.siteUrl}/_api/web/ensureuser`,
+        { 'logonName': `i:0#.f|membership|${email}` }
+      );
+      if (ensureResponse2.ok) {
+        const ensureData2 = await ensureResponse2.json();
+        const id2 = ensureData2.d?.Id || ensureData2.Id;
+        if (id2) {
+          console.log('[DEX] ensureuser (claims) OK:', email, 'ID:', id2);
+          return id2;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Versuch 3: direkt per Email suchen
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Id`,
@@ -306,9 +334,13 @@ export class SharePointService {
       );
       if (response.ok) {
         const data = await response.json();
-        return data.Id || null;
+        const id3 = data.Id || null;
+        console.log('[DEX] siteusers/getbyemail OK:', email, 'ID:', id3);
+        return id3;
       }
     } catch { /* User nicht gefunden */ }
+
+    console.error('[DEX] getUserIdByEmail: User nicht gefunden:', email);
     return null;
   }
 
