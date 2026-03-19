@@ -50,6 +50,8 @@ export class SharePointService {
     const exists = await this.listExists(listName);
 
     if (exists) {
+      // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      await this.ensureRolesListPermissions(listName);
       return;
     }
 
@@ -120,6 +122,62 @@ export class SharePointService {
       }
     } catch {
       // View-Update ist optional
+    }
+
+    // Berechtigungen setzen: nur Site-Owners (SuperAdmins) duerfen die Liste sehen
+    await this.setRolesListPermissions(listName);
+  }
+
+  /**
+   * Pruefen ob die Liste bereits eigene Berechtigungen hat, sonst setzen
+   */
+  private async ensureRolesListPermissions(listName: string): Promise<void> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.HasUniqueRoleAssignments) {
+          await this.setRolesListPermissions(listName);
+        }
+      }
+    } catch {
+      // Ignorieren
+    }
+  }
+
+  /**
+   * Eigene Berechtigungen fuer die Rollen-Liste setzen.
+   * Vererbung aufheben, dann nur die Site-Owners-Gruppe mit Vollzugriff hinzufuegen.
+   */
+  private async setRolesListPermissions(listName: string): Promise<void> {
+    try {
+      // 1. Berechtigungsvererbung aufheben (eigene Berechtigungen)
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+
+      // 2. Site-Owners-Gruppe ID ermitteln
+      const ownersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+
+      if (ownersResponse.ok) {
+        const ownersData = await ownersResponse.json();
+        const ownersGroupId = ownersData.Id;
+
+        // 3. Full Control RoleDefinition ID ermitteln (1073741829 = Full Control)
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersGroupId}, roledefid=1073741829)`,
+          {}
+        );
+      }
+    } catch {
+      // Berechtigungen konnten nicht gesetzt werden - Liste ist trotzdem nutzbar
     }
   }
 

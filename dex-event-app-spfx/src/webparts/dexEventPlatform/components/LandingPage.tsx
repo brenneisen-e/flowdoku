@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { APP_VERSION } from '../version';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -22,7 +23,7 @@ export default function LandingPage(): React.ReactElement {
           Start
         </button>
       </div>
-      <footer className="footer-disclaimer">
+      <footer className="footer-disclaimer" style={{ position: 'relative' }}>
         <p>
           The Event Experience Platform is a new solution for managing participants at Deloitte
           events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The
@@ -33,6 +34,12 @@ export default function LandingPage(): React.ReactElement {
           feedback, or are interested in using the platform for your upcoming event, feel free to get
           in touch with us!
         </p>
+        <span style={{
+          position: 'absolute', bottom: 8, right: 16,
+          fontSize: '0.7rem', color: 'var(--dex-gray-400, #a0a0a0)',
+        }}>
+          v{APP_VERSION}
+        </span>
       </footer>
     </div>
   );
