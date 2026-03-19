@@ -8,7 +8,7 @@
 
 import * as React from 'react';
 
-export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'create-event' | 'settings';
+export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'create-event' | 'settings' | 'profile';
 
 interface NavigationContextType {
   currentPage: Page;

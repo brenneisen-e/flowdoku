@@ -8,9 +8,11 @@
  */
 
 import * as React from 'react';
+import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
 import { EventProvider } from '../context/EventContext';
+import { UserProvider } from '../context/UserContext';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -19,6 +21,11 @@ import RegistrationPage from './RegistrationPage';
 import MyEventsPage from './MyEventsPage';
 import EventCreationPage from './EventCreationPage';
 import SettingsPage from './SettingsPage';
+import ProfilePage from './ProfilePage';
+
+export interface IDexEventPlatformProps {
+  context: WebPartContext;
+}
 
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
@@ -41,6 +48,8 @@ function AppContent(): React.ReactElement {
         return <EventCreationPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'profile':
+        return <ProfilePage />;
       default:
         return <LandingPage />;
     }
@@ -56,14 +65,16 @@ function AppContent(): React.ReactElement {
   );
 }
 
-export default function DexEventPlatform(): React.ReactElement {
+export default function DexEventPlatform(props: IDexEventPlatformProps): React.ReactElement {
   return (
     <div className={styles.dexApp}>
-      <NavigationProvider>
-        <EventProvider>
-          <AppContent />
-        </EventProvider>
-      </NavigationProvider>
+      <UserProvider context={props.context}>
+        <NavigationProvider>
+          <EventProvider>
+            <AppContent />
+          </EventProvider>
+        </NavigationProvider>
+      </UserProvider>
     </div>
   );
 }
