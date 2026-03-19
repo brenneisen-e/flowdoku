@@ -49,11 +49,24 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
+export type UserRole = 'SuperAdmin' | 'EventAdmin' | 'User';
+
 export interface User {
   id: string;
   firstName: string;
   surname: string;
   email: string;
   isAdmin: boolean;
+  role: UserRole;
   location: string;
+}
+
+export interface RoleAssignment {
+  id: number;
+  userEmail: string;
+  userName: string;
+  role: UserRole;
+  location: string;
+  assignedBy: string;
+  assignedDate: string;
 }

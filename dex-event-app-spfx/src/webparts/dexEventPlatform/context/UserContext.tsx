@@ -3,12 +3,14 @@
  *
  * Liest den eingeloggten User aus dem SPFx WebPartContext
  * und stellt Name, E-Mail und Login-Name bereit.
+ * Rolle wird ueber den RoleContext gesteuert.
  *
  * - Eike, Maerz 2026
  */
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
+import { SPHttpClient } from '@microsoft/sp-http';
 import { User } from '../types';
 
 interface UserContextType {
@@ -25,6 +27,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     surname: '',
     email: '',
     isAdmin: false,
+    role: 'User',
     location: '',
   });
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -39,12 +42,10 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     let surname = '';
 
     if (displayName.indexOf(',') > -1) {
-      // Format: "Nachname, Vorname"
       const parts = displayName.split(',');
       surname = parts[0].trim();
       firstName = parts.length > 1 ? parts[1].trim() : '';
     } else {
-      // Format: "Vorname Nachname"
       const parts = displayName.split(' ');
       firstName = parts[0] || '';
       surname = parts.slice(1).join(' ') || '';
@@ -56,20 +57,17 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
       surname: surname,
       email: spUser.email || '',
       isAdmin: false,
+      role: 'User',
       location: '',
     });
     setIsLoading(false);
 
-    // Admin-Status und Standort ueber SP-Profil nachladen
-    loadUserProfile(props.context, spUser.email).then(profile => {
-      if (profile) {
-        setCurrentUser(prev => ({
-          ...prev,
-          location: profile.location,
-          isAdmin: profile.isAdmin,
-        }));
+    // Standort ueber SP-Profil nachladen
+    loadUserLocation(props.context).then(location => {
+      if (location) {
+        setCurrentUser(prev => ({ ...prev, location }));
       }
-    }).catch(() => { /* Profil konnte nicht geladen werden, Basisdaten reichen */ });
+    }).catch(() => { /* Standort konnte nicht geladen werden */ });
   }, []);
 
   return React.createElement(
@@ -80,55 +78,23 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
 }
 
 /**
- * SP User Profile nachladen (Office-Standort + Gruppencheck)
+ * Office-Standort aus dem SP User Profile lesen
  */
-async function loadUserProfile(
-  context: WebPartContext,
-  _email: string
-): Promise<{ location: string; isAdmin: boolean } | null> {
+async function loadUserLocation(context: WebPartContext): Promise<string> {
   try {
-    // Office-Standort aus dem User-Profil lesen
     const profileUrl = `${context.pageContext.web.absoluteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`;
-    const profileResponse = await context.spHttpClient.get(
-      profileUrl,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (context.spHttpClient as any).configurations?.v1 || { headers: { 'Accept': 'application/json' } }
-    );
+    const response = await context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
 
-    let location = '';
-    if (profileResponse.ok) {
-      const profileData = await profileResponse.json();
-      // OfficeLocation aus UserProfileProperties extrahieren
-      if (profileData.UserProfileProperties) {
+    if (response.ok) {
+      const data = await response.json();
+      if (data.UserProfileProperties) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const officeProp = profileData.UserProfileProperties.find((p: any) => p.Key === 'Office' || p.Key === 'SPS-Location');
-        if (officeProp) {
-          location = officeProp.Value || '';
-        }
+        const officeProp = data.UserProfileProperties.find((p: any) => p.Key === 'Office' || p.Key === 'SPS-Location');
+        if (officeProp) return officeProp.Value || '';
       }
     }
-
-    // Admin-Check: Pruefen ob User in der Site-Owners-Gruppe ist
-    let isAdmin = false;
-    try {
-      const groupUrl = `${context.pageContext.web.absoluteUrl}/_api/web/currentuser/issiteadmin`;
-      const groupResponse = await context.spHttpClient.get(
-        groupUrl,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (context.spHttpClient as any).configurations?.v1 || { headers: { 'Accept': 'application/json' } }
-      );
-      if (groupResponse.ok) {
-        const groupData = await groupResponse.json();
-        isAdmin = groupData.value === true;
-      }
-    } catch {
-      // Kein Admin-Zugriff = kein Admin
-    }
-
-    return { location, isAdmin };
-  } catch {
-    return null;
-  }
+  } catch { /* Profil nicht verfuegbar */ }
+  return '';
 }
 
 export function useCurrentUser(): UserContextType {
