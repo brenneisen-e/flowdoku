@@ -281,9 +281,24 @@ export class SharePointService {
   }
 
   /**
-   * User-ID per E-Mail aus SharePoint ermitteln
+   * User-ID per E-Mail aus SharePoint ermitteln.
+   * Nutzt ensureuser um den User anzulegen falls er die Site noch nie besucht hat.
    */
   private async getUserIdByEmail(email: string): Promise<number | null> {
+    try {
+      // ensureuser legt den User in siteusers an falls noch nicht vorhanden
+      const ensureResponse = await this._post(
+        `${this.siteUrl}/_api/web/ensureuser`,
+        { 'logonName': `i:0#.f|membership|${email}` }
+      );
+      if (ensureResponse.ok) {
+        const ensureData = await ensureResponse.json();
+        const id = ensureData.d?.Id || ensureData.Id;
+        if (id) return id;
+      }
+    } catch { /* ensureuser fehlgeschlagen */ }
+
+    // Fallback: direkt per Email suchen
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Id`,
