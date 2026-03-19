@@ -31,6 +31,26 @@ export interface IDexEventPlatformProps {
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
   const { currentPage } = useNavigation();
+  const layoutRef = React.useRef<HTMLDivElement>(null);
+
+  // Dynamische Hoehe: misst wie viel Platz ueber der App ist
+  React.useEffect(() => {
+    function setHeight(): void {
+      if (layoutRef.current) {
+        const rect = layoutRef.current.getBoundingClientRect();
+        const available = window.innerHeight - rect.top;
+        layoutRef.current.style.height = `${Math.max(available, 400)}px`;
+      }
+    }
+    setHeight();
+    window.addEventListener('resize', setHeight);
+    // Nochmal nach kurzer Verzoegerung (SP laedt Header nach)
+    const timer = setTimeout(setHeight, 500);
+    return () => {
+      window.removeEventListener('resize', setHeight);
+      clearTimeout(timer);
+    };
+  }, []);
 
   // Seitenauswahl basierend auf dem aktuellen State
   const renderPage = (): React.ReactElement => {
@@ -57,7 +77,7 @@ function AppContent(): React.ReactElement {
   };
 
   return (
-    <div className="app-layout">
+    <div className="app-layout" ref={layoutRef}>
       <Header />
       <main className="main-content">
         {renderPage()}

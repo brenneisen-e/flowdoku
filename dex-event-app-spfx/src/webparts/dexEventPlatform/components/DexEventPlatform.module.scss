@@ -51,12 +51,11 @@
   }
 
   :global {
-    /* Layout - fit visible area, no scroll */
+    /* Layout - dynamische Hoehe wird per JS gesetzt */
     .app-layout {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 200px); /* SP header + nav + page chrome */
-      min-height: 500px;
+      min-height: 400px;
       overflow: hidden;
     }
 
