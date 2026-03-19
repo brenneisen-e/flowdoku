@@ -56,14 +56,12 @@ export default function SettingsPage() {
           <p style={{ color: 'var(--dex-gray-600)', fontSize: '0.9rem', marginBottom: 16 }}>
             Download the complete application as a ZIP file to run it locally on your machine.
           </p>
-          <a
-            href="https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip"
-            download
+          <button
             className="btn btn-primary btn-block"
-            style={{ textDecoration: 'none', textAlign: 'center' }}
+            onClick={() => window.open('https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip', '_blank')}
           >
             <Download size={18} /> Download App as ZIP
-          </a>
+          </button>
           <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem', marginTop: 12 }}>
             After downloading, extract the ZIP, open a terminal in the <code>dex-event-app</code> folder,
             and run <code>npm install && npm run dev</code>.
