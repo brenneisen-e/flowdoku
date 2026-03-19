@@ -5,13 +5,14 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { currentUser } from '../data/mockData';
+import { useCurrentUser } from '../context/UserContext';
 import { Plus, FileText, Users, Download, Copy, Check } from './Icons';
 
 const DOWNLOAD_URL = 'https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
+  const { currentUser } = useCurrentUser();
   const [copied, setCopied] = React.useState(false);
 
   // Link in die Zwischenablage kopieren (mit Fallback fuer aeltere Browser)

@@ -8,7 +8,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { currentUser } from '../data/mockData';
+import { useCurrentUser } from '../context/UserContext';
 import { Salutation } from '../types';
 import { Info, Trash2, Send } from './Icons';
 
@@ -24,6 +24,7 @@ function formatDate(iso: string): string {
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { events } = useEvents();
+  const { currentUser } = useCurrentUser();
   const event = events.find(e => e.id === selectedEventId);
 
   const [salutation, setSalutation] = React.useState<Salutation | ''>('');

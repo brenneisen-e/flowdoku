@@ -8,11 +8,13 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { useCurrentUser } from '../context/UserContext';
 import { ChevronLeft, Settings, Mail } from './Icons';
-import { currentUser } from '../data/mockData';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack } = useNavigation();
+  const { currentUser } = useCurrentUser();
+  const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
 
@@ -25,6 +27,7 @@ export default function Header(): React.ReactElement {
       case 'my-events': return 'My Events';
       case 'create-event': return 'Deloitte Event Creation';
       case 'settings': return 'Settings';
+      case 'profile': return 'My Profile';
       default: return '';
     }
   };
@@ -58,9 +61,61 @@ export default function Header(): React.ReactElement {
             <Settings size={20} />
           </button>
         )}
-        {/* User-Avatar mit Initialen */}
-        <div className="header-avatar" title={`${currentUser.firstName} ${currentUser.surname}`}>
-          {currentUser.firstName[0]}{currentUser.surname[0]}
+        {/* User-Avatar mit Initialen + Popup */}
+        <div style={{ position: 'relative' }}>
+          <div
+            className="header-avatar"
+            title={`${currentUser.firstName} ${currentUser.surname}`}
+            onClick={() => setShowPopup(!showPopup)}
+            style={{ cursor: 'pointer' }}
+          >
+            {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
+          </div>
+          {showPopup && (
+            <div style={{
+              position: 'absolute', right: 0, top: '100%', marginTop: 8,
+              background: '#fff', borderRadius: 'var(--dex-radius-lg, 12px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)', padding: '20px 24px',
+              minWidth: 260, zIndex: 1000,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #86bc25, #0076a8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: '1.1rem',
+                }}>
+                  {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1rem' }}>{currentUser.firstName} {currentUser.surname}</div>
+                  <div style={{ color: '#666', fontSize: '0.85rem' }}>{currentUser.email}</div>
+                </div>
+              </div>
+              {currentUser.location && (
+                <div style={{ fontSize: '0.85rem', color: '#555', marginBottom: 8 }}>
+                  Location: {currentUser.location}
+                </div>
+              )}
+              <div style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+                <span style={{
+                  display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+                  background: currentUser.isAdmin ? '#e8f5e9' : '#f5f5f5',
+                  color: currentUser.isAdmin ? '#2e7d32' : '#666',
+                  fontSize: '0.8rem', fontWeight: 500,
+                }}>
+                  {currentUser.isAdmin ? 'Admin' : 'User'}
+                </span>
+              </div>
+              <button
+                className="btn btn-secondary btn-block"
+                style={{ fontSize: '0.85rem' }}
+                onClick={() => { setShowPopup(false); navigate('profile'); }}
+              >
+                View full profile
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

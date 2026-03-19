@@ -12,14 +12,14 @@ import * as ReactDom from 'react-dom';
 import { Version } from '@microsoft/sp-core-library';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
-import DexEventPlatform from './components/DexEventPlatform';
+import DexEventPlatform, { IDexEventPlatformProps } from './components/DexEventPlatform';
 
 export default class DexEventPlatformWebPart extends BaseClientSideWebPart<{}> {
 
   public render(): void {
-    const element: React.ReactElement = React.createElement(
+    const element: React.ReactElement<IDexEventPlatformProps> = React.createElement(
       DexEventPlatform,
-      {}
+      { context: this.context }
     );
 
     ReactDom.render(element, this.domElement);
