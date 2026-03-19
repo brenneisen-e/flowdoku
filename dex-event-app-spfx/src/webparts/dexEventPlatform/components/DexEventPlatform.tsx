@@ -13,6 +13,7 @@ import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
 import { EventProvider } from '../context/EventContext';
 import { UserProvider } from '../context/UserContext';
+import { RoleProvider } from '../context/RoleContext';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -69,11 +70,13 @@ export default function DexEventPlatform(props: IDexEventPlatformProps): React.R
   return (
     <div className={styles.dexApp}>
       <UserProvider context={props.context}>
-        <NavigationProvider>
-          <EventProvider>
-            <AppContent />
-          </EventProvider>
-        </NavigationProvider>
+        <RoleProvider context={props.context}>
+          <NavigationProvider>
+            <EventProvider>
+              <AppContent />
+            </EventProvider>
+          </NavigationProvider>
+        </RoleProvider>
       </UserProvider>
     </div>
   );

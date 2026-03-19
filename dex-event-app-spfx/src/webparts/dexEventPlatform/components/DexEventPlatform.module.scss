@@ -51,11 +51,11 @@
   }
 
   :global {
-    /* Layout */
+    /* Layout - Fullscreen */
     .app-layout {
       display: flex;
       flex-direction: column;
-      min-height: 600px;
+      min-height: calc(100vh - 40px);
     }
 
     /* Header */
@@ -73,7 +73,7 @@
     }
 
     .header-left { display: flex; align-items: center; gap: 16px; }
-    .header-logo { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; color: var(--dex-black); }
+    .header-logo { font-size: clamp(1.2rem, 2vw, 1.6rem); font-weight: 700; letter-spacing: -0.5px; color: var(--dex-black); }
     .header-logo span { color: var(--dex-green); }
     .header-title { font-size: 1rem; font-weight: 400; color: var(--dex-gray-600); padding-left: 16px; border-left: 1px solid var(--dex-gray-300); }
     .header-right { display: flex; align-items: center; gap: 16px; }
@@ -194,23 +194,45 @@
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
 
     /* ========== Landing Page ========== */
-    .landing { display: flex; flex-direction: column; min-height: 600px; }
+    .landing { display: flex; flex-direction: column; min-height: calc(100vh - var(--dex-header-height) - 40px); }
     .landing__hero {
       flex: 1; display: flex; flex-direction: column; align-items: center;
-      justify-content: center; padding: 64px 32px; gap: 32px; background: var(--dex-gray-100);
+      justify-content: center; padding: 48px 32px; gap: clamp(24px, 4vh, 40px); background: var(--dex-gray-100);
     }
     .landing__orb {
-      width: 180px; height: 180px; border-radius: 50%;
-      background: conic-gradient(from 180deg, #00bcd4, #2196f3 60deg, #4caf50 120deg, #8bc34a 180deg, #ffeb3b 240deg, #ff9800 300deg, #00bcd4 360deg);
+      width: clamp(140px, 20vw, 220px); height: clamp(140px, 20vw, 220px); border-radius: 50%;
+      background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
       display: flex; align-items: center; justify-content: center;
-      animation: orbSpin 20s linear infinite;
+      animation: orbSpin 8s linear infinite, orbPulse 4s ease-in-out infinite, orbGlow 6s ease-in-out infinite;
+      filter: blur(0px);
+      position: relative;
     }
-    .landing__orb-inner { width: 120px; height: 120px; border-radius: 50%; background: var(--dex-gray-100); }
+    .landing__orb::before {
+      content: '';
+      position: absolute; inset: -8px; border-radius: 50%;
+      background: conic-gradient(from 180deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
+      animation: orbSpin 12s linear infinite reverse;
+      opacity: 0.3;
+      filter: blur(12px);
+      z-index: -1;
+    }
+    .landing__orb-inner {
+      width: 65%; height: 65%; border-radius: 50%; background: var(--dex-gray-100);
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
+    }
     @keyframes orbSpin { to { transform: rotate(360deg); } }
+    @keyframes orbPulse {
+      0%, 100% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(180deg) scale(1.06); }
+    }
+    @keyframes orbGlow {
+      0%, 100% { filter: drop-shadow(0 0 8px rgba(134, 188, 37, 0.3)); }
+      50% { filter: drop-shadow(0 0 24px rgba(0, 118, 168, 0.5)); }
+    }
     .landing__text { text-align: center; max-width: 640px; }
-    .landing__text h1 { font-size: 1.5rem; font-weight: 400; color: var(--dex-gray-800); margin-bottom: 8px; }
+    .landing__text h1 { font-size: clamp(1.2rem, 2.5vw, 1.8rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 8px; }
     .landing__text h1 strong { font-weight: 700; }
-    .landing__text p { color: var(--dex-gray-600); font-size: 1.05rem; }
+    .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.9rem, 1.5vw, 1.1rem); }
     .landing__hero .btn { max-width: 480px; }
 
     /* ========== Start Page ========== */
@@ -288,7 +310,8 @@
     }
 
     /* ========== Settings ========== */
-    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; }
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .settings-grid > .card:nth-child(n+3) { grid-column: 1 / -1; }
     .settings-info__row {
       display: flex; justify-content: space-between; padding: 10px 0;
       border-bottom: 1px solid var(--dex-gray-200); font-size: 0.9rem;

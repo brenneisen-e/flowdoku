@@ -12,6 +12,7 @@ export const currentUser: User = {
   surname: 'Brenneisen',
   email: 'ebrenneisen@deloitte.de',
   isAdmin: true,
+  role: 'SuperAdmin',
   location: 'Düsseldorf',
 };
 
