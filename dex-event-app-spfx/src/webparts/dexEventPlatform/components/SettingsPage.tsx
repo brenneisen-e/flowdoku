@@ -15,7 +15,7 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isSuperAdmin, canCreateEvents,
-    addRole, updateRole, removeRole, isRolesLoading, siteUrl,
+    addRole, updateRole, removeRole, isRolesLoading, siteUrl, searchUser,
   } = useRoles();
   // Formular-State fuer neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
@@ -25,6 +25,35 @@ export default function SettingsPage(): React.ReactElement {
   const [isAdding, setIsAdding] = React.useState(false);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState('');
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [userFound, setUserFound] = React.useState<boolean | null>(null);
+  const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Email-Eingabe: User automatisch in M365 suchen (mit Debounce)
+  const handleEmailChange = (email: string): void => {
+    setNewEmail(email);
+    setUserFound(null);
+    setNewName('');
+    setNewLocation('');
+
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+
+    // Nur suchen wenn es wie eine vollstaendige Email aussieht
+    if (email.includes('@') && email.includes('.') && email.length > 5) {
+      searchTimer.current = setTimeout(async () => {
+        setIsSearching(true);
+        const result = await searchUser(email);
+        if (result) {
+          setNewName(result.displayName);
+          setNewLocation(result.location);
+          setUserFound(true);
+        } else {
+          setUserFound(false);
+        }
+        setIsSearching(false);
+      }, 600);
+    }
+  };
 
   const handleAddRole = async (): Promise<void> => {
     if (!newEmail || !newName) return;
@@ -216,43 +245,58 @@ export default function SettingsPage(): React.ReactElement {
                 borderRadius: 'var(--dex-radius, 8px)', border: '1px solid var(--dex-gray-200, #eee)',
               }}>
                 <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>Assign New Role</h4>
+                {/* Email zuerst – sucht automatisch den User */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
+                    Email <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="form-input"
+                      type="email"
+                      value={newEmail}
+                      onChange={e => handleEmailChange(e.target.value)}
+                      placeholder="mmustermann@deloitte.de"
+                      style={{
+                        fontSize: '0.85rem',
+                        borderColor: userFound === true ? 'var(--dex-green)' : userFound === false ? 'var(--dex-red)' : undefined,
+                      }}
+                      autoFocus
+                    />
+                    {isSearching && (
+                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                        Suche...
+                      </span>
+                    )}
+                  </div>
+                  {userFound === true && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-green-dark)', marginTop: 4, display: 'block' }}>
+                      Gefunden: {newName}{newLocation ? ` (${newLocation})` : ''}
+                    </span>
+                  )}
+                  {userFound === false && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-red)', marginTop: 4, display: 'block' }}>
+                      User nicht in Microsoft 365 gefunden. Name manuell eingeben.
+                    </span>
+                  )}
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
-                      Name <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
+                      Name {userFound !== true && <span style={{ color: 'var(--dex-danger, red)' }}>*</span>}
                     </label>
                     <input
                       className="form-input"
                       value={newName}
                       onChange={e => setNewName(e.target.value)}
-                      placeholder="Max Mustermann"
-                      style={{ fontSize: '0.85rem' }}
+                      placeholder={userFound === true ? '' : 'Max Mustermann'}
+                      style={{
+                        fontSize: '0.85rem',
+                        background: userFound === true ? 'var(--dex-gray-100)' : undefined,
+                      }}
+                      readOnly={userFound === true}
                     />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
-                      Email <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
-                    </label>
-                    <input
-                      className="form-input"
-                      type="email"
-                      value={newEmail}
-                      onChange={e => setNewEmail(e.target.value)}
-                      placeholder="mmustermann@deloitte.de"
-                      style={{ fontSize: '0.85rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Role</label>
-                    <select
-                      className="form-select"
-                      value={newRole}
-                      onChange={e => setNewRole(e.target.value as UserRole)}
-                      style={{ fontSize: '0.85rem' }}
-                    >
-                      <option value="EventAdmin">EventAdmin</option>
-                      <option value="SuperAdmin">SuperAdmin</option>
-                    </select>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Location</label>
@@ -260,15 +304,33 @@ export default function SettingsPage(): React.ReactElement {
                       className="form-input"
                       value={newLocation}
                       onChange={e => setNewLocation(e.target.value)}
-                      placeholder="Duesseldorf"
-                      style={{ fontSize: '0.85rem' }}
+                      placeholder={userFound === true ? '' : 'Duesseldorf'}
+                      style={{
+                        fontSize: '0.85rem',
+                        background: userFound === true ? 'var(--dex-gray-100)' : undefined,
+                      }}
+                      readOnly={userFound === true}
                     />
                   </div>
                 </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Role</label>
+                  <select
+                    className="form-select"
+                    value={newRole}
+                    onChange={e => setNewRole(e.target.value as UserRole)}
+                    style={{ fontSize: '0.85rem', maxWidth: 200 }}
+                  >
+                    <option value="EventAdmin">EventAdmin</option>
+                    <option value="SuperAdmin">SuperAdmin</option>
+                  </select>
+                </div>
+
                 <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
                   <button
                     className="btn btn-secondary"
-                    onClick={() => { setShowAddForm(false); setNewEmail(''); setNewName(''); setNewLocation(''); }}
+                    onClick={() => { setShowAddForm(false); setNewEmail(''); setNewName(''); setNewLocation(''); setUserFound(null); }}
                     style={{ fontSize: '0.85rem' }}
                   >
                     Cancel

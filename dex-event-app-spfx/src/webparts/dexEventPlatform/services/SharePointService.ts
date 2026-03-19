@@ -407,6 +407,51 @@ export class SharePointService {
   }
 
   /**
+   * User per E-Mail in Microsoft 365 suchen.
+   * Gibt Name und Standort zurueck falls gefunden.
+   */
+  public async searchUserByEmail(email: string): Promise<{
+    displayName: string;
+    location: string;
+  } | null> {
+    try {
+      // Ueber SharePoint People API suchen
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'&$select=DisplayName,UserProfileProperties`,
+        SPHttpClient.configurations.v1
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.DisplayName) {
+          let location = '';
+          if (data.UserProfileProperties) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const officeProp = data.UserProfileProperties.find((p: any) =>
+              p.Key === 'Office' || p.Key === 'SPS-Location'
+            );
+            if (officeProp) location = officeProp.Value || '';
+          }
+          return { displayName: data.DisplayName, location };
+        }
+      }
+
+      // Fallback: ueber siteusers suchen
+      const fallback = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Title`,
+        SPHttpClient.configurations.v1
+      );
+      if (fallback.ok) {
+        const fbData = await fallback.json();
+        if (fbData.Title) {
+          return { displayName: fbData.Title, location: '' };
+        }
+      }
+    } catch { /* User nicht gefunden */ }
+    return null;
+  }
+
+  /**
    * Hilfsmethode fuer POST-Requests
    */
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {

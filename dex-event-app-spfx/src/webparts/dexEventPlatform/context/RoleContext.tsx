@@ -24,6 +24,7 @@ interface RoleContextType {
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
   refreshRoles: () => Promise<void>;
+  searchUser: (email: string) => Promise<{ displayName: string; location: string } | null>;
 }
 
 const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
@@ -155,6 +156,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return success;
   }
 
+  async function searchUser(email: string): Promise<{ displayName: string; location: string } | null> {
+    return spService.searchUserByEmail(email);
+  }
+
   const isSuperAdmin = currentUserRole === 'SuperAdmin';
   const isEventAdmin = currentUserRole === 'EventAdmin' || currentUserRole === 'SuperAdmin';
   const canCreateEvents = isEventAdmin;
@@ -166,7 +171,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       value: {
         roles, currentUserRole, isRolesLoading,
         isSuperAdmin, isEventAdmin, canCreateEvents, siteUrl,
-        addRole, updateRole, removeRole, refreshRoles,
+        addRole, updateRole, removeRole, refreshRoles, searchUser,
       },
     },
     props.children
