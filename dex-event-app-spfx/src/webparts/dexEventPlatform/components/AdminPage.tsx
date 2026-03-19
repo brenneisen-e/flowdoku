@@ -37,7 +37,7 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getAllRegistrations } = useEvents();
+  const { events, getAllRegistrations, getRegistrationListUrl } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isSuperAdmin, siteUrl } = useRoles();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
@@ -61,25 +61,26 @@ export default function AdminPage(): React.ReactElement {
     setIsLoadingRegs(false);
   };
 
-  // Teilnehmerlisten-URL aus regListMap ableiten
-  const getRegListUrl = (event: DeloitteEvent): string => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = (window as any).__dexSpfxContext;
-    const base = ctx ? ctx.pageContext.web.absoluteUrl : siteUrl;
-    // Event-ID nutzen um den Listennamen zu finden
-    // Der Listenname ist in der SPEvent gespeichert, hier nutzen wir die events aus dem Context
-    return `${base}/Lists`;
-  };
-
   if (!selectedEvent) {
     // Event-Auswahl
     return (
       <div className="page-container">
         <div className="flex-between mb-16">
           <h2>Admin / Organizer</h2>
-          <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
-            <Plus size={16} /> Neues Event erstellen
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a
+              href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+              style={{ textDecoration: 'none', fontSize: '0.85rem' }}
+            >
+              <FileText size={16} /> SharePoint Events-Liste
+            </a>
+            <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
+              <Plus size={16} /> Neues Event erstellen
+            </button>
+          </div>
         </div>
 
         {adminEvents.length === 0 ? (
@@ -189,13 +190,22 @@ export default function AdminPage(): React.ReactElement {
               <Plus size={16} /> Neues Event erstellen
             </button>
             <a
-              href={`${siteUrl}/Lists`}
+              href={getRegistrationListUrl(selectedEvent.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
               <FileText size={16} /> Teilnehmerliste in SharePoint öffnen
+            </a>
+            <a
+              href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary btn-block"
+              style={{ textDecoration: 'none', textAlign: 'center' }}
+            >
+              <FileText size={16} /> Events-Liste in SharePoint öffnen
             </a>
           </div>
         </div>

@@ -22,6 +22,7 @@ interface EventContextType {
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   refreshEvents: () => Promise<void>;
+  getRegistrationListUrl: (eventId: string) => string;
 }
 
 export interface CreateEventInput {
@@ -223,6 +224,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await loadEvents();
   }
 
+  function getRegistrationListUrl(eventId: string): string {
+    const regListName = regListMap.current[eventId];
+    const base = props.context.pageContext.web.absoluteUrl;
+    if (regListName) {
+      return `${base}/Lists/${regListName}/AllItems.aspx`;
+    }
+    return `${base}/Lists`;
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -230,6 +240,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
         getMyRegistration, getAllRegistrations, refreshEvents,
+        getRegistrationListUrl,
       },
     },
     props.children
