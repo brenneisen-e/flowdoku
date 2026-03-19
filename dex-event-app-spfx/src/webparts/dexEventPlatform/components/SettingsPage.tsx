@@ -17,7 +17,7 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isSuperAdmin, canCreateEvents,
-    addRole, updateRole, removeRole, isRolesLoading,
+    addRole, updateRole, removeRole, isRolesLoading, siteUrl,
   } = useRoles();
   const [copied, setCopied] = React.useState(false);
 
@@ -142,6 +142,15 @@ export default function SettingsPage(): React.ReactElement {
             <h3 className="mb-16">Role Management</h3>
             <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 16 }}>
               Manage who can create events. Roles are stored in the SharePoint list "DEX_Roles".
+              {' '}
+              <a
+                href={`${siteUrl}/Lists/DEX_Roles/AllItems.aspx`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 600, textDecoration: 'underline' }}
+              >
+                Open SharePoint List
+              </a>
             </p>
 
             {statusMsg && (
