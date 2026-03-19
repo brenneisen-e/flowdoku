@@ -106,7 +106,7 @@ export default function MyEventsPage(): React.ReactElement {
 
       {activeEntries.length === 0 && cancelledEntries.length === 0 && (
         <div className="card text-center" style={{ padding: 48 }}>
-          <p style={{ color: 'var(--dex-gray-400)' }}>Du bist noch fuer kein Event registriert.</p>
+          <p style={{ color: 'var(--dex-gray-400)' }}>Du bist noch für kein Event registriert.</p>
           <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>Events durchsuchen</button>
         </div>
       )}
@@ -156,7 +156,7 @@ export default function MyEventsPage(): React.ReactElement {
                     style={{ fontSize: '0.85rem' }}
                   >
                     {cancellingId === event.id
-                      ? (isCancelling ? 'Wird abgemeldet...' : 'Abmeldung bestaetigen')
+                      ? (isCancelling ? 'Wird abgemeldet...' : 'Abmeldung bestätigen')
                       : 'Abmelden'}
                   </button>
                   {cancellingId === event.id && !isCancelling && (

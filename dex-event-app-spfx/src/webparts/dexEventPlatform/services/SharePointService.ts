@@ -427,10 +427,16 @@ export class SharePointService {
           let location = '';
           if (data.UserProfileProperties) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const officeProp = data.UserProfileProperties.find((p: any) =>
-              p.Key === 'Office' || p.Key === 'SPS-Location'
-            );
-            if (officeProp) location = officeProp.Value || '';
+            // Versuche verschiedene Properties für den Standort
+            const locationKeys = ['Office', 'SPS-Location', 'SPS-City', 'City'];
+            for (const key of locationKeys) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const prop = data.UserProfileProperties.find((p: any) => p.Key === key);
+              if (prop && prop.Value) {
+                location = prop.Value;
+                break;
+              }
+            }
           }
           return { displayName: data.DisplayName, location };
         }
@@ -488,15 +494,27 @@ export class SharePointService {
       const results = JSON.parse(resultsStr);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return results
+      const mapped = results
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((r: any) => r.EntityData?.Email)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((r: any) => ({
           email: r.EntityData.Email || '',
           displayName: r.DisplayText || r.EntityData.Title || '',
-          location: r.EntityData.Department || '',
+          location: '', // Wird per User Profile nachgeladen
         }));
+
+      // Location per User Profile nachladen (Office-Standort)
+      for (const user of mapped) {
+        try {
+          const profile = await this.searchUserByEmail(user.email);
+          if (profile && profile.location) {
+            user.location = profile.location;
+          }
+        } catch { /* ignore */ }
+      }
+
+      return mapped;
     } catch {
       return [];
     }
