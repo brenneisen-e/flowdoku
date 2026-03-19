@@ -15,9 +15,9 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isSuperAdmin, canCreateEvents,
-    addRole, updateRole, removeRole, isRolesLoading, siteUrl, searchUser,
+    addRole, updateRole, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
-  // Formular-State fuer neue Rolle
+  // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
   const [newRole, setNewRole] = React.useState<UserRole>('EventAdmin');
@@ -27,32 +27,38 @@ export default function SettingsPage(): React.ReactElement {
   const [statusMsg, setStatusMsg] = React.useState('');
   const [isSearching, setIsSearching] = React.useState(false);
   const [userFound, setUserFound] = React.useState<boolean | null>(null);
+  const [suggestions, setSuggestions] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
   const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Email-Eingabe: User automatisch in M365 suchen (mit Debounce)
-  const handleEmailChange = (email: string): void => {
-    setNewEmail(email);
+  // Email-Eingabe: User-Autocomplete mit Debounce
+  const handleEmailChange = (query: string): void => {
+    setNewEmail(query);
     setUserFound(null);
-    setNewName('');
-    setNewLocation('');
 
     if (searchTimer.current) clearTimeout(searchTimer.current);
 
-    // Nur suchen wenn es wie eine vollstaendige Email aussieht
-    if (email.includes('@') && email.includes('.') && email.length > 5) {
+    if (query.length >= 2) {
       searchTimer.current = setTimeout(async () => {
         setIsSearching(true);
-        const result = await searchUser(email);
-        if (result) {
-          setNewName(result.displayName);
-          setNewLocation(result.location);
-          setUserFound(true);
-        } else {
-          setUserFound(false);
-        }
+        const results = await searchUsers(query);
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
         setIsSearching(false);
-      }, 600);
+      }, 400);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
     }
+  };
+
+  const selectSuggestion = (suggestion: { email: string; displayName: string; location: string }): void => {
+    setNewEmail(suggestion.email);
+    setNewName(suggestion.displayName);
+    setNewLocation(suggestion.location);
+    setUserFound(true);
+    setShowSuggestions(false);
+    setSuggestions([]);
   };
 
   const handleAddRole = async (): Promise<void> => {
@@ -245,7 +251,7 @@ export default function SettingsPage(): React.ReactElement {
                 borderRadius: 'var(--dex-radius, 8px)', border: '1px solid var(--dex-gray-200, #eee)',
               }}>
                 <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>Assign New Role</h4>
-                {/* Email zuerst – sucht automatisch den User */}
+                {/* Email mit Autocomplete */}
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
                     Email <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
@@ -253,30 +259,52 @@ export default function SettingsPage(): React.ReactElement {
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input"
-                      type="email"
                       value={newEmail}
                       onChange={e => handleEmailChange(e.target.value)}
-                      placeholder="mmustermann@deloitte.de"
+                      onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      placeholder="Name oder Email eingeben..."
                       style={{
                         fontSize: '0.85rem',
-                        borderColor: userFound === true ? 'var(--dex-green)' : userFound === false ? 'var(--dex-red)' : undefined,
+                        borderColor: userFound === true ? 'var(--dex-green)' : undefined,
                       }}
                       autoFocus
+                      autoComplete="off"
                     />
                     {isSearching && (
                       <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
                         Suche...
                       </span>
                     )}
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                        background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)',
+                        boxShadow: 'var(--dex-shadow-hover)', maxHeight: 240, overflowY: 'auto',
+                      }}>
+                        {suggestions.map((s, i) => (
+                          <div
+                            key={i}
+                            onMouseDown={() => selectSuggestion(s)}
+                            style={{
+                              padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--dex-gray-100)',
+                              fontSize: '0.85rem',
+                            }}
+                            onMouseEnter={e => { (e.target as HTMLDivElement).style.background = 'var(--dex-gray-100)'; }}
+                            onMouseLeave={e => { (e.target as HTMLDivElement).style.background = '#fff'; }}
+                          >
+                            <div style={{ fontWeight: 600 }}>{s.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>
+                              {s.email}{s.location ? ` · ${s.location}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {userFound === true && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--dex-green-dark)', marginTop: 4, display: 'block' }}>
                       Gefunden: {newName}{newLocation ? ` (${newLocation})` : ''}
-                    </span>
-                  )}
-                  {userFound === false && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-red)', marginTop: 4, display: 'block' }}>
-                      User nicht in Microsoft 365 gefunden. Name manuell eingeben.
                     </span>
                   )}
                 </div>
@@ -304,7 +332,7 @@ export default function SettingsPage(): React.ReactElement {
                       className="form-input"
                       value={newLocation}
                       onChange={e => setNewLocation(e.target.value)}
-                      placeholder={userFound === true ? '' : 'Duesseldorf'}
+                      placeholder={userFound === true ? '' : 'Düsseldorf'}
                       style={{
                         fontSize: '0.85rem',
                         background: userFound === true ? 'var(--dex-gray-100)' : undefined,

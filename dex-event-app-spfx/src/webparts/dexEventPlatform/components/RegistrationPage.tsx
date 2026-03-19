@@ -68,8 +68,8 @@ export default function RegistrationPage(): React.ReactElement {
           <h2>{isFull ? 'Auf die Warteliste gesetzt' : 'Registrierung erfolgreich!'}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             {isFull
-              ? `Du wurdest auf die Warteliste fuer "${event.title}" gesetzt. Du wirst benachrichtigt, sobald ein Platz frei wird.`
-              : `Du wurdest erfolgreich fuer "${event.title}" registriert. Eine Bestaetigung wurde an ${email} gesendet.`}
+              ? `Du wurdest auf die Warteliste für "${event.title}" gesetzt. Du wirst benachrichtigt, sobald ein Platz frei wird.`
+              : `Du wurdest erfolgreich für "${event.title}" registriert. Eine Bestätigung wurde an ${email} gesendet.`}
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
