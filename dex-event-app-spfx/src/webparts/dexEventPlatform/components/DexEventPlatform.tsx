@@ -23,6 +23,7 @@ import MyEventsPage from './MyEventsPage';
 import EventCreationPage from './EventCreationPage';
 import SettingsPage from './SettingsPage';
 import ProfilePage from './ProfilePage';
+import AdminPage from './AdminPage';
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -97,6 +98,8 @@ function AppContent(): React.ReactElement {
         return <EventCreationPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'admin':
+        return <AdminPage />;
       case 'profile':
         return <ProfilePage />;
       default:

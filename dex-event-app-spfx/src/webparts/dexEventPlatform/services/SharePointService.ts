@@ -207,6 +207,47 @@ export class SharePointService {
   }
 
   /**
+   * Einem Admin Full Control auf die DEX_Events-Liste geben.
+   */
+  public async grantFullControlOnEventsList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      // Full Control = 1073741829
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+        {}
+      );
+    } catch {
+      // Berechtigung konnte nicht gesetzt werden
+    }
+  }
+
+  /**
+   * Einem User die Berechtigung auf die DEX_Events-Liste entziehen.
+   */
+  public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      const headers: HeadersInit = {
+        'Accept': 'application/json;odata=verbose',
+        'X-HTTP-Method': 'DELETE',
+      };
+
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/getbyprincipalid(${userId})`,
+        SPHttpClient.configurations.v1,
+        { headers }
+      );
+    } catch {
+      // Ignorieren
+    }
+  }
+
+  /**
    * Einem User die Berechtigung auf die Rollen-Liste entziehen.
    */
   public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
