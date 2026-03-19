@@ -19,6 +19,7 @@ interface RoleContextType {
   isSuperAdmin: boolean;
   isEventAdmin: boolean;
   canCreateEvents: boolean;
+  siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
@@ -132,13 +133,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const isSuperAdmin = currentUserRole === 'SuperAdmin';
   const isEventAdmin = currentUserRole === 'EventAdmin' || currentUserRole === 'SuperAdmin';
   const canCreateEvents = isEventAdmin;
+  const siteUrl = props.context.pageContext.web.absoluteUrl;
 
   return React.createElement(
     RoleContext.Provider,
     {
       value: {
         roles, currentUserRole, isRolesLoading,
-        isSuperAdmin, isEventAdmin, canCreateEvents,
+        isSuperAdmin, isEventAdmin, canCreateEvents, siteUrl,
         addRole, updateRole, removeRole, refreshRoles,
       },
     },

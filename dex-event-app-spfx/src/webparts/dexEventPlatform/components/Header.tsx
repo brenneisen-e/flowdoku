@@ -9,14 +9,15 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
+import { useRoles } from '../context/RoleContext';
 import { ChevronLeft, Settings, Mail } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack } = useNavigation();
   const { currentUser } = useCurrentUser();
+  const { currentUserRole, isSuperAdmin } = useRoles();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
-  const isStart = currentPage === 'start';
 
   // Titel-Mapping je nach aktuellem Seitenstatus
   const getTitle = (): string => {
@@ -31,6 +32,14 @@ export default function Header(): React.ReactElement {
       default: return '';
     }
   };
+
+  // Rollen-Farbe
+  const roleColors: Record<string, { bg: string; color: string }> = {
+    'SuperAdmin': { bg: '#e8f5e9', color: '#2e7d32' },
+    'EventAdmin': { bg: '#e3f2fd', color: '#1565c0' },
+    'User': { bg: '#f5f5f5', color: '#666' },
+  };
+  const rc = roleColors[currentUserRole] || roleColors['User'];
 
   return (
     <header className="header">
@@ -56,8 +65,13 @@ export default function Header(): React.ReactElement {
             <Mail size={20} />
           </button>
         )}
-        {!isLanding && !isStart && (
-          <button className="header-icon-btn" onClick={() => navigate('settings')}>
+        {!isLanding && (
+          <button
+            className="header-icon-btn"
+            onClick={() => navigate('settings')}
+            title="Settings"
+            style={currentPage === 'settings' ? { background: 'var(--dex-gray-200)' } : {}}
+          >
             <Settings size={20} />
           </button>
         )}
@@ -100,20 +114,30 @@ export default function Header(): React.ReactElement {
               <div style={{ fontSize: '0.85rem', marginBottom: 16 }}>
                 <span style={{
                   display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                  background: currentUser.isAdmin ? '#e8f5e9' : '#f5f5f5',
-                  color: currentUser.isAdmin ? '#2e7d32' : '#666',
+                  background: rc.bg, color: rc.color,
                   fontSize: '0.8rem', fontWeight: 500,
                 }}>
-                  {currentUser.isAdmin ? 'Admin' : 'User'}
+                  {currentUserRole}
                 </span>
               </div>
-              <button
-                className="btn btn-secondary btn-block"
-                style={{ fontSize: '0.85rem' }}
-                onClick={() => { setShowPopup(false); navigate('profile'); }}
-              >
-                View full profile
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  className="btn btn-secondary btn-block"
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => { setShowPopup(false); navigate('profile'); }}
+                >
+                  View full profile
+                </button>
+                {isSuperAdmin && (
+                  <button
+                    className="btn btn-primary btn-block"
+                    style={{ fontSize: '0.85rem' }}
+                    onClick={() => { setShowPopup(false); navigate('settings'); }}
+                  >
+                    <Settings size={14} /> Role Management
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
