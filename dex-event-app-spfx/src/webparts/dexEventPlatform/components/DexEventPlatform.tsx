@@ -96,7 +96,7 @@ export default function DexEventPlatform(props: IDexEventPlatformProps): React.R
       <UserProvider context={props.context}>
         <RoleProvider context={props.context}>
           <NavigationProvider>
-            <EventProvider>
+            <EventProvider context={props.context}>
               <AppContent />
             </EventProvider>
           </NavigationProvider>

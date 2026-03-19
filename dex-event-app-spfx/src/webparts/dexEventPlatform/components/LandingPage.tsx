@@ -23,7 +23,7 @@ export default function LandingPage(): React.ReactElement {
           Start
         </button>
       </div>
-      <footer className="footer-disclaimer" style={{ position: 'relative' }}>
+      <footer className="footer-disclaimer" style={{ flexShrink: 0, position: 'relative' }}>
         <p>
           The Event Experience Platform is a new solution for managing participants at Deloitte
           events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The
@@ -35,7 +35,7 @@ export default function LandingPage(): React.ReactElement {
           in touch with us!
         </p>
         <span style={{
-          position: 'absolute', bottom: 8, right: 16,
+          position: 'absolute', bottom: 6, right: 16,
           fontSize: '0.7rem', color: 'var(--dex-gray-400, #a0a0a0)',
         }}>
           v{APP_VERSION}

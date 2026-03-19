@@ -1,17 +1,22 @@
 /**
- * Meine Events - zeigt alle Registrierungen des aktuellen Users.
- * Aufgeteilt in aktive und stornierte Registrierungen.
- *
- * TODO: Registrierungen ueber den EventContext verwalten
+ * Meine Events - zeigt alle Events fuer die der User registriert ist.
+ * Laedt Registrierungen aus den jeweiligen Teilnehmerlisten.
+ * Ermoeglicht Abmeldung mit Zwei-Schritt-Bestaetigung.
  */
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { myRegistrations } from '../data/mockData';
-import { Registration } from '../types';
+import { DeloitteEvent } from '../types';
+import { SPRegistration } from '../services/EventService';
+
+interface MyEventEntry {
+  event: DeloitteEvent;
+  registration: SPRegistration;
+}
 
 function formatDate(iso: string): string {
+  if (!iso) return '-';
   return new Date(iso).toLocaleDateString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
@@ -27,80 +32,136 @@ function getStatusBadgeClass(status: string): string {
   }
 }
 
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case 'Registered': return 'Angemeldet';
+    case 'Waitlist': return 'Warteliste';
+    case 'Cancelled': return 'Abgemeldet';
+    case 'Checked-In': return 'Eingecheckt';
+    default: return status;
+  }
+}
+
 export default function MyEventsPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events } = useEvents();
-  const [registrations, setRegistrations] = React.useState<Registration[]>(myRegistrations);
+  const { events, getMyRegistration, cancelRegistration } = useEvents();
+  const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = React.useState(false);
 
-  // Zwei-Schritt-Stornierung
-  const handleCancel = (regId: string): void => {
-    if (cancellingId === regId) {
-      setRegistrations(prev =>
-        prev.map(r =>
-          r.id === regId ? { ...r, status: 'Cancelled' as const, cancellationDate: new Date().toISOString() } : r
-        )
-      );
+  React.useEffect(() => {
+    loadMyRegistrations();
+  }, [events]);
+
+  async function loadMyRegistrations(): Promise<void> {
+    setIsLoading(true);
+    const entries: MyEventEntry[] = [];
+
+    for (const event of events) {
+      try {
+        const reg = await getMyRegistration(event.id);
+        if (reg) {
+          entries.push({ event, registration: reg });
+        }
+      } catch {
+        // Kein Zugriff auf diese Teilnehmerliste
+      }
+    }
+
+    setMyEvents(entries);
+    setIsLoading(false);
+  }
+
+  const handleCancel = async (eventId: string): Promise<void> => {
+    if (cancellingId === eventId) {
+      // Zweiter Klick = Bestaetigung
+      setIsCancelling(true);
+      const success = await cancelRegistration(eventId);
+      if (success) {
+        // Registrierung neu laden
+        await loadMyRegistrations();
+      }
       setCancellingId(null);
+      setIsCancelling(false);
     } else {
-      setCancellingId(regId);
+      setCancellingId(eventId);
     }
   };
 
-  const activeRegs = registrations.filter(r => r.status !== 'Cancelled');
-  const cancelledRegs = registrations.filter(r => r.status === 'Cancelled');
+  const activeEntries = myEvents.filter(e => e.registration.Status !== 'Cancelled');
+  const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Cancelled');
+
+  if (isLoading) {
+    return (
+      <div className="page-container text-center">
+        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>Lade deine Registrierungen...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
-      <h2 className="mb-16">My Registrations</h2>
+      <h2 className="mb-16">Meine Events</h2>
 
-      {activeRegs.length === 0 && cancelledRegs.length === 0 && (
+      {activeEntries.length === 0 && cancelledEntries.length === 0 && (
         <div className="card text-center" style={{ padding: 48 }}>
-          <p style={{ color: 'var(--dex-gray-400)' }}>You are not registered for any events yet.</p>
-          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>Browse Events</button>
+          <p style={{ color: 'var(--dex-gray-400)' }}>Du bist noch fuer kein Event registriert.</p>
+          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>Events durchsuchen</button>
         </div>
       )}
 
-      {activeRegs.length > 0 && (
+      {activeEntries.length > 0 && (
         <div className="my-events-list">
-          {activeRegs.map(reg => {
-            const event = events.find(e => e.id === reg.eventId);
+          {activeEntries.map(({ event, registration }) => {
+            // Custom Data parsen
+            let customData: Record<string, string> = {};
+            try {
+              if (registration.CustomData) customData = JSON.parse(registration.CustomData);
+            } catch { /* */ }
+
             return (
-              <div key={reg.id} className="card my-event-card">
+              <div key={event.id} className="card my-event-card">
                 <div className="my-event-card__header">
-                  <h3>{reg.eventTitle}</h3>
-                  <span className={`badge ${getStatusBadgeClass(reg.status)}`}>{reg.status}</span>
+                  <h3>{event.title}</h3>
+                  <span className={`badge ${getStatusBadgeClass(registration.Status)}`}>
+                    {getStatusLabel(registration.Status)}
+                  </span>
                 </div>
-                {event && (
-                  <div className="my-event-card__details">
-                    <p><strong>Location:</strong> {event.location}</p>
-                    <p><strong>Date:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
-                    <p><strong>Registered on:</strong> {formatDate(reg.registrationDate)}</p>
-                    {reg.status === 'Waitlist' && reg.waitlistPosition && (
-                      <p className="text-red"><strong>Waitlist position:</strong> {reg.waitlistPosition}</p>
-                    )}
-                  </div>
-                )}
-                {Object.keys(reg.eventSpecificData).length > 0 && (
+
+                <div className="my-event-card__details">
+                  <p><strong>Ort:</strong> {event.location || '-'}</p>
+                  <p><strong>Datum:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
+                  <p><strong>Angemeldet am:</strong> {formatDate(registration.RegistrationDate)}</p>
+                  {registration.Title && (
+                    <p><strong>Teilnehmer-Nr.:</strong> {registration.Title}</p>
+                  )}
+                </div>
+
+                {Object.keys(customData).length > 0 && (
                   <div className="my-event-card__specific">
-                    {Object.keys(reg.eventSpecificData).map(key => (
+                    {Object.keys(customData).map(key => (
                       <span key={key} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
-                        {key}: {reg.eventSpecificData[key]}
+                        {key}: {customData[key]}
                       </span>
                     ))}
                   </div>
                 )}
+
                 <div className="my-event-card__actions">
                   <button
-                    className={`btn ${cancellingId === reg.id ? 'btn-danger' : 'btn-secondary'}`}
-                    onClick={() => handleCancel(reg.id)}
+                    className={`btn ${cancellingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
+                    onClick={() => handleCancel(event.id)}
+                    disabled={isCancelling}
                     style={{ fontSize: '0.85rem' }}
                   >
-                    {cancellingId === reg.id ? 'Confirm Cancellation' : 'Cancel Registration'}
+                    {cancellingId === event.id
+                      ? (isCancelling ? 'Wird abgemeldet...' : 'Abmeldung bestaetigen')
+                      : 'Abmelden'}
                   </button>
-                  {cancellingId === reg.id && (
+                  {cancellingId === event.id && !isCancelling && (
                     <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
-                      Keep Registration
+                      Anmeldung behalten
                     </button>
                   )}
                 </div>
@@ -110,18 +171,18 @@ export default function MyEventsPage(): React.ReactElement {
         </div>
       )}
 
-      {cancelledRegs.length > 0 && (
+      {cancelledEntries.length > 0 && (
         <div>
-          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>Cancelled Registrations</h3>
+          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>Abgemeldete Events</h3>
           <div className="my-events-list">
-            {cancelledRegs.map(reg => (
-              <div key={reg.id} className="card my-event-card" style={{ opacity: 0.6 }}>
+            {cancelledEntries.map(({ event, registration }) => (
+              <div key={event.id} className="card my-event-card" style={{ opacity: 0.6 }}>
                 <div className="my-event-card__header">
-                  <h3>{reg.eventTitle}</h3>
-                  <span className="badge badge-red">Cancelled</span>
+                  <h3>{event.title}</h3>
+                  <span className="badge badge-red">Abgemeldet</span>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
-                  Cancelled on: {reg.cancellationDate ? formatDate(reg.cancellationDate) : 'N/A'}
+                  Abgemeldet am: {registration.CancellationDate ? formatDate(registration.CancellationDate) : '-'}
                 </p>
               </div>
             ))}

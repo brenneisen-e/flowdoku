@@ -21,24 +21,10 @@ const PROFILE_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'Department', label: 'Abteilung' },
   { key: 'SPS-Department', label: 'Bereich' },
   { key: 'Office', label: 'Standort' },
-  { key: 'SPS-Location', label: 'Standort (SP)' },
   { key: 'WorkEmail', label: 'E-Mail' },
   { key: 'WorkPhone', label: 'Telefon' },
   { key: 'CellPhone', label: 'Mobiltelefon' },
   { key: 'Manager', label: 'Manager' },
-  { key: 'SPS-JobTitle', label: 'Jobtitel' },
-  { key: 'SPS-Company', label: 'Unternehmen' },
-  { key: 'SPS-School', label: 'Ausbildung' },
-  { key: 'SPS-Skills', label: 'Kenntnisse' },
-  { key: 'SPS-Responsibility', label: 'Verantwortungsbereich' },
-  { key: 'SPS-SipAddress', label: 'SIP-Adresse' },
-  { key: 'AccountName', label: 'Account' },
-  { key: 'UserName', label: 'Login' },
-  { key: 'PreferredName', label: 'Anzeigename' },
-  { key: 'SPS-TimeZone', label: 'Zeitzone' },
-  { key: 'SPS-Locale', label: 'Sprache' },
-  { key: 'SPS-HireDate', label: 'Eintrittsdatum' },
-  { key: 'SPS-Birthday', label: 'Geburtstag' },
 ];
 
 interface ProfileData {
@@ -100,36 +86,6 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           const prop = allProps.find(p => p.Key === field.key);
           if (prop && prop.Value && prop.Value.trim()) {
             mapped.push({ key: field.key, label: field.label, value: prop.Value });
-          }
-        }
-
-        // Zusaetzliche Properties die nicht in PROFILE_FIELDS sind aber einen Wert haben
-        const knownKeys = new Set(PROFILE_FIELDS.map(f => f.key));
-        const ignoredKeys = new Set([
-          'SID', 'ADGuid', 'msOnline-ObjectId', 'SPS-PersonalSiteCapabilities',
-          'SPS-PersonalSiteInstantiationState', 'SPS-ProxyAddresses', 'SPS-DistinguishedName',
-          'SPS-Source', 'SPS-ClaimID', 'SPS-ClaimProviderID', 'SPS-ClaimProviderType',
-          'SPS-SavedAccountName', 'SPS-ResourceAccountName', 'SPS-ObjectExists',
-          'SPS-MasterAccountName', 'SPS-UserPrincipalName', 'SPS-PersonalSiteFirstCreationError',
-          'SPS-PersonalSiteLastCreationTime', 'SPS-PersonalSiteFirstCreationTime',
-          'SPS-PersonalSiteNumberOfRetries', 'SPS-ContentLanguages', 'SPS-FeedIdentifier',
-          'SPS-RegionalSettings-FollowWeb', 'SPS-HashTags', 'SPS-MUILanguages',
-          'SPS-MySiteUpgrade', 'SPS-DontSuggestList', 'SPS-PeopleKeywords',
-          'SPS-RecipientTypeDetails', 'SPS-RegionalSettings-Initialized',
-          'SPS-ResourceSID', 'SPS-AdjustHijriDays', 'SPS-AltCalendarType',
-          'SPS-CalendarType', 'SPS-ShowWeeks', 'SPS-WorkDayEndHour',
-          'SPS-WorkDayStartHour', 'SPS-WorkDays', 'SPS-Time24', 'SPS-FirstDayOfWeek',
-          'SPS-FirstWeekOfYear', 'SPS-EmailOptin', 'SPS-OWAUrl',
-          'SPS-SavedSID', 'SPS-StatusNotes', 'SPS-Dotted-line',
-          'SPS-PastProjects', 'SPS-Interests', 'SPS-PhoneticDisplayName',
-          'SPS-PhoneticFirstName', 'SPS-PhoneticLastName', 'PublicSiteRedirect',
-          'SPS-DataSource', 'QuickLinks', 'SPS-PrivacyActivity', 'SPS-PrivacyPeople',
-          'UserProfile_GUID',
-        ]);
-
-        for (const prop of allProps) {
-          if (!knownKeys.has(prop.Key) && !ignoredKeys.has(prop.Key) && prop.Value && prop.Value.trim()) {
-            mapped.push({ key: prop.Key, label: prop.Key, value: prop.Value });
           }
         }
 
