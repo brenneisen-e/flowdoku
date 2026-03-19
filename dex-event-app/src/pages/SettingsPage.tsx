@@ -1,14 +1,24 @@
+/**
+ * Settings-Seite
+ *
+ * Zeigt User-Infos und Admin-Aktionen.
+ * Ausserdem gibt es hier den Link zum ZIP-Download fuer die Offline-Version.
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { currentUser } from '../data/mockData';
 import { Plus, FileText, Users, Download, Copy, Check } from 'lucide-react';
 
+// GitHub ZIP-Download Link - muss manuell im neuen Tab geoeffnet werden,
+// weil die App in einem Sandbox-iframe laeuft (Cloudflare Pages)
 const DOWNLOAD_URL = 'https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
+  // Link in die Zwischenablage kopieren (mit Fallback fuer aeltere Browser)
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(DOWNLOAD_URL);
@@ -27,6 +37,7 @@ export default function SettingsPage() {
   return (
     <div className="page-container">
       <div className="settings-grid">
+
         {/* User Info */}
         <div className="card">
           <h3 className="mb-16">User Information</h3>
@@ -52,7 +63,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Admin Actions */}
+        {/* Admin-Bereich */}
         {currentUser.isAdmin && (
           <div className="card">
             <h3 className="mb-16">Admin Actions</h3>
@@ -69,7 +80,8 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
-        {/* Download App */}
+
+        {/* Download fuer Offline-Nutzung */}
         <div className="card">
           <h3 className="mb-16">Offline Version</h3>
           <p style={{ color: 'var(--dex-gray-600)', fontSize: '0.9rem', marginBottom: 16 }}>

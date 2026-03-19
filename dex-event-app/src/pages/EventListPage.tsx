@@ -1,3 +1,10 @@
+/**
+ * Event-Uebersicht
+ *
+ * Zeigt alle verfuegbaren Events als Karten an.
+ * Mit Toggle kann man zwischen "nur aktive" und "alle" Events wechseln.
+ */
+
 import { useState } from 'react';
 import { useEvents } from '../context/EventContext';
 import EventCard from '../components/EventCard';

@@ -1,3 +1,5 @@
+// Landing Page - Startbildschirm mit animiertem Orb und Willkommensnachricht
+
 import { useNavigate } from 'react-router-dom';
 
 export default function LandingPage() {

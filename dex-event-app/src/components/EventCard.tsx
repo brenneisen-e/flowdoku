@@ -1,7 +1,15 @@
+/**
+ * Event-Karte fuer die Uebersichtsseite
+ *
+ * Zeigt Gradient-Hintergrund, Event-Infos und freie Plaetze.
+ * Die Gradient-Farben rotieren basierend auf dem Index.
+ */
+
 import { useNavigate } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import type { DeloitteEvent } from '../types';
 
+// Deutsches Datumsformat
 function formatDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString('de-DE', {
@@ -11,6 +19,8 @@ function formatDate(iso: string) {
   }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+// 4 verschiedene Farbverlaeufe, rotieren durch
+// type wird aktuell nicht genutzt, koennte man spaeter fuer typspezifische Farben verwenden
 function getEventGradient(_type: string, index: number) {
   const gradients = [
     'linear-gradient(135deg, #0a2e1a 0%, #1a6b3c 40%, #00ff88 100%)',

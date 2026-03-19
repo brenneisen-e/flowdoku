@@ -1,3 +1,13 @@
+/**
+ * Meine Events - zeigt alle Registrierungen des aktuellen Users.
+ *
+ * Aufgeteilt in aktive und stornierte Registrierungen.
+ * Stornierung hat einen 2-Klick-Mechanismus (erst "Cancel", dann "Confirm").
+ *
+ * TODO: Registrierungen auch ueber den EventContext verwalten,
+ *       damit neue Anmeldungen hier automatisch auftauchen.
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { myRegistrations } from '../data/mockData';
@@ -30,6 +40,7 @@ export default function MyEventsPage() {
   const [registrations, setRegistrations] = useState<Registration[]>(myRegistrations);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  // Zwei-Schritt-Stornierung: erster Klick zeigt Confirm, zweiter storniert
   const handleCancel = (regId: string) => {
     if (cancellingId === regId) {
       setRegistrations((prev) =>

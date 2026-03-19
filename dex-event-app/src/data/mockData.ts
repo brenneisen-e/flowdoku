@@ -1,5 +1,15 @@
+/**
+ * Mock-Daten fuer die DEX Event Platform
+ *
+ * Spaeter soll das hier durch echte API-Calls ersetzt werden.
+ * Erstmal reicht das aber fuer den Prototyp / die Demo.
+ *
+ * - Eike
+ */
+
 import type { DeloitteEvent, Registration, User } from '../types';
 
+// Aktuell hardcoded, spaeter ueber Auth/SSO
 export const currentUser: User = {
   id: 'u1',
   firstName: 'Eike',
@@ -51,7 +61,7 @@ export const events: DeloitteEvent[] = [
     description:
       'The annual JP Morgan Corporate Challenge in Frankfurt. Run 5.6km through the heart of the city with your Deloitte colleagues!',
     maxParticipants: 50,
-    currentParticipants: 50,
+    currentParticipants: 50, // voll - alle neuen kommen auf Warteliste
     waitlistCount: 11,
     imageUrl: '/images/jpmorgan.jpg',
     eventSpecificFields: [
@@ -128,7 +138,7 @@ export const events: DeloitteEvent[] = [
     id: 'e5',
     title: 'Deloitte Summer Party 2026',
     type: 'Other',
-    status: 'Under Construction',
+    status: 'Under Construction', // noch nicht freigegeben
     organizers: ['HR Team'],
     location: 'Berlin - Roof Garden',
     locationAudience: ['Berlin'],
@@ -157,6 +167,7 @@ export const events: DeloitteEvent[] = [
   },
 ];
 
+// Test-Registrierungen fuer die Demo
 export const myRegistrations: Registration[] = [
   {
     id: 'r1',

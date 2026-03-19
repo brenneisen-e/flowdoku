@@ -1,3 +1,15 @@
+/**
+ * Registrierungsseite fuer ein einzelnes Event
+ *
+ * Drei-Spalten-Layout:
+ *  - Links: Event-Info
+ *  - Mitte: persoenliche Daten
+ *  - Rechts: eventspezifische Felder (T-Shirt, etc.)
+ *
+ * TODO: Registrierung tatsaechlich in den State/Backend speichern
+ * TODO: "Register for someone else" besser testen
+ */
+
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Info, Trash2, Send } from 'lucide-react';
@@ -5,6 +17,7 @@ import { currentUser } from '../data/mockData';
 import { useEvents } from '../context/EventContext';
 import type { Salutation } from '../types';
 
+// Deutsches Datumsformat
 function formatDate(iso: string) {
   const d = new Date(iso);
   return (
@@ -42,6 +55,7 @@ export default function RegistrationPage() {
   const isFull = event.currentParticipants >= event.maxParticipants;
 
   const handleSubmit = () => {
+    // TODO: hier spaeter die Registrierung an die API schicken
     setSubmitted(true);
   };
 
@@ -54,18 +68,16 @@ export default function RegistrationPage() {
     setRegisterForOther(false);
   };
 
+  // Bestaetigung nach Registrierung
   if (submitted) {
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: 16 }}>
-            {isFull ? '⏳' : '✅'}
-          </div>
-          <h2>{isFull ? 'Added to Waitlist' : 'Registration Successful!'}</h2>
+          <h2>{isFull ? 'Auf die Warteliste gesetzt' : 'Registrierung erfolgreich!'}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             {isFull
-              ? `You have been added to the waiting list for "${event.title}". You will be notified if a spot becomes available.`
-              : `You have been successfully registered for "${event.title}". A confirmation email has been sent to ${email}.`}
+              ? `Du wurdest auf die Warteliste fuer "${event.title}" gesetzt. Du wirst benachrichtigt, sobald ein Platz frei wird.`
+              : `Du wurdest erfolgreich fuer "${event.title}" registriert. Eine Bestaetigung wurde an ${email} gesendet.`}
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('/my-events')}>
@@ -83,7 +95,7 @@ export default function RegistrationPage() {
   return (
     <div className="page-container">
       <div className="registration-layout">
-        {/* Left: Selected Event */}
+        {/* Event-Info links */}
         <div className="registration-event">
           <div className="section-header section-header--red">Selected Event</div>
           <div className="registration-event__card">
@@ -114,7 +126,7 @@ export default function RegistrationPage() {
           </div>
         </div>
 
-        {/* Center: Personal Information */}
+        {/* Persoenliche Daten */}
         <div className="registration-form">
           <div className="section-header">Personal Information</div>
           <div style={{ padding: '24px 20px' }}>
@@ -192,7 +204,7 @@ export default function RegistrationPage() {
           </div>
         </div>
 
-        {/* Right: Event specific */}
+        {/* Eventspezifische Felder (z.B. T-Shirt Groesse) */}
         <div className="registration-specific">
           <div className="section-header">Event specific Information</div>
           <div style={{ padding: '24px 20px' }}>
@@ -244,7 +256,7 @@ export default function RegistrationPage() {
         </div>
       </div>
 
-      {/* Disclaimer */}
+      {/* Datenschutz-Hinweis */}
       <div className="footer-disclaimer mt-24" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
         <p>
           As part of the event {event.title}, audio, image, and video recordings will be made for
@@ -256,7 +268,7 @@ export default function RegistrationPage() {
         </p>
       </div>
 
-      {/* Action buttons */}
+      {/* Buttons */}
       <div className="registration-actions mt-24">
         <button className="btn btn-danger" onClick={handleClear}>
           <Trash2 size={16} /> Delete

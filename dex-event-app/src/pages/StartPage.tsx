@@ -1,3 +1,5 @@
+// Start-Seite - Navigation zu Registration und My Events
+
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Pin } from 'lucide-react';
 
