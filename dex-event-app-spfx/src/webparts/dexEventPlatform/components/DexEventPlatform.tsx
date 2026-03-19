@@ -36,7 +36,33 @@ function AppContent(): React.ReactElement {
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {
-    const overflowTargets: HTMLElement[] = [];
+    // Style-Tag injizieren mit !important - SP kann das nicht überschreiben
+    const styleEl = document.createElement('style');
+    styleEl.id = 'dex-no-scroll';
+    styleEl.textContent = `
+      html, body,
+      .SPPageChrome,
+      .sp-App-root,
+      .CanvasZone,
+      .CanvasSection,
+      .ControlZone,
+      .ControlZone--control,
+      [class*="canvasWrapper"],
+      [class*="webPartContainer"],
+      [data-automation-id="CanvasControl"],
+      [data-automation-id="CanvasSection"],
+      [data-automation-id="CanvasZone"],
+      #spPageCanvasContent,
+      #workbenchPageContent,
+      .SPCanvas-canvas,
+      .Canvas-slideUpIn,
+      div[class*="pageContent"],
+      div[class*="mainContent"] {
+        overflow: hidden !important;
+        overflow-y: hidden !important;
+      }
+    `;
+    document.head.appendChild(styleEl);
 
     function setHeight(): void {
       if (layoutRef.current) {
@@ -46,38 +72,17 @@ function AppContent(): React.ReactElement {
       }
     }
 
-    // SharePoint-Container finden und overflow unterdrücken
-    function suppressSpScroll(): void {
-      if (!layoutRef.current) return;
-      let el: HTMLElement | null = layoutRef.current.parentElement;
-      while (el && el !== document.body) {
-        const style = window.getComputedStyle(el);
-        if (style.overflowY === 'scroll' || style.overflowY === 'auto') {
-          el.style.overflowY = 'hidden';
-          overflowTargets.push(el);
-        }
-        el = el.parentElement;
-      }
-      // Auch den Body und HTML absichern
-      document.documentElement.style.overflowY = 'hidden';
-      document.body.style.overflowY = 'hidden';
-    }
-
     setHeight();
-    suppressSpScroll();
     window.addEventListener('resize', setHeight);
-    // Nochmal nach Verzögerung (SP lädt Header nach)
-    const timer = setTimeout(() => { setHeight(); suppressSpScroll(); }, 500);
-    const timer2 = setTimeout(() => { setHeight(); suppressSpScroll(); }, 1500);
+    const timer = setTimeout(setHeight, 500);
+    const timer2 = setTimeout(setHeight, 1500);
 
     return () => {
       window.removeEventListener('resize', setHeight);
       clearTimeout(timer);
       clearTimeout(timer2);
-      // Overflow wiederherstellen beim Unmount
-      overflowTargets.forEach(el => { el.style.overflowY = ''; });
-      document.documentElement.style.overflowY = '';
-      document.body.style.overflowY = '';
+      const el = document.getElementById('dex-no-scroll');
+      if (el) el.remove();
     };
   }, []);
 
