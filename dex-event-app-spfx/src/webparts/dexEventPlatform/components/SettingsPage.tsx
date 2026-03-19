@@ -8,9 +8,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { UserRole } from '../types';
-import { Plus, FileText, Users, Download, Copy, Check, Trash2 } from './Icons';
-
-const DOWNLOAD_URL = 'https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip';
+import { Plus, FileText, Users, Trash2 } from './Icons';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -19,8 +17,6 @@ export default function SettingsPage(): React.ReactElement {
     roles, currentUserRole, isSuperAdmin, canCreateEvents,
     addRole, updateRole, removeRole, isRolesLoading, siteUrl,
   } = useRoles();
-  const [copied, setCopied] = React.useState(false);
-
   // Formular-State fuer neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
@@ -29,21 +25,6 @@ export default function SettingsPage(): React.ReactElement {
   const [isAdding, setIsAdding] = React.useState(false);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState('');
-
-  const handleCopyLink = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(DOWNLOAD_URL);
-    } catch {
-      const input = document.createElement('input');
-      input.value = DOWNLOAD_URL;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const handleAddRole = async (): Promise<void> => {
     if (!newEmail || !newName) return;
@@ -306,24 +287,6 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         )}
 
-        {/* Offline Version */}
-        <div className="card">
-          <h3 className="mb-16">Offline Version</h3>
-          <p style={{ color: 'var(--dex-gray-600)', fontSize: '0.9rem', marginBottom: 16 }}>
-            Copy the download link below and open it in a new browser tab to download the app as ZIP.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', padding: '10px 12px', fontSize: '0.85rem', wordBreak: 'break-all' as any }}>
-            <Download size={16} />
-            <span style={{ flex: 1, color: 'var(--dex-gray-800)', userSelect: 'all' }}>{DOWNLOAD_URL}</span>
-            <button className="btn btn-primary" onClick={handleCopyLink} style={{ flexShrink: 0, padding: '6px 12px', fontSize: '0.8rem' }}>
-              {copied ? <span><Check size={14} /> Copied!</span> : <span><Copy size={14} /> Copy Link</span>}
-            </button>
-          </div>
-          <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem', marginTop: 12 }}>
-            After downloading, extract the ZIP, open a terminal in the <code>dex-event-app</code> folder,
-            and run <code>npm install &amp;&amp; npm run dev</code>.
-          </p>
-        </div>
       </div>
     </div>
   );
