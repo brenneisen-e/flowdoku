@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"
@@ -11,7 +11,7 @@
     "clean": "gulp clean",
     "test": "gulp test",
     "bundle": "gulp bundle --ship",
-    "package": "gulp bundle --ship && gulp package-solution --ship"
+    "package": "node scripts/bump-version.js && gulp bundle --ship && gulp package-solution --ship"
   },
   "dependencies": {
     "@microsoft/eslint-config-spfx": "^1.22.2",
