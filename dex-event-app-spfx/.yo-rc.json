@@ -1,0 +1,13 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "solutionName": "dex-event-platform",
+    "solutionShortDescription": "DEX Event Experience Platform",
+    "environment": "spo",
+    "packageManager": "npm",
+    "isCreatingSolution": true,
+    "componentType": "webpart",
+    "framework": "react",
+    "componentName": "DexEventPlatform",
+    "componentDescription": "Deloitte Event Management Platform"
+  }
+}
