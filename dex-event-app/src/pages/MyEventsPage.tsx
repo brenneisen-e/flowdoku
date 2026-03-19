@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { myRegistrations } from '../data/mockData';
-import { events } from '../data/mockData';
+import { useEvents } from '../context/EventContext';
 import type { Registration } from '../types';
 
 function formatDate(iso: string) {
@@ -26,6 +26,7 @@ function getStatusBadgeClass(status: string) {
 
 export default function MyEventsPage() {
   const navigate = useNavigate();
+  const { events } = useEvents();
   const [registrations, setRegistrations] = useState<Registration[]>(myRegistrations);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 

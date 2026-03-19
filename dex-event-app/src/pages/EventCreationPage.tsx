@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, Send, Plus, X } from 'lucide-react';
 import type { EventType } from '../types';
+import { useEvents } from '../context/EventContext';
 
 interface CustomField {
   id: string;
@@ -13,6 +14,7 @@ interface CustomField {
 
 export default function EventCreationPage() {
   const navigate = useNavigate();
+  const { addEvent } = useEvents();
   const [title, setTitle] = useState('');
   const [organizers, setOrganizers] = useState('');
   const [location, setLocation] = useState('');
@@ -219,7 +221,32 @@ export default function EventCreationPage() {
         <button
           className="btn btn-primary"
           disabled={!title || !description}
-          onClick={() => setSubmitted(true)}
+          onClick={() => {
+            addEvent({
+              id: `e-${Date.now()}`,
+              title,
+              type: eventType,
+              status: 'Active',
+              organizers: organizers.split(',').map((o) => o.trim()).filter(Boolean),
+              location,
+              locationAudience,
+              startDate,
+              endDate,
+              registrationDeadline,
+              description,
+              maxParticipants: Number(maxParticipants) || 50,
+              currentParticipants: 0,
+              waitlistCount: 0,
+              eventSpecificFields: customFields.map((f) => ({
+                id: f.id,
+                label: f.label,
+                type: f.type,
+                required: f.required,
+                ...(f.type === 'select' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
+              })),
+            });
+            setSubmitted(true);
+          }}
           style={{ opacity: !title || !description ? 0.5 : 1 }}
         >
           <Send size={16} /> Submit

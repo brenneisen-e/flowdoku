@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Info, Trash2, Send } from 'lucide-react';
-import { events, currentUser } from '../data/mockData';
+import { currentUser } from '../data/mockData';
+import { useEvents } from '../context/EventContext';
 import type { Salutation } from '../types';
 
 function formatDate(iso: string) {
@@ -16,6 +17,7 @@ function formatDate(iso: string) {
 export default function RegistrationPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { events } = useEvents();
   const event = events.find((e) => e.id === eventId);
 
   const [salutation, setSalutation] = useState<Salutation | ''>('');
