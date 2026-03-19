@@ -1,77 +1,108 @@
 /**
- * Event-Erstellung (nur fuer Admins)
+ * Event-Erstellung (nur fuer EventAdmin / SuperAdmin)
  *
- * TODO: Validierung verbessern (Enddatum nach Startdatum etc.)
- * TODO: Bildupload fuer Event-Header
+ * Erstellt ein Event in der DEX_Events-Liste und eine
+ * separate Teilnehmerliste mit Item-Level Permissions.
  */
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
+import { useCurrentUser } from '../context/UserContext';
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X } from './Icons';
 
-interface CustomField {
+interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select';
+  type: 'text' | 'select' | 'number' | 'checkbox';
   required: boolean;
   options: string;
+  visible: boolean;
 }
 
 export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack } = useNavigation();
-  const { addEvent } = useEvents();
+  const { createEvent } = useEvents();
+  const { currentUser } = useCurrentUser();
   const [title, setTitle] = React.useState('');
-  const [organizers, setOrganizers] = React.useState('');
+  const [organizer, setOrganizer] = React.useState(
+    `${currentUser.firstName} ${currentUser.surname}`
+  );
   const [location, setLocation] = React.useState('');
-  const [locationAudience, setLocationAudience] = React.useState<string[]>([]);
-  const [mailAudience, setMailAudience] = React.useState('');
+  const [locationFilter, setLocationFilter] = React.useState('');
+  const [audience, setAudience] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [eventType, setEventType] = React.useState<EventType>('Other');
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
   const [registrationDeadline, setRegistrationDeadline] = React.useState('');
+  const [lastDeregisterDate, setLastDeregisterDate] = React.useState('');
   const [maxParticipants, setMaxParticipants] = React.useState('');
-  const [customFields, setCustomFields] = React.useState<CustomField[]>([]);
+  const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
+  const [eventImageUrl, setEventImageUrl] = React.useState('');
+  const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>([]);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
 
   const addCustomField = (): void => {
-    setCustomFields([...customFields, { id: `cf-${Date.now()}`, label: '', type: 'text', required: false, options: '' }]);
+    setCustomFields([...customFields, {
+      id: `cf-${Date.now()}`, label: '', type: 'text',
+      required: false, options: '', visible: true,
+    }]);
   };
 
   const removeCustomField = (id: string): void => {
     setCustomFields(customFields.filter(f => f.id !== id));
   };
 
-  const updateCustomField = (id: string, updates: Partial<CustomField>): void => {
+  const updateCustomField = (id: string, updates: Partial<CustomFieldInput>): void => {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
-  const handleSubmit = (): void => {
-    addEvent({
-      id: `e-${Date.now()}`,
+  const handleSubmit = async (): Promise<void> => {
+    if (!title || !description) return;
+    setIsSubmitting(true);
+    setError('');
+
+    const eventId = await createEvent({
       title,
       type: eventType,
       status: 'Active',
-      organizers: organizers.split(',').map(o => o.trim()).filter(Boolean),
-      location,
-      locationAudience,
-      startDate,
-      endDate,
-      registrationDeadline,
       description,
-      maxParticipants: Number(maxParticipants) || 50,
-      currentParticipants: 0,
-      waitlistCount: 0,
-      eventSpecificFields: customFields.map(f => ({
-        id: f.id, label: f.label, type: f.type, required: f.required,
+      location,
+      locationFilter,
+      audience,
+      startDate: startDate ? new Date(startDate).toISOString() : '',
+      endDate: endDate ? new Date(endDate).toISOString() : '',
+      registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
+      lastDeregisterDate: lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : '',
+      maxParticipants: Number(maxParticipants) || 0,
+      waitlistEnabled,
+      eventImageUrl,
+      organizer,
+      organizerEmail: currentUser.email,
+      outlookEventId: '',
+      customFields: customFields.map(f => ({
+        id: f.id,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        visible: f.visible,
         ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
       })),
     });
-    setSubmitted(true);
+
+    setIsSubmitting(false);
+
+    if (eventId) {
+      setSubmitted(true);
+    } else {
+      setError('Event konnte nicht erstellt werden. Bitte versuche es erneut.');
+    }
   };
 
   if (submitted) {
@@ -80,11 +111,11 @@ export default function EventCreationPage(): React.ReactElement {
         <div className="card" style={{ padding: '64px 32px' }}>
           <h2>Event erfolgreich erstellt!</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            "{title}" wurde angelegt. Eine Bestaetigungsmail wurde an den/die Organisator(en) gesendet.
+            "{title}" wurde angelegt. Die Teilnehmerliste wurde auf SharePoint erstellt.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
-            <button className="btn btn-primary" onClick={() => navigate('register')}>View Events</button>
-            <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Create Another</button>
+            <button className="btn btn-primary" onClick={() => navigate('register')}>Events anzeigen</button>
+            <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Weiteres Event erstellen</button>
           </div>
         </div>
       </div>
@@ -95,44 +126,51 @@ export default function EventCreationPage(): React.ReactElement {
     <div className="page-container">
       <div className="card">
         <div className="creation-form">
+          {error && (
+            <div style={{ padding: '10px 16px', background: '#fce4ec', color: '#c62828', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem' }}>
+              {error}
+            </div>
+          )}
+
           <div className="form-group">
-            <label className="form-label"><span className="required">*</span> Event Title</label>
+            <label className="form-label"><span className="required">*</span> Event Titel</label>
             <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} />
           </div>
 
           <div className="form-group">
-            <label className="form-label"><span className="required">*</span> Event Type</label>
+            <label className="form-label"><span className="required">*</span> Event Typ</label>
             <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
-              <option value="Other">Other Deloitte Event</option>
+              <option value="Other">Sonstiges Deloitte Event</option>
               <option value="B2Run">B2Run</option>
               <option value="JPMorgan">JP Morgan Run</option>
             </select>
           </div>
 
           <div className="form-group">
-            <label className="form-label"><span className="required">*</span> Organizer of Event | Multiple persons possible</label>
-            <input className="form-input" value={organizers} onChange={e => setOrganizers(e.target.value)} placeholder="Please select" />
+            <label className="form-label"><span className="required">*</span> Organisator</label>
+            <input className="form-input" value={organizer} onChange={e => setOrganizer(e.target.value)} />
           </div>
 
           <div className="form-group">
-            <label className="form-label">Location of Event</label>
+            <label className="form-label">Veranstaltungsort</label>
             <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} />
           </div>
 
           <div className="form-group">
             <label className="form-label">
-              Location Audience
-              <span className="info-icon" title="Select which office locations can see and register for this event" style={{ marginLeft: 8 }}>i</span>
+              Standort-Filter
+              <span className="info-icon" title="Welche Standorte sollen das Event sehen und sich registrieren koennen?" style={{ marginLeft: 8 }}>i</span>
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {locationOptions.map(loc => (
                 <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.9rem' }}>
                   <input
                     type="checkbox"
-                    checked={locationAudience.indexOf(loc) >= 0}
+                    checked={locationFilter.split(',').map(s => s.trim()).indexOf(loc) >= 0}
                     onChange={e => {
-                      if (e.target.checked) setLocationAudience([...locationAudience, loc]);
-                      else setLocationAudience(locationAudience.filter(l => l !== loc));
+                      const current = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
+                      if (e.target.checked) setLocationFilter([...current, loc].join(', '));
+                      else setLocationFilter(current.filter(l => l !== loc).join(', '));
                     }}
                   />
                   {loc}
@@ -142,61 +180,82 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
 
           <div className="form-group">
-            <label className="form-label">
-              Mail Audience
-              <span className="info-icon" title="Enter email addresses to notify specific users about this event" style={{ marginLeft: 8 }}>i</span>
-            </label>
-            <input className="form-input" value={mailAudience} onChange={e => setMailAudience(e.target.value)} placeholder="Add Users" />
+            <label className="form-label">Audience / Zielgruppe</label>
+            <input className="form-input" value={audience} onChange={e => setAudience(e.target.value)} placeholder="z.B. Technology & Transformation, All" />
           </div>
 
           <div className="form-group">
-            <label className="form-label"><span className="required">*</span> Event description</label>
-            <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 150 }} />
+            <label className="form-label"><span className="required">*</span> Beschreibung</label>
+            <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Event-Bild URL</label>
+            <input className="form-input" value={eventImageUrl} onChange={e => setEventImageUrl(e.target.value)} placeholder="https://..." />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> Start Date & Time</label>
+              <label className="form-label"><span className="required">*</span> Startdatum</label>
               <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> End Date & Time</label>
+              <label className="form-label"><span className="required">*</span> Enddatum</label>
               <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> Registration Deadline</label>
+              <label className="form-label">Anmelde-Deadline</label>
               <input className="form-input" type="datetime-local" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
             </div>
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> Max Participants</label>
-              <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} />
+              <label className="form-label">Letzte Abmeldemöglichkeit</label>
+              <input className="form-input" type="datetime-local" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="form-group">
+              <label className="form-label">Max. Teilnehmer</label>
+              <input className="form-input" type="number" min={0} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="0 = unbegrenzt" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Warteliste</label>
+              <div className="toggle-wrapper" style={{ marginTop: 8 }}>
+                <label className="toggle">
+                  <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
+                  <span className="toggle-slider" />
+                </label>
+                <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? 'Aktiviert' : 'Deaktiviert'}</span>
+              </div>
             </div>
           </div>
 
           {/* Dynamische Felder */}
           <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 24, marginTop: 8 }}>
             <div className="flex-between mb-16">
-              <label className="form-label" style={{ marginBottom: 0 }}>Event-specific Registration Fields</label>
+              <label className="form-label" style={{ marginBottom: 0 }}>Zusaetzliche Registrierungsfelder</label>
               <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                <Plus size={14} /> Add Field
+                <Plus size={14} /> Feld hinzufuegen
               </button>
             </div>
             {customFields.map(field => (
               <div key={field.id} className="custom-field-row">
-                <input className="form-input" placeholder="Field Label" value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
-                <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as 'text' | 'select' })} style={{ flex: 1 }}>
+                <input className="form-input" placeholder="Feldname" value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
+                <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1 }}>
                   <option value="text">Text</option>
                   <option value="select">Dropdown</option>
+                  <option value="number">Zahl</option>
+                  <option value="checkbox">Checkbox</option>
                 </select>
                 {field.type === 'select' && (
-                  <input className="form-input" placeholder="Options (comma-separated)" value={field.options} onChange={e => updateCustomField(field.id, { options: e.target.value })} style={{ flex: 2 }} />
+                  <input className="form-input" placeholder="Optionen (kommasepariert)" value={field.options} onChange={e => updateCustomField(field.id, { options: e.target.value })} style={{ flex: 2 }} />
                 )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                   <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
-                  Required
+                  Pflicht
                 </label>
                 <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4 }}>
                   <X size={18} />
@@ -208,9 +267,14 @@ export default function EventCreationPage(): React.ReactElement {
       </div>
 
       <div className="registration-actions mt-24">
-        <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Loeschen</button>
-        <button className="btn btn-primary" disabled={!title || !description} onClick={handleSubmit} style={{ opacity: !title || !description ? 0.5 : 1 }}>
-          <Send size={16} /> Submit
+        <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
+        <button
+          className="btn btn-primary"
+          disabled={!title || !description || isSubmitting}
+          onClick={handleSubmit}
+          style={{ opacity: !title || !description || isSubmitting ? 0.5 : 1 }}
+        >
+          <Send size={16} /> {isSubmitting ? 'Wird erstellt...' : 'Event erstellen'}
         </button>
       </div>
     </div>
