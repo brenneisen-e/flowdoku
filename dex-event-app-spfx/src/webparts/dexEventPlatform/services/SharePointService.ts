@@ -177,6 +177,15 @@ export class SharePointService {
           {}
         );
       }
+
+      // 3. Aktuellen User individuell berechtigen (falls nicht in Owners-Gruppe)
+      const currentUserId = await this.getUserIdByEmail(this.context.pageContext.user.email);
+      if (currentUserId) {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${currentUserId}, roledefid=1073741829)`,
+          {}
+        );
+      }
     } catch {
       // Berechtigungen konnten nicht gesetzt werden
     }
