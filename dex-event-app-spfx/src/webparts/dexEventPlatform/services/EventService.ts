@@ -71,7 +71,10 @@ export class EventService {
     const listName = 'DEX_Events';
     const exists = await this.listExists(listName);
     if (exists) {
-      // Bestehende Liste: Default View + Permissions sicherstellen
+      // Bestehende Liste: fehlende Spalten nachtraeglich hinzufuegen
+      await this.ensureMissingFields(listName);
+
+      // Default View aktualisieren
       await this.configureDefaultView(listName, [
         'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
@@ -147,6 +150,69 @@ export class EventService {
 
     // Berechtigungen: Vererbung aufheben, Owners Full Control, Members Read
     await this.setEventsListPermissions(listName);
+  }
+
+  /**
+   * Fehlende Spalten auf einer bestehenden DEX_Events-Liste nachtraeglich hinzufuegen.
+   * Prüft welche Spalten existieren und legt fehlende an.
+   */
+  private async ensureMissingFields(listName: string): Promise<void> {
+    const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'EventStatus', type: 6, choices: ['Under Construction', 'Active', 'Completed', 'Cancelled'], metaType: 'SP.FieldChoice' },
+      { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
+      { title: 'Description', type: 3 },
+      { title: 'Location', type: 2 },
+      { title: 'LocationFilter', type: 2 },
+      { title: 'Audience', type: 2 },
+      { title: 'StartDate', type: 4 },
+      { title: 'EndDate', type: 4 },
+      { title: 'RegistrationDeadline', type: 4 },
+      { title: 'LastDeregisterDate', type: 4 },
+      { title: 'MaxParticipants', type: 9 },
+      { title: 'WaitlistEnabled', type: 8 },
+      { title: 'EventImageUrl', type: 2 },
+      { title: 'Organizer', type: 2 },
+      { title: 'OrganizerEmail', type: 2 },
+      { title: 'OutlookEventId', type: 2 },
+      { title: 'CustomFields', type: 3 },
+      { title: 'RegistrationListName', type: 2 },
+      { title: 'RegistrationListUrl', type: 2 },
+    ];
+
+    try {
+      // Existierende Felder laden
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return;
+
+      const data = await response.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existingFields = new Set((data.value || []).map((f: any) => f.InternalName));
+
+      for (const f of requiredFields) {
+        if (!existingFields.has(f.title)) {
+          console.log('[DEX] Fehlende Spalte nachtraeglich hinzufuegen:', f.title);
+          const payload: Record<string, unknown> = {
+            '__metadata': { 'type': f.metaType || 'SP.Field' },
+            'Title': f.title,
+            'FieldTypeKind': f.type,
+            'Required': false,
+          };
+          if (f.choices) {
+            payload['Choices'] = { 'results': f.choices };
+          }
+          try {
+            await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+          } catch {
+            console.warn('[DEX] Konnte Spalte nicht hinzufuegen:', f.title);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DEX] ensureMissingFields Error:', e);
+    }
   }
 
   /**

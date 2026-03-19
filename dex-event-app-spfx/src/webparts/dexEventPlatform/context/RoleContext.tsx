@@ -117,12 +117,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   ): Promise<boolean> {
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
-      // SP-Berechtigungen setzen
-      if (role === 'EventAdmin') {
+      // SP-Berechtigungen setzen je nach Rolle
+      if (role === 'SuperAdmin') {
+        // SuperAdmin: Full Control auf beide Listen
+        await spService.grantFullControlOnRolesList(userEmail);
+        await spService.grantFullControlOnEventsList(userEmail);
+      } else if (role === 'EventAdmin') {
+        // EventAdmin: Read auf Roles, Full Control auf Events
         await spService.grantReadOnRolesList(userEmail);
-      }
-      // SuperAdmin und EventAdmin: Full Control auf DEX_Events
-      if (role === 'SuperAdmin' || role === 'EventAdmin') {
         await spService.grantFullControlOnEventsList(userEmail);
       }
       await refreshRoles();
@@ -135,10 +137,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const oldRole = roles.find(r => r.id === itemId);
     const success = await spService.updateRole(itemId, newRole);
     if (success && oldRole) {
-      if (newRole === 'EventAdmin') {
-        await spService.grantReadOnRolesList(oldRole.userEmail);
+      if (newRole === 'SuperAdmin') {
+        await spService.grantFullControlOnRolesList(oldRole.userEmail);
         await spService.grantFullControlOnEventsList(oldRole.userEmail);
-      } else if (newRole === 'SuperAdmin') {
+      } else if (newRole === 'EventAdmin') {
+        await spService.grantReadOnRolesList(oldRole.userEmail);
         await spService.grantFullControlOnEventsList(oldRole.userEmail);
       } else if (newRole === 'User') {
         await spService.revokeAccessOnRolesList(oldRole.userEmail);

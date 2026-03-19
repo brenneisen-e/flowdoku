@@ -197,26 +197,66 @@ export class SharePointService {
    */
   public async grantReadOnRolesList(userEmail: string): Promise<void> {
     try {
+      console.log('[DEX] grantReadOnRolesList:', userEmail);
+
       // User-ID per E-Mail ermitteln
       const userId = await this.getUserIdByEmail(userEmail);
-      if (!userId) return;
+      if (!userId) {
+        console.error('[DEX] grantReadOnRolesList: Keine User-ID für', userEmail);
+        return;
+      }
 
-      // Read RoleDefinition ID ermitteln
-      const readRoleId = await this.getRoleDefinitionId('Read');
-      if (!readRoleId) return;
+      // Sicherstellen dass Liste unique permissions hat
+      await this.ensureListHasUniquePermissions('DEX_Roles');
+
+      // Read = 1073741826 (Standard SharePoint ID, sprachunabhaengig)
+      const readRoleId = 1073741826;
 
       // Leseberechtigung setzen
-      await this._post(
+      const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${readRoleId})`,
         {}
       );
-    } catch {
-      // Berechtigung konnte nicht gesetzt werden
+      console.log('[DEX] grantReadOnRolesList Ergebnis:', response.ok, response.status);
+    } catch (e) {
+      console.error('[DEX] grantReadOnRolesList Error:', e);
+    }
+  }
+
+  /**
+   * Einem SuperAdmin Full Control auf die Rollen-Liste geben.
+   */
+  public async grantFullControlOnRolesList(userEmail: string): Promise<void> {
+    try {
+      console.log('[DEX] grantFullControlOnRolesList:', userEmail);
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) {
+        console.error('[DEX] grantFullControlOnRolesList: Keine User-ID für', userEmail);
+        return;
+      }
+
+      // Sicherstellen dass DEX_Roles unique permissions hat
+      await this.ensureListHasUniquePermissions('DEX_Roles');
+
+      // Full Control = 1073741829
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+        {}
+      );
+      console.log('[DEX] grantFullControlOnRolesList Ergebnis:', response.ok, response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'no body');
+        console.error('[DEX] grantFullControlOnRolesList Fehler-Response:', response.status, errorText);
+      }
+    } catch (e) {
+      console.error('[DEX] grantFullControlOnRolesList Error:', e);
     }
   }
 
   /**
    * Einem Admin Full Control auf die DEX_Events-Liste geben.
+   * Stellt sicher dass die Liste eigene Berechtigungen hat bevor Rollen zugewiesen werden.
    */
   public async grantFullControlOnEventsList(userEmail: string): Promise<void> {
     try {
@@ -227,12 +267,20 @@ export class SharePointService {
         return;
       }
 
+      // Sicherstellen dass DEX_Events unique permissions hat
+      await this.ensureListHasUniquePermissions('DEX_Events');
+
       // Full Control = 1073741829
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
       console.log('[DEX] grantFullControlOnEventsList Ergebnis:', response.ok, response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'no body');
+        console.error('[DEX] grantFullControlOnEventsList Fehler-Response:', response.status, errorText);
+      }
     } catch (e) {
       console.error('[DEX] grantFullControlOnEventsList Error:', e);
     }
@@ -243,6 +291,7 @@ export class SharePointService {
    */
   public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
     try {
+      console.log('[DEX] revokeAccessOnEventsList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) return;
 
@@ -256,8 +305,9 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
         { headers }
       );
-    } catch {
-      // Ignorieren
+      console.log('[DEX] revokeAccessOnEventsList OK:', userEmail);
+    } catch (e) {
+      console.warn('[DEX] revokeAccessOnEventsList Error:', e);
     }
   }
 
@@ -266,10 +316,10 @@ export class SharePointService {
    */
   public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
     try {
+      console.log('[DEX] revokeAccessOnRolesList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) return;
 
-      // Alle Berechtigungen des Users auf der Liste entfernen
       const headers: HeadersInit = {
         'Accept': 'application/json;odata=verbose',
         'X-HTTP-Method': 'DELETE',
@@ -280,8 +330,9 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
         { headers }
       );
-    } catch {
-      // Ignorieren - User hatte evtl. keine Berechtigung
+      console.log('[DEX] revokeAccessOnRolesList OK:', userEmail);
+    } catch (e) {
+      console.warn('[DEX] revokeAccessOnRolesList Error:', e);
     }
   }
 
@@ -342,6 +393,36 @@ export class SharePointService {
 
     console.error('[DEX] getUserIdByEmail: User nicht gefunden:', email);
     return null;
+  }
+
+  /**
+   * Sicherstellen dass eine Liste eigene (unique) Berechtigungen hat.
+   * Falls die Liste noch von der Site erbt, wird die Vererbung aufgehoben
+   * und die bestehenden Berechtigungen kopiert.
+   */
+  private async ensureListHasUniquePermissions(listName: string): Promise<void> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.HasUniqueRoleAssignments) {
+          console.log('[DEX] Liste', listName, 'erbt noch Berechtigungen - breche Vererbung auf...');
+          // copyRoleAssignments=true: bestehende Berechtigungen beibehalten
+          await this._post(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
+            {}
+          );
+          console.log('[DEX] Vererbung fuer', listName, 'aufgehoben');
+        } else {
+          console.log('[DEX] Liste', listName, 'hat bereits eigene Berechtigungen');
+        }
+      }
+    } catch (e) {
+      console.error('[DEX] ensureListHasUniquePermissions Error für', listName, ':', e);
+    }
   }
 
   /**
