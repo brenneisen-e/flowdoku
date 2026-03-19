@@ -181,7 +181,8 @@
     /* Footer disclaimer */
     .footer-disclaimer {
       background: var(--dex-gray-100); border-top: 1px solid var(--dex-gray-200);
-      padding: 20px 32px; font-size: 0.82rem; color: var(--dex-gray-600); line-height: 1.6;
+      padding: 12px 32px; font-size: 0.75rem; color: var(--dex-gray-600); line-height: 1.4;
+      flex-shrink: 0;
     }
 
     /* Utilities */
@@ -195,13 +196,14 @@
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
 
     /* ========== Landing Page ========== */
-    .landing { display: flex; flex-direction: column; height: 100%; }
+    .landing { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
     .landing__hero {
       flex: 1; display: flex; flex-direction: column; align-items: center;
-      justify-content: center; padding: 48px 32px; gap: clamp(24px, 4vh, 40px); background: var(--dex-gray-100);
+      justify-content: center; padding: clamp(16px, 3vh, 48px) 32px; gap: clamp(12px, 2.5vh, 32px); background: var(--dex-gray-100);
+      min-height: 0;
     }
     .landing__orb {
-      width: clamp(140px, 20vw, 220px); height: clamp(140px, 20vw, 220px); border-radius: 50%;
+      width: clamp(100px, 18vh, 200px); height: clamp(100px, 18vh, 200px); border-radius: 50%;
       background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
       display: flex; align-items: center; justify-content: center;
       animation: orbSpin 8s linear infinite, orbPulse 4s ease-in-out infinite, orbGlow 6s ease-in-out infinite;
@@ -231,9 +233,9 @@
       50% { filter: drop-shadow(0 0 24px rgba(0, 118, 168, 0.5)); }
     }
     .landing__text { text-align: center; max-width: 640px; }
-    .landing__text h1 { font-size: clamp(1.2rem, 2.5vw, 1.8rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 8px; }
+    .landing__text h1 { font-size: clamp(1.1rem, 2.5vw, 1.6rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 4px; }
     .landing__text h1 strong { font-weight: 700; }
-    .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.9rem, 1.5vw, 1.1rem); }
+    .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.85rem, 1.5vw, 1rem); }
     .landing__hero .btn { max-width: 480px; }
 
     /* ========== Start Page ========== */
