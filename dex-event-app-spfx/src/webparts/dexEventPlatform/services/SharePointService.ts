@@ -50,6 +50,8 @@ export class SharePointService {
     const exists = await this.listExists(listName);
 
     if (exists) {
+      // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      await this.ensureRolesListPermissions(listName);
       return;
     }
 
@@ -121,6 +123,145 @@ export class SharePointService {
     } catch {
       // View-Update ist optional
     }
+
+    // Berechtigungen setzen: nur Site-Owners (SuperAdmins) duerfen die Liste sehen
+    await this.setRolesListPermissions(listName);
+  }
+
+  /**
+   * Pruefen ob die Liste bereits eigene Berechtigungen hat, sonst setzen
+   */
+  private async ensureRolesListPermissions(listName: string): Promise<void> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.HasUniqueRoleAssignments) {
+          await this.setRolesListPermissions(listName);
+        }
+      }
+    } catch {
+      // Ignorieren
+    }
+  }
+
+  /**
+   * Eigene Berechtigungen fuer die Rollen-Liste setzen.
+   *
+   * Berechtigungskonzept:
+   *   - SuperAdmin (Site Owners): Full Control (lesen + schreiben)
+   *   - EventAdmin: Read (nur lesen, damit die App die Rolle erkennt)
+   *   - User: kein Zugriff (App defaulted auf "User")
+   */
+  private async setRolesListPermissions(listName: string): Promise<void> {
+    try {
+      // 1. Berechtigungsvererbung aufheben
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+
+      // 2. Site-Owners-Gruppe: Full Control (1073741829)
+      const ownersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+
+      if (ownersResponse.ok) {
+        const ownersData = await ownersResponse.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`,
+          {}
+        );
+      }
+    } catch {
+      // Berechtigungen konnten nicht gesetzt werden
+    }
+  }
+
+  /**
+   * Einem User Leseberechtigung auf die Rollen-Liste geben (fuer EventAdmins).
+   * Ermittelt die User-ID per E-Mail und setzt Read-Berechtigung.
+   */
+  public async grantReadOnRolesList(userEmail: string): Promise<void> {
+    try {
+      // User-ID per E-Mail ermitteln
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      // Read RoleDefinition ID ermitteln
+      const readRoleId = await this.getRoleDefinitionId('Read');
+      if (!readRoleId) return;
+
+      // Leseberechtigung setzen
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${readRoleId})`,
+        {}
+      );
+    } catch {
+      // Berechtigung konnte nicht gesetzt werden
+    }
+  }
+
+  /**
+   * Einem User die Berechtigung auf die Rollen-Liste entziehen.
+   */
+  public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      // Alle Berechtigungen des Users auf der Liste entfernen
+      const headers: HeadersInit = {
+        'Accept': 'application/json;odata=verbose',
+        'X-HTTP-Method': 'DELETE',
+      };
+
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/getbyprincipalid(${userId})`,
+        SPHttpClient.configurations.v1,
+        { headers }
+      );
+    } catch {
+      // Ignorieren - User hatte evtl. keine Berechtigung
+    }
+  }
+
+  /**
+   * User-ID per E-Mail aus SharePoint ermitteln
+   */
+  private async getUserIdByEmail(email: string): Promise<number | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.Id || null;
+      }
+    } catch { /* User nicht gefunden */ }
+    return null;
+  }
+
+  /**
+   * RoleDefinition-ID per Name ermitteln (z.B. "Read", "Full Control")
+   */
+  private async getRoleDefinitionId(roleName: string): Promise<number | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/roledefinitions/getbyname('${encodeURIComponent(roleName)}')?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.Id || null;
+      }
+    } catch { /* Role nicht gefunden */ }
+    return null;
   }
 
   /**

@@ -114,19 +114,44 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     userEmail: string, userName: string, role: UserRole, location: string
   ): Promise<boolean> {
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
-    if (success) await refreshRoles();
+    if (success) {
+      // SP-Berechtigung setzen: EventAdmin bekommt Read auf die Liste
+      if (role === 'EventAdmin') {
+        await spService.grantReadOnRolesList(userEmail);
+      }
+      await refreshRoles();
+    }
     return success;
   }
 
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
+    // Alten User finden fuer Berechtigungsaenderung
+    const oldRole = roles.find(r => r.id === itemId);
     const success = await spService.updateRole(itemId, newRole);
-    if (success) await refreshRoles();
+    if (success && oldRole) {
+      if (newRole === 'EventAdmin') {
+        // Read-Berechtigung geben
+        await spService.grantReadOnRolesList(oldRole.userEmail);
+      } else if (newRole === 'User') {
+        // Berechtigung entziehen
+        await spService.revokeAccessOnRolesList(oldRole.userEmail);
+      }
+      await refreshRoles();
+    }
     return success;
   }
 
   async function removeRole(itemId: number): Promise<boolean> {
+    // User-Email merken bevor der Eintrag geloescht wird
+    const roleEntry = roles.find(r => r.id === itemId);
     const success = await spService.deleteRole(itemId);
-    if (success) await refreshRoles();
+    if (success) {
+      // Berechtigung entziehen
+      if (roleEntry) {
+        await spService.revokeAccessOnRolesList(roleEntry.userEmail);
+      }
+      await refreshRoles();
+    }
     return success;
   }
 
