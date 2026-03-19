@@ -1,30 +1,23 @@
 /**
  * Meine Events - zeigt alle Registrierungen des aktuellen Users.
- *
  * Aufgeteilt in aktive und stornierte Registrierungen.
- * Stornierung hat einen 2-Klick-Mechanismus (erst "Cancel", dann "Confirm").
  *
- * TODO: Registrierungen auch ueber den EventContext verwalten,
- *       damit neue Anmeldungen hier automatisch auftauchen.
+ * TODO: Registrierungen ueber den EventContext verwalten
  */
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { myRegistrations } from '../data/mockData';
+import * as React from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import type { Registration } from '../types';
+import { myRegistrations } from '../data/mockData';
+import { Registration } from '../types';
 
-function formatDate(iso: string) {
+function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
 
-function getStatusBadgeClass(status: string) {
+function getStatusBadgeClass(status: string): string {
   switch (status) {
     case 'Registered': return 'badge-green';
     case 'Waitlist': return 'badge-orange';
@@ -34,20 +27,18 @@ function getStatusBadgeClass(status: string) {
   }
 }
 
-export default function MyEventsPage() {
-  const navigate = useNavigate();
+export default function MyEventsPage(): React.ReactElement {
+  const { navigate } = useNavigation();
   const { events } = useEvents();
-  const [registrations, setRegistrations] = useState<Registration[]>(myRegistrations);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [registrations, setRegistrations] = React.useState<Registration[]>(myRegistrations);
+  const [cancellingId, setCancellingId] = React.useState<string | null>(null);
 
-  // Zwei-Schritt-Stornierung: erster Klick zeigt Confirm, zweiter storniert
-  const handleCancel = (regId: string) => {
+  // Zwei-Schritt-Stornierung
+  const handleCancel = (regId: string): void => {
     if (cancellingId === regId) {
-      setRegistrations((prev) =>
-        prev.map((r) =>
-          r.id === regId
-            ? { ...r, status: 'Cancelled' as const, cancellationDate: new Date().toISOString() }
-            : r
+      setRegistrations(prev =>
+        prev.map(r =>
+          r.id === regId ? { ...r, status: 'Cancelled' as const, cancellationDate: new Date().toISOString() } : r
         )
       );
       setCancellingId(null);
@@ -56,8 +47,8 @@ export default function MyEventsPage() {
     }
   };
 
-  const activeRegs = registrations.filter((r) => r.status !== 'Cancelled');
-  const cancelledRegs = registrations.filter((r) => r.status === 'Cancelled');
+  const activeRegs = registrations.filter(r => r.status !== 'Cancelled');
+  const cancelledRegs = registrations.filter(r => r.status === 'Cancelled');
 
   return (
     <div className="page-container">
@@ -66,16 +57,14 @@ export default function MyEventsPage() {
       {activeRegs.length === 0 && cancelledRegs.length === 0 && (
         <div className="card text-center" style={{ padding: 48 }}>
           <p style={{ color: 'var(--dex-gray-400)' }}>You are not registered for any events yet.</p>
-          <button className="btn btn-primary mt-24" onClick={() => navigate('/register')}>
-            Browse Events
-          </button>
+          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>Browse Events</button>
         </div>
       )}
 
       {activeRegs.length > 0 && (
         <div className="my-events-list">
-          {activeRegs.map((reg) => {
-            const event = events.find((e) => e.id === reg.eventId);
+          {activeRegs.map(reg => {
+            const event = events.find(e => e.id === reg.eventId);
             return (
               <div key={reg.id} className="card my-event-card">
                 <div className="my-event-card__header">
@@ -94,9 +83,9 @@ export default function MyEventsPage() {
                 )}
                 {Object.keys(reg.eventSpecificData).length > 0 && (
                   <div className="my-event-card__specific">
-                    {Object.entries(reg.eventSpecificData).map(([key, value]) => (
+                    {Object.keys(reg.eventSpecificData).map(key => (
                       <span key={key} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
-                        {key}: {value}
+                        {key}: {reg.eventSpecificData[key]}
                       </span>
                     ))}
                   </div>
@@ -110,11 +99,7 @@ export default function MyEventsPage() {
                     {cancellingId === reg.id ? 'Confirm Cancellation' : 'Cancel Registration'}
                   </button>
                   {cancellingId === reg.id && (
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setCancellingId(null)}
-                      style={{ fontSize: '0.85rem' }}
-                    >
+                    <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
                       Keep Registration
                     </button>
                   )}
@@ -126,12 +111,10 @@ export default function MyEventsPage() {
       )}
 
       {cancelledRegs.length > 0 && (
-        <>
-          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>
-            Cancelled Registrations
-          </h3>
+        <div>
+          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>Cancelled Registrations</h3>
           <div className="my-events-list">
-            {cancelledRegs.map((reg) => (
+            {cancelledRegs.map(reg => (
               <div key={reg.id} className="card my-event-card" style={{ opacity: 0.6 }}>
                 <div className="my-event-card__header">
                   <h3>{reg.eventTitle}</h3>
@@ -143,7 +126,7 @@ export default function MyEventsPage() {
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

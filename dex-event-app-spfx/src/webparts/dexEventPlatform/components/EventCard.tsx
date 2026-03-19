@@ -5,12 +5,13 @@
  * Die Gradient-Farben rotieren basierend auf dem Index.
  */
 
-import { useNavigate } from 'react-router-dom';
-import { Info } from 'lucide-react';
-import type { DeloitteEvent } from '../types';
+import * as React from 'react';
+import { useNavigation } from '../context/NavigationContext';
+import { Info } from './Icons';
+import { DeloitteEvent } from '../types';
 
 // Deutsches Datumsformat
-function formatDate(iso: string) {
+function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('de-DE', {
     day: '2-digit',
@@ -21,7 +22,7 @@ function formatDate(iso: string) {
 
 // 4 verschiedene Farbverlaeufe, rotieren durch
 // type wird aktuell nicht genutzt, koennte man spaeter fuer typspezifische Farben verwenden
-function getEventGradient(_type: string, index: number) {
+function getEventGradient(_type: string, index: number): string {
   const gradients = [
     'linear-gradient(135deg, #0a2e1a 0%, #1a6b3c 40%, #00ff88 100%)',
     'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
@@ -36,19 +37,19 @@ interface Props {
   index: number;
 }
 
-export default function EventCard({ event, index }: Props) {
-  const navigate = useNavigate();
+export default function EventCard({ event, index }: Props): React.ReactElement {
+  const { navigate } = useNavigation();
   const freePlaces = event.maxParticipants - event.currentParticipants;
   const isFull = freePlaces <= 0;
 
   return (
-    <div className="event-card" onClick={() => navigate(`/register/${event.id}`)}>
+    <div className="event-card" onClick={() => navigate('registration', event.id)}>
       <div className="event-card__image" style={{ background: getEventGradient(event.type, index) }}>
         <button
           className="event-card__info-btn"
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
-            navigate(`/register/${event.id}`);
+            navigate('registration', event.id);
           }}
           aria-label="Event info"
         >
@@ -84,9 +85,9 @@ export default function EventCard({ event, index }: Props) {
         </div>
         <button
           className="btn btn-primary event-card__register-btn"
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
-            navigate(`/register/${event.id}`);
+            navigate('registration', event.id);
           }}
         >
           Registrate

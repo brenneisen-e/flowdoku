@@ -1,3 +1,11 @@
+/**
+ * Header-Komponente
+ *
+ * Sticky Header mit dynamischem Titel je nach Route.
+ * Auf der Landing Page wird das Deloitte-Logo angezeigt,
+ * auf allen anderen Seiten ein Zurueck-Button.
+ */
+
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Settings, Mail } from 'lucide-react';
 import { currentUser } from '../data/mockData';
@@ -8,6 +16,7 @@ export default function Header() {
   const isLanding = location.pathname === '/';
   const isStart = location.pathname === '/start';
 
+  // Titel-Mapping je nach aktuellem Pfad
   const getTitle = () => {
     const path = location.pathname;
     if (path === '/start') return 'Event Experience Platform';
@@ -48,6 +57,7 @@ export default function Header() {
             <Settings size={20} />
           </button>
         )}
+        {/* User-Avatar mit Initialen */}
         <div className="header-avatar" title={`${currentUser.firstName} ${currentUser.surname}`}>
           {currentUser.firstName[0]}{currentUser.surname[0]}
         </div>

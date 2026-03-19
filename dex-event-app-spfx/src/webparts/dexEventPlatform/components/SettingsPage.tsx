@@ -1,25 +1,21 @@
 /**
  * Settings-Seite
- *
- * Zeigt User-Infos und Admin-Aktionen.
- * Ausserdem gibt es hier den Link zum ZIP-Download fuer die Offline-Version.
+ * Zeigt User-Infos, Admin-Aktionen und Download-Link.
  */
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import * as React from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import { currentUser } from '../data/mockData';
-import { Plus, FileText, Users, Download, Copy, Check } from 'lucide-react';
+import { Plus, FileText, Users, Download, Copy, Check } from './Icons';
 
-// GitHub ZIP-Download Link - muss manuell im neuen Tab geoeffnet werden,
-// weil die App in einem Sandbox-iframe laeuft (Cloudflare Pages)
 const DOWNLOAD_URL = 'https://github.com/brenneisen-e/flowdoku/archive/refs/heads/main.zip';
 
-export default function SettingsPage() {
-  const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
+export default function SettingsPage(): React.ReactElement {
+  const { navigate } = useNavigation();
+  const [copied, setCopied] = React.useState(false);
 
   // Link in die Zwischenablage kopieren (mit Fallback fuer aeltere Browser)
-  const handleCopyLink = async () => {
+  const handleCopyLink = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(DOWNLOAD_URL);
     } catch {
@@ -38,7 +34,6 @@ export default function SettingsPage() {
     <div className="page-container">
       <div className="settings-grid">
 
-        {/* User Info */}
         <div className="card">
           <h3 className="mb-16">User Information</h3>
           <div className="settings-info">
@@ -63,12 +58,11 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Admin-Bereich */}
         {currentUser.isAdmin && (
           <div className="card">
             <h3 className="mb-16">Admin Actions</h3>
             <div className="settings-actions">
-              <button className="btn btn-primary btn-block" onClick={() => navigate('/create-event')}>
+              <button className="btn btn-primary btn-block" onClick={() => navigate('create-event')}>
                 <Plus size={18} /> Create New Event
               </button>
               <button className="btn btn-secondary btn-block mt-8">
@@ -81,26 +75,21 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Download fuer Offline-Nutzung */}
         <div className="card">
           <h3 className="mb-16">Offline Version</h3>
           <p style={{ color: 'var(--dex-gray-600)', fontSize: '0.9rem', marginBottom: 16 }}>
             Copy the download link below and open it in a new browser tab to download the app as ZIP.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', padding: '10px 12px', fontSize: '0.85rem', wordBreak: 'break-all' }}>
-            <Download size={16} style={{ flexShrink: 0, color: 'var(--dex-gray-600)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', padding: '10px 12px', fontSize: '0.85rem', wordBreak: 'break-all' as any }}>
+            <Download size={16} />
             <span style={{ flex: 1, color: 'var(--dex-gray-800)', userSelect: 'all' }}>{DOWNLOAD_URL}</span>
-            <button
-              className="btn btn-primary"
-              onClick={handleCopyLink}
-              style={{ flexShrink: 0, padding: '6px 12px', fontSize: '0.8rem' }}
-            >
-              {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy Link</>}
+            <button className="btn btn-primary" onClick={handleCopyLink} style={{ flexShrink: 0, padding: '6px 12px', fontSize: '0.8rem' }}>
+              {copied ? <span><Check size={14} /> Copied!</span> : <span><Copy size={14} /> Copy Link</span>}
             </button>
           </div>
           <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem', marginTop: 12 }}>
             After downloading, extract the ZIP, open a terminal in the <code>dex-event-app</code> folder,
-            and run <code>npm install && npm run dev</code>.
+            and run <code>npm install &amp;&amp; npm run dev</code>.
           </p>
         </div>
       </div>

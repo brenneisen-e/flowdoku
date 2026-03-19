@@ -1,3 +1,13 @@
+/**
+ * Event-Erstellung (nur fuer Admins)
+ *
+ * Formular zum Anlegen neuer Events. Unterstuetzt dynamische
+ * Felder (z.B. T-Shirt Groesse), die pro Event konfiguriert werden.
+ *
+ * TODO: Validierung verbessern (Enddatum nach Startdatum etc.)
+ * TODO: Bildupload fuer Event-Header
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, Send, Plus, X } from 'lucide-react';
@@ -9,7 +19,7 @@ interface CustomField {
   label: string;
   type: 'text' | 'select';
   required: boolean;
-  options: string;
+  options: string; // komma-separiert, wird beim Speichern gesplittet
 }
 
 export default function EventCreationPage() {
@@ -29,6 +39,7 @@ export default function EventCreationPage() {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [submitted, setSubmitted] = useState(false);
 
+  // Deloitte Standorte in Deutschland
   const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
 
   const addCustomField = () => {
@@ -46,14 +57,44 @@ export default function EventCreationPage() {
     setCustomFields(customFields.map((f) => (f.id === id ? { ...f, ...updates } : f)));
   };
 
+  // Event im Context speichern und Erfolgs-Screen zeigen
+  const handleSubmit = () => {
+    addEvent({
+      id: `e-${Date.now()}`,
+      title,
+      type: eventType,
+      status: 'Active',
+      organizers: organizers.split(',').map((o) => o.trim()).filter(Boolean),
+      location,
+      locationAudience,
+      startDate,
+      endDate,
+      registrationDeadline,
+      description,
+      maxParticipants: Number(maxParticipants) || 50,
+      currentParticipants: 0,
+      waitlistCount: 0,
+      eventSpecificFields: customFields.map((f) => ({
+        id: f.id,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        ...(f.type === 'select'
+          ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) }
+          : {}),
+      })),
+    });
+    setSubmitted(true);
+  };
+
+  // Erfolgs-Ansicht nach dem Erstellen
   if (submitted) {
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
-          <h2>Event Created Successfully!</h2>
+          <h2>Event erfolgreich erstellt!</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            "{title}" has been created. A confirmation email has been sent to the organizer(s).
+            "{title}" wurde angelegt. Eine Bestaetigungsmail wurde an den/die Organisator(en) gesendet.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('/register')}>
@@ -72,6 +113,7 @@ export default function EventCreationPage() {
     <div className="page-container">
       <div className="card">
         <div className="creation-form">
+          {/* Basis-Infos */}
           <div className="form-group">
             <label className="form-label"><span className="required">*</span> Event Title</label>
             <input className="form-input" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -96,6 +138,7 @@ export default function EventCreationPage() {
             <input className="form-input" value={location} onChange={(e) => setLocation(e.target.value)} />
           </div>
 
+          {/* Standort-Auswahl */}
           <div className="form-group">
             <label className="form-label">
               Location Audience
@@ -136,6 +179,7 @@ export default function EventCreationPage() {
             />
           </div>
 
+          {/* Datum und Teilnehmer */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> Start Date & Time</label>
@@ -158,7 +202,7 @@ export default function EventCreationPage() {
             </div>
           </div>
 
-          {/* Custom fields section */}
+          {/* Dynamische Felder fuer eventspezifische Infos (T-Shirt, Essen, etc.) */}
           <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 24, marginTop: 8 }}>
             <div className="flex-between mb-16">
               <label className="form-label" style={{ marginBottom: 0 }}>Event-specific Registration Fields</label>
@@ -213,7 +257,7 @@ export default function EventCreationPage() {
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Buttons */}
       <div className="registration-actions mt-24">
         <button className="btn btn-danger" onClick={() => navigate(-1)}>
           <Trash2 size={16} /> Löschen
@@ -221,32 +265,7 @@ export default function EventCreationPage() {
         <button
           className="btn btn-primary"
           disabled={!title || !description}
-          onClick={() => {
-            addEvent({
-              id: `e-${Date.now()}`,
-              title,
-              type: eventType,
-              status: 'Active',
-              organizers: organizers.split(',').map((o) => o.trim()).filter(Boolean),
-              location,
-              locationAudience,
-              startDate,
-              endDate,
-              registrationDeadline,
-              description,
-              maxParticipants: Number(maxParticipants) || 50,
-              currentParticipants: 0,
-              waitlistCount: 0,
-              eventSpecificFields: customFields.map((f) => ({
-                id: f.id,
-                label: f.label,
-                type: f.type,
-                required: f.required,
-                ...(f.type === 'select' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
-              })),
-            });
-            setSubmitted(true);
-          }}
+          onClick={handleSubmit}
           style={{ opacity: !title || !description ? 0.5 : 1 }}
         >
           <Send size={16} /> Submit

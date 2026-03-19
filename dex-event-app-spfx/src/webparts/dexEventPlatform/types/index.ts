@@ -1,6 +1,5 @@
 // DEX Event Platform - Type Definitions
 // Author: Eike Brenneisen
-// Last updated: March 2026
 
 export type EventType = 'B2Run' | 'JPMorgan' | 'Other';
 export type EventStatus = 'Under Construction' | 'Active' | 'Completed' | 'Cancelled';
@@ -14,7 +13,7 @@ export interface DeloitteEvent {
   status: EventStatus;
   organizers: string[];
   location: string;
-  locationAudience: string[]; // welche Standorte das Event sehen koennen
+  locationAudience: string[];
   startDate: string;
   endDate: string;
   registrationDeadline: string;
@@ -22,12 +21,10 @@ export interface DeloitteEvent {
   maxParticipants: number;
   currentParticipants: number;
   waitlistCount: number;
-  imageUrl?: string; // TODO: Bildupload implementieren
+  imageUrl?: string;
   eventSpecificFields: EventSpecificField[];
 }
 
-// Dynamische Felder die pro Event konfiguriert werden koennen
-// z.B. T-Shirt Groesse beim B2Run oder Essensauswahl bei Meetings
 export interface EventSpecificField {
   id: string;
   label: string;

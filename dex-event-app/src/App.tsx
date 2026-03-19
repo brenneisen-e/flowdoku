@@ -1,3 +1,11 @@
+/**
+ * DEX Event Experience Platform - Main App
+ *
+ * Routing und grundlegendes Layout.
+ * EventProvider umschliesst alles, damit der Event-State
+ * in allen Seiten verfuegbar ist.
+ */
+
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import LandingPage from './pages/LandingPage';

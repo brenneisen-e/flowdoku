@@ -1,0 +1,28 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "c5e8a2f1-3d6b-4c9e-a1f7-8b2d0e4c6a3f",
+  "alias": "DexEventPlatformWebPart",
+  "componentType": "WebPart",
+
+  "version": "*",
+  "manifestVersion": 2,
+
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "TeamsPersonalApp",
+    "TeamsTab",
+    "SharePointFullPage"
+  ],
+
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Deloitte" },
+      "title": { "default": "DEX Event Platform" },
+      "description": { "default": "Event Experience Platform - Deloitte Event Management" },
+      "officeFabricIconFontName": "Event",
+      "properties": {}
+    }
+  ]
+}

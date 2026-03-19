@@ -1,9 +1,10 @@
 // Landing Page - Startbildschirm mit animiertem Orb und Willkommensnachricht
 
-import { useNavigate } from 'react-router-dom';
+import * as React from 'react';
+import { useNavigation } from '../context/NavigationContext';
 
-export default function LandingPage() {
-  const navigate = useNavigate();
+export default function LandingPage(): React.ReactElement {
+  const { navigate } = useNavigation();
 
   return (
     <div className="landing">
@@ -17,7 +18,7 @@ export default function LandingPage() {
           </h1>
           <p>Enjoy the new app to handle your registration for your Deloitte Event.</p>
         </div>
-        <button className="btn btn-lg btn-block btn-secondary" onClick={() => navigate('/start')}>
+        <button className="btn btn-lg btn-block btn-secondary" onClick={() => navigate('start')}>
           Start
         </button>
       </div>

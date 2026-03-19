@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "dex-event-platform",
+    "id": "a3f5c8e1-7d2b-4a9f-b6e3-1c8d9f0e2a4b",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "Eike Brenneisen",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.20.0"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "DEX Event Experience Platform - Deloitte Event Management"
+      },
+      "longDescription": {
+        "default": "Event-Management-Plattform fuer Deloitte Events wie B2Run, JPMorgan Lauf und Office-Meetings. Entwickelt von Eike Brenneisen, Andreas Enk und Nils Felten."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "DEX Event Platform Feature",
+        "description": "Adds the DEX Event Experience Platform webpart",
+        "id": "b4f6d9e2-8e3c-5b0a-c7f4-2d9e0a1f3b5c",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/dex-event-platform.sppkg"
+  }
+}

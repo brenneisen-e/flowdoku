@@ -5,13 +5,13 @@
  * Mit Toggle kann man zwischen "nur aktive" und "alle" Events wechseln.
  */
 
-import { useState } from 'react';
+import * as React from 'react';
 import { useEvents } from '../context/EventContext';
-import EventCard from '../components/EventCard';
+import EventCard from './EventCard';
 
-export default function EventListPage() {
+export default function EventListPage(): React.ReactElement {
   const { events } = useEvents();
-  const [onlyActive, setOnlyActive] = useState(true);
+  const [onlyActive, setOnlyActive] = React.useState(true);
 
   const filteredEvents = onlyActive
     ? events.filter((e) => e.status === 'Active')
