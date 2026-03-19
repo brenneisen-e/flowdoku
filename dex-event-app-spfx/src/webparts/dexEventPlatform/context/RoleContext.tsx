@@ -150,16 +150,16 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }
 
   async function removeRole(itemId: number): Promise<boolean> {
-    // User-Email merken bevor der Eintrag geloescht wird
     const roleEntry = roles.find(r => r.id === itemId);
     const success = await spService.deleteRole(itemId);
     if (success) {
-      // Berechtigung entziehen
-      if (roleEntry) {
-        await spService.revokeAccessOnRolesList(roleEntry.userEmail);
-        await spService.revokeAccessOnEventsList(roleEntry.userEmail);
-      }
+      // Erst UI aktualisieren, dann Berechtigungen im Hintergrund entziehen
       await refreshRoles();
+      if (roleEntry) {
+        // Non-blocking: Berechtigungen entziehen ohne auf Ergebnis zu warten
+        spService.revokeAccessOnRolesList(roleEntry.userEmail).catch(() => {});
+        spService.revokeAccessOnEventsList(roleEntry.userEmail).catch(() => {});
+      }
     }
     return success;
   }
