@@ -87,6 +87,10 @@ function AppContent(): React.ReactElement {
 }
 
 export default function DexEventPlatform(props: IDexEventPlatformProps): React.ReactElement {
+  // Context global verfuegbar machen fuer ProfilePage
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__dexSpfxContext = props.context;
+
   return (
     <div className={styles.dexApp}>
       <UserProvider context={props.context}>
