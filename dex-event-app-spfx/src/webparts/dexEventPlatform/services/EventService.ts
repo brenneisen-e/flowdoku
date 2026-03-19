@@ -70,7 +70,15 @@ export class EventService {
   public async ensureEventsList(): Promise<void> {
     const listName = 'DEX_Events';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // Bestehende Liste: Default View sicherstellen
+      await this.configureDefaultView(listName, [
+        'EventStatus', 'EventType', 'Location', 'LocationFilter',
+        'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
+        'WaitlistEnabled', 'Organizer',
+      ]);
+      return;
+    }
 
     // Liste erstellen
     await this._post(`${this.siteUrl}/_api/web/lists`, {
@@ -114,6 +122,29 @@ export class EventService {
         (payload as Record<string, unknown>)['Choices'] = { 'results': f.choices };
       }
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    // Default View konfigurieren: wichtige Spalten einblenden
+    await this.configureDefaultView(listName, [
+      'EventStatus', 'EventType', 'Location', 'LocationFilter',
+      'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
+      'WaitlistEnabled', 'Organizer',
+    ]);
+  }
+
+  /**
+   * Default View einer Liste konfigurieren: Spalten hinzufuegen
+   */
+  private async configureDefaultView(listName: string, fieldNames: string[]): Promise<void> {
+    try {
+      for (const fieldName of fieldNames) {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
+          {}
+        );
+      }
+    } catch {
+      // View-Konfiguration ist optional
     }
   }
 
