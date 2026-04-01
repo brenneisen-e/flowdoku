@@ -892,7 +892,6 @@ export class EventService {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
-        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'ParticipantName': participantName,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
@@ -941,7 +940,6 @@ export class EventService {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
-        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'CustomData': JSON.stringify(customData),
       };
 
@@ -1031,7 +1029,6 @@ export class EventService {
             'X-HTTP-Method': 'MERGE',
           },
           body: JSON.stringify({
-            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
             'Status': 'Abgemeldet',
             'CancellationDate': new Date().toISOString(),
           }),
@@ -1083,7 +1080,6 @@ export class EventService {
             'X-HTTP-Method': 'MERGE',
           },
           body: JSON.stringify({
-            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
             'Title': newTitle,
           }),
         }
