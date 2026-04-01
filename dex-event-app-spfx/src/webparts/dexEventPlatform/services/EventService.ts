@@ -1176,30 +1176,34 @@ export class EventService {
    */
   public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
     try {
-      // Dateiname: sanitized Event-Titel + Timestamp + Extension
       const ext = file.name.split('.').pop() || 'jpg';
       const safeName = eventTitle
         .replace(/[^a-zA-Z0-9]/g, '_')
         .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
 
-      // In SiteAssets hochladen (existiert standardmaessig auf jeder SP Site)
       const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets`;
       const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
 
-      // File als ArrayBuffer lesen (SPHttpClient erwartet kein File-Objekt direkt)
-      const arrayBuffer = await file.arrayBuffer();
+      // Request Digest holen fuer nativen fetch
+      const digestResp = await fetch(`${this.siteUrl}/_api/contextinfo`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json;odata=verbose' },
+        credentials: 'same-origin',
+      });
+      const digestData = await digestResp.json();
+      const requestDigest = digestData.d?.GetContextWebInformation?.FormDigestValue || '';
 
-      const response = await this.context.spHttpClient.post(
-        uploadUrl,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/octet-stream',
-          },
-          body: arrayBuffer,
-        }
-      );
+      // Nativen fetch nutzen (SPHttpClient ueberschreibt Content-Type)
+      const arrayBuffer = await file.arrayBuffer();
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json;odata=verbose',
+          'X-RequestDigest': requestDigest,
+        },
+        body: arrayBuffer,
+        credentials: 'same-origin',
+      });
 
       if (response.ok) {
         const result = await response.json();
