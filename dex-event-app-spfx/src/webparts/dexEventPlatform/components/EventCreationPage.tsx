@@ -677,7 +677,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> Start (Datum & Uhrzeit)
@@ -711,7 +711,7 @@ export default function EventCreationPage(): React.ReactElement {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
                     Anmelde-Deadline
@@ -728,7 +728,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
                     Max. Teilnehmer
@@ -922,12 +922,12 @@ export default function EventCreationPage(): React.ReactElement {
 
       {/* ===== Vollbild-Vorschau Modal ===== */}
       {showPreview && (
-        <div style={{
+        <div className="preview-modal" style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 24,
         }}>
-          <div style={{
+          <div className="preview-modal-inner" style={{
             background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520,
             maxHeight: '90vh', overflow: 'auto', padding: 0,
             boxShadow: '0 16px 64px rgba(0,0,0,0.3)',

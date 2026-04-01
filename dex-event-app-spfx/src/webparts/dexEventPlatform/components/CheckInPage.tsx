@@ -53,9 +53,15 @@ export default function CheckInPage(): React.ReactElement {
 
   // Kamera starten
   const startScanning = async (): Promise<void> => {
+    // Pruefen ob getUserMedia verfuegbar ist
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatusMessage('Kamera-API nicht verfügbar. Die Seite muss über HTTPS geladen werden.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -63,8 +69,18 @@ export default function CheckInPage(): React.ReactElement {
         setIsScanning(true);
         startDetection();
       }
-    } catch {
-      setStatusMessage('Kamera konnte nicht gestartet werden. Bitte Berechtigung erteilen.');
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const error = err as any;
+      if (error?.name === 'NotAllowedError') {
+        setStatusMessage('Kamera-Berechtigung wurde verweigert. Bitte in den Browser-Einstellungen erlauben und Seite neu laden.');
+      } else if (error?.name === 'NotFoundError') {
+        setStatusMessage('Keine Kamera gefunden. Bitte ein Gerät mit Kamera verwenden.');
+      } else if (error?.name === 'NotReadableError') {
+        setStatusMessage('Kamera wird bereits von einer anderen App verwendet. Bitte andere Apps schließen.');
+      } else {
+        setStatusMessage(`Kamera konnte nicht gestartet werden: ${error?.message || 'Unbekannter Fehler'}. Bitte Code manuell eingeben.`);
+      }
     }
   };
 

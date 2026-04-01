@@ -313,7 +313,7 @@ export default function AdminPage(): React.ReactElement {
       </div>
 
       {/* Zähler + QR/Check-in Aktionen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
             {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
@@ -340,7 +340,7 @@ export default function AdminPage(): React.ReactElement {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
         <button
           className="btn btn-primary"
           onClick={() => navigate('check-in', selectedEvent.id)}
@@ -368,7 +368,7 @@ export default function AdminPage(): React.ReactElement {
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;height:300px;" />`;
+                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch { /* Fallback: Text */ }
               // QR-Code E-Mail im Deloitte-Template queuen
               const emailData = qrCodeEmail(name, selectedEvent.title, qrImageHtml);

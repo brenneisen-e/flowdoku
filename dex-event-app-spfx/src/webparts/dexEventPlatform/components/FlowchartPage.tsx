@@ -266,7 +266,7 @@ export default function FlowchartPage(): React.ReactElement {
       </p>
 
       {/* Tab-Navigation */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div className="flowchart-tabs" style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
         {flows.map(f => (
           <button
             key={f.id}
