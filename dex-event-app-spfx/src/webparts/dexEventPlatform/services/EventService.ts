@@ -44,6 +44,7 @@ export interface SPEvent {
   Organizer: string;
   OrganizerEmail: string;
   OutlookEventId: string;
+  CalendarLink: string;
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -427,6 +428,7 @@ export class EventService {
       { title: 'Organizer', type: 2 },
       { title: 'OrganizerEmail', type: 2 },
       { title: 'OutlookEventId', type: 2 },
+      { title: 'CalendarLink', type: 2 },
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -532,7 +534,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
