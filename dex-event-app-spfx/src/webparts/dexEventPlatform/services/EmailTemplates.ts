@@ -9,6 +9,7 @@
 
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
+const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
 const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
 
 function getDate(): string {
@@ -103,7 +104,7 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
       `Event ${eventTitle}`,
       `<p><strong>Dear ${recipientName},</strong></p>
       <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
-      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -139,7 +140,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       `Event ${eventTitle}`,
       `<p><strong>Dear ${recipientName},</strong></p>
       <p>your registration for the event <strong>${eventTitle}</strong> has been <strong>cancelled</strong>.</p>
-      <p>If you change your mind, you can register again via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
+      <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -157,7 +158,7 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
       `Event ${eventTitle}`,
       `<p><strong>Dear ${recipientName},</strong></p>
       <p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>${eventTitle}</strong>.</p>
-      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -175,8 +176,11 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
       `Event ${eventTitle}`,
       `<p><strong>Dear ${recipientName},</strong></p>
       <p>your event <strong>${eventTitle}</strong> has been successfully created.</p>
-      <p>You can find the list of participants under the following <a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">link</a>.
-      The app can be accessed using the following <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">SharePoint</a>.</p>
+      <p>You can find the list of participants here:</p>
+      <ul>
+        <li><a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">SharePoint Teilnehmerliste</a></li>
+        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (Admin / Organizer)</li>
+      </ul>
       <p>Regards,<br>Team Event Experience Platform</p>`
     ),
   };
