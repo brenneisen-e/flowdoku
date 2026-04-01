@@ -32,7 +32,7 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 ### SharePoint Site
 
 - Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run`
-- Lists: DEX_Events, DEX_Roles
+- Lists: DEX_Events, DEX_Roles, DEX_Emails
 - Per-Event: Subsite with "Teilnehmer" registration list
 
 ### Key Architecture
@@ -43,7 +43,28 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 - EventContext manages event data via SharePoint REST API
 - Event creation creates a SharePoint subsite per event with a "Teilnehmer" list
 - Item-Level Security on registration lists (users see only their own entries)
-- 3 roles: User, EventAdmin, SuperAdmin (stored in DEX_Roles list)
+- DEX_Emails queue list for Power Automate email sending
+- 3 roles: User, Organizer, Admin (stored in DEX_Roles list)
+
+### Roles & Permissions
+
+| Feature | User | Organizer | Admin |
+|---------|------|-----------|-------|
+| Events ansehen (eigener Standort) | ✅ | ✅ | ✅ |
+| Alle Events ansehen | ❌ | ✅ | ✅ |
+| Events erstellen/bearbeiten | ❌ | ✅ (eigene) | ✅ (alle) |
+| Events löschen | ❌ | ✅ (eigene) | ✅ (alle) |
+| Registrieren | ✅ | ✅ | ✅ |
+| Für andere registrieren | ❌ | ✅ | ✅ |
+| Eigene Angaben bearbeiten | ✅ | ✅ | ✅ |
+| Teilnehmerliste sehen | ❌ | ✅ (eigene Events) | ✅ (alle) |
+| E-Mail-Adressen kopieren | ❌ | ✅ (eigene Events) | ✅ |
+| Rollen verwalten | ❌ | ❌ | ✅ |
+| Rollen-Matrix einsehen | ❌ | ❌ | ✅ |
+| DEX_Events: Schreiben | ❌ | ✅ | ✅ |
+| DEX_Roles: Schreiben | ❌ | ❌ | ✅ |
+| DEX_Emails: Schreiben (Queue) | Nur eigene | Nur eigene | ✅ |
+| Event-Subsites: Full Control | ❌ | Eigene Events | ✅ |
 
 ### German Text / Sonderzeichen
 
