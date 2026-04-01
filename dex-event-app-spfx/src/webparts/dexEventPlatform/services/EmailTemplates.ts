@@ -44,10 +44,10 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 </td>
 </tr>
 
-<!-- ===== HERO: DEX Banner ===== -->
+<!-- ===== HERO: DEX Orb ===== -->
 <tr>
-<td style="background:linear-gradient(135deg,#86bc25 0%,#0076a8 100%);text-align:center;padding:24px 30px;">
-  <span style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:1px;">Event Experience Platform</span>
+<td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
