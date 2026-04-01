@@ -19,7 +19,7 @@ interface PermissionRow {
 const PERMISSIONS: PermissionRow[] = [
   // Events
   { category: 'Events', feature: 'Events ansehen', user: true, eventAdmin: true, superAdmin: true },
-  { category: 'Events', feature: 'Fuer Events registrieren', user: true, eventAdmin: true, superAdmin: true },
+  { category: 'Events', feature: 'Für Events registrieren', user: true, eventAdmin: true, superAdmin: true },
   { category: 'Events', feature: 'Events erstellen', user: false, eventAdmin: true, superAdmin: true },
   { category: 'Events', feature: 'Eigene Events bearbeiten', user: false, eventAdmin: true, superAdmin: true },
   { category: 'Events', feature: 'Alle Events bearbeiten', user: false, eventAdmin: false, superAdmin: true },
@@ -27,7 +27,7 @@ const PERMISSIONS: PermissionRow[] = [
   // Registrierungen
   { category: 'Registrierungen', feature: 'Eigene Registrierungen sehen', user: true, eventAdmin: true, superAdmin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren', user: true, eventAdmin: true, superAdmin: true },
-  { category: 'Registrierungen', feature: 'Fuer andere registrieren', user: true, eventAdmin: true, superAdmin: true },
+  { category: 'Registrierungen', feature: 'Für andere registrieren', user: true, eventAdmin: true, superAdmin: true },
   { category: 'Registrierungen', feature: 'Teilnehmerliste eigener Events sehen', user: false, eventAdmin: true, superAdmin: true },
   { category: 'Registrierungen', feature: 'Alle Teilnehmerlisten sehen', user: false, eventAdmin: false, superAdmin: true },
 
@@ -43,8 +43,8 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'SharePoint', feature: 'DEX_Roles Liste: Lesen', user: false, eventAdmin: 'Nur eigene', superAdmin: true },
   { category: 'SharePoint', feature: 'DEX_Roles Liste: Schreiben', user: false, eventAdmin: false, superAdmin: true },
   { category: 'SharePoint', feature: 'Event-Subsites: Full Control', user: false, eventAdmin: 'Eigene Events', superAdmin: true },
-  { category: 'SharePoint', feature: 'Teilnehmerliste: Eigene Eintraege', user: true, eventAdmin: true, superAdmin: true },
-  { category: 'SharePoint', feature: 'Teilnehmerliste: Alle Eintraege', user: false, eventAdmin: 'Eigene Events', superAdmin: true },
+  { category: 'SharePoint', feature: 'Teilnehmerliste: Eigene Einträge', user: true, eventAdmin: true, superAdmin: true },
+  { category: 'SharePoint', feature: 'Teilnehmerliste: Alle Einträge', user: false, eventAdmin: 'Eigene Events', superAdmin: true },
 
   // Profil
   { category: 'Profil', feature: 'Eigenes Profil ansehen', user: true, eventAdmin: true, superAdmin: true },
