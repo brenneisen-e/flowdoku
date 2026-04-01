@@ -35,6 +35,7 @@ export default function Header(): React.ReactElement {
       case 'role-matrix': return 'Rollen-Matrix';
       case 'participants': return 'Teilnehmer-Übersicht';
       case 'flowcharts': return 'Prozess-Übersicht';
+      case 'check-in': return 'Check-in';
       default: return '';
     }
   };

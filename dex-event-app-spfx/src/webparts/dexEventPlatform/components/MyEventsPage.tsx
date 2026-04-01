@@ -25,6 +25,7 @@ function formatDate(iso: string): string {
 function getStatusBadgeClass(status: string): string {
   switch (status) {
     case 'Angemeldet': return 'badge-green';
+    case 'QR versendet': return 'badge-green';
     case 'Warteliste': return 'badge-orange';
     case 'Abgemeldet': return 'badge-red';
     case 'Eingecheckt': return 'badge-green';

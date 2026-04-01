@@ -16,6 +16,8 @@ import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
+import { EventService } from '../services/EventService';
+import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -46,6 +48,12 @@ export default function AdminPage(): React.ReactElement {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [copiedEmails, setCopiedEmails] = React.useState(false);
+  const [isSendingQR, setIsSendingQR] = React.useState(false);
+  const [qrSentCount, setQrSentCount] = React.useState(0);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spfxContext = (window as any).__dexSpfxContext;
+  const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine
   const adminEvents = isAdmin
@@ -301,6 +309,93 @@ export default function AdminPage(): React.ReactElement {
             </a>
           </div>
         </div>
+      </div>
+
+      {/* Zähler + QR/Check-in Aktionen */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
+            {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Angemeldet</div>
+        </div>
+        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
+            {registrations.filter(r => r.Status === 'Eingecheckt').length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Eingecheckt</div>
+        </div>
+        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
+            {registrations.filter(r => r.Status === 'Warteliste').length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Warteliste</div>
+        </div>
+        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
+            {registrations.filter(r => r.Status === 'Abgemeldet').length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Abgemeldet</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+        <button
+          className="btn btn-primary"
+          onClick={() => navigate('check-in', selectedEvent.id)}
+          style={{ flex: 1 }}
+        >
+          📷 QR-Code Check-in starten
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={isSendingQR}
+          onClick={async () => {
+            if (!eventServiceRef || !selectedEvent) return;
+            const eligible = registrations.filter(r => r.Status === 'Angemeldet');
+            if (eligible.length === 0) return;
+            if (!window.confirm(`QR-Codes an ${eligible.length} Teilnehmer versenden?`)) return;
+
+            setIsSendingQR(true);
+            setQrSentCount(0);
+            let sent = 0;
+
+            for (const reg of eligible) {
+              const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
+              const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+              // QR-Code als Base64-Bild generieren
+              let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+              try {
+                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                qrImageHtml = `<div style="text-align:center;"><img src="${qrDataUrl}" alt="QR-Code" style="width:300px;height:300px;" /></div>`;
+              } catch { /* Fallback: Text */ }
+              // QR-Code E-Mail queuen
+              await eventServiceRef.queueEmail(
+                `Dein QR-Code für ${selectedEvent.title}`,
+                reg.ParticipantEmail,
+                name,
+                `<p>Hallo ${name},</p><p>hier ist dein QR-Code für <strong>${selectedEvent.title}</strong>:</p>${qrImageHtml}<p>Bitte zeige diesen Code beim Check-in vor.</p>`,
+                'QRCode',
+                selectedEvent.title,
+                selectedEvent.id
+              );
+              // Status auf 'QR versendet' setzen
+              if (selectedEvent.subsiteUrl) {
+                await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
+              }
+              sent++;
+              setQrSentCount(sent);
+            }
+
+            // Registrierungen neu laden
+            const regs = await getAllRegistrations(selectedEvent.id);
+            setRegistrations(regs);
+            setIsSendingQR(false);
+          }}
+          style={{ flex: 1 }}
+        >
+          {isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden (${registrations.filter(r => r.Status === 'Angemeldet').length})`}
+        </button>
       </div>
 
       {/* Teilnehmerliste */}

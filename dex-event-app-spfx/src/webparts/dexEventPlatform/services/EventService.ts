@@ -1168,7 +1168,7 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'JobTitle', type: 2 },
       { title: 'Phone', type: 2 },
-      { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'RegistrationDate', type: 4 },
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
@@ -1592,6 +1592,63 @@ export class EventService {
   }
 
   /**
+   * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen)
+   */
+  public async checkInParticipant(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'Status': 'Eingecheckt' }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Status eines Teilnehmers auf 'QR versendet' setzen
+   */
+  public async setQRSentStatus(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'Status': 'QR versendet' }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Registrierung per Email auf einer Subsite finden
+   */
+  public async getRegistrationByEmail(
+    subsiteUrl: string,
+    email: string
+  ): Promise<SPRegistration | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (data.value && data.value.length > 0) return data.value[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Aktuelle Teilnehmeranzahl ermitteln
    */
   public async getRegistrationCount(subsiteUrl: string): Promise<{ registered: number; waitlist: number }> {
@@ -1611,7 +1668,7 @@ export class EventService {
       }
     }
 
-    const registered = allItems.filter((i: { Status: string }) => i.Status === 'Angemeldet' || i.Status === 'Eingecheckt').length;
+    const registered = allItems.filter((i: { Status: string }) => i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt').length;
     const waitlist = allItems.filter((i: { Status: string }) => i.Status === 'Warteliste').length;
     return { registered, waitlist };
   }
