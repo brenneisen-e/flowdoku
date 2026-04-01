@@ -25,6 +25,12 @@
       "videoUrl": "",
       "categories": []
     },
+    "webApiPermissionRequests": [
+      {
+        "resource": "Microsoft Graph",
+        "scope": "User.Read"
+      }
+    ],
     "features": [
       {
         "title": "DEX Event Platform Feature",

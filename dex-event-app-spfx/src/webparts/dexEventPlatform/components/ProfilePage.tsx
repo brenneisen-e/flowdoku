@@ -41,7 +41,7 @@ export interface ProfilePageProps {
 }
 
 export default function ProfilePage(props: ProfilePageProps): React.ReactElement {
-  const { currentUser } = useCurrentUser();
+  const { currentUser, photoUrl: userPhotoUrl } = useCurrentUser();
   const { currentUserRole } = useRoles();
   const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [isProfileLoading, setIsProfileLoading] = React.useState(true);
@@ -88,15 +88,8 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           }
         }
 
-        // Profilfoto: PictureUrl verwenden, Fallback auf UserPhoto Endpoint
-        let pictureUrl = data.PictureUrl || '';
-        if (!pictureUrl) {
-          // Fallback: Standard SharePoint User Photo URL
-          pictureUrl = `${siteUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(currentUser.email)}`;
-        } else if (pictureUrl.indexOf('MThumb') > -1) {
-          // Medium Thumbnail durch Large ersetzen
-          pictureUrl = pictureUrl.replace('MThumb', 'LThumb');
-        }
+        // Profilfoto aus UserContext verwenden (bereits via Graph geladen)
+        const pictureUrl = userPhotoUrl || '';
 
         setProfile({
           displayName: data.DisplayName || `${currentUser.firstName} ${currentUser.surname}`,
@@ -123,6 +116,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
               src={profile.pictureUrl}
               alt="Profile"
               style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (
             <div style={{

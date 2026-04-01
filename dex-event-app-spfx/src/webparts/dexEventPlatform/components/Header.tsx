@@ -14,7 +14,7 @@ import { ChevronLeft, Settings, Mail } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack } = useNavigation();
-  const { currentUser } = useCurrentUser();
+  const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, isAdmin } = useRoles();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
@@ -84,14 +84,24 @@ export default function Header(): React.ReactElement {
         )}
         {/* User-Avatar mit Initialen + Popup */}
         <div style={{ position: 'relative' }}>
-          <div
-            className="header-avatar"
-            title={`${currentUser.firstName} ${currentUser.surname}`}
-            onClick={() => setShowPopup(!showPopup)}
-            style={{ cursor: 'pointer' }}
-          >
-            {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
-          </div>
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt={`${currentUser.firstName} ${currentUser.surname}`}
+              onClick={() => setShowPopup(!showPopup)}
+              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', cursor: 'pointer' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div
+              className="header-avatar"
+              title={`${currentUser.firstName} ${currentUser.surname}`}
+              onClick={() => setShowPopup(!showPopup)}
+              style={{ cursor: 'pointer' }}
+            >
+              {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
+            </div>
+          )}
           {showPopup && (
             <div style={{
               position: 'absolute', right: 0, top: '100%', marginTop: 8,
@@ -100,14 +110,18 @@ export default function Header(): React.ReactElement {
               minWidth: 260, zIndex: 1000,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #86bc25, #0076a8)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: '1.1rem',
-                }}>
-                  {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
-                </div>
+                {photoUrl ? (
+                  <img src={photoUrl} alt="Profile" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #86bc25, #0076a8)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 700, fontSize: '1.1rem',
+                  }}>
+                    {currentUser.firstName ? currentUser.firstName[0] : ''}{currentUser.surname ? currentUser.surname[0] : ''}
+                  </div>
+                )}
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '1rem' }}>{currentUser.firstName} {currentUser.surname}</div>
                   <div style={{ color: '#666', fontSize: '0.85rem' }}>{currentUser.email}</div>
