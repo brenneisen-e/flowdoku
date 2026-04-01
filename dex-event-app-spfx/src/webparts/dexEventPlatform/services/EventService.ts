@@ -646,8 +646,14 @@ export class EventService {
       { title: 'TeilnehmerID', type: 9 }, // Number - fortlaufende ID
       { title: 'ParticipantName', type: 2 },
       { title: 'ParticipantEmail', type: 2 },
+      { title: 'Department', type: 2 },
+      { title: 'Location', type: 2 },
+      { title: 'JobTitle', type: 2 },
+      { title: 'Phone', type: 2 },
       { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'RegistrationDate', type: 4 },
+      { title: 'LastModifiedDate', type: 4 },
+      { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
       { title: 'CancellationDate', type: 4 },
       { title: 'CustomData', type: 3 },
     ];
@@ -726,7 +732,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'ParticipantName', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -843,6 +849,9 @@ export class EventService {
         nextId = counts.registered + counts.waitlist + 1;
       } catch { /* Fallback: 1 */ }
 
+      // Profildaten laden
+      const profile = await this.getCurrentUserProfile();
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
@@ -850,6 +859,10 @@ export class EventService {
         'TeilnehmerID': nextId,
         'ParticipantName': participantName,
         'ParticipantEmail': participantEmail,
+        'Department': profile.department,
+        'Location': profile.location,
+        'JobTitle': profile.jobTitle,
+        'Phone': profile.phone,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CustomData': JSON.stringify(customData),
@@ -926,13 +939,49 @@ export class EventService {
     subsiteUrl: string,
     itemId: number,
     customData: Record<string, string>,
-    customFieldMap?: Record<string, string>
+    customFieldMap?: Record<string, string>,
+    oldCustomData?: Record<string, string>,
+    fieldLabelMap?: Record<string, string> // cf.id -> label
   ): Promise<boolean> {
     try {
+      // Änderungen ermitteln
+      const changes: string[] = [];
+      const now = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      if (oldCustomData && fieldLabelMap) {
+        for (const key of Object.keys(customData)) {
+          if (key === 'salutation') continue;
+          const label = fieldLabelMap[key] || key;
+          const oldVal = oldCustomData[key] || '';
+          const newVal = customData[key] || '';
+          if (oldVal !== newVal) {
+            changes.push(`${label}: "${oldVal}" → "${newVal}"`);
+          }
+        }
+      }
+      const changeEntry = changes.length > 0 ? `[${now}] ${changes.join(', ')}` : '';
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
         'CustomData': JSON.stringify(customData),
+        'LastModifiedDate': new Date().toISOString(),
       };
+
+      // ChangeLog anhängen (bestehenden Log behalten)
+      if (changeEntry) {
+        try {
+          const existing = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
+            SPHttpClient.configurations.v1
+          );
+          if (existing.ok) {
+            const data = await existing.json();
+            const oldLog = data.ChangeLog || '';
+            body['ChangeLog'] = oldLog ? `${changeEntry}\n${oldLog}` : changeEntry;
+          }
+        } catch {
+          body['ChangeLog'] = changeEntry;
+        }
+      }
 
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
@@ -1005,6 +1054,7 @@ export class EventService {
         {
           'Status': 'Abgemeldet',
           'CancellationDate': new Date().toISOString(),
+          'TeilnehmerID': null,
         }
       );
       return response.ok;
@@ -1092,6 +1142,37 @@ export class EventService {
     } catch (e) {
       console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
       return null;
+    }
+  }
+
+  // ==================== Profil-Daten ====================
+
+  /**
+   * Profildaten des aktuellen Users laden fuer die Teilnehmerliste.
+   */
+  public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return { department: '', location: '', jobTitle: '', phone: '' };
+
+      const data = await response.json();
+      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+      const get = (key: string): string => {
+        const p = props.find(x => x.Key === key);
+        return p && p.Value ? p.Value : '';
+      };
+
+      return {
+        department: get('Department'),
+        location: get('Office'),
+        jobTitle: get('Title'),
+        phone: get('WorkPhone') || get('CellPhone'),
+      };
+    } catch {
+      return { department: '', location: '', jobTitle: '', phone: '' };
     }
   }
 

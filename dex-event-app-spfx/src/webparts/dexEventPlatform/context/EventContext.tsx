@@ -263,7 +263,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }
 
-    return eventService.updateRegistrationData(subsiteUrl, myReg.Id, customData, fieldMap);
+    // Alte Daten und Labels fuer ChangeLog
+    let oldCustomData: Record<string, string> = {};
+    try {
+      if (myReg.CustomData) oldCustomData = JSON.parse(myReg.CustomData);
+    } catch { /* */ }
+
+    const fieldLabelMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        fieldLabelMap[f.id] = f.label;
+      }
+    }
+
+    const success = await eventService.updateRegistrationData(subsiteUrl, myReg.Id, customData, fieldMap, oldCustomData, fieldLabelMap);
+    if (success) await loadEvents();
+    return success;
   }
 
   async function refreshEvents(): Promise<void> {
