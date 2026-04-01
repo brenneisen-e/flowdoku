@@ -32,7 +32,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
-<td style="background-color:#ffffff;padding:20px 30px;border-bottom:2px solid ${GREEN};">
+<td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
