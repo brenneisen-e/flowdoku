@@ -337,6 +337,12 @@ export class EventService {
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
         'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
+      await this.setColumnFormatting(listName, 'EventImageUrl', {
+        '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
+        'elmType': 'img',
+        'attributes': { 'src': '@currentField' },
+        'style': { 'max-height': '50px', 'max-width': '120px', 'border-radius': '4px' },
+      });
       try {
         const listInfo = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
@@ -381,6 +387,12 @@ export class EventService {
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
       'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
     ]);
+    await this.setColumnFormatting(listName, 'EventImageUrl', {
+      '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
+      'elmType': 'img',
+      'attributes': { 'src': '@currentField' },
+      'style': { 'max-height': '50px', 'max-width': '120px', 'border-radius': '4px' },
+    });
 
     await this.setEventsListPermissions(listName);
   }
@@ -508,6 +520,30 @@ export class EventService {
       }
     } catch {
       // View-Konfiguration ist optional
+    }
+  }
+
+  /**
+   * Column Formatting auf ein Feld setzen (z.B. Bild-Vorschau fuer URL-Spalten)
+   */
+  private async setColumnFormatting(listName: string, fieldName: string, formatJson: object): Promise<void> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$filter=InternalName eq '${fieldName}'&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      const field = data.value?.[0];
+      if (!field) return;
+
+      await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields('${field.Id}')`,
+        { CustomFormatter: JSON.stringify(formatJson) }
+      );
+      console.log(`[DEX] Column Formatting gesetzt fuer ${fieldName}`);
+    } catch {
+      // Column Formatting ist optional
     }
   }
 
