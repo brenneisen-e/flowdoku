@@ -32,7 +32,7 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Registrierungen', feature: 'Alle Teilnehmerlisten sehen', user: false, eventAdmin: false, superAdmin: true },
 
   // Administration
-  { category: 'Administration', feature: 'Admin-Bereich oeffnen', user: false, eventAdmin: true, superAdmin: true },
+  { category: 'Administration', feature: 'Admin-Bereich öffnen', user: false, eventAdmin: true, superAdmin: true },
   { category: 'Administration', feature: 'Rollen verwalten', user: false, eventAdmin: false, superAdmin: true },
   { category: 'Administration', feature: 'Rollen-Matrix einsehen', user: false, eventAdmin: false, superAdmin: true },
   { category: 'Administration', feature: 'User suchen', user: false, eventAdmin: false, superAdmin: true },
@@ -48,7 +48,7 @@ const PERMISSIONS: PermissionRow[] = [
 
   // Profil
   { category: 'Profil', feature: 'Eigenes Profil ansehen', user: true, eventAdmin: true, superAdmin: true },
-  { category: 'Profil', feature: 'Settings-Seite oeffnen', user: true, eventAdmin: true, superAdmin: true },
+  { category: 'Profil', feature: 'Settings-Seite öffnen', user: true, eventAdmin: true, superAdmin: true },
 ];
 
 function renderCell(value: boolean | string): React.ReactElement {
@@ -78,7 +78,7 @@ export default function RoleMatrixPage(): React.ReactElement {
         }}>
           <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Rollen-Matrix</h2>
           <p style={{ margin: '6px 0 0', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
-            Uebersicht aller Berechtigungen nach Rolle
+            Übersicht aller Berechtigungen nach Rolle
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export default function RoleMatrixPage(): React.ReactElement {
 
       <div style={{ marginTop: 16, textAlign: 'center' }}>
         <button className="btn btn-secondary" onClick={() => navigate('settings')}>
-          Zurueck zu Settings
+          Zurück zu Settings
         </button>
       </div>
     </div>

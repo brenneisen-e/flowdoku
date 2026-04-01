@@ -82,8 +82,8 @@ export default function EventCreationPage(): React.ReactElement {
     const dateStr = toLocal(nextWeek).replace(/[-T:]/g, '').substring(0, 8);
     setTitle(`Test_${dateStr}`);
     setEventType('Other');
-    setDescription('Testbeschreibung fuer ein Demo-Event.');
-    setLocation('Testort');
+    setDescription('Testbeschreibung für ein Demo-Event.');
+    setLocation('Köln, Testort');
     setLocationFilter('');
     setAudience('All');
     setStartDate(toLocal(nextWeek));
@@ -306,7 +306,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="flex-between mb-16">
                   <label className="form-label" style={{ marginBottom: 0 }}>Zusätzliche Registrierungsfelder</label>
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                    <Plus size={14} /> Feld hinzufuegen
+                    <Plus size={14} /> Feld hinzufügen
                   </button>
                 </div>
                 {customFields.map((field, idx) => (
