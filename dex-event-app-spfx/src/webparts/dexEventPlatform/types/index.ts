@@ -14,6 +14,8 @@ export interface DeloitteEvent {
   organizers: string[];
   location: string;
   locationAudience: string[];
+  audienceFilter: string[];
+  filterMode: 'AND' | 'OR';
   startDate: string;
   endDate: string;
   registrationDeadline: string;

@@ -2,7 +2,7 @@
  * Event-Uebersicht
  *
  * Zeigt Events als Karten an.
- * Standort-Filter: User sehen nur Events fuer ihren Standort.
+ * Standort + Zielgruppen-Filter: User sehen nur passende Events.
  * Admin/Organizer sehen alle Events.
  */
 
@@ -14,20 +14,80 @@ import { DeloitteEvent } from '../types';
 import EventCard from './EventCard';
 
 /**
- * Prüft ob ein User-Standort (z.B. "DE - Koeln") zu einem LocationFilter passt.
- * LocationFilter kann "Köln, Düsseldorf, All" sein.
+ * Prüft ob ein User-Standort zu einem LocationFilter passt.
+ * "DE - Koeln" matcht "Köln" oder "Koeln".
  */
-function matchesLocation(userLocation: string, locationFilter: string): boolean {
-  if (!locationFilter || !locationFilter.trim()) return true; // Kein Filter = alle
-  const filters = locationFilter.split(',').map(s => s.trim().toLowerCase());
+function matchesLocation(userLocation: string, locationFilters: string[]): boolean {
+  if (locationFilters.length === 0) return true;
+  const filters = locationFilters.map(s => s.trim().toLowerCase());
   if (filters.indexOf('all') >= 0) return true;
   if (!userLocation) return false;
   const loc = userLocation.toLowerCase();
-  // Matche z.B. "DE - Koeln" gegen "Köln" oder "Koeln"
   return filters.some(f => {
     const normalized = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae').replace(/ß/g, 'ss');
     return loc.indexOf(f) >= 0 || loc.indexOf(normalized) >= 0;
   });
+}
+
+/**
+ * Prüft ob ein User zur Zielgruppe passt.
+ * Zielgruppe kann Verteilergruppen (DEALL, SAPALL) oder Einzelmails sein.
+ * Einzelmails: exakter Match auf User-Email.
+ * Gruppen: werden gegen User-Email-Prefix gematcht (z.B. DEALL matcht alle @deloitte.de).
+ */
+function matchesAudience(userEmail: string, userLocation: string, audienceFilters: string[]): boolean {
+  if (audienceFilters.length === 0) return true;
+  const email = userEmail.toLowerCase();
+  const loc = (userLocation || '').toLowerCase();
+
+  return audienceFilters.some(filter => {
+    const f = filter.trim().toLowerCase();
+    if (!f) return false;
+
+    // Einzelne E-Mail-Adresse
+    if (f.indexOf('@') >= 0) {
+      return email === f;
+    }
+
+    // Gruppen-Patterns
+    if (f === 'deall') return true; // Alle DE-Mitarbeiter
+    // Standort-Gruppen: DEKOELN, DEHAMBURG, etc.
+    if (f.startsWith('de')) {
+      const city = f.substring(2);
+      const normalized = city.replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/ae/g, 'ä');
+      return loc.indexOf(city) >= 0 || loc.indexOf(normalized) >= 0;
+    }
+    // Abteilungs-Gruppen: SAPALL, TECHALL, etc. (Zukunft: Graph API Integration)
+    return false;
+  });
+}
+
+/**
+ * Prüft ob ein Event fuer den User sichtbar ist.
+ */
+function isEventVisibleForUser(
+  event: DeloitteEvent,
+  userEmail: string,
+  userLocation: string
+): boolean {
+  const hasLocationFilter = event.locationAudience.length > 0;
+  const hasAudienceFilter = event.audienceFilter.length > 0;
+
+  if (!hasLocationFilter && !hasAudienceFilter) return true;
+
+  const locMatch = matchesLocation(userLocation, event.locationAudience);
+  const audMatch = matchesAudience(userEmail, userLocation, event.audienceFilter);
+
+  if (event.filterMode === 'AND') {
+    // Beide müssen passen (sofern gesetzt)
+    if (hasLocationFilter && hasAudienceFilter) return locMatch && audMatch;
+    if (hasLocationFilter) return locMatch;
+    return audMatch;
+  }
+  // OR: mindestens einer muss passen
+  if (hasLocationFilter && hasAudienceFilter) return locMatch || audMatch;
+  if (hasLocationFilter) return locMatch;
+  return audMatch;
 }
 
 export default function EventListPage(): React.ReactElement {
@@ -40,11 +100,11 @@ export default function EventListPage(): React.ReactElement {
     ? events.filter((e) => e.status === 'Active')
     : events;
 
-  // Admin/Organizer sehen alle, normale User nur passende Standorte
+  // Admin/Organizer sehen alle, normale User nur passende
   const filteredEvents = canCreateEvents
     ? statusFiltered
     : statusFiltered.filter((e: DeloitteEvent) =>
-        matchesLocation(currentUser.location, e.locationAudience.join(', '))
+        isEventVisibleForUser(e, currentUser.email, currentUser.location)
       );
 
   return (
@@ -70,7 +130,7 @@ export default function EventListPage(): React.ReactElement {
       </div>
       {filteredEvents.length === 0 && (
         <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
-          Keine Events für deinen Standort gefunden.
+          Keine Events für dich gefunden.
         </p>
       )}
     </div>

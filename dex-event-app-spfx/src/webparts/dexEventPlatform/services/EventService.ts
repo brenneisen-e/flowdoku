@@ -32,7 +32,8 @@ export interface SPEvent {
   Description: string;
   Location: string;
   LocationFilter: string;
-  Audience: string;
+  Audience: string; // Zielgruppen-Filter (Gruppen + Emails, kommasepariert)
+  FilterMode: string; // 'AND' | 'OR' - Verknüpfung Standort+Zielgruppe
   StartDate: string;
   EndDate: string;
   RegistrationDeadline: string;
@@ -152,6 +153,7 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'LocationFilter', type: 2 },
       { title: 'Audience', type: 2 },
+      { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
       { title: 'StartDate', type: 4 },
       { title: 'EndDate', type: 4 },
       { title: 'RegistrationDeadline', type: 4 },
@@ -267,7 +269,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -313,6 +315,7 @@ export class EventService {
     location: string;
     locationFilter: string;
     audience: string;
+    filterMode: string;
     startDate: string;
     endDate: string;
     registrationDeadline: string;
@@ -356,6 +359,7 @@ export class EventService {
         'Location': event.location,
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
+        'FilterMode': event.filterMode || 'OR',
         'StartDate': event.startDate || null,
         'EndDate': event.endDate || null,
         'RegistrationDeadline': event.registrationDeadline || null,

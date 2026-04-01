@@ -34,6 +34,7 @@ export interface CreateEventInput {
   location: string;
   locationFilter: string;
   audience: string;
+  filterMode: string;
   startDate: string;
   endDate: string;
   registrationDeadline: string;
@@ -105,7 +106,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
       organizers: [e.Organizer || ''],
       location: e.Location || '',
-      locationAudience: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
+      locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
+      audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
+      filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',
       startDate: e.StartDate || '',
       endDate: e.EndDate || '',
       registrationDeadline: e.RegistrationDeadline || '',

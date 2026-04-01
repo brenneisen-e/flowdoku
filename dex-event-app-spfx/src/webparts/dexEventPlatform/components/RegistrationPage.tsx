@@ -29,20 +29,38 @@ export default function RegistrationPage(): React.ReactElement {
   const { canCreateEvents } = useRoles();
   const event = events.find(e => e.id === selectedEventId);
 
-  // Standort-Check: Würde dieses Event dem User angezeigt werden?
-  const locationFilter = event ? event.locationAudience.join(', ') : '';
-  const userLocationMatches = (): boolean => {
-    if (!locationFilter || !locationFilter.trim()) return true;
-    const filters = locationFilter.split(',').map(s => s.trim().toLowerCase());
-    if (filters.indexOf('all') >= 0) return true;
-    if (!currentUser.location) return false;
-    const loc = currentUser.location.toLowerCase();
-    return filters.some(f => {
-      const normalized = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae').replace(/ß/g, 'ss');
-      return loc.indexOf(f) >= 0 || loc.indexOf(normalized) >= 0;
+  // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
+  const showLocationBanner = canCreateEvents && event && (() => {
+    const locFilters = event.locationAudience;
+    const audFilters = event.audienceFilter || [];
+    const hasLoc = locFilters.length > 0;
+    const hasAud = audFilters.length > 0;
+    if (!hasLoc && !hasAud) return false; // kein Filter = alle sehen es
+
+    const loc = (currentUser.location || '').toLowerCase();
+    const email = currentUser.email.toLowerCase();
+
+    const locMatch = !hasLoc || locFilters.some(f => {
+      const fl = f.trim().toLowerCase();
+      if (fl === 'all') return true;
+      const norm = fl.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
+      return loc.indexOf(fl) >= 0 || loc.indexOf(norm) >= 0;
     });
-  };
-  const showLocationBanner = canCreateEvents && event && !userLocationMatches();
+
+    const audMatch = !hasAud || audFilters.some(f => {
+      const fl = f.trim().toLowerCase();
+      if (fl.indexOf('@') >= 0) return email === fl;
+      if (fl === 'deall') return true;
+      if (fl.startsWith('de')) return loc.indexOf(fl.substring(2)) >= 0;
+      return false;
+    });
+
+    const mode = event.filterMode || 'OR';
+    const visible = mode === 'AND'
+      ? (hasLoc && hasAud ? locMatch && audMatch : hasLoc ? locMatch : audMatch)
+      : (locMatch || audMatch);
+    return !visible;
+  })();
 
   const [salutation, setSalutation] = React.useState<Salutation | ''>('');
   const [firstName, setFirstName] = React.useState(currentUser.firstName);
@@ -153,8 +171,11 @@ export default function RegistrationPage(): React.ReactElement {
           background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
           color: 'var(--dex-orange)', fontSize: '0.85rem',
         }}>
-          Hinweis: Dieses Event ist für Standort <strong>{locationFilter}</strong> konfiguriert.
-          Dein Standort ({currentUser.location || 'unbekannt'}) würde es als normaler User nicht sehen.
+          Hinweis: Du würdest dieses Event als normaler User nicht sehen.
+          {event && event.locationAudience.length > 0 && <> Standort-Filter: <strong>{event.locationAudience.join(', ')}</strong>.</>}
+          {event && event.audienceFilter && event.audienceFilter.length > 0 && <> Zielgruppe: <strong>{event.audienceFilter.join(', ')}</strong>.</>}
+          {event && event.filterMode === 'AND' && <> (UND-Verknüpfung)</>}
+          {' '}Dein Standort: {currentUser.location || 'unbekannt'}.
         </div>
       )}
       <div className="registration-layout">

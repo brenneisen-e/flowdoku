@@ -35,6 +35,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [location, setLocation] = React.useState('');
   const [locationFilter, setLocationFilter] = React.useState('');
   const [audience, setAudience] = React.useState('');
+  const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>('OR');
   const [description, setDescription] = React.useState('');
   const [eventType, setEventType] = React.useState<EventType>('Other');
   const [startDate, setStartDate] = React.useState('');
@@ -148,6 +149,7 @@ export default function EventCreationPage(): React.ReactElement {
       location,
       locationFilter,
       audience,
+      filterMode,
       startDate: startDate ? new Date(startDate).toISOString() : '',
       endDate: endDate ? new Date(endDate).toISOString() : '',
       registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
@@ -282,7 +284,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </label>
                   ))}
                 </div>
-                {locationFilter && (
+                {(locationFilter || audience) && (
                   <button
                     className="btn btn-outline mt-8"
                     style={{ fontSize: '0.8rem', padding: '4px 12px' }}
@@ -296,11 +298,41 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  Audience / Zielgruppe
-                  <span className="info-icon" title="Optionale Einschränkung, z.B. eine bestimmte Abteilung oder 'All' für alle" style={{ marginLeft: 8 }}>i</span>
+                  Zielgruppen-Filter
+                  <span className="info-icon" title="Verteilergruppen (z.B. DEALL, SAPALL) oder einzelne E-Mail-Adressen. Personen die hier gelistet sind, sehen das Event zusätzlich zum Standort-Filter." style={{ marginLeft: 8 }}>i</span>
                 </label>
-                <input className="form-input" value={audience} onChange={e => setAudience(e.target.value)} placeholder="z.B. Technology & Transformation, All" />
+                <input
+                  className="form-input"
+                  value={audience}
+                  onChange={e => setAudience(e.target.value)}
+                  placeholder="z.B. DEALL, SAPALL, mmustermann@deloitte.de"
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+                  Kommasepariert. Gruppen: DEALL, DEKOELN, SAPALL. Einzelne E-Mails: name@deloitte.de
+                </p>
               </div>
+
+              {/* UND/ODER Verknüpfung */}
+              {locationFilter && audience && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Filterverknüpfung
+                    <span className="info-icon" title="UND: User muss beide Filter erfüllen. ODER: Einer der Filter reicht aus." style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
+                      <input type="radio" name="filterMode" value="OR" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} />
+                      <strong>ODER</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Standort oder Zielgruppe reicht</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
+                      <input type="radio" name="filterMode" value="AND" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} />
+                      <strong>UND</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Beides muss zutreffen</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className="form-group">
                 <label className="form-label">
@@ -573,10 +605,26 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
 
             <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', fontSize: '0.85rem' }}>
-              <strong>Aktive Standort-Filter:</strong>{' '}
-              {locationFilter ? locationFilter.split(',').map(s => s.trim()).map(s => (
-                <span key={s} className="badge badge-green" style={{ marginRight: 6 }}>{s}</span>
-              )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine Filter gesetzt (alle Standorte)</span>}
+              <div style={{ marginBottom: 6 }}>
+                <strong>Standort-Filter:</strong>{' '}
+                {locationFilter ? locationFilter.split(',').map(s => s.trim()).map(s => (
+                  <span key={s} className="badge badge-green" style={{ marginRight: 6 }}>{s}</span>
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <strong>Zielgruppen-Filter:</strong>{' '}
+                {audience ? audience.split(',').map(s => s.trim()).map(s => (
+                  <span key={s} className="badge badge-orange" style={{ marginRight: 6 }}>{s}</span>
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+              </div>
+              {locationFilter && audience && (
+                <div>
+                  <strong>Verknüpfung:</strong>{' '}
+                  <span className={`badge ${filterMode === 'AND' ? 'badge-red' : 'badge-green'}`}>
+                    {filterMode === 'AND' ? 'UND (beide müssen zutreffen)' : 'ODER (eines reicht)'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
