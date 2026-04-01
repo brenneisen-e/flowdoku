@@ -27,6 +27,7 @@ export default function Header(): React.ReactElement {
       case 'registration': return 'Registration Deloitte Events';
       case 'my-events': return 'My Events';
       case 'create-event': return 'Deloitte Event Creation';
+      case 'edit-event': return 'Event bearbeiten';
       case 'settings': return 'Settings';
       case 'profile': return 'My Profile';
       case 'admin': return 'Admin';

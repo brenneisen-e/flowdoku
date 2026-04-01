@@ -24,30 +24,59 @@ interface CustomFieldInput {
 }
 
 export default function EventCreationPage(): React.ReactElement {
-  const { navigate, goBack } = useNavigation();
-  const { createEvent } = useEvents();
+  const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
+  const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
-  const [title, setTitle] = React.useState('');
+
+  // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
+  const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
+  const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
+
+  // ISO-Datum zu datetime-local Format konvertieren
+  const isoToLocal = (iso: string): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number): string => (n < 10 ? '0' : '') + n;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
   const [organizer, setOrganizer] = React.useState(
-    `${currentUser.firstName} ${currentUser.surname}`
+    editEvent ? editEvent.organizers[0] : `${currentUser.firstName} ${currentUser.surname}`
   );
-  const [location, setLocation] = React.useState('');
-  const [locationFilter, setLocationFilter] = React.useState('');
-  const [audience, setAudience] = React.useState('');
-  const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>('OR');
-  const [description, setDescription] = React.useState('');
-  const [eventType, setEventType] = React.useState<EventType>('Other');
-  const [startDate, setStartDate] = React.useState('');
-  const [endDate, setEndDate] = React.useState('');
-  const [registrationDeadline, setRegistrationDeadline] = React.useState('');
+  const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
+  const [locationFilter, setLocationFilter] = React.useState(
+    editEvent ? editEvent.locationAudience.join(', ') : ''
+  );
+  const [audience, setAudience] = React.useState(
+    editEvent && editEvent.audienceFilter ? editEvent.audienceFilter.join(', ') : ''
+  );
+  const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>(
+    editEvent ? editEvent.filterMode : 'OR'
+  );
+  const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
+  const [eventType, setEventType] = React.useState<EventType>(editEvent ? editEvent.type : 'Other');
+  const [startDate, setStartDate] = React.useState(editEvent ? isoToLocal(editEvent.startDate) : '');
+  const [endDate, setEndDate] = React.useState(editEvent ? isoToLocal(editEvent.endDate) : '');
+  const [registrationDeadline, setRegistrationDeadline] = React.useState(
+    editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
+  );
   const [lastDeregisterDate, setLastDeregisterDate] = React.useState('');
-  const [maxParticipants, setMaxParticipants] = React.useState('');
+  const [maxParticipants, setMaxParticipants] = React.useState(
+    editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
+  );
   const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
-  const [eventImageUrl, setEventImageUrl] = React.useState('');
+  const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
-  const [imagePreview, setImagePreview] = React.useState('');
-  const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>([]);
+  const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
+  const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>(
+    editEvent ? editEvent.eventSpecificFields.map(f => ({
+      id: f.id, label: f.label, type: f.type, required: f.required,
+      options: f.options ? f.options.join(', ') : '', visible: true,
+    })) : []
+  );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   const [emailSearch, setEmailSearch] = React.useState('');
@@ -141,41 +170,70 @@ export default function EventCreationPage(): React.ReactElement {
       }
     }
 
-    const eventId = await createEvent({
-      title,
-      type: eventType,
-      status: 'Active',
-      description,
-      location,
-      locationFilter,
-      audience,
-      filterMode,
-      startDate: startDate ? new Date(startDate).toISOString() : '',
-      endDate: endDate ? new Date(endDate).toISOString() : '',
-      registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
-      lastDeregisterDate: lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : '',
-      maxParticipants: Number(maxParticipants) || 0,
-      waitlistEnabled,
-      eventImageUrl: imageUrl,
-      organizer,
-      organizerEmail: currentUser.email,
-      outlookEventId: '',
-      customFields: customFields.map(f => ({
-        id: f.id,
-        label: f.label,
-        type: f.type,
-        required: f.required,
-        visible: f.visible,
-        ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
-      })),
-    });
+    if (isEditMode && selectedEventId) {
+      // Event aktualisieren
+      const updates: Record<string, unknown> = {
+        'Title': title,
+        'EventType': eventType,
+        'Description': description,
+        'Location': location,
+        'LocationFilter': locationFilter,
+        'Audience': audience,
+        'FilterMode': filterMode,
+        'StartDate': startDate ? new Date(startDate).toISOString() : null,
+        'EndDate': endDate ? new Date(endDate).toISOString() : null,
+        'RegistrationDeadline': registrationDeadline ? new Date(registrationDeadline).toISOString() : null,
+        'LastDeregisterDate': lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : null,
+        'MaxParticipants': Number(maxParticipants) || 0,
+        'WaitlistEnabled': waitlistEnabled,
+        'EventImageUrl': imageUrl,
+        'Organizer': organizer,
+        'CustomFields': JSON.stringify(customFields.map(f => ({
+          id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
+          ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+        }))),
+      };
 
-    setIsSubmitting(false);
-
-    if (eventId) {
-      setSubmitted(true);
+      const success = await updateEvent(selectedEventId, updates);
+      setIsSubmitting(false);
+      if (success) {
+        setSubmitted(true);
+      } else {
+        setError('Event konnte nicht aktualisiert werden.');
+      }
     } else {
-      setError('Event konnte nicht erstellt werden. Bitte versuche es erneut.');
+      // Neues Event erstellen
+      const eventId = await createEvent({
+        title,
+        type: eventType,
+        status: 'Active',
+        description,
+        location,
+        locationFilter,
+        audience,
+        filterMode,
+        startDate: startDate ? new Date(startDate).toISOString() : '',
+        endDate: endDate ? new Date(endDate).toISOString() : '',
+        registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
+        lastDeregisterDate: lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : '',
+        maxParticipants: Number(maxParticipants) || 0,
+        waitlistEnabled,
+        eventImageUrl: imageUrl,
+        organizer,
+        organizerEmail: currentUser.email,
+        outlookEventId: '',
+        customFields: customFields.map(f => ({
+          id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
+          ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+        })),
+      });
+
+      setIsSubmitting(false);
+      if (eventId) {
+        setSubmitted(true);
+      } else {
+        setError('Event konnte nicht erstellt werden. Bitte versuche es erneut.');
+      }
     }
   };
 
@@ -183,9 +241,9 @@ export default function EventCreationPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <h2>Event erfolgreich erstellt!</h2>
+          <h2>{isEditMode ? 'Event erfolgreich aktualisiert!' : 'Event erfolgreich erstellt!'}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            "{title}" wurde angelegt. Die Teilnehmerliste wurde auf SharePoint erstellt.
+            "{title}" wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('register')}>Events anzeigen</button>
@@ -482,7 +540,9 @@ export default function EventCreationPage(): React.ReactElement {
               onClick={handleSubmit}
               style={{ opacity: !title || !description || isSubmitting ? 0.5 : 1 }}
             >
-              <Send size={16} /> {isSubmitting ? 'Wird erstellt...' : 'Event erstellen'}
+              <Send size={16} /> {isSubmitting
+                ? (isEditMode ? 'Wird gespeichert...' : 'Wird erstellt...')
+                : (isEditMode ? 'Änderungen speichern' : 'Event erstellen')}
             </button>
           </div>
         </div>

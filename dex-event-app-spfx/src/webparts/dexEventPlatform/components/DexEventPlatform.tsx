@@ -117,6 +117,7 @@ function AppContent(): React.ReactElement {
       case 'my-events':
         return <MyEventsPage />;
       case 'create-event':
+      case 'edit-event':
         return <EventCreationPage />;
       case 'settings':
         return <SettingsPage />;
