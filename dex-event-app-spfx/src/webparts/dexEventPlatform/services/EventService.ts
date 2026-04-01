@@ -242,21 +242,17 @@ export class EventService {
 
   /**
    * Outlook-Termin-Queue-Liste erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Eintraege und erstellt Outlook-Termine.
+   * Power Automate reagiert auf neue Eintraege und laedt Teilnehmer
+   * zum Outlook-Termin ein oder aus. Der Flow holt sich alle Event-Details
+   * (Titel, Datum, Ort, CalendarLink) aus der DEX_Events-Liste via EventId.
    *
    * Spalten:
-   * - Title: Betreff des Termins
+   * - Title: Kurzbeschreibung (z.B. "Einladung: B2Run")
    * - Attendee: E-Mail-Adresse des Teilnehmers
-   * - AttendeeName: Name des Teilnehmers
-   * - EventTitle: Name des Events
-   * - EventId: ID des Events (Referenz)
-   * - StartDate: Beginn des Termins
-   * - EndDate: Ende des Termins
-   * - Location: Veranstaltungsort
-   * - Body: Beschreibung / HTML-Inhalt
-   * - ActionType: Erstellen, Absagen (fuer Abmeldung)
+   * - EventId: ID des Events in DEX_Events (Referenz)
+   * - ActionType: Einladen, Ausladen
    * - Status: Pending, Sent, Failed
-   * - SentDate: Wann wurde der Termin versendet
+   * - SentDate: Wann wurde die Aktion ausgefuehrt
    */
   public async ensureOutlookList(): Promise<void> {
     const listName = 'DEX_Outlook';
@@ -266,21 +262,15 @@ export class EventService {
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Outlook-Termin-Queue für automatischen Versand via Power Automate',
+      'Description': 'Outlook-Termin-Queue: Power Automate laedt Teilnehmer ein/aus',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
 
     const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Attendee', type: 2 },
-      { title: 'AttendeeName', type: 2 },
-      { title: 'EventTitle', type: 2 },
       { title: 'EventId', type: 2 },
-      { title: 'StartDate', type: 4 },
-      { title: 'EndDate', type: 4 },
-      { title: 'Location', type: 2 },
-      { title: 'Body', type: 3 },
-      { title: 'ActionType', type: 6, choices: ['Erstellen', 'Absagen'], metaType: 'SP.FieldChoice' },
+      { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen'], metaType: 'SP.FieldChoice' },
       { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
       { title: 'SentDate', type: 4 },
     ];
@@ -299,39 +289,28 @@ export class EventService {
     }
 
     await this.configureDefaultView(listName, [
-      'Attendee', 'AttendeeName', 'ActionType', 'EventTitle', 'StartDate', 'EndDate', 'Status', 'SentDate',
+      'Attendee', 'EventId', 'ActionType', 'Status', 'SentDate',
     ]);
   }
 
   /**
-   * Outlook-Termin in die Queue eintragen (wird von Power Automate versendet).
+   * Outlook-Termin-Einladung in die Queue eintragen.
+   * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
    */
   public async queueOutlookEvent(
-    subject: string,
     attendee: string,
-    attendeeName: string,
-    eventTitle: string,
     eventId: string,
-    startDate: string,
-    endDate: string,
-    location: string,
-    body: string,
-    actionType: 'Erstellen' | 'Absagen'
+    eventTitle: string,
+    actionType: 'Einladen' | 'Ausladen'
   ): Promise<boolean> {
     try {
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
         {
           '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
-          'Title': subject,
+          'Title': `${actionType}: ${eventTitle}`,
           'Attendee': attendee,
-          'AttendeeName': attendeeName,
-          'EventTitle': eventTitle,
           'EventId': eventId,
-          'StartDate': startDate,
-          'EndDate': endDate,
-          'Location': location,
-          'Body': body,
           'ActionType': actionType,
           'Status': 'Pending',
         }
