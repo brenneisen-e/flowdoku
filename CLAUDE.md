@@ -18,6 +18,17 @@ When deploying changes to the SPFx project:
 
 The `dist/dex-event-platform.sppkg` must always reflect the latest build so it can be downloaded directly from GitHub.
 
+### Versioning Strategy
+
+- **Patch (1.0.x):** Bug fixes, UI tweaks, small improvements. Bumped automatically by `npm run package`.
+- **Minor (1.x.0):** New user-facing feature completed and working end-to-end (e.g. event creation with subsites, registration flow, role management). Bump manually in `package.json` and `config/package-solution.json`.
+- **Major (x.0.0):** Breaking changes, major architectural shifts, or official production release. Bump manually.
+
+When to bump minor/major (update `package.json` version + `config/package-solution.json` solution.version):
+- **1.1.0** — First fully working version: event creation (subsites), registration, cancellation, admin page, role management all functional on SharePoint
+- **1.2.0** — Power Automate integration (waitlist promotion, ID reassignment)
+- **2.0.0** — Production release / go-live after pilot phase
+
 ### SharePoint Site
 
 - Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run`
