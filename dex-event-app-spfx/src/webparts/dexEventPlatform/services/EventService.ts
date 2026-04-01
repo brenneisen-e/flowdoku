@@ -557,9 +557,57 @@ export class EventService {
       await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, payload);
     }
 
-    // Default View konfigurieren
+    // Custom Fields als eigene Spalten anlegen
+    const customFieldViewNames: string[] = [];
+    for (const cf of customFields) {
+      if (!cf.label) continue;
+      // Interner Spaltenname: sanitized Label (max 32 Zeichen, keine Sonderzeichen)
+      const internalName = cf.id.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 32);
+      let fieldPayload: Record<string, unknown>;
+
+      if (cf.type === 'select' && cf.options && cf.options.length > 0) {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.FieldChoice' },
+          'Title': cf.label,
+          'FieldTypeKind': 6,
+          'Required': false,
+          'Choices': { 'results': cf.options },
+        };
+      } else if (cf.type === 'number') {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 9,
+          'Required': false,
+        };
+      } else if (cf.type === 'checkbox') {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 8,
+          'Required': false,
+        };
+      } else {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 2,
+          'Required': false,
+        };
+      }
+
+      try {
+        await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, fieldPayload);
+        customFieldViewNames.push(cf.label);
+      } catch {
+        console.warn('[DEX] Custom Field konnte nicht angelegt werden:', cf.label);
+      }
+    }
+
+    // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
       'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
+      ...customFieldViewNames,
     ], subsiteUrl);
 
     // Item-Level Permissions

@@ -19,7 +19,6 @@ const PROFILE_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'LastName', label: 'Nachname' },
   { key: 'Title', label: 'Titel / Position' },
   { key: 'Department', label: 'Abteilung' },
-  { key: 'SPS-Department', label: 'Bereich' },
   { key: 'Office', label: 'Standort' },
   { key: 'WorkEmail', label: 'E-Mail' },
   { key: 'WorkPhone', label: 'Telefon' },
@@ -89,9 +88,19 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           }
         }
 
+        // Profilfoto: PictureUrl verwenden, Fallback auf UserPhoto Endpoint
+        let pictureUrl = data.PictureUrl || '';
+        if (!pictureUrl) {
+          // Fallback: Standard SharePoint User Photo URL
+          pictureUrl = `${siteUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(currentUser.email)}`;
+        } else if (pictureUrl.indexOf('MThumb') > -1) {
+          // Medium Thumbnail durch Large ersetzen
+          pictureUrl = pictureUrl.replace('MThumb', 'LThumb');
+        }
+
         setProfile({
           displayName: data.DisplayName || `${currentUser.firstName} ${currentUser.surname}`,
-          pictureUrl: data.PictureUrl || '',
+          pictureUrl,
           properties: mapped,
         });
       }
