@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail } from '../services/EmailTemplates';
 import { EventType } from '../types';
@@ -68,6 +69,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
+  const { t } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;

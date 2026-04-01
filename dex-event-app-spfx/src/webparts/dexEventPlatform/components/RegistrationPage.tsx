@@ -28,6 +28,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents } = useRoles();
+  const { t } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
   // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
@@ -78,9 +79,9 @@ export default function RegistrationPage(): React.ReactElement {
   if (!event) {
     return (
       <div className="page-container text-center">
-        <h2>Event not found</h2>
+        <h2>{t('reg.eventnotfound')}</h2>
         <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
-          Back to Events
+          {t('reg.backtoevents')}
         </button>
       </div>
     );
@@ -93,7 +94,7 @@ export default function RegistrationPage(): React.ReactElement {
     // Validierung Pflichtfelder
     setShowErrors(true);
     if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
-      setError('Bitte alle Pflichtfelder ausfüllen.');
+      setError(t('reg.requiredfields'));
       return;
     }
 
@@ -101,7 +102,7 @@ export default function RegistrationPage(): React.ReactElement {
     const missingRequired = event.eventSpecificFields
       .filter(f => f.required && !eventSpecific[f.id]?.trim());
     if (missingRequired.length > 0) {
-      setError(`Bitte ausfüllen: ${missingRequired.map(f => f.label).join(', ')}`);
+      setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
       return;
     }
 
@@ -127,10 +128,10 @@ export default function RegistrationPage(): React.ReactElement {
       if (success) {
         setSubmitted(true);
       } else {
-        setError('Registrierung fehlgeschlagen. Möglicherweise bist du bereits angemeldet.');
+        setError(t('reg.error'));
       }
     } catch {
-      setError('Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+      setError(t('reg.genericerror'));
     } finally {
       setIsSubmitting(false);
     }
@@ -149,18 +150,18 @@ export default function RegistrationPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <h2>{isFull ? 'Auf die Warteliste gesetzt' : 'Registrierung erfolgreich!'}</h2>
+          <h2>{isFull ? t('reg.waitlisttitle') : t('reg.success')}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             {isFull
-              ? `Du wurdest auf die Warteliste für "${event.title}" gesetzt. Du wirst benachrichtigt, sobald ein Platz frei wird.`
-              : `Du wurdest erfolgreich für "${event.title}" registriert. Eine Bestätigung wurde an ${email} gesendet.`}
+              ? t('reg.waitlistmsg').replace('{title}', event.title)
+              : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)}
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
-              My Events
+              {t('myevents.title')}
             </button>
             <button className="btn btn-secondary" onClick={() => navigate('register')}>
-              Register for another event
+              {t('reg.registeranother')}
             </button>
           </div>
         </div>

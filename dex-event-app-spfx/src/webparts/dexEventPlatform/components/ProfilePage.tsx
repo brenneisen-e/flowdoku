@@ -185,10 +185,10 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           ) : (
             // Fallback: Basisdaten anzeigen
             [
-              { label: 'Vorname', value: currentUser.firstName },
-              { label: 'Nachname', value: currentUser.surname },
-              { label: 'E-Mail', value: currentUser.email },
-              { label: 'Standort', value: currentUser.location },
+              { label: t('profile.firstname'), value: currentUser.firstName },
+              { label: t('profile.lastname'), value: currentUser.surname },
+              { label: t('profile.email'), value: currentUser.email },
+              { label: t('profile.office'), value: currentUser.location },
               { label: 'Login', value: currentUser.id },
             ].filter(r => r.value).map(row => (
               <div key={row.label} style={{
@@ -208,8 +208,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           borderRadius: '0 0 var(--dex-radius-lg, 12px) var(--dex-radius-lg, 12px)',
           fontSize: '0.8rem', color: 'var(--dex-gray-400, #aaa)',
         }}>
-          Diese Daten werden aus deinem SharePoint-Profil gelesen. Um sie zu aktualisieren,
-          wende dich an deine IT oder aktualisiere dein Profil in Microsoft 365.
+          {t('profile.note')}
         </div>
       </div>
     </div>
