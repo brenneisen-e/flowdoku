@@ -2,7 +2,7 @@
  * Registrierungsseite fuer ein einzelnes Event
  *
  * Drei-Spalten-Layout: Event-Info | persoenliche Daten | eventspezifische Felder
- * TODO: Registrierung tatsaechlich im State/Backend speichern
+ * Speichert die Registrierung in der SharePoint-Teilnehmerliste des Events.
  */
 
 import * as React from 'react';
@@ -23,7 +23,7 @@ function formatDate(iso: string): string {
 
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
-  const { events } = useEvents();
+  const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const event = events.find(e => e.id === selectedEventId);
 
@@ -34,6 +34,8 @@ export default function RegistrationPage(): React.ReactElement {
   const [registerForOther, setRegisterForOther] = React.useState(false);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
   const [submitted, setSubmitted] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   if (!event) {
     return (
@@ -48,8 +50,50 @@ export default function RegistrationPage(): React.ReactElement {
 
   const isFull = event.currentParticipants >= event.maxParticipants;
 
-  const handleSubmit = (): void => {
-    setSubmitted(true);
+  const handleSubmit = async (): Promise<void> => {
+    // Validierung Pflichtfelder
+    if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
+      setError('Bitte alle Pflichtfelder ausfuellen.');
+      return;
+    }
+
+    // Pflicht-Custom-Fields validieren
+    const missingRequired = event.eventSpecificFields
+      .filter(f => f.required && !eventSpecific[f.id]?.trim());
+    if (missingRequired.length > 0) {
+      setError(`Bitte ausfuellen: ${missingRequired.map(f => f.label).join(', ')}`);
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const customData: Record<string, string> = {
+        salutation,
+        ...eventSpecific,
+      };
+
+      const participantName = `${firstName.trim()} ${surname.trim()}`;
+      const participantEmail = email.trim();
+
+      const success = await registerForEvent(
+        selectedEventId!,
+        customData,
+        participantName,
+        participantEmail
+      );
+
+      if (success) {
+        setSubmitted(true);
+      } else {
+        setError('Registrierung fehlgeschlagen. Moeglicherweise bist du bereits angemeldet.');
+      }
+    } catch {
+      setError('Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClear = (): void => {
@@ -198,10 +242,19 @@ export default function RegistrationPage(): React.ReactElement {
         </p>
       </div>
 
+      {/* Fehlermeldung */}
+      {error && (
+        <div className="mt-16" style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--dex-red)', borderRadius: 'var(--dex-radius-md)', color: 'var(--dex-red)', fontSize: '0.9rem' }}>
+          {error}
+        </div>
+      )}
+
       {/* Buttons */}
       <div className="registration-actions mt-24">
-        <button className="btn btn-danger" onClick={handleClear}><Trash2 size={16} /> Delete</button>
-        <button className="btn btn-primary" onClick={handleSubmit}><Send size={16} /> Register</button>
+        <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> Delete</button>
+        <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
+          <Send size={16} /> {isSubmitting ? 'Wird gesendet...' : 'Register'}
+        </button>
       </div>
     </div>
   );

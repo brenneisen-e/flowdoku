@@ -17,7 +17,7 @@ interface EventContextType {
   events: DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantName?: string, participantEmail?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -131,12 +131,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventId;
   }
 
-  async function registerForEvent(eventId: string, customData: Record<string, string>): Promise<boolean> {
+  async function registerForEvent(
+    eventId: string,
+    customData: Record<string, string>,
+    participantName?: string,
+    participantEmail?: string
+  ): Promise<boolean> {
     const regListName = regListMap.current[eventId];
     if (!regListName) return false;
 
+    const nameToUse = participantName || currentUserName;
+    const emailToUse = participantEmail || currentUserEmail;
+
     // Pruefen ob schon registriert
-    const existing = await eventService.getMyRegistration(regListName, currentUserEmail);
+    const existing = await eventService.getMyRegistration(regListName, emailToUse);
     if (existing && existing.Status !== 'Cancelled') return false;
 
     // Pruefen ob Platz frei oder Waitlist
@@ -147,7 +155,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     const success = await eventService.registerForEvent(
-      regListName, currentUserName, currentUserEmail, customData, status
+      regListName, nameToUse, emailToUse, customData, status
     );
 
     if (success) {
