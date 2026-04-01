@@ -444,22 +444,45 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="info-icon" title="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." style={{ marginLeft: 8 }}>i</span>
                 </label>
                 {imagePreview && (
-                  <img src={imagePreview} alt="Vorschau" style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 'var(--dex-radius)', marginBottom: 8 }} />
+                  <div style={{ position: 'relative', marginBottom: 8 }}>
+                    <img src={imagePreview} alt="Vorschau" style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 'var(--dex-radius)' }} />
+                    <button
+                      type="button"
+                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
+                      style={{
+                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
+                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ fontSize: '0.85rem' }}
-                  onChange={e => {
-                    const file = e.target.files && e.target.files[0];
-                    if (file) {
-                      setImageFile(file);
-                      const reader = new FileReader();
-                      reader.onload = ev => setImagePreview(ev.target?.result as string || '');
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                />
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                  transition: 'border-color 0.2s, background 0.2s',
+                }}>
+                  <Plus size={16} />
+                  {imageFile ? imageFile.name : 'Bild auswählen'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files && e.target.files[0];
+                      if (file) {
+                        setImageFile(file);
+                        const reader = new FileReader();
+                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
