@@ -114,11 +114,25 @@ export default function MyEventsPage(): React.ReactElement {
       {activeEntries.length > 0 && (
         <div className="my-events-list">
           {activeEntries.map(({ event, registration }) => {
-            // Custom Data parsen
+            // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
             try {
               if (registration.CustomData) customData = JSON.parse(registration.CustomData);
             } catch { /* */ }
+
+            // Feld-ID zu Label-Map aus den Event-Feldern erstellen
+            const fieldLabelMap: Record<string, string> = {};
+            for (const field of event.eventSpecificFields) {
+              fieldLabelMap[field.id] = field.label;
+            }
+
+            // "salutation" überspringen (wird schon im Namen angezeigt)
+            const displayData = Object.keys(customData)
+              .filter(key => key !== 'salutation' && customData[key])
+              .map(key => ({
+                label: fieldLabelMap[key] || key,
+                value: customData[key],
+              }));
 
             return (
               <div key={event.id} className="card my-event-card">
@@ -138,11 +152,11 @@ export default function MyEventsPage(): React.ReactElement {
                   )}
                 </div>
 
-                {Object.keys(customData).length > 0 && (
+                {displayData.length > 0 && (
                   <div className="my-event-card__specific">
-                    {Object.keys(customData).map(key => (
-                      <span key={key} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
-                        {key}: {customData[key]}
+                    {displayData.map(({ label, value }) => (
+                      <span key={label} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
+                        {label}: {value}
                       </span>
                     ))}
                   </div>
