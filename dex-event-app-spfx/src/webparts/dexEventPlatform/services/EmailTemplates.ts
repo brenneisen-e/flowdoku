@@ -33,7 +33,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#ffffff;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="${LOGOS_URL}/deloitte-logo.png" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="${LOGOS_URL}/Deloitte_Logo.png" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -44,10 +44,10 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 </td>
 </tr>
 
-<!-- ===== HERO IMAGE: DEX Orb ===== -->
+<!-- ===== HERO: DEX Banner ===== -->
 <tr>
-<td style="background-color:#f5f5f5;text-align:center;padding:30px 30px;">
-  <img src="${LOGOS_URL}/dex-orb.png" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+<td style="background:linear-gradient(135deg,#86bc25 0%,#0076a8 100%);text-align:center;padding:24px 30px;">
+  <span style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:1px;">Event Experience Platform</span>
 </td>
 </tr>
 
