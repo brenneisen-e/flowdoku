@@ -152,7 +152,7 @@ export default function SettingsPage(): React.ReactElement {
               <button className="btn btn-primary btn-block" onClick={() => navigate('create-event')}>
                 <Plus size={18} /> Create New Event
               </button>
-              <button className="btn btn-secondary btn-block mt-8">
+              <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('admin')}>
                 <FileText size={18} /> View All Events (Admin)
               </button>
               <button className="btn btn-secondary btn-block mt-8">

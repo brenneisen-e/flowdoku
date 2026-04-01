@@ -404,6 +404,76 @@ export class EventService {
     }
   }
 
+  /**
+   * Event vollstaendig loeschen:
+   * 1. Subsite loeschen (inkl. Teilnehmerliste) - fuer neue Events
+   * 2. Alte Registrierungsliste loeschen (DEX_Reg_*) - fuer alte Events
+   * 3. Event-Eintrag aus DEX_Events loeschen
+   */
+  public async deleteEvent(eventId: number): Promise<boolean> {
+    try {
+      // Event-Daten laden um SubsiteUrl und RegistrationListName zu bekommen
+      const event = await this.getEvent(eventId);
+      if (!event) return false;
+
+      // 1. Subsite loeschen (neue Events)
+      if (event.SubsiteUrl) {
+        try {
+          await this.context.spHttpClient.post(
+            `${event.SubsiteUrl}/_api/web`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=verbose',
+                'Content-Type': 'application/json;odata=verbose',
+                'X-HTTP-Method': 'DELETE',
+              },
+            }
+          );
+        } catch {
+          console.warn('[DEX] Subsite konnte nicht geloescht werden:', event.SubsiteUrl);
+        }
+      }
+
+      // 2. Alte Registrierungsliste loeschen (alte Events ohne Subsite)
+      if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
+        try {
+          await this.context.spHttpClient.post(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=verbose',
+                'Content-Type': 'application/json;odata=verbose',
+                'IF-MATCH': '*',
+                'X-HTTP-Method': 'DELETE',
+              },
+            }
+          );
+        } catch {
+          console.warn('[DEX] Alte Registrierungsliste konnte nicht geloescht werden:', event.RegistrationListName);
+        }
+      }
+
+      // 3. Event-Eintrag aus DEX_Events loeschen
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'DELETE',
+          },
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== Subsites ====================
 
   /**

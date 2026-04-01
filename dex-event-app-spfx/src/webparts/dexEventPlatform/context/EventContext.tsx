@@ -21,6 +21,7 @@ interface EventContextType {
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  deleteEvent: (eventId: string) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -112,6 +113,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
+      subsiteUrl: e.SubsiteUrl || '',
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,
@@ -165,7 +167,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success) {
-      await reassignParticipantIds(subsiteUrl);
       await loadEvents();
     }
     return success;
@@ -180,39 +181,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id);
     if (success) {
-      await reassignParticipantIds(subsiteUrl);
       await loadEvents();
     }
     return success;
-  }
-
-  /**
-   * Teilnehmer-IDs neu vergeben.
-   * Alle aktiven Teilnehmer (Registered, Checked-In) bekommen fortlaufende IDs.
-   */
-  async function reassignParticipantIds(subsiteUrl: string): Promise<void> {
-    try {
-      const allRegs = await eventService.getAllRegistrations(subsiteUrl);
-      const active = allRegs
-        .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
-        .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
-
-      for (let i = 0; i < active.length; i++) {
-        const newId = (i + 1).toString();
-        if (active[i].Title !== newId) {
-          await eventService.updateRegistrationTitle(subsiteUrl, active[i].Id, newId);
-        }
-      }
-
-      const cancelled = allRegs.filter(r => r.Status === 'Abgemeldet');
-      for (const reg of cancelled) {
-        if (reg.Title && reg.Title !== '') {
-          await eventService.updateRegistrationTitle(subsiteUrl, reg.Id, '');
-        }
-      }
-    } catch {
-      // ID-Neuvergabe fehlgeschlagen
-    }
   }
 
   async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
@@ -227,6 +198,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getAllRegistrations(subsiteUrl);
   }
 
+  async function deleteEvent(eventId: string): Promise<boolean> {
+    const success = await eventService.deleteEvent(Number(eventId));
+    if (success) {
+      delete subsiteMap.current[eventId];
+      await loadEvents();
+    }
+    return success;
+  }
+
   async function refreshEvents(): Promise<void> {
     await loadEvents();
   }
@@ -237,7 +217,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, refreshEvents,
       },
     },
     props.children
