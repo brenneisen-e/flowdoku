@@ -94,9 +94,9 @@ export default function EventCreationPage(): React.ReactElement {
     setWaitlistEnabled(true);
     setEventImageUrl('');
     setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Groesse', type: 'select', required: true, options: 'XS, S, M, L, XL, XXL', visible: true },
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: true, options: 'XS, S, M, L, XL, XXL', visible: true },
       { id: `cf-${Date.now() + 1}`, label: 'Notfallkontakt (Name & Telefon)', type: 'text', required: true, options: '', visible: true },
-      { id: `cf-${Date.now() + 2}`, label: 'Ernaehrungsbesonderheiten', type: 'text', required: false, options: '', visible: true },
+      { id: `cf-${Date.now() + 2}`, label: 'Ernährungsbesonderheiten', type: 'text', required: false, options: '', visible: true },
     ]);
   };
 
@@ -227,7 +227,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Standort-Filter
-                  <span className="info-icon" title="Welche Standorte sollen das Event sehen und sich registrieren koennen?" style={{ marginLeft: 8 }}>i</span>
+                  <span className="info-icon" title="Welche Standorte sollen das Event sehen und sich registrieren können?" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {locationOptions.map(loc => (

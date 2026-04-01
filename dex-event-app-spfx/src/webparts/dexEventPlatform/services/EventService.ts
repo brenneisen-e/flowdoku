@@ -486,7 +486,7 @@ export class EventService {
             'Description': desc,
             'Language': 1031,
             'WebTemplate': template,
-            'UseUniquePermissions': true,
+            'UseSamePermissionsAsParentSite': false,
           }
         };
 
