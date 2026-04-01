@@ -16,6 +16,7 @@ import { User } from '../types';
 interface UserContextType {
   currentUser: User;
   isLoading: boolean;
+  photoUrl: string;
 }
 
 const UserContext = React.createContext<UserContextType | undefined>(undefined);
@@ -31,6 +32,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     location: '',
   });
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
+  const [photoUrl, setPhotoUrl] = React.useState<string>('');
 
   React.useEffect(() => {
     // User-Daten aus dem SPFx-Context laden
@@ -68,11 +70,16 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
         setCurrentUser(prev => ({ ...prev, location }));
       }
     }).catch(() => { /* Standort konnte nicht geladen werden */ });
+
+    // Profilbild ueber Microsoft Graph laden
+    loadUserPhoto(props.context).then(url => {
+      if (url) setPhotoUrl(url);
+    }).catch(() => { /* Foto nicht verfuegbar */ });
   }, []);
 
   return React.createElement(
     UserContext.Provider,
-    { value: { currentUser, isLoading } },
+    { value: { currentUser, isLoading, photoUrl } },
     props.children
   );
 }
@@ -94,6 +101,27 @@ async function loadUserLocation(context: WebPartContext): Promise<string> {
       }
     }
   } catch { /* Profil nicht verfuegbar */ }
+  return '';
+}
+
+/**
+ * Profilbild ueber Microsoft Graph laden
+ */
+async function loadUserPhoto(context: WebPartContext): Promise<string> {
+  try {
+    const graphClient = await context.msGraphClientFactory.getClient('3');
+    const blob = await graphClient.api('/me/photo/$value').get();
+    if (blob && blob.size > 0) {
+      return URL.createObjectURL(blob);
+    }
+  } catch {
+    // Graph nicht verfuegbar — Fallback auf SharePoint UserPhoto
+    try {
+      const siteUrl = context.pageContext.web.absoluteUrl;
+      const email = context.pageContext.user.email;
+      return `${siteUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(email)}`;
+    } catch { /* */ }
+  }
   return '';
 }
 

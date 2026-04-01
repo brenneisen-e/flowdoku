@@ -29,6 +29,7 @@ export interface SPEvent {
   Title: string;
   EventStatus: string;
   EventType: string;
+  EventNumber: number;
   Description: string;
   Location: string;
   LocationFilter: string;
@@ -45,6 +46,7 @@ export interface SPEvent {
   OrganizerEmail: string;
   OutlookEventId: string;
   CalendarLink: string;
+  OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -62,12 +64,24 @@ export interface CustomField {
 export interface SPRegistration {
   Id: number;
   Title: string; // Teilnehmer-ID
+  Vorname?: string;
+  Nachname?: string;
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
   RegistrationDate: string;
   CancellationDate: string;
   CustomData: string; // JSON mit Custom Field Werten
+}
+
+export interface SPParticipant {
+  Id: number;
+  Title: string; // Email
+  Vorname: string;
+  Nachname: string;
+  Email: string;
+  EventRegistered: string; // Kommaseparierte EventNumbers
+  EventOnWaitlist: string; // Kommaseparierte EventNumbers
 }
 
 export class EventService {
@@ -321,6 +335,286 @@ export class EventService {
     }
   }
 
+  // ==================== DEX_IDReorder Queue ====================
+
+  /**
+   * Queue-Liste fuer ID-Neuvergabe erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Eintraege und vergibt TeilnehmerIDs
+   * auf der jeweiligen Subsite-Teilnehmerliste lueckenlos neu.
+   *
+   * Spalten:
+   * - Title: Kurzbeschreibung (z.B. "Reorder: Test_20260408")
+   * - EventId: SP Item-ID des Events in DEX_Events
+   * - EventNumber: Hochlaufende EventNumber
+   * - SubsiteUrl: Absolute URL der Event-Subsite
+   * - Status: Pending, Processing, Done, Failed
+   */
+  public async ensureIDReorderList(): Promise<void> {
+    const listName = 'DEX_IDReorder';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Queue fuer TeilnehmerID-Neuvergabe nach Abmeldungen',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields = [
+      { title: 'EventId', type: 2 },
+      { title: 'EventNumber', type: 9 },
+      { title: 'SubsiteUrl', type: 2 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Processing', 'Done', 'Failed'], metaType: 'SP.FieldChoice' },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if ((f as { choices?: string[] }).choices) {
+        payload['Choices'] = { 'results': (f as { choices: string[] }).choices };
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'EventId', 'EventNumber', 'SubsiteUrl', 'Status',
+    ]);
+  }
+
+  /**
+   * ID-Reorder in Queue eintragen (nach Abmeldung).
+   */
+  public async queueIDReorder(
+    eventId: string,
+    eventNumber: number,
+    subsiteUrl: string,
+    eventTitle: string
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_IDReorderListItem' },
+          'Title': `Reorder: ${eventTitle}`,
+          'EventId': eventId,
+          'EventNumber': eventNumber,
+          'SubsiteUrl': subsiteUrl,
+          'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  // ==================== DEX_Participants Liste ====================
+
+  /**
+   * Zentrale Teilnehmer-Liste erstellen falls nicht vorhanden.
+   * Speichert pro Person die EventNumbers fuer Registrierung und Warteliste.
+   */
+  public async ensureParticipantsList(): Promise<void> {
+    const listName = 'DEX_Participants';
+    const exists = await this.listExists(listName);
+    if (exists) {
+      await this.ensureMissingParticipantsFields(listName);
+      await this.configureDefaultView(listName, [
+        'Vorname', 'Nachname', 'Email', 'EventRegistered', 'EventOnWaitlist',
+      ]);
+      return;
+    }
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Zentrale Teilnehmerliste der DEX Event Experience Platform',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields = [
+      { title: 'Vorname', type: 2 },
+      { title: 'Nachname', type: 2 },
+      { title: 'Email', type: 2 },
+      { title: 'EventRegistered', type: 3 }, // Note fuer beliebig viele EventNumbers
+      { title: 'EventOnWaitlist', type: 3 }, // Note fuer beliebig viele EventNumbers
+    ];
+
+    for (const f of fields) {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      });
+    }
+
+    await this.configureDefaultView(listName, [
+      'Vorname', 'Nachname', 'Email', 'EventRegistered', 'EventOnWaitlist',
+    ]);
+  }
+
+  private async ensureMissingParticipantsFields(listName: string): Promise<void> {
+    const requiredFields = [
+      { title: 'Vorname', type: 2 },
+      { title: 'Nachname', type: 2 },
+      { title: 'Email', type: 2 },
+      { title: 'EventRegistered', type: 3 },
+      { title: 'EventOnWaitlist', type: 3 },
+    ];
+
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existingFields = new Set((data.value || []).map((f: any) => f.InternalName));
+
+      for (const f of requiredFields) {
+        if (!existingFields.has(f.title)) {
+          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+            '__metadata': { 'type': 'SP.Field' },
+            'Title': f.title,
+            'FieldTypeKind': f.type,
+            'Required': false,
+          });
+        }
+      }
+    } catch { /* optional */ }
+  }
+
+  /**
+   * Teilnehmer-Eintrag per Email suchen
+   */
+  public async getParticipantByEmail(email: string): Promise<SPParticipant | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$filter=Email eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (data.value && data.value.length > 0) return data.value[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Teilnehmer anlegen oder aktualisieren bei Registrierung.
+   * Fuegt eventNumber zu EventRegistered oder EventOnWaitlist hinzu.
+   */
+  public async upsertParticipant(
+    vorname: string,
+    nachname: string,
+    email: string,
+    eventNumber: number,
+    status: string // 'Angemeldet' | 'Warteliste'
+  ): Promise<boolean> {
+    try {
+      const existing = await this.getParticipantByEmail(email);
+
+      if (existing) {
+        // EventNumber zu richtigem Feld hinzufuegen
+        let registered = existing.EventRegistered ? existing.EventRegistered.split(',').map(s => s.trim()).filter(s => s) : [];
+        let waitlist = existing.EventOnWaitlist ? existing.EventOnWaitlist.split(',').map(s => s.trim()).filter(s => s) : [];
+        const en = eventNumber.toString();
+
+        // Erst aus beiden entfernen
+        registered = registered.filter(n => n !== en);
+        waitlist = waitlist.filter(n => n !== en);
+
+        if (status === 'Warteliste') {
+          waitlist.push(en);
+        } else {
+          registered.push(en);
+        }
+
+        await this._merge(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${existing.Id})`,
+          {
+            'Vorname': vorname,
+            'Nachname': nachname,
+            'EventRegistered': registered.join(','),
+            'EventOnWaitlist': waitlist.join(','),
+          }
+        );
+      } else {
+        // Neuen Eintrag erstellen
+        const isWaitlist = status === 'Warteliste';
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items`, {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_ParticipantsListItem' },
+          'Title': email,
+          'Vorname': vorname,
+          'Nachname': nachname,
+          'Email': email,
+          'EventRegistered': isWaitlist ? '' : eventNumber.toString(),
+          'EventOnWaitlist': isWaitlist ? eventNumber.toString() : '',
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * EventNumber aus den Feldern eines Teilnehmers entfernen (bei Abmeldung).
+   */
+  public async removeParticipantEvent(email: string, eventNumber: number): Promise<boolean> {
+    try {
+      const existing = await this.getParticipantByEmail(email);
+      if (!existing) return false;
+
+      const en = eventNumber.toString();
+      const registered = existing.EventRegistered ? existing.EventRegistered.split(',').map(s => s.trim()).filter(s => s && s !== en) : [];
+      const waitlist = existing.EventOnWaitlist ? existing.EventOnWaitlist.split(',').map(s => s.trim()).filter(s => s && s !== en) : [];
+
+      await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${existing.Id})`,
+        {
+          'EventRegistered': registered.join(','),
+          'EventOnWaitlist': waitlist.join(','),
+        }
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Alle Teilnehmer laden (fuer Admin-Seite).
+   */
+  public async getAllParticipants(): Promise<SPParticipant[]> {
+    const allItems: SPParticipant[] = [];
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$orderby=Nachname,Vorname&$top=500`;
+
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        allItems.push(...(data.value || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch {
+        break;
+      }
+    }
+    return allItems;
+  }
+
   // ==================== DEX_Events Liste ====================
 
   /**
@@ -333,7 +627,7 @@ export class EventService {
       await this.ensureMissingFields(listName);
 
       await this.configureDefaultView(listName, [
-        'EventStatus', 'EventType', 'Location', 'LocationFilter',
+        'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
         'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
@@ -383,7 +677,7 @@ export class EventService {
     }
 
     await this.configureDefaultView(listName, [
-      'EventStatus', 'EventType', 'Location', 'LocationFilter',
+      'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
       'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
     ]);
@@ -418,8 +712,10 @@ export class EventService {
       { title: 'EventImageUrl', type: 2 },
       { title: 'Organizer', type: 2 },
       { title: 'OrganizerEmail', type: 2 },
+      { title: 'EventNumber', type: 9 },
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
+      { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -549,7 +845,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -606,9 +902,25 @@ export class EventService {
     organizer: string;
     organizerEmail: string;
     outlookEventId: string;
+    outlookBody: string;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
+      // 0. Naechste EventNumber ermitteln
+      let nextEventNumber = 1;
+      try {
+        const enResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=EventNumber&$orderby=EventNumber desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (enResp.ok) {
+          const enData = await enResp.json();
+          if (enData.value && enData.value.length > 0 && enData.value[0].EventNumber) {
+            nextEventNumber = enData.value[0].EventNumber + 1;
+          }
+        }
+      } catch { /* Fallback: 1 */ }
+
       // 1. Subsite fuer das Event erstellen
       const subsiteUrl = await this.createEventSubsite(event.title, event.description);
       if (!subsiteUrl) {
@@ -633,6 +945,7 @@ export class EventService {
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
         'Title': event.title,
+        'EventNumber': nextEventNumber,
         'EventStatus': event.status,
         'EventType': event.type,
         'Description': event.description,
@@ -650,6 +963,7 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
+        'OutlookBody': event.outlookBody || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
@@ -846,13 +1160,15 @@ export class EventService {
     // Basis-Spalten
     const baseFields = [
       { title: 'TeilnehmerID', type: 9 }, // Number - fortlaufende ID
-      { title: 'ParticipantName', type: 2 },
+      { title: 'Vorname', type: 2 },
+      { title: 'Nachname', type: 2 },
+      { title: 'ParticipantName', type: 2 }, // Backward compat
       { title: 'ParticipantEmail', type: 2 },
       { title: 'Department', type: 2 },
       { title: 'Location', type: 2 },
       { title: 'JobTitle', type: 2 },
       { title: 'Phone', type: 2 },
-      { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'RegistrationDate', type: 4 },
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
@@ -934,7 +1250,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'ParticipantName', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -1037,7 +1353,8 @@ export class EventService {
    */
   public async registerForEvent(
     subsiteUrl: string,
-    participantName: string,
+    firstName: string,
+    surname: string,
     participantEmail: string,
     customData: Record<string, string>,
     status: string = 'Angemeldet',
@@ -1059,7 +1376,9 @@ export class EventService {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
         'TeilnehmerID': nextId,
-        'ParticipantName': participantName,
+        'Vorname': firstName,
+        'Nachname': surname,
+        'ParticipantName': `${firstName} ${surname}`,
         'ParticipantEmail': participantEmail,
         'Department': profile.department,
         'Location': profile.location,
@@ -1099,7 +1418,8 @@ export class EventService {
   public async reactivateRegistration(
     subsiteUrl: string,
     itemId: number,
-    participantName: string,
+    firstName: string,
+    surname: string,
     customData: Record<string, string>,
     status: string = 'Angemeldet',
     customFieldMap?: Record<string, string>
@@ -1107,7 +1427,9 @@ export class EventService {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
-        'ParticipantName': participantName,
+        'Vorname': firstName,
+        'Nachname': surname,
+        'ParticipantName': `${firstName} ${surname}`,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
@@ -1230,17 +1552,21 @@ export class EventService {
    * Alle Registrierungen fuer ein Event laden (nur fuer Organizer/Admin)
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
-    try {
-      const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!response.ok) return [];
-      const data = await response.json();
-      return data.value || [];
-    } catch {
-      return [];
+    const allItems: SPRegistration[] = [];
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`;
+
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        allItems.push(...(data.value || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch {
+        break;
+      }
     }
+    return allItems;
   }
 
   /**
@@ -1266,23 +1592,85 @@ export class EventService {
   }
 
   /**
+   * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen)
+   */
+  public async checkInParticipant(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'Status': 'Eingecheckt' }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Status eines Teilnehmers auf 'QR versendet' setzen
+   */
+  public async setQRSentStatus(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'Status': 'QR versendet' }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Registrierung per Email auf einer Subsite finden
+   */
+  public async getRegistrationByEmail(
+    subsiteUrl: string,
+    email: string
+  ): Promise<SPRegistration | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (data.value && data.value.length > 0) return data.value[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Aktuelle Teilnehmeranzahl ermitteln
    */
   public async getRegistrationCount(subsiteUrl: string): Promise<{ registered: number; waitlist: number }> {
-    try {
-      const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=500`,
-        SPHttpClient.configurations.v1
-      );
-      if (!response.ok) return { registered: 0, waitlist: 0 };
-      const data = await response.json();
-      const items = data.value || [];
-      const registered = items.filter((i: { Status: string }) => i.Status === 'Angemeldet' || i.Status === 'Eingecheckt').length;
-      const waitlist = items.filter((i: { Status: string }) => i.Status === 'Warteliste').length;
-      return { registered, waitlist };
-    } catch {
-      return { registered: 0, waitlist: 0 };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allItems: any[] = [];
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=500`;
+
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        allItems.push(...(data.value || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch {
+        break;
+      }
     }
+
+    const registered = allItems.filter((i: { Status: string }) => i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt').length;
+    const waitlist = allItems.filter((i: { Status: string }) => i.Status === 'Warteliste').length;
+    return { registered, waitlist };
   }
 
   /**

@@ -25,6 +25,9 @@ import SettingsPage from './SettingsPage';
 import ProfilePage from './ProfilePage';
 import AdminPage from './AdminPage';
 import RoleMatrixPage from './RoleMatrixPage';
+import ParticipantsPage from './ParticipantsPage';
+import FlowchartPage from './FlowchartPage';
+import CheckInPage from './CheckInPage';
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -127,6 +130,12 @@ function AppContent(): React.ReactElement {
         return <ProfilePage />;
       case 'role-matrix':
         return <RoleMatrixPage />;
+      case 'participants':
+        return <ParticipantsPage />;
+      case 'flowcharts':
+        return <FlowchartPage />;
+      case 'check-in':
+        return <CheckInPage />;
       default:
         return <LandingPage />;
     }

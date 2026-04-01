@@ -121,6 +121,9 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? f.options.join(', ') : '', visible: true,
     })) : []
   );
+  const [outlookBody, setOutlookBody] = React.useState('');
+  const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
+  const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [progressLabel, setProgressLabel] = React.useState('');
@@ -241,6 +244,7 @@ export default function EventCreationPage(): React.ReactElement {
         'WaitlistEnabled': waitlistEnabled,
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
+        'OutlookBody': outlookBody,
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -297,6 +301,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizer,
         organizerEmail: currentUser.email,
         outlookEventId: '',
+        outlookBody,
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -614,6 +619,20 @@ export default function EventCreationPage(): React.ReactElement {
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
 
+              <div className="form-group">
+                <label className="form-label">
+                  Outlook-Termin Text
+                  <span className="info-icon" title="Optionaler Beschreibungstext für den Outlook-Kalendereintrag der Teilnehmer. Power Automate nutzt diesen Text als Body des Termins." style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <textarea
+                  className="form-input form-textarea"
+                  value={outlookBody}
+                  onChange={e => setOutlookBody(e.target.value)}
+                  placeholder="z.B. Treffpunkt, Dresscode, Ablauf, Links..."
+                  rows={4}
+                />
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
@@ -663,8 +682,38 @@ export default function EventCreationPage(): React.ReactElement {
                   </button>
                 </div>
                 {customFields.map((field, idx) => (
-                  <div key={field.id} className="custom-field-row">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div
+                    key={field.id}
+                    className="custom-field-row"
+                    draggable
+                    onDragStart={() => setDragFieldId(field.id)}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverFieldId(field.id); }}
+                    onDragLeave={() => { if (dragOverFieldId === field.id) setDragOverFieldId(null); }}
+                    onDrop={() => {
+                      if (dragFieldId && dragFieldId !== field.id) {
+                        const fromIdx = customFields.findIndex(f => f.id === dragFieldId);
+                        const toIdx = customFields.findIndex(f => f.id === field.id);
+                        if (fromIdx >= 0 && toIdx >= 0) {
+                          const updated = [...customFields];
+                          const [moved] = updated.splice(fromIdx, 1);
+                          updated.splice(toIdx, 0, moved);
+                          setCustomFields(updated);
+                        }
+                      }
+                      setDragFieldId(null);
+                      setDragOverFieldId(null);
+                    }}
+                    onDragEnd={() => { setDragFieldId(null); setDragOverFieldId(null); }}
+                    style={{
+                      opacity: dragFieldId === field.id ? 0.4 : 1,
+                      borderTop: dragOverFieldId === field.id ? '3px solid var(--dex-green)' : undefined,
+                    }}
+                  >
+                    <div
+                      style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'grab', padding: '0 4px' }}
+                      title="Ziehen zum Verschieben"
+                    >
+                      <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', userSelect: 'none', lineHeight: 1 }}>⠿</span>
                       <button
                         onClick={() => moveCustomField(field.id, 'up')}
                         disabled={idx === 0}
@@ -690,7 +739,44 @@ export default function EventCreationPage(): React.ReactElement {
                       <option value="checkbox">Checkbox</option>
                     </select>
                     {field.type === 'select' && (
-                      <input className="form-input" placeholder="Optionen (kommasepariert)" value={field.options} onChange={e => updateCustomField(field.id, { options: e.target.value })} style={{ flex: 2 }} />
+                      <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {(field.options ? field.options.split(',').filter(o => o.trim()) : []).map((opt, optIdx) => (
+                          <div key={optIdx} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <input
+                              className="form-input"
+                              value={opt.trim()}
+                              placeholder={`Option ${optIdx + 1}`}
+                              onChange={e => {
+                                const opts = field.options ? field.options.split(',') : [];
+                                opts[optIdx] = e.target.value;
+                                updateCustomField(field.id, { options: opts.join(',') });
+                              }}
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              onClick={() => {
+                                const opts = field.options.split(',').filter(o => o.trim());
+                                opts.splice(optIdx, 1);
+                                updateCustomField(field.id, { options: opts.join(',') });
+                              }}
+                              style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 2, cursor: 'pointer' }}
+                              title="Option entfernen"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            const opts = field.options ? field.options + ',' : '';
+                            updateCustomField(field.id, { options: opts });
+                          }}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 8px', alignSelf: 'flex-start' }}
+                        >
+                          + Option hinzufügen
+                        </button>
+                      </div>
                     )}
                     <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
@@ -752,7 +838,7 @@ export default function EventCreationPage(): React.ReactElement {
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
             Vorschau: Registrierungsseite
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, transform: 'scale(0.92)', transformOrigin: 'top left', width: 'calc(100% / 0.92)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, transform: 'scale(0.5)', transformOrigin: 'top left', width: 'calc(100% / 0.5)' }}>
             {/* Event-Karte */}
             <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
               <div className="section-header section-header--red">Selected Event</div>

@@ -19,6 +19,7 @@ export const currentUser: User = {
 export const events: DeloitteEvent[] = [
   {
     id: 'e1',
+    eventNumber: 1,
     title: 'E2E M&A Activation Session',
     type: 'Other',
     status: 'Active',
@@ -38,6 +39,7 @@ export const events: DeloitteEvent[] = [
   },
   {
     id: 'e2',
+    eventNumber: 2,
     title: 'JPMorgan Lauf || Warteliste',
     type: 'JPMorgan',
     status: 'Active',
@@ -57,6 +59,7 @@ export const events: DeloitteEvent[] = [
   },
   {
     id: 'e3',
+    eventNumber: 3,
     title: 'SR&T P_MD_D Meeting',
     type: 'Other',
     status: 'Active',
@@ -74,6 +77,7 @@ export const events: DeloitteEvent[] = [
   },
   {
     id: 'e4',
+    eventNumber: 4,
     title: 'B2Run Düsseldorf 2026',
     type: 'B2Run',
     status: 'Active',
@@ -95,6 +99,7 @@ export const events: DeloitteEvent[] = [
   },
   {
     id: 'e5',
+    eventNumber: 5,
     title: 'Deloitte Summer Party 2026',
     type: 'Other',
     status: 'Under Construction',

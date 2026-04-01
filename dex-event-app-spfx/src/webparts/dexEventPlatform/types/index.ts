@@ -3,11 +3,12 @@
 
 export type EventType = 'B2Run' | 'JPMorgan' | 'Other';
 export type EventStatus = 'Under Construction' | 'Active' | 'Completed' | 'Cancelled';
-export type RegistrationStatus = 'Angemeldet' | 'Warteliste' | 'Eingecheckt' | 'Abgemeldet';
+export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'Abgemeldet';
 export type Salutation = 'Herr' | 'Frau' | 'Divers';
 
 export interface DeloitteEvent {
   id: string;
+  eventNumber: number;
   title: string;
   type: EventType;
   status: EventStatus;
