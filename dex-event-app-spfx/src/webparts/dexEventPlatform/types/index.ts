@@ -8,6 +8,7 @@ export type Salutation = 'Herr' | 'Frau' | 'Divers';
 
 export interface DeloitteEvent {
   id: string;
+  eventNumber: number;
   title: string;
   type: EventType;
   status: EventStatus;

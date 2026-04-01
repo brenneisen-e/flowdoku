@@ -81,6 +81,11 @@ export default function AdminPage(): React.ReactElement {
         <div className="flex-between mb-16">
           <h2>Admin / Organizer</h2>
           <div style={{ display: 'flex', gap: 8 }}>
+            {isAdmin && (
+              <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
+                <Users size={16} /> Teilnehmer
+              </button>
+            )}
             <a
               href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
               target="_blank"
@@ -321,7 +326,7 @@ export default function AdminPage(): React.ReactElement {
                 {activeRegs.map((reg, i) => (
                   <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.Title || (i + 1)}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{reg.ParticipantName}</td>
+                    <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                     <td style={{ padding: 8 }}>
                       <span className="badge badge-green">{reg.Status}</span>
@@ -342,7 +347,7 @@ export default function AdminPage(): React.ReactElement {
                 <tbody>
                   {waitlistRegs.map(reg => (
                     <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                      <td style={{ padding: 8, fontWeight: 500 }}>{reg.ParticipantName}</td>
+                      <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                       <td style={{ padding: 8 }}>
                         <span className="badge badge-orange">Warteliste</span>
@@ -364,7 +369,7 @@ export default function AdminPage(): React.ReactElement {
                 <tbody>
                   {cancelledRegs.map(reg => (
                     <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                      <td style={{ padding: 8 }}>{reg.ParticipantName}</td>
+                      <td style={{ padding: 8 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                       <td style={{ padding: 8 }}>
                         <span className="badge badge-red">Abgemeldet</span>

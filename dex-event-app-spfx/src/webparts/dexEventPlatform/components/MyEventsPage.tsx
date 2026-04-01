@@ -44,7 +44,7 @@ function getStatusLabel(status: string): string {
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getMyRegistration, cancelRegistration, updateMyRegistration } = useEvents();
+  const { events, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
@@ -61,14 +61,30 @@ export default function MyEventsPage(): React.ReactElement {
     setIsLoading(true);
     const entries: MyEventEntry[] = [];
 
-    for (const event of events) {
-      try {
-        const reg = await getMyRegistration(event.id);
-        if (reg) {
-          entries.push({ event, registration: reg });
-        }
-      } catch {
-        // Kein Zugriff auf diese Teilnehmerliste
+    // Schneller Pfad: DEX_Participants abfragen
+    const myNumbers = await getMyEventNumbers();
+    const allMyNumbers = [...myNumbers.registered, ...myNumbers.waitlisted];
+
+    if (allMyNumbers.length > 0) {
+      // Nur Events laden die in DEX_Participants stehen
+      const relevantEvents = events.filter(e => e.eventNumber && allMyNumbers.indexOf(e.eventNumber) >= 0);
+      for (const event of relevantEvents) {
+        try {
+          const reg = await getMyRegistration(event.id);
+          if (reg) {
+            entries.push({ event, registration: reg });
+          }
+        } catch { /* */ }
+      }
+    } else {
+      // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag
+      for (const event of events) {
+        try {
+          const reg = await getMyRegistration(event.id);
+          if (reg) {
+            entries.push({ event, registration: reg });
+          }
+        } catch { /* */ }
       }
     }
 

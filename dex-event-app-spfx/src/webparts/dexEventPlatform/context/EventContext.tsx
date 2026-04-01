@@ -18,13 +18,14 @@ interface EventContextType {
   events: DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantName?: string, participantEmail?: string) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -70,6 +71,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await eventService.ensureEventsList();
     await eventService.ensureEmailsList();
     await eventService.ensureOutlookList();
+    await eventService.ensureParticipantsList();
     await eventService.ensureAssetsFolders();
     await loadEvents();
     setIsEventsLoading(false);
@@ -106,6 +108,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     return {
       id: e.Id.toString(),
+      eventNumber: e.EventNumber || 0,
       title: e.Title || '',
       type: (e.EventType as DeloitteEvent['type']) || 'Other',
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
@@ -147,14 +150,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function registerForEvent(
     eventId: string,
     customData: Record<string, string>,
-    participantName?: string,
+    participantFirstName?: string,
+    participantLastName?: string,
     participantEmail?: string
   ): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
-    const nameToUse = participantName || currentUserName;
+    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben
+    const nameParts = currentUserName.split(' ');
+    const firstNameToUse = participantFirstName || nameParts[0] || '';
+    const lastNameToUse = participantLastName || nameParts.slice(1).join(' ') || '';
     const emailToUse = participantEmail || currentUserEmail;
+    const nameToUse = `${firstNameToUse} ${lastNameToUse}`.trim();
 
     // Pruefen ob schon registriert
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
@@ -179,14 +187,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status, fieldMap);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap);
     } else {
       success = await eventService.registerForEvent(
-        subsiteUrl, nameToUse, emailToUse, customData, status, fieldMap
+        subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap
       );
     }
 
     if (success && event) {
+      // Dual-Write: DEX_Participants aktualisieren
+      if (event.eventNumber) {
+        eventService.upsertParticipant(
+          firstNameToUse, lastNameToUse, emailToUse, event.eventNumber, status
+        ).catch(() => {});
+      }
       // E-Mail in Queue eintragen (Deloitte-Template)
       const emailData = status === 'Warteliste'
         ? waitlistEmail(nameToUse, event.title)
@@ -218,6 +232,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (success) {
       const event = events.find(e => e.id === eventId);
       if (event) {
+        // Dual-Write: DEX_Participants aktualisieren
+        if (event.eventNumber) {
+          eventService.removeParticipantEvent(currentUserEmail, event.eventNumber).catch(() => {});
+        }
         const emailData = cancellationEmail(currentUserName, event.title);
         eventService.queueEmail(
           emailData.subject, currentUserEmail, currentUserName, emailData.body,
@@ -293,6 +311,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  async function getMyEventNumbers(): Promise<{ registered: number[]; waitlisted: number[] }> {
+    try {
+      const record = await eventService.getParticipantByEmail(currentUserEmail);
+      if (!record) return { registered: [], waitlisted: [] };
+      const registered = record.EventRegistered
+        ? record.EventRegistered.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+        : [];
+      const waitlisted = record.EventOnWaitlist
+        ? record.EventOnWaitlist.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+        : [];
+      return { registered, waitlisted };
+    } catch {
+      return { registered: [], waitlisted: [] };
+    }
+  }
+
   async function refreshEvents(): Promise<void> {
     await loadEvents();
   }
@@ -303,7 +337,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents,
       },
     },
     props.children

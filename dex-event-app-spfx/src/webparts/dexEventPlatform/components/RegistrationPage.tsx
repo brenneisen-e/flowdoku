@@ -113,13 +113,13 @@ export default function RegistrationPage(): React.ReactElement {
         ...eventSpecific,
       };
 
-      const participantName = `${firstName.trim()} ${surname.trim()}`;
       const participantEmail = email.trim();
 
       const success = await registerForEvent(
         selectedEventId!,
         customData,
-        participantName,
+        firstName.trim(),
+        surname.trim(),
         participantEmail
       );
 

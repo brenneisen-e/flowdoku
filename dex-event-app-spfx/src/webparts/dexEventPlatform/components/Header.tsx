@@ -33,6 +33,7 @@ export default function Header(): React.ReactElement {
       case 'profile': return 'My Profile';
       case 'admin': return 'Admin';
       case 'role-matrix': return 'Rollen-Matrix';
+      case 'participants': return 'Teilnehmer-Übersicht';
       default: return '';
     }
   };
