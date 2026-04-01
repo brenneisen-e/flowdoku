@@ -247,9 +247,19 @@
     .start-card__icon {
       width: 120px; height: 120px; border-radius: 50%; background: var(--dex-gray-100);
       display: flex; align-items: center; justify-content: center; color: var(--dex-gray-600); margin-bottom: 12px;
+      transition: all var(--dex-transition);
     }
-    .start-card h2 { font-size: 1.3rem; font-weight: 700; }
-    .start-card p { color: var(--dex-gray-600); font-size: 0.95rem; }
+    .start-card h2 { font-size: 1.3rem; font-weight: 700; transition: color var(--dex-transition); }
+    .start-card p { color: var(--dex-gray-600); font-size: 0.95rem; transition: color var(--dex-transition); }
+    .start-card:hover {
+      background: var(--dex-green-dark); border-color: var(--dex-green-dark);
+      box-shadow: 0 8px 24px rgba(107, 154, 30, 0.3);
+    }
+    .start-card:hover h2 { color: var(--dex-white); }
+    .start-card:hover p { color: rgba(255, 255, 255, 0.85); }
+    .start-card:hover .start-card__icon {
+      background: rgba(255, 255, 255, 0.2); color: var(--dex-white);
+    }
 
     /* ========== Event Grid ========== */
     .event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
