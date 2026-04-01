@@ -7,7 +7,9 @@
 When deploying changes to the SPFx project:
 
 1. Run `cd dex-event-app-spfx && npm run package` to build and bundle
+   - This automatically bumps the patch version (e.g. 1.0.37 → 1.0.38)
    - If `gulp` is not found, run `npm install` first, then use `npx gulp bundle --ship && npx gulp package-solution --ship`
+   - **IMPORTANT:** Always use `npm run package` (not raw gulp commands) so the version gets bumped automatically
 2. **Always** copy the built package to `dist/`:
    ```bash
    cp dex-event-app-spfx/sharepoint/solution/dex-event-platform.sppkg dist/dex-event-platform.sppkg
