@@ -233,12 +233,12 @@ export default function MyEventsPage(): React.ReactElement {
                     {editingId === event.id ? 'Abbrechen' : 'Angaben bearbeiten'}
                   </button>
                   <button
-                    className={`btn ${cancellingId === event.id ? 'btn-danger' : ''}`}
+                    className="btn"
                     onClick={() => handleCancel(event.id)}
                     disabled={isCancelling}
                     style={{
                       fontSize: '0.85rem',
-                      ...(cancellingId !== event.id ? { background: 'var(--dex-orange)', color: '#fff' } : {}),
+                      background: 'var(--dex-orange)', color: '#fff',
                     }}
                   >
                     {cancellingId === event.id
@@ -246,7 +246,7 @@ export default function MyEventsPage(): React.ReactElement {
                       : 'Abmelden'}
                   </button>
                   {cancellingId === event.id && !isCancelling && (
-                    <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
+                    <button className="btn btn-primary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
                       Anmeldung behalten
                     </button>
                   )}

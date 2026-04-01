@@ -39,7 +39,7 @@ export default function EventCreationPage(): React.ReactElement {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '';
     const pad = (n: number): string => (n < 10 ? '0' : '') + n;
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
@@ -117,7 +117,7 @@ export default function EventCreationPage(): React.ReactElement {
 
     const toLocal = (d: Date): string => {
       const pad = (n: number): string => (n < 10 ? '0' : '') + n;
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     };
 
     const dateStr = toLocal(nextWeek).replace(/[-T:]/g, '').substring(0, 8);
@@ -468,14 +468,14 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> Startdatum
                     <span className="info-icon" title="Wann beginnt das Event?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <input className="form-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> Enddatum
                     <span className="info-icon" title="Wann endet das Event?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <input className="form-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                 </div>
               </div>
 
@@ -485,14 +485,14 @@ export default function EventCreationPage(): React.ReactElement {
                     Anmelde-Deadline
                     <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
+                  <input className="form-input" type="date" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
                     Letzte Abmeldemöglichkeit
                     <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
+                  <input className="form-input" type="date" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
                 </div>
               </div>
 
