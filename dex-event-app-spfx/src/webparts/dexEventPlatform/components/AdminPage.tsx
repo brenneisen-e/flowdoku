@@ -86,6 +86,11 @@ export default function AdminPage(): React.ReactElement {
                 <Users size={16} /> Teilnehmer
               </button>
             )}
+            {isAdmin && (
+              <button className="btn btn-secondary" onClick={() => navigate('flowcharts')} style={{ fontSize: '0.85rem' }}>
+                ↻ Prozesse
+              </button>
+            )}
             <a
               href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
               target="_blank"
