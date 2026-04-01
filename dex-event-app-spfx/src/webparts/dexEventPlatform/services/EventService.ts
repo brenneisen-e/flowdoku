@@ -465,41 +465,53 @@ export class EventService {
 
   /**
    * Subsite fuer ein Event erstellen.
+   * Versucht mehrere Templates falls eines fehlschlaegt.
    * Gibt die absolute URL der neuen Subsite zurueck.
    */
   private async createEventSubsite(title: string, description: string): Promise<string | null> {
-    try {
-      const urlSuffix = this.generateSubsiteUrl(title);
+    const urlSuffix = this.generateSubsiteUrl(title);
+    const desc = description || `Event-Subsite: ${title}`;
 
-      const payload = {
-        'parameters': {
-          '__metadata': { 'type': 'SP.WebCreationInformation' },
-          'Title': title,
-          'Url': urlSuffix,
-          'Description': description || `Event-Subsite: ${title}`,
-          'Language': 1031, // Deutsch
-          'WebTemplate': 'STS#3', // Modern Team Site ohne Microsoft 365 Group
-          'UseUniquePermissions': true,
+    // Templates in Reihenfolge versuchen:
+    // STS#3 = Modern ohne Group, STS#0 = Classic Team Site, STS = Blank
+    const templates = ['STS#3', 'STS#0', 'STS'];
+
+    for (const template of templates) {
+      try {
+        const payload = {
+          'parameters': {
+            '__metadata': { 'type': 'SP.WebCreationInformation' },
+            'Title': title,
+            'Url': urlSuffix,
+            'Description': desc,
+            'Language': 1031,
+            'WebTemplate': template,
+            'UseUniquePermissions': true,
+          }
+        };
+
+        const response = await this._post(`${this.siteUrl}/_api/web/webs/add`, payload);
+        if (response.ok) {
+          const result = await response.json();
+          const subsiteAbsoluteUrl = result.d?.Url || result.Url;
+          console.log(`[DEX] Subsite erstellt mit Template ${template}:`, subsiteAbsoluteUrl);
+          return subsiteAbsoluteUrl || `${this.siteUrl}/${urlSuffix}`;
         }
-      };
 
-      const response = await this._post(`${this.siteUrl}/_api/web/webs/add`, payload);
-      if (!response.ok) {
-        console.error('[DEX] Subsite-Erstellung fehlgeschlagen:', response.status);
-        return null;
+        // Fehlerdetails loggen
+        try {
+          const err = await response.json();
+          console.warn(`[DEX] Template ${template} fehlgeschlagen (${response.status}):`, err.error?.message?.value || err);
+        } catch {
+          console.warn(`[DEX] Template ${template} fehlgeschlagen: ${response.status}`);
+        }
+      } catch (e) {
+        console.warn(`[DEX] Template ${template} Fehler:`, e);
       }
-
-      const result = await response.json();
-      // Die API gibt die absolute URL im Url-Feld zurueck
-      const subsiteAbsoluteUrl = result.d?.Url || result.Url;
-      if (subsiteAbsoluteUrl) return subsiteAbsoluteUrl;
-
-      // Fallback: URL manuell zusammenbauen
-      return `${this.siteUrl}/${urlSuffix}`;
-    } catch (e) {
-      console.error('[DEX] Subsite-Erstellung Fehler:', e);
-      return null;
     }
+
+    console.error('[DEX] Subsite konnte mit keinem Template erstellt werden');
+    return null;
   }
 
   // ==================== Teilnehmerlisten (auf Subsites) ====================
