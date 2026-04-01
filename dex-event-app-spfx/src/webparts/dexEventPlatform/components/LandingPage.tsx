@@ -30,7 +30,13 @@ export default function LandingPage(): React.ReactElement {
   }, []);
 
   return (
-    <div className="landing">
+    <div className="landing" style={{ position: 'relative' }}>
+      <span style={{
+        position: 'absolute', top: 12, right: 16,
+        fontSize: '0.7rem', color: 'var(--dex-gray-300)',
+      }}>
+        v{APP_VERSION}
+      </span>
       <div className="landing__hero">
         <div className="landing__orb">
           <div className="landing__orb-inner" />
@@ -44,20 +50,12 @@ export default function LandingPage(): React.ReactElement {
         <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
           Start
         </button>
-      </div>
-      <footer className="footer-disclaimer" style={{ flexShrink: 0, position: 'relative' }}>
-        <p>
+        <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem', marginTop: 16, textAlign: 'center', lineHeight: 1.4 }}>
           The Event Experience Platform is a solution for managing participants at Deloitte events.
           Developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in pilot phase &ndash;
           questions or feedback? Feel free to get in touch!
         </p>
-        <span style={{
-          position: 'absolute', bottom: 6, right: 16,
-          fontSize: '0.7rem', color: 'var(--dex-gray-400, #a0a0a0)',
-        }}>
-          v{APP_VERSION}
-        </span>
-      </footer>
+      </div>
     </div>
   );
 }
