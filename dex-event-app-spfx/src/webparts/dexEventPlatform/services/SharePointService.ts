@@ -52,6 +52,27 @@ export class SharePointService {
     if (exists) {
       // Berechtigungen pruefen und ggf. nachtraeglich setzen
       await this.ensureRolesListPermissions(listName);
+
+      // Choice-Werte des Role-Feldes auf neue Benennung migrieren
+      try {
+        await this.context.spHttpClient.post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Role')`,
+          SPHttpClient.configurations.v1,
+          {
+            headers: {
+              'Accept': 'application/json;odata=verbose',
+              'Content-Type': 'application/json;odata=verbose',
+              'IF-MATCH': '*',
+              'X-HTTP-Method': 'MERGE',
+            },
+            body: JSON.stringify({
+              '__metadata': { 'type': 'SP.FieldChoice' },
+              'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
+            }),
+          }
+        );
+      } catch { /* Choice-Update optional */ }
+
       return;
     }
 
