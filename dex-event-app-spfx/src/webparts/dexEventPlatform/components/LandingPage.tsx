@@ -7,7 +7,7 @@ import { Info, Mail } from './Icons';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const [showInfo, setShowInfo] = React.useState(false);
+  const [showInfo, setShowInfo] = React.useState(true);
 
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
   // @keyframes innerhalb von :global manchmal nicht korrekt emittieren
