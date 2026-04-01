@@ -164,6 +164,25 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
 }
 
 /**
+ * Event erstellt - Benachrichtigung an Organisator
+ */
+export function eventCreatedEmail(recipientName: string, eventTitle: string, subsiteUrl: string): { subject: string; body: string } {
+  return {
+    subject: `[Deloitte Eventmanager] - New event created`,
+    body: wrapTemplate(
+      GREEN,
+      'Event Created',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>your event <strong>${eventTitle}</strong> has been successfully created.</p>
+      <p>You can find the list of participants under the following <a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">link</a>.
+      The app can be accessed using the following <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">SharePoint</a>.</p>
+      <p>Regards,<br>Team Event Experience Platform</p>`
+    ),
+  };
+}
+
+/**
  * Allgemeine Info-Mail
  */
 export function infoEmail(recipientName: string, eventTitle: string, message: string): { subject: string; body: string } {
