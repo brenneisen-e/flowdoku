@@ -78,6 +78,99 @@ export class EventService {
     this.siteUrl = context.pageContext.web.absoluteUrl;
   }
 
+  // ==================== DEX_Emails Liste ====================
+
+  /**
+   * E-Mail-Queue-Liste erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Eintraege und versendet Mails.
+   *
+   * Spalten:
+   * - Title: Betreff der E-Mail
+   * - Recipient: Empfänger E-Mail-Adresse
+   * - RecipientName: Name des Empfängers
+   * - Body: HTML-Inhalt der E-Mail
+   * - EmailType: Art der E-Mail (Anmeldung, Abmeldung, Warteliste, Nachrücken, Info)
+   * - EventTitle: Name des Events
+   * - EventId: ID des Events (Referenz)
+   * - Status: Pending, Sent, Failed
+   * - SentDate: Wann wurde die Mail versendet
+   */
+  public async ensureEmailsList(): Promise<void> {
+    const listName = 'DEX_Emails';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'E-Mail-Queue für automatischen Versand via Power Automate',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'Recipient', type: 2 },
+      { title: 'RecipientName', type: 2 },
+      { title: 'Body', type: 3 }, // Note (multiline/HTML)
+      { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
+      { title: 'EventTitle', type: 2 },
+      { title: 'EventId', type: 2 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
+      { title: 'SentDate', type: 4 },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) {
+        payload['Choices'] = { 'results': f.choices };
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    // Default View
+    await this.configureDefaultView(listName, [
+      'Recipient', 'RecipientName', 'EmailType', 'EventTitle', 'Status', 'SentDate',
+    ]);
+  }
+
+  /**
+   * E-Mail in die Queue eintragen (wird von Power Automate versendet).
+   */
+  public async queueEmail(
+    subject: string,
+    recipient: string,
+    recipientName: string,
+    body: string,
+    emailType: string,
+    eventTitle: string,
+    eventId: string
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailsListItem' },
+          'Title': subject,
+          'Recipient': recipient,
+          'RecipientName': recipientName,
+          'Body': body,
+          'EmailType': emailType,
+          'EventTitle': eventTitle,
+          'EventId': eventId,
+          'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== DEX_Events Liste ====================
 
   /**

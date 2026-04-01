@@ -217,6 +217,12 @@ export default function AdminPage(): React.ReactElement {
         <div className="card" style={{ padding: 24 }}>
           <h3 className="mb-16">Aktionen</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              className="btn btn-primary btn-block"
+              onClick={() => navigate('edit-event', selectedEvent.id)}
+            >
+              <FileText size={16} /> Event bearbeiten
+            </button>
             <a
               href={selectedEvent.subsiteUrl
                 ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx`

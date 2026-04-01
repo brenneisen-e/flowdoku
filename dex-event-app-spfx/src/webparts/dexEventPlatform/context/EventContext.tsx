@@ -22,6 +22,7 @@ interface EventContextType {
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
@@ -66,6 +67,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function initEvents(): Promise<void> {
     await eventService.ensureEventsList();
+    await eventService.ensureEmailsList();
     await loadEvents();
     setIsEventsLoading(false);
   }
@@ -181,7 +183,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       );
     }
 
-    if (success) {
+    if (success && event) {
+      // E-Mail in Queue eintragen
+      const emailType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
+      eventService.queueEmail(
+        `${emailType}: ${event.title}`,
+        emailToUse,
+        nameToUse,
+        `Hallo ${nameToUse},<br><br>du wurdest erfolgreich für "${event.title}" ${status === 'Warteliste' ? 'auf die Warteliste gesetzt' : 'angemeldet'}.<br><br>Viele Grüße,<br>DEX Event Platform`,
+        emailType,
+        event.title,
+        eventId
+      ).catch(() => {});
       await loadEvents();
     }
     return success;
@@ -196,6 +209,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id);
     if (success) {
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        eventService.queueEmail(
+          `Abmeldung: ${event.title}`,
+          currentUserEmail,
+          currentUserName,
+          `Hallo ${currentUserName},<br><br>du wurdest erfolgreich von "${event.title}" abgemeldet.<br><br>Viele Grüße,<br>DEX Event Platform`,
+          'Abmeldung',
+          event.title,
+          eventId
+        ).catch(() => {});
+      }
       await loadEvents();
     }
     return success;
@@ -211,6 +236,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return [];
     return eventService.getAllRegistrations(subsiteUrl);
+  }
+
+  async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
+    const success = await eventService.updateEvent(Number(eventId), updates);
+    if (success) await loadEvents();
+    return success;
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
@@ -250,7 +281,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, updateMyRegistration, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, refreshEvents,
       },
     },
     props.children
