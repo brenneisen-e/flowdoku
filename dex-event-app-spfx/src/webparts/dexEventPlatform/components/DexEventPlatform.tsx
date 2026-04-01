@@ -41,7 +41,12 @@ function AppContent(): React.ReactElement {
     const styleEl = document.createElement('style');
     styleEl.id = 'dex-no-scroll';
     styleEl.textContent = `
-      html, body,
+      html, body {
+        overflow: hidden !important;
+        overflow-y: hidden !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+      }
       .SPPageChrome,
       .sp-App-root,
       .CanvasZone,
@@ -61,6 +66,17 @@ function AppContent(): React.ReactElement {
       div[class*="mainContent"] {
         overflow: hidden !important;
         overflow-y: hidden !important;
+      }
+      /* SharePoint padding/margin unter dem WebPart entfernen */
+      .CanvasZone,
+      [data-automation-id="CanvasZone"] {
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
+      }
+      .CanvasSection,
+      [data-automation-id="CanvasSection"] {
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
       }
     `;
     document.head.appendChild(styleEl);
