@@ -46,6 +46,7 @@ export interface SPEvent {
   OrganizerEmail: string;
   OutlookEventId: string;
   CalendarLink: string;
+  OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -714,6 +715,7 @@ export class EventService {
       { title: 'EventNumber', type: 9 },
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
+      { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -843,7 +845,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -900,6 +902,7 @@ export class EventService {
     organizer: string;
     organizerEmail: string;
     outlookEventId: string;
+    outlookBody: string;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -960,6 +963,7 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
+        'OutlookBody': event.outlookBody || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
