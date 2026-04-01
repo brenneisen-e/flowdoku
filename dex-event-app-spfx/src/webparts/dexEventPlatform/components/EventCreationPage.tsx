@@ -597,19 +597,22 @@ export default function EventCreationPage(): React.ReactElement {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Startdatum
-                    <span className="info-icon" title="Wann beginnt das Event?" style={{ marginLeft: 8 }}>i</span>
+                    <span className="required">*</span> Start (Datum & Uhrzeit)
+                    <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Enddatum
-                    <span className="info-icon" title="Wann endet das Event?" style={{ marginLeft: 8 }}>i</span>
+                    <span className="required">*</span> Ende (Datum & Uhrzeit)
+                    <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
                 </div>
               </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
+                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
+              </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
