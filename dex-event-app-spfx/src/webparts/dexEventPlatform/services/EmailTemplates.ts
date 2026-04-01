@@ -189,6 +189,29 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
 /**
  * Allgemeine Info-Mail
  */
+/**
+ * QR-Code E-Mail fuer Check-in
+ */
+export function qrCodeEmail(recipientName: string, eventTitle: string, qrImageHtml: string): { subject: string; body: string } {
+  return {
+    subject: `Dein QR-Code f\u00FCr ${eventTitle}`,
+    body: wrapTemplate(
+      GREEN,
+      'Your QR Code',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
+      <p>Please show this QR code at check-in.</p>
+      <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
+      <p style="color:#999;font-size:12px;text-align:center;">This QR code is personal and non-transferable.</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * Allgemeine Info-Mail
+ */
 export function infoEmail(recipientName: string, eventTitle: string, message: string): { subject: string; body: string } {
   return {
     subject: `Info: ${eventTitle}`,

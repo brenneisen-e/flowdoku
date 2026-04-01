@@ -17,6 +17,7 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
 import { EventService } from '../services/EventService';
+import { qrCodeEmail } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -196,7 +197,7 @@ export default function AdminPage(): React.ReactElement {
   }
 
   // Event ausgewählt - Detail-Ansicht
-  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt');
+  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste');
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
 
@@ -284,7 +285,7 @@ export default function AdminPage(): React.ReactElement {
               className="btn btn-secondary btn-block"
               onClick={() => {
                 const emails = registrations
-                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
+                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
                   .map(r => r.ParticipantEmail)
                   .join('; ');
                 if (emails) {
@@ -301,7 +302,7 @@ export default function AdminPage(): React.ReactElement {
               <Copy size={16} /> {copiedEmails ? 'Kopiert!' : 'E-Mail-Adressen kopieren'}
             </button>
             <a
-              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
+              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
               className="btn btn-secondary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
@@ -367,14 +368,15 @@ export default function AdminPage(): React.ReactElement {
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                qrImageHtml = `<div style="text-align:center;"><img src="${qrDataUrl}" alt="QR-Code" style="width:300px;height:300px;" /></div>`;
+                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;height:300px;" />`;
               } catch { /* Fallback: Text */ }
-              // QR-Code E-Mail queuen
+              // QR-Code E-Mail im Deloitte-Template queuen
+              const emailData = qrCodeEmail(name, selectedEvent.title, qrImageHtml);
               await eventServiceRef.queueEmail(
-                `Dein QR-Code für ${selectedEvent.title}`,
+                emailData.subject,
                 reg.ParticipantEmail,
                 name,
-                `<p>Hallo ${name},</p><p>hier ist dein QR-Code für <strong>${selectedEvent.title}</strong>:</p>${qrImageHtml}<p>Bitte zeige diesen Code beim Check-in vor.</p>`,
+                emailData.body,
                 'QRCode',
                 selectedEvent.title,
                 selectedEvent.id

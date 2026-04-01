@@ -2,11 +2,13 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { useLanguage } from '../context/LanguageContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
+  const { locale, setLocale, t } = useLanguage();
   const [showInfo, setShowInfo] = React.useState(true);
 
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
@@ -39,18 +41,46 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
+      {/* Sprachauswahl */}
+      <div style={{
+        position: 'absolute', top: 12, left: 16,
+        display: 'flex', gap: 8,
+      }}>
+        <button
+          onClick={() => setLocale('de')}
+          style={{
+            background: 'none', border: locale === 'de' ? '2px solid var(--dex-green)' : '2px solid transparent',
+            borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: '1.2rem',
+            opacity: locale === 'de' ? 1 : 0.5, transition: 'all 0.2s',
+          }}
+          title="Deutsch"
+        >
+          🇩🇪
+        </button>
+        <button
+          onClick={() => setLocale('en')}
+          style={{
+            background: 'none', border: locale === 'en' ? '2px solid var(--dex-green)' : '2px solid transparent',
+            borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: '1.2rem',
+            opacity: locale === 'en' ? 1 : 0.5, transition: 'all 0.2s',
+          }}
+          title="English"
+        >
+          🇬🇧
+        </button>
+      </div>
       <div className="landing__hero">
         <div className="landing__orb">
           <div className="landing__orb-inner" />
         </div>
         <div className="landing__text">
           <h1>
-            Welcome to the new <strong>Event Experience Platform</strong>.
+            {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
           </h1>
-          <p>Enjoy the new app to handle your registration for your Deloitte Event.</p>
+          <p>{t('landing.subtitle')}</p>
         </div>
         <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
-          Start
+          {t('landing.start')}
         </button>
         <div style={{ display: 'flex', gap: 16, marginTop: 20, justifyContent: 'center', alignItems: 'center' }}>
           <button
