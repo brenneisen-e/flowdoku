@@ -33,7 +33,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#ffffff;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="${LOGOS_URL}/Deloitte_Logo.png" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -69,29 +69,14 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 </td>
 </tr>
 
-<!-- ===== FOOTER: Social Icons Placeholder ===== -->
-<tr>
-<td style="padding:20px 30px;text-align:center;border-top:1px solid #e8e8e8;">
-  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-  <tr>
-    <td style="padding:0 8px;"><a href="https://www.facebook.com/Deloitte.Deutschland/" style="color:#666666;text-decoration:none;font-size:18px;">f</a></td>
-    <td style="padding:0 8px;"><a href="https://twitter.com/deloittede" style="color:#666666;text-decoration:none;font-size:18px;">X</a></td>
-    <td style="padding:0 8px;"><a href="https://www.linkedin.com/company/deloitte/" style="color:#666666;text-decoration:none;font-size:18px;">in</a></td>
-    <td style="padding:0 8px;"><a href="https://www.instagram.com/deloittedeutschlandkarriere/" style="color:#666666;text-decoration:none;font-size:18px;">ig</a></td>
-  </tr>
-  </table>
-</td>
-</tr>
-
 <!-- ===== FOOTER: Legal ===== -->
 <tr>
 <td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
-  <p style="margin:0 0 8px;"><strong>Deloitte Consulting GmbH</strong><br>
-  Erna-Scheffler-Stra&szlig;e 2<br>
-  40476 D&uuml;sseldorf<br>
+  <p style="margin:0 0 8px;"><strong>Deloitte GmbH Wirtschaftspr&uuml;fungsgesellschaft</strong><br>
+  Rosenheimer Platz 4<br>
+  81669 M&uuml;nchen<br>
   Deutschland</p>
-  <p style="margin:0 0 8px;">Deloitte bezieht sich auf Deloitte Touche Tohmatsu Limited (&bdquo;DTTL&ldquo;), ihr weltweites Netzwerk von Mitgliedsunternehmen und ihre verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). DTTL (auch &bdquo;Deloitte Global&ldquo; genannt) und jedes ihrer Mitgliedsunternehmen sowie ihre verbundenen Unternehmen sind rechtlich selbstst&auml;ndige und unabh&auml;ngige Unternehmen, die sich gegen&uuml;ber Dritten nicht gegenseitig verpflichten oder binden k&ouml;nnen. DTTL, jedes DTTL-Mitgliedsunternehmen und verbundene Unternehmen haften nur f&uuml;r ihre eigenen Handlungen und Unterlassungen und nicht f&uuml;r die der anderen. DTTL erbringt selbst keine Leistungen gegen&uuml;ber Kunden. Weitere Informationen finden Sie unter <a href="http://www.deloitte.com/de/UeberUns" style="color:${GREEN};">www.deloitte.com/de/UeberUns</a>.</p>
-  <p style="margin:0;">Diese Kommunikation einschlie&szlig;lich ihrer Anh&auml;nge dient ausschlie&szlig;lich der Information der Mitarbeitenden von Deloitte Touche Tohmatsu Limited (DTTL), ihrem weltweiten Netzwerk von Mitgliedsunternehmen und deren verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). Sie kann vertrauliche Informationen enthalten und ist ausschlie&szlig;lich f&uuml;r die Verwendung durch die Person oder Gesellschaft bestimmt, an die sie gerichtet ist.</p>
+  <p style="margin:0;">Deloitte bezieht sich auf Deloitte Touche Tohmatsu Limited (&bdquo;DTTL&ldquo;), ihr weltweites Netzwerk von Mitgliedsunternehmen und ihre verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). DTTL (auch &bdquo;Deloitte Global&ldquo; genannt) und jedes ihrer Mitgliedsunternehmen sowie ihre verbundenen Unternehmen sind rechtlich selbstst&auml;ndige und unabh&auml;ngige Unternehmen, die sich gegen&uuml;ber Dritten nicht gegenseitig verpflichten oder binden k&ouml;nnen. DTTL, jedes DTTL-Mitgliedsunternehmen und verbundene Unternehmen haften nur f&uuml;r ihre eigenen Handlungen und Unterlassungen und nicht f&uuml;r die der anderen. DTTL erbringt selbst keine Leistungen gegen&uuml;ber Mandanten. Weitere Informationen finden Sie unter <a href="http://www.deloitte.com/de/UeberUns" style="color:${GREEN};">www.deloitte.com/de/UeberUns</a>.</p>
 </td>
 </tr>
 
