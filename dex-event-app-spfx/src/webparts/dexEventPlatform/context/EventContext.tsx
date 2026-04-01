@@ -69,6 +69,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function initEvents(): Promise<void> {
     await eventService.ensureEventsList();
     await eventService.ensureEmailsList();
+    await eventService.ensureOutlookList();
     await eventService.ensureAssetsFolders();
     await loadEvents();
     setIsEventsLoading(false);
@@ -195,6 +196,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         status === 'Warteliste' ? 'Warteliste' : 'Anmeldung',
         event.title, eventId
       ).catch(() => {});
+      // Outlook-Termin in Queue eintragen
+      if (status !== 'Warteliste') {
+        eventService.queueOutlookEvent(
+          event.title, emailToUse, nameToUse,
+          event.title, eventId,
+          event.startDate, event.endDate,
+          event.location || '', event.description || '',
+          'Erstellen'
+        ).catch(() => {});
+      }
       await loadEvents();
     }
     return success;
@@ -215,6 +226,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventService.queueEmail(
           emailData.subject, currentUserEmail, currentUserName, emailData.body,
           'Abmeldung', event.title, eventId
+        ).catch(() => {});
+        // Outlook-Termin absagen
+        eventService.queueOutlookEvent(
+          event.title, currentUserEmail, currentUserName,
+          event.title, eventId,
+          event.startDate, event.endDate,
+          event.location || '', '',
+          'Absagen'
         ).catch(() => {});
       }
       await loadEvents();

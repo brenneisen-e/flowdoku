@@ -237,6 +237,110 @@ export class EventService {
     }
   }
 
+  // ==================== DEX_Outlook Liste ====================
+
+  /**
+   * Outlook-Termin-Queue-Liste erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Eintraege und erstellt Outlook-Termine.
+   *
+   * Spalten:
+   * - Title: Betreff des Termins
+   * - Attendee: E-Mail-Adresse des Teilnehmers
+   * - AttendeeName: Name des Teilnehmers
+   * - EventTitle: Name des Events
+   * - EventId: ID des Events (Referenz)
+   * - StartDate: Beginn des Termins
+   * - EndDate: Ende des Termins
+   * - Location: Veranstaltungsort
+   * - Body: Beschreibung / HTML-Inhalt
+   * - ActionType: Erstellen, Absagen (fuer Abmeldung)
+   * - Status: Pending, Sent, Failed
+   * - SentDate: Wann wurde der Termin versendet
+   */
+  public async ensureOutlookList(): Promise<void> {
+    const listName = 'DEX_Outlook';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Outlook-Termin-Queue für automatischen Versand via Power Automate',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'Attendee', type: 2 },
+      { title: 'AttendeeName', type: 2 },
+      { title: 'EventTitle', type: 2 },
+      { title: 'EventId', type: 2 },
+      { title: 'StartDate', type: 4 },
+      { title: 'EndDate', type: 4 },
+      { title: 'Location', type: 2 },
+      { title: 'Body', type: 3 },
+      { title: 'ActionType', type: 6, choices: ['Erstellen', 'Absagen'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
+      { title: 'SentDate', type: 4 },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) {
+        payload['Choices'] = { 'results': f.choices };
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'Attendee', 'AttendeeName', 'ActionType', 'EventTitle', 'StartDate', 'EndDate', 'Status', 'SentDate',
+    ]);
+  }
+
+  /**
+   * Outlook-Termin in die Queue eintragen (wird von Power Automate versendet).
+   */
+  public async queueOutlookEvent(
+    subject: string,
+    attendee: string,
+    attendeeName: string,
+    eventTitle: string,
+    eventId: string,
+    startDate: string,
+    endDate: string,
+    location: string,
+    body: string,
+    actionType: 'Erstellen' | 'Absagen'
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+          'Title': subject,
+          'Attendee': attendee,
+          'AttendeeName': attendeeName,
+          'EventTitle': eventTitle,
+          'EventId': eventId,
+          'StartDate': startDate,
+          'EndDate': endDate,
+          'Location': location,
+          'Body': body,
+          'ActionType': actionType,
+          'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== DEX_Events Liste ====================
 
   /**
