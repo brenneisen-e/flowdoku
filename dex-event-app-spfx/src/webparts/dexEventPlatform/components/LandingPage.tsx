@@ -19,7 +19,7 @@ export default function LandingPage(): React.ReactElement {
           </h1>
           <p>Enjoy the new app to handle your registration for your Deloitte Event.</p>
         </div>
-        <button className="btn btn-lg btn-block btn-secondary" onClick={() => navigate('start')}>
+        <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
           Start
         </button>
       </div>
