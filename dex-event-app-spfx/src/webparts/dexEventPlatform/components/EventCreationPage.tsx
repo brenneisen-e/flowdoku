@@ -124,6 +124,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [outlookBody, setOutlookBody] = React.useState('');
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
     { id: 'event', label: 'Event-Karte' },
@@ -445,12 +446,67 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
+  const steps = [
+    { label: 'Grundlagen', icon: '1' },
+    { label: 'Zeit & Ort', icon: '2' },
+    { label: 'Kapazität', icon: '3' },
+    { label: 'Felder', icon: '4' },
+  ];
+
+  const canProceed = (): boolean => {
+    switch (currentStep) {
+      case 0: return !!(title && organizer && description);
+      case 1: return !!(startDate && endDate);
+      default: return true;
+    }
+  };
+
   return (
     <div className="page-container">
       <div>
+        {/* ===== Step Progress Bar ===== */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+            {/* Verbindungslinie */}
+            <div style={{ position: 'absolute', top: 20, left: '10%', right: '10%', height: 3, background: 'var(--dex-gray-200)', zIndex: 0 }} />
+            <div style={{ position: 'absolute', top: 20, left: '10%', height: 3, background: 'var(--dex-green)', zIndex: 1, width: `${Math.min(currentStep / (steps.length - 1) * 80, 80)}%`, transition: 'width 0.4s ease' }} />
+            {steps.map((step, idx) => (
+              <div
+                key={idx}
+                onClick={() => { if (idx <= currentStep || canProceed()) setCurrentStep(idx); }}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                  zIndex: 2, cursor: idx <= currentStep ? 'pointer' : 'default',
+                  flex: 1,
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: '1rem',
+                  background: idx <= currentStep ? 'var(--dex-green)' : '#fff',
+                  color: idx <= currentStep ? '#fff' : 'var(--dex-gray-400)',
+                  border: idx <= currentStep ? '3px solid var(--dex-green)' : '3px solid var(--dex-gray-200)',
+                  transition: 'all 0.3s ease',
+                  boxShadow: idx === currentStep ? '0 0 0 4px rgba(134,188,37,0.2)' : 'none',
+                }}>
+                  {idx < currentStep ? '✓' : step.icon}
+                </div>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: idx === currentStep ? 700 : 500,
+                  color: idx <= currentStep ? 'var(--dex-green)' : 'var(--dex-gray-400)',
+                  transition: 'color 0.3s ease',
+                }}>
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ===== Formular ===== */}
         <div>
-          <div className="card">
+          <div className="card" style={{ borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <div className="creation-form">
               {error && (
                 <div style={{ padding: '10px 16px', background: '#fce4ec', color: '#c62828', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem' }}>
@@ -458,16 +514,20 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <button
-                  className="btn btn-outline"
-                  onClick={fillDemo}
-                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                >
-                  Demo
-                </button>
-              </div>
+              {!isEditMode && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={fillDemo}
+                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  >
+                    Demo
+                  </button>
+                </div>
+              )}
 
+              {/* ===== Step 0: Grundlagen ===== */}
+              <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> Event Titel
@@ -541,14 +601,6 @@ export default function EventCreationPage(): React.ReactElement {
                     ))}
                   </div>
                 )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Veranstaltungsort
-                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
-                </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
 
               <div className="form-group">
@@ -677,6 +729,18 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
+              </div>
+
+              {/* ===== Step 1: Zeit & Ort ===== */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              <div className="form-group">
+                <label className="form-label">
+                  Veranstaltungsort
+                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+              </div>
+
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
@@ -711,6 +775,10 @@ export default function EventCreationPage(): React.ReactElement {
                 />
               </div>
 
+              </div>
+
+              {/* ===== Step 2: Kapazität & Fristen ===== */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
@@ -751,8 +819,12 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
+              </div>
+
+              {/* ===== Step 3: Registrierungsfelder ===== */}
+              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               {/* Dynamische Felder */}
-              <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 24, marginTop: 8 }}>
+              <div>
                 <div className="flex-between mb-16">
                   <label className="form-label" style={{ marginBottom: 0 }}>Zusätzliche Registrierungsfelder</label>
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
@@ -869,6 +941,8 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
           </div>
 
+              </div>
+
           {/* Fortschrittsanzeige */}
           {isSubmitting && (
             <div className="mt-24" style={{ padding: '20px 0' }}>
@@ -898,23 +972,42 @@ export default function EventCreationPage(): React.ReactElement {
 
           {!isSubmitting && (
             <div className="registration-actions mt-24">
-              <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
-              <button
-                className="btn btn-secondary"
-                disabled={!title}
-                onClick={() => setShowPreview(true)}
-                style={{ opacity: !title ? 0.5 : 1 }}
-              >
-                Vorschau anzeigen
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={!title || !description}
-                onClick={handleSubmit}
-                style={{ opacity: !title || !description ? 0.5 : 1 }}
-              >
-                <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
-              </button>
+              {currentStep === 0 ? (
+                <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
+              ) : (
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(currentStep - 1)}>
+                  Zurück
+                </button>
+              )}
+
+              {currentStep < steps.length - 1 ? (
+                <button
+                  className="btn btn-primary"
+                  disabled={!canProceed()}
+                  onClick={() => setCurrentStep(currentStep + 1)}
+                  style={{ opacity: canProceed() ? 1 : 0.5 }}
+                >
+                  Weiter
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!title}
+                    onClick={() => setShowPreview(true)}
+                  >
+                    Vorschau
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!title || !description}
+                    onClick={handleSubmit}
+                    style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  >
+                    <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

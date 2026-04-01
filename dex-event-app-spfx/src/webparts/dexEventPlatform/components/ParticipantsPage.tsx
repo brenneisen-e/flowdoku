@@ -13,11 +13,13 @@ import { useNavigation } from '../context/NavigationContext';
 import { EventService, SPParticipant } from '../services/EventService';
 import { DeloitteEvent } from '../types';
 import { Users, FileText } from './Icons';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function ParticipantsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { events } = useEvents();
   const { siteUrl, isAdmin } = useRoles();
+  const { t } = useLanguage();
   const [participants, setParticipants] = React.useState<SPParticipant[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -47,7 +49,7 @@ export default function ParticipantsPage(): React.ReactElement {
   if (!isAdmin) {
     return (
       <div className="page-container text-center">
-        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>Nur für Admins verfügbar.</p>
+        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>Admin only.</p>
       </div>
     );
   }
@@ -103,7 +105,7 @@ export default function ParticipantsPage(): React.ReactElement {
     <div className="page-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Users size={24} /> Teilnehmer-Übersicht
+          <Users size={24} /> {t('participants.title')}
         </h2>
         <a
           href={spListUrl}
@@ -112,14 +114,14 @@ export default function ParticipantsPage(): React.ReactElement {
           className="btn btn-secondary"
           style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
         >
-          <FileText size={14} /> In SharePoint öffnen
+          <FileText size={14} /> {t('participants.opensp')}
         </a>
       </div>
 
       <div style={{ marginBottom: 16 }}>
         <input
           className="form-input"
-          placeholder="Teilnehmer suchen (Name oder E-Mail)..."
+          placeholder={t('participants.search')}
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           style={{ maxWidth: 400 }}
@@ -127,11 +129,11 @@ export default function ParticipantsPage(): React.ReactElement {
       </div>
 
       {isLoading ? (
-        <p style={{ color: 'var(--dex-gray-400)', padding: 48, textAlign: 'center' }}>Lade Teilnehmer...</p>
+        <p style={{ color: 'var(--dex-gray-400)', padding: 48, textAlign: 'center' }}>{t('participants.loading')}</p>
       ) : filtered.length === 0 ? (
         <div className="card text-center" style={{ padding: 48 }}>
           <p style={{ color: 'var(--dex-gray-400)' }}>
-            {searchTerm ? 'Keine Teilnehmer gefunden.' : 'Noch keine Teilnehmer registriert.'}
+            {searchTerm ? t('participants.noresults') : t('participants.empty')}
           </p>
         </div>
       ) : (
@@ -140,11 +142,11 @@ export default function ParticipantsPage(): React.ReactElement {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Vorname</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Nachname</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>E-Mail</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Registriert</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Warteliste</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('profile.firstname')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('profile.lastname')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('profile.email')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('participants.registered')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('participants.waitlist')}</th>
                 </tr>
               </thead>
               <tbody>

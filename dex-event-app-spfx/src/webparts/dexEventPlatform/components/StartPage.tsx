@@ -3,11 +3,13 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Calendar, Pin, Settings } from './Icons';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { canCreateEvents } = useRoles();
+  const { t } = useLanguage();
 
   return (
     <div className="page-container">
@@ -16,23 +18,23 @@ export default function StartPage(): React.ReactElement {
           <div className="start-card__icon">
             <Calendar size={64} strokeWidth={1} />
           </div>
-          <h2>Registration</h2>
-          <p>Register for a Deloitte Event</p>
+          <h2>{t('start.register')}</h2>
+          <p>{t('start.register.desc')}</p>
         </div>
         <div className="card card-clickable start-card" onClick={() => navigate('my-events')}>
           <div className="start-card__icon">
             <Pin size={64} strokeWidth={1} />
           </div>
-          <h2>My Events</h2>
-          <p>Check Registration Status / Cancel</p>
+          <h2>{t('start.myevents')}</h2>
+          <p>{t('start.myevents.desc')}</p>
         </div>
         {canCreateEvents && (
           <div className="card card-clickable start-card" onClick={() => navigate('admin')}>
             <div className="start-card__icon">
               <Settings size={64} strokeWidth={1} />
             </div>
-            <h2>Admin / Organizer</h2>
-            <p>Manage Events &amp; Participants</p>
+            <h2>{t('start.admin')}</h2>
+            <p>{t('start.admin.desc')}</p>
           </div>
         )}
       </div>
