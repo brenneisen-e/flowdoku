@@ -136,6 +136,55 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'Recipient', 'RecipientName', 'EmailType', 'EventTitle', 'Status', 'SentDate',
     ]);
+
+    // Berechtigungen: Vererbung aufheben, nur Owners Full Control + Members Contribute
+    try {
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+      // Owners: Full Control (1073741829)
+      const ownersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (ownersResp.ok) {
+        const ownersData = await ownersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`, {}
+        );
+      }
+      // Members: Contribute (1073741827) - damit die App Queue-Einträge schreiben kann
+      const membersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (membersResp.ok) {
+        const membersData = await membersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`, {}
+        );
+      }
+    } catch { /* Berechtigungen optional */ }
+
+    // Item-Level Security: User sehen nur eigene Einträge
+    try {
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': 'SP.List' },
+            'ReadSecurity': 2,
+            'WriteSecurity': 2,
+          }),
+        }
+      );
+    } catch { /* Item-Level Permissions optional */ }
   }
 
   /**

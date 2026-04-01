@@ -22,24 +22,24 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${heading}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
 <tr><td align="center" style="padding:20px 10px;">
 
 <!-- Main Container -->
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 
-<!-- ===== HEADER: Deloitte Logo ===== -->
+<!-- ===== HEADER: Deloitte Logo (schwarzer Hintergrund) ===== -->
 <tr>
 <td style="background-color:#000000;padding:24px 30px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.5px;">
+    <td style="color:#ffffff;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.5px;">
       Deloitte<span style="color:${GREEN};">.</span>
     </td>
   </tr>
   <tr>
-    <td style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-style:italic;padding-top:4px;">
+    <td style="color:#ffffff;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;font-style:italic;padding-top:4px;">
       Together makes progress
     </td>
   </tr>
@@ -49,18 +49,18 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 
 <!-- ===== SUBHEADER ===== -->
 <tr>
-<td style="padding:10px 30px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
+<td style="padding:10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
   Deutschland | Event Experience Platform | ${getDate()}
 </td>
 </tr>
 
-<!-- ===== HERO IMAGE: Orb auf schwarzem Hintergrund ===== -->
+<!-- ===== HERO IMAGE: Orb auf weißem Hintergrund ===== -->
 <tr>
-<td style="background-color:#000000;text-align:center;padding:40px 30px;">
+<td style="background-color:#ffffff;text-align:center;padding:40px 30px;">
   <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
   <tr><td>
     <div style="width:180px;height:180px;border-radius:50%;background:conic-gradient(from 0deg,#86bc25,#0076a8 90deg,#00bcd4 150deg,#4caf50 210deg,#8bc34a 270deg,#ffeb3b 320deg,#86bc25 360deg);margin:0 auto;text-align:center;line-height:180px;">
-      <div style="display:inline-block;width:117px;height:117px;border-radius:50%;background-color:#000000;vertical-align:middle;"></div>
+      <div style="display:inline-block;width:117px;height:117px;border-radius:50%;background-color:#ffffff;vertical-align:middle;"></div>
     </div>
   </td></tr>
   </table>
@@ -75,12 +75,12 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== CONTENT ===== -->
 <tr>
 <td style="padding:30px 30px 10px;">
-  <h1 style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
-  <h2 style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
+  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
+  <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
 </td>
 </tr>
 <tr>
-<td style="padding:0 30px 30px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
+<td style="padding:0 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
   ${bodyHtml}
 </td>
 </tr>
@@ -101,7 +101,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 
 <!-- ===== FOOTER: Legal ===== -->
 <tr>
-<td style="padding:20px 30px;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
+<td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
   <p style="margin:0 0 8px;"><strong>Deloitte Consulting GmbH</strong><br>
   Erna-Scheffler-Stra&szlig;e 2<br>
   40476 D&uuml;sseldorf<br>
