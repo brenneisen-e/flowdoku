@@ -185,7 +185,7 @@ export class EventService {
       await this.configureDefaultView(listName, [
         'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
+        'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -909,18 +909,9 @@ export class EventService {
         }
       }
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify(body),
-        }
+        body
       );
       return response.ok;
     } catch {
@@ -953,18 +944,9 @@ export class EventService {
         }
       }
 
-      const response = await this.context.spHttpClient.post(
+      const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify(body),
-        }
+        body
       );
       return response.ok;
     } catch {
@@ -1018,20 +1000,11 @@ export class EventService {
     itemId: number
   ): Promise<boolean> {
     try {
-      const response = await this.context.spHttpClient.post(
+      const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        SPHttpClient.configurations.v1,
         {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            'Status': 'Abgemeldet',
-            'CancellationDate': new Date().toISOString(),
-          }),
+          'Status': 'Abgemeldet',
+          'CancellationDate': new Date().toISOString(),
         }
       );
       return response.ok;
@@ -1069,20 +1042,9 @@ export class EventService {
     newTitle: string
   ): Promise<boolean> {
     try {
-      const response = await this.context.spHttpClient.post(
+      const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            'Title': newTitle,
-          }),
-        }
+        { 'Title': newTitle }
       );
       return response.ok;
     } catch {
@@ -1153,6 +1115,22 @@ export class EventService {
         'Accept': 'application/json;odata=verbose',
         'Content-Type': 'application/json;odata=verbose',
         'odata-version': '',
+      },
+      body: JSON.stringify(body),
+    };
+    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+  }
+
+  /**
+   * MERGE-Request ohne __metadata (fuer Subsite-Listen wo der ListItemType unbekannt ist)
+   */
+  private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
+    const options: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata',
+        'IF-MATCH': '*',
+        'X-HTTP-Method': 'MERGE',
       },
       body: JSON.stringify(body),
     };
