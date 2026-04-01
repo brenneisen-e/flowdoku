@@ -145,18 +145,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Pruefen ob schon registriert
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
-    if (existing && existing.Status !== 'Cancelled') return false;
+    if (existing && existing.Status !== 'Abgemeldet') return false;
 
     // Pruefen ob Platz frei oder Waitlist
     const event = events.find(e => e.id === eventId);
-    let status = 'Registered';
+    let status = 'Angemeldet';
     if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
-      status = 'Waitlist';
+      status = 'Warteliste';
     }
 
-    const success = await eventService.registerForEvent(
-      subsiteUrl, nameToUse, emailToUse, customData, status
-    );
+    let success: boolean;
+    if (existing && existing.Status === 'Abgemeldet') {
+      // Bestehende Zeile reaktivieren statt neuen Eintrag erstellen
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status);
+    } else {
+      success = await eventService.registerForEvent(
+        subsiteUrl, nameToUse, emailToUse, customData, status
+      );
+    }
 
     if (success) {
       await reassignParticipantIds(subsiteUrl);
@@ -188,7 +194,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try {
       const allRegs = await eventService.getAllRegistrations(subsiteUrl);
       const active = allRegs
-        .filter(r => r.Status === 'Registered' || r.Status === 'Checked-In')
+        .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
         .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
 
       for (let i = 0; i < active.length; i++) {
@@ -198,7 +204,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
       }
 
-      const cancelled = allRegs.filter(r => r.Status === 'Cancelled');
+      const cancelled = allRegs.filter(r => r.Status === 'Abgemeldet');
       for (const reg of cancelled) {
         if (reg.Title && reg.Title !== '') {
           await eventService.updateRegistrationTitle(subsiteUrl, reg.Id, '');

@@ -484,7 +484,7 @@ export class EventService {
     const baseFields = [
       { title: 'ParticipantName', type: 2 },
       { title: 'ParticipantEmail', type: 2 },
-      { title: 'Status', type: 6, choices: ['Registered', 'Waitlist', 'Checked-In', 'Cancelled'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'RegistrationDate', type: 4 },
       { title: 'CancellationDate', type: 4 },
       { title: 'CustomData', type: 3 },
@@ -505,7 +505,7 @@ export class EventService {
 
     // Default View konfigurieren
     await this.configureDefaultView(REG_LIST_NAME, [
-      'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate',
+      'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
     ], subsiteUrl);
 
     // Item-Level Permissions
@@ -610,7 +610,7 @@ export class EventService {
     participantName: string,
     participantEmail: string,
     customData: Record<string, string>,
-    status: string = 'Registered'
+    status: string = 'Angemeldet'
   ): Promise<boolean> {
     try {
       const payload = {
@@ -626,6 +626,45 @@ export class EventService {
       const response = await this._post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
         payload
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Bestehende abgemeldete Registrierung reaktivieren.
+   * Setzt Status zurueck auf Angemeldet/Warteliste, loescht CancellationDate,
+   * aktualisiert RegistrationDate und CustomData.
+   */
+  public async reactivateRegistration(
+    subsiteUrl: string,
+    itemId: number,
+    participantName: string,
+    customData: Record<string, string>,
+    status: string = 'Angemeldet'
+  ): Promise<boolean> {
+    try {
+      const response = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+            'ParticipantName': participantName,
+            'Status': status,
+            'RegistrationDate': new Date().toISOString(),
+            'CancellationDate': null,
+            'CustomData': JSON.stringify(customData),
+          }),
+        }
       );
       return response.ok;
     } catch {
@@ -691,7 +730,7 @@ export class EventService {
           },
           body: JSON.stringify({
             '__metadata': { 'type': REG_LIST_ITEM_TYPE },
-            'Status': 'Cancelled',
+            'Status': 'Abgemeldet',
             'CancellationDate': new Date().toISOString(),
           }),
         }
@@ -714,8 +753,8 @@ export class EventService {
       if (!response.ok) return { registered: 0, waitlist: 0 };
       const data = await response.json();
       const items = data.value || [];
-      const registered = items.filter((i: { Status: string }) => i.Status === 'Registered' || i.Status === 'Checked-In').length;
-      const waitlist = items.filter((i: { Status: string }) => i.Status === 'Waitlist').length;
+      const registered = items.filter((i: { Status: string }) => i.Status === 'Angemeldet' || i.Status === 'Eingecheckt').length;
+      const waitlist = items.filter((i: { Status: string }) => i.Status === 'Warteliste').length;
       return { registered, waitlist };
     } catch {
       return { registered: 0, waitlist: 0 };

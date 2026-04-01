@@ -127,9 +127,9 @@ export default function AdminPage(): React.ReactElement {
   }
 
   // Event ausgewählt - Detail-Ansicht
-  const activeRegs = registrations.filter(r => r.Status === 'Registered' || r.Status === 'Checked-In');
-  const waitlistRegs = registrations.filter(r => r.Status === 'Waitlist');
-  const cancelledRegs = registrations.filter(r => r.Status === 'Cancelled');
+  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt');
+  const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste');
+  const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
 
   return (
     <div className="page-container">
@@ -253,7 +253,7 @@ export default function AdminPage(): React.ReactElement {
                       <td style={{ padding: 8, fontWeight: 500 }}>{reg.ParticipantName}</td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                       <td style={{ padding: 8 }}>
-                        <span className="badge badge-orange">Waitlist</span>
+                        <span className="badge badge-orange">Warteliste</span>
                       </td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
                     </tr>
@@ -275,7 +275,7 @@ export default function AdminPage(): React.ReactElement {
                       <td style={{ padding: 8 }}>{reg.ParticipantName}</td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                       <td style={{ padding: 8 }}>
-                        <span className="badge badge-red">Cancelled</span>
+                        <span className="badge badge-red">Abgemeldet</span>
                       </td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
                     </tr>

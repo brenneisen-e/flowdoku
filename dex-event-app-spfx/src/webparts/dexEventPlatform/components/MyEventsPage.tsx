@@ -24,20 +24,20 @@ function formatDate(iso: string): string {
 
 function getStatusBadgeClass(status: string): string {
   switch (status) {
-    case 'Registered': return 'badge-green';
-    case 'Waitlist': return 'badge-orange';
-    case 'Cancelled': return 'badge-red';
-    case 'Checked-In': return 'badge-green';
+    case 'Angemeldet': return 'badge-green';
+    case 'Warteliste': return 'badge-orange';
+    case 'Abgemeldet': return 'badge-red';
+    case 'Eingecheckt': return 'badge-green';
     default: return 'badge-gray';
   }
 }
 
 function getStatusLabel(status: string): string {
   switch (status) {
-    case 'Registered': return 'Angemeldet';
-    case 'Waitlist': return 'Warteliste';
-    case 'Cancelled': return 'Abgemeldet';
-    case 'Checked-In': return 'Eingecheckt';
+    case 'Angemeldet': return 'Angemeldet';
+    case 'Warteliste': return 'Warteliste';
+    case 'Abgemeldet': return 'Abgemeldet';
+    case 'Eingecheckt': return 'Eingecheckt';
     default: return status;
   }
 }
@@ -89,8 +89,8 @@ export default function MyEventsPage(): React.ReactElement {
     }
   };
 
-  const activeEntries = myEvents.filter(e => e.registration.Status !== 'Cancelled');
-  const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Cancelled');
+  const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
+  const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
 
   if (isLoading) {
     return (
