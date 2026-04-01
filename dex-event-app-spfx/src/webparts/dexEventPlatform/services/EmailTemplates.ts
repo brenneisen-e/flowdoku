@@ -1,0 +1,212 @@
+/**
+ * E-Mail HTML Templates im Deloitte-Design
+ *
+ * Basiert auf der offiziellen Deloitte E-Mail-Vorlage
+ * (Deloitte_DCGmbH_Email_with_Tagline.html).
+ *
+ * Generiert den kompletten HTML-Body fuer Power Automate.
+ */
+
+const GREEN = '#86bc25';
+const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run';
+
+function getDate(): string {
+  return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${heading}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
+<tr><td align="center" style="padding:20px 10px;">
+
+<!-- Main Container -->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+
+<!-- ===== HEADER: Deloitte Logo ===== -->
+<tr>
+<td style="background-color:#000000;padding:24px 30px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.5px;">
+      Deloitte<span style="color:${GREEN};">.</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-style:italic;padding-top:4px;">
+      Together makes progress
+    </td>
+  </tr>
+  </table>
+</td>
+</tr>
+
+<!-- ===== SUBHEADER ===== -->
+<tr>
+<td style="padding:10px 30px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
+  Deutschland | Event Experience Platform | ${getDate()}
+</td>
+</tr>
+
+<!-- ===== HERO IMAGE: Orb auf schwarzem Hintergrund ===== -->
+<tr>
+<td style="background-color:#000000;text-align:center;padding:40px 30px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr><td>
+    <div style="width:180px;height:180px;border-radius:50%;background:conic-gradient(from 0deg,#86bc25,#0076a8 90deg,#00bcd4 150deg,#4caf50 210deg,#8bc34a 270deg,#ffeb3b 320deg,#86bc25 360deg);margin:0 auto;text-align:center;line-height:180px;">
+      <div style="display:inline-block;width:117px;height:117px;border-radius:50%;background-color:#000000;vertical-align:middle;"></div>
+    </div>
+  </td></tr>
+  </table>
+</td>
+</tr>
+
+<!-- ===== GREEN LINE ===== -->
+<tr>
+<td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
+</tr>
+
+<!-- ===== CONTENT ===== -->
+<tr>
+<td style="padding:30px 30px 10px;">
+  <h1 style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
+  <h2 style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
+</td>
+</tr>
+<tr>
+<td style="padding:0 30px 30px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
+  ${bodyHtml}
+</td>
+</tr>
+
+<!-- ===== FOOTER: Social Icons Placeholder ===== -->
+<tr>
+<td style="padding:20px 30px;text-align:center;border-top:1px solid #e8e8e8;">
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="padding:0 8px;"><a href="https://www.facebook.com/Deloitte.Deutschland/" style="color:#666666;text-decoration:none;font-size:18px;">f</a></td>
+    <td style="padding:0 8px;"><a href="https://twitter.com/deloittede" style="color:#666666;text-decoration:none;font-size:18px;">X</a></td>
+    <td style="padding:0 8px;"><a href="https://www.linkedin.com/company/deloitte/" style="color:#666666;text-decoration:none;font-size:18px;">in</a></td>
+    <td style="padding:0 8px;"><a href="https://www.instagram.com/deloittedeutschlandkarriere/" style="color:#666666;text-decoration:none;font-size:18px;">ig</a></td>
+  </tr>
+  </table>
+</td>
+</tr>
+
+<!-- ===== FOOTER: Legal ===== -->
+<tr>
+<td style="padding:20px 30px;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
+  <p style="margin:0 0 8px;"><strong>Deloitte Consulting GmbH</strong><br>
+  Erna-Scheffler-Stra&szlig;e 2<br>
+  40476 D&uuml;sseldorf<br>
+  Deutschland</p>
+  <p style="margin:0 0 8px;">Deloitte bezieht sich auf Deloitte Touche Tohmatsu Limited (&bdquo;DTTL&ldquo;), ihr weltweites Netzwerk von Mitgliedsunternehmen und ihre verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). DTTL (auch &bdquo;Deloitte Global&ldquo; genannt) und jedes ihrer Mitgliedsunternehmen sowie ihre verbundenen Unternehmen sind rechtlich selbstst&auml;ndige und unabh&auml;ngige Unternehmen, die sich gegen&uuml;ber Dritten nicht gegenseitig verpflichten oder binden k&ouml;nnen. DTTL, jedes DTTL-Mitgliedsunternehmen und verbundene Unternehmen haften nur f&uuml;r ihre eigenen Handlungen und Unterlassungen und nicht f&uuml;r die der anderen. DTTL erbringt selbst keine Leistungen gegen&uuml;ber Kunden. Weitere Informationen finden Sie unter <a href="http://www.deloitte.com/de/UeberUns" style="color:${GREEN};">www.deloitte.com/de/UeberUns</a>.</p>
+  <p style="margin:0;">Diese Kommunikation einschlie&szlig;lich ihrer Anh&auml;nge dient ausschlie&szlig;lich der Information der Mitarbeitenden von Deloitte Touche Tohmatsu Limited (DTTL), ihrem weltweiten Netzwerk von Mitgliedsunternehmen und deren verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). Sie kann vertrauliche Informationen enthalten und ist ausschlie&szlig;lich f&uuml;r die Verwendung durch die Person oder Gesellschaft bestimmt, an die sie gerichtet ist.</p>
+</td>
+</tr>
+
+</table>
+<!-- End Main Container -->
+
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+// ==================== E-Mail Templates ====================
+
+/**
+ * Anmeldebestätigung
+ */
+export function registrationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  return {
+    subject: `Anmeldebest\u00E4tigung: ${eventTitle}`,
+    body: wrapTemplate(
+      GREEN,
+      'Registration successful',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * Warteliste-Bestätigung
+ */
+export function waitlistEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  return {
+    subject: `Warteliste: ${eventTitle}`,
+    body: wrapTemplate(
+      '#ed8b00',
+      'Waitlist confirmation',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>you have been placed on the <strong>waitlist</strong> for the event <strong>${eventTitle}</strong>.</p>
+      <p>We will notify you as soon as a spot becomes available. You do not need to take any further action.</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * Abmeldebestätigung
+ */
+export function cancellationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  return {
+    subject: `Abmeldebest\u00E4tigung: ${eventTitle}`,
+    body: wrapTemplate(
+      '#da291c',
+      'Cancellation confirmed',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>your registration for the event <strong>${eventTitle}</strong> has been <strong>cancelled</strong>.</p>
+      <p>If you change your mind, you can register again via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * Nachrücken von der Warteliste
+ */
+export function promotionEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  return {
+    subject: `Platz frei: ${eventTitle}`,
+    body: wrapTemplate(
+      GREEN,
+      'You got a spot!',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>${eventTitle}</strong>.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${SITE_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * Allgemeine Info-Mail
+ */
+export function infoEmail(recipientName: string, eventTitle: string, message: string): { subject: string; body: string } {
+  return {
+    subject: `Info: ${eventTitle}`,
+    body: wrapTemplate(
+      '#333333',
+      'Information',
+      `Event ${eventTitle}`,
+      `<p><strong>Dear ${recipientName},</strong></p>
+      <p>${message}</p>
+      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+    ),
+  };
+}
