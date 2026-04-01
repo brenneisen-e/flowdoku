@@ -22,6 +22,7 @@ interface EventContextType {
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -217,6 +218,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  async function updateMyRegistration(eventId: string, customData: Record<string, string>): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return false;
+
+    // FieldMap aus Event extrahieren
+    const event = events.find(e => e.id === eventId);
+    const fieldMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        if (f.spInternalName) fieldMap[f.id] = f.spInternalName;
+      }
+    }
+
+    return eventService.updateRegistrationData(subsiteUrl, myReg.Id, customData, fieldMap);
+  }
+
   async function refreshEvents(): Promise<void> {
     await loadEvents();
   }
@@ -227,7 +247,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateMyRegistration, refreshEvents,
       },
     },
     props.children

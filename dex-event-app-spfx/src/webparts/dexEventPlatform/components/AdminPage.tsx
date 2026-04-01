@@ -15,7 +15,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2 } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -45,6 +45,7 @@ export default function AdminPage(): React.ReactElement {
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  const [copiedEmails, setCopiedEmails] = React.useState(false);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine
   const adminEvents = isAdmin
@@ -226,6 +227,33 @@ export default function AdminPage(): React.ReactElement {
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
               <FileText size={16} /> Teilnehmerliste in SharePoint öffnen
+            </a>
+            <button
+              className="btn btn-secondary btn-block"
+              onClick={() => {
+                const emails = registrations
+                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
+                  .map(r => r.ParticipantEmail)
+                  .join('; ');
+                if (emails) {
+                  navigator.clipboard.writeText(emails).then(() => {
+                    setCopiedEmails(true);
+                    setTimeout(() => setCopiedEmails(false), 2000);
+                  }).catch(() => {
+                    // Fallback: prompt
+                    window.prompt('E-Mail-Adressen kopieren:', emails);
+                  });
+                }
+              }}
+            >
+              <Copy size={16} /> {copiedEmails ? 'Kopiert!' : 'E-Mail-Adressen kopieren'}
+            </button>
+            <a
+              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
+              className="btn btn-secondary btn-block"
+              style={{ textDecoration: 'none', textAlign: 'center' }}
+            >
+              <Mail size={16} /> E-Mail an alle Teilnehmer
             </a>
           </div>
         </div>

@@ -15,7 +15,7 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isAdmin, canCreateEvents,
-    addRole, updateRole, removeRole, isRolesLoading, siteUrl, searchUsers,
+    addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
@@ -155,9 +155,6 @@ export default function SettingsPage(): React.ReactElement {
               <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('admin')}>
                 <FileText size={18} /> View All Events (Admin)
               </button>
-              <button className="btn btn-secondary btn-block mt-8">
-                <Users size={18} /> Extract Mail Addresses
-              </button>
               {isAdmin && (
                 <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('role-matrix')}>
                   <FileText size={18} /> Rollen-Matrix anzeigen
@@ -229,7 +226,25 @@ export default function SettingsPage(): React.ReactElement {
                             <option value="User">User</option>
                           </select>
                         </td>
-                        <td style={{ padding: 10, color: 'var(--dex-gray-500)' }}>{r.location || '-'}</td>
+                        <td style={{ padding: 10 }}>
+                          <input
+                            className="form-input"
+                            value={r.location || ''}
+                            style={{ fontSize: '0.85rem', padding: '4px 8px', width: '100%', minWidth: 120 }}
+                            placeholder="Standort"
+                            onBlur={async (e) => {
+                              const newLoc = e.target.value.trim();
+                              if (newLoc !== (r.location || '')) {
+                                await updateRoleLocation(r.id, newLoc);
+                              }
+                            }}
+                            onChange={(e) => {
+                              // Lokales Update fuer sofortige Anzeige
+                              const input = e.target;
+                              input.value = e.target.value;
+                            }}
+                          />
+                        </td>
                         <td style={{ padding: '10px 0 10px 8px', textAlign: 'right' }}>
                           {r.userEmail.toLowerCase() !== currentUser.email.toLowerCase() && (
                             <button

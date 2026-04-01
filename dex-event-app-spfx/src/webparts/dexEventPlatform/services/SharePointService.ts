@@ -558,6 +558,33 @@ export class SharePointService {
   }
 
   /**
+   * Location eines Rollen-Eintrags aktualisieren
+   */
+  public async updateRoleLocation(itemId: number, location: string): Promise<boolean> {
+    try {
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': 'SP.Data.DEX_x005f_RolesListItem' },
+            'UserLocation': location,
+          }),
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Rolle entfernen
    */
   public async deleteRole(itemId: number): Promise<boolean> {

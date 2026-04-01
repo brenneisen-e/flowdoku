@@ -7,7 +7,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { DeloitteEvent } from '../types';
+import { DeloitteEvent, EventSpecificField } from '../types';
 import { SPRegistration } from '../services/EventService';
 
 interface MyEventEntry {
@@ -44,11 +44,14 @@ function getStatusLabel(status: string): string {
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getMyRegistration, cancelRegistration } = useEvents();
+  const { events, getMyRegistration, cancelRegistration, updateMyRegistration } = useEvents();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editData, setEditData] = React.useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = React.useState(false);
 
   React.useEffect(() => {
     loadMyRegistrations();
@@ -152,7 +155,56 @@ export default function MyEventsPage(): React.ReactElement {
                   )}
                 </div>
 
-                {displayData.length > 0 && (
+                {/* Anzeige oder Bearbeitung der Custom Data */}
+                {editingId === event.id ? (
+                  <div className="my-event-card__specific" style={{ padding: '12px 0' }}>
+                    {event.eventSpecificFields.map((field: EventSpecificField) => (
+                      <div className="form-group" key={field.id} style={{ marginBottom: 12 }}>
+                        <label className="form-label" style={{ fontSize: '0.85rem' }}>
+                          {field.required && <span className="required">*</span>}
+                          {field.label}
+                        </label>
+                        {field.type === 'select' ? (
+                          <select
+                            className="form-select"
+                            value={editData[field.id] || ''}
+                            onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}
+                          >
+                            <option value="">Bitte wählen</option>
+                            {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            className="form-input"
+                            value={editData[field.id] || ''}
+                            onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}
+                            placeholder={field.label}
+                            type={field.type === 'number' ? 'number' : 'text'}
+                          />
+                        )}
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.85rem' }}
+                        disabled={isSaving}
+                        onClick={async () => {
+                          setIsSaving(true);
+                          await updateMyRegistration(event.id, editData);
+                          await loadMyRegistrations();
+                          setEditingId(null);
+                          setIsSaving(false);
+                        }}
+                      >
+                        {isSaving ? 'Wird gespeichert...' : 'Speichern'}
+                      </button>
+                      <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => setEditingId(null)}>
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : displayData.length > 0 ? (
                   <div className="my-event-card__specific">
                     {displayData.map(({ label, value }) => (
                       <span key={label} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
@@ -160,9 +212,23 @@ export default function MyEventsPage(): React.ReactElement {
                       </span>
                     ))}
                   </div>
-                )}
+                ) : null}
 
                 <div className="my-event-card__actions">
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.85rem' }}
+                    onClick={() => {
+                      if (editingId === event.id) {
+                        setEditingId(null);
+                      } else {
+                        setEditData(customData);
+                        setEditingId(event.id);
+                      }
+                    }}
+                  >
+                    {editingId === event.id ? 'Abbrechen' : 'Angaben bearbeiten'}
+                  </button>
                   <button
                     className={`btn ${cancellingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
                     onClick={() => handleCancel(event.id)}

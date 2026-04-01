@@ -546,6 +546,7 @@ export class EventService {
 
     // Basis-Spalten
     const baseFields = [
+      { title: 'TeilnehmerID', type: 9 }, // Number - fortlaufende ID
       { title: 'ParticipantName', type: 2 },
       { title: 'ParticipantEmail', type: 2 },
       { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
@@ -628,7 +629,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -738,10 +739,18 @@ export class EventService {
     customFieldMap?: Record<string, string> // cf.id -> SP InternalName
   ): Promise<boolean> {
     try {
+      // Naechste TeilnehmerID ermitteln
+      let nextId = 1;
+      try {
+        const counts = await this.getRegistrationCount(subsiteUrl);
+        nextId = counts.registered + counts.waitlist + 1;
+      } catch { /* Fallback: 1 */ }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
+        'TeilnehmerID': nextId,
         'ParticipantName': participantName,
         'ParticipantEmail': participantEmail,
         'Status': status,
@@ -791,6 +800,51 @@ export class EventService {
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
+        'CustomData': JSON.stringify(customData),
+      };
+
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            body[spFieldName] = customData[cfId];
+          }
+        }
+      }
+
+      const response = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify(body),
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Custom Data einer Registrierung aktualisieren (Teilnehmer aendert eigene Angaben).
+   */
+  public async updateRegistrationData(
+    subsiteUrl: string,
+    itemId: number,
+    customData: Record<string, string>,
+    customFieldMap?: Record<string, string>
+  ): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'CustomData': JSON.stringify(customData),
       };
 

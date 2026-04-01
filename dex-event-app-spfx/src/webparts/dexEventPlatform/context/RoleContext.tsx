@@ -24,6 +24,7 @@ interface RoleContextType {
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
+  updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
   refreshRoles: () => Promise<void>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string } | null>;
@@ -157,6 +158,12 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return success;
   }
 
+  async function updateRoleLocation(itemId: number, location: string): Promise<boolean> {
+    const success = await spService.updateRoleLocation(itemId, location);
+    if (success) await refreshRoles();
+    return success;
+  }
+
   async function searchUser(email: string): Promise<{ displayName: string; location: string } | null> {
     return spService.searchUserByEmail(email);
   }
@@ -176,7 +183,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       value: {
         roles, currentUserRole, isRolesLoading,
         isAdmin, isOrganizer, canCreateEvents, siteUrl,
-        addRole, updateRole, removeRole, refreshRoles, searchUser, searchUsers,
+        addRole, updateRole, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers,
       },
     },
     props.children
