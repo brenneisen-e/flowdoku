@@ -210,17 +210,23 @@ export default function RegistrationPage(): React.ReactElement {
         <div className="registration-form">
           <div className="section-header">Personal Information</div>
           <div style={{ padding: '24px 20px' }}>
-            <button
-              className="btn btn-outline"
-              style={{ marginBottom: 20, fontSize: '0.85rem' }}
-              onClick={() => {
-                setRegisterForOther(!registerForOther);
-                if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); }
-                else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); }
-              }}
-            >
-              {registerForOther ? 'Register for myself' : 'Click here to register for someone else'}
-            </button>
+            <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
+              <span className="required">*</span> = Pflichtfeld
+            </p>
+
+            {canCreateEvents && (
+              <button
+                className="btn btn-outline"
+                style={{ marginBottom: 20, fontSize: '0.85rem' }}
+                onClick={() => {
+                  setRegisterForOther(!registerForOther);
+                  if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); }
+                  else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); }
+                }}
+              >
+                {registerForOther ? 'Für mich selbst registrieren' : 'Für jemand anderen registrieren'}
+              </button>
+            )}
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> Salutation</label>
@@ -234,17 +240,17 @@ export default function RegistrationPage(): React.ReactElement {
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> First Name</label>
-              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" />
+              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> Surname</label>
-              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder="Surname" />
+              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder="Surname" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> E-Mail</label>
-              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" />
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
             </div>
           </div>
         </div>

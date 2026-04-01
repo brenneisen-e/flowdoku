@@ -205,12 +205,15 @@ export default function MyEventsPage(): React.ReactElement {
                     </div>
                   </div>
                 ) : displayData.length > 0 ? (
-                  <div className="my-event-card__specific">
-                    {displayData.map(({ label, value }) => (
-                      <span key={label} className="badge badge-gray" style={{ marginRight: 8, marginBottom: 4 }}>
-                        {label}: {value}
-                      </span>
-                    ))}
+                  <div className="my-event-card__specific" style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: '0.9rem' }}>
+                      {displayData.map(({ label, value }) => (
+                        <React.Fragment key={label}>
+                          <span style={{ fontWeight: 600, color: 'var(--dex-gray-700)' }}>{label}:</span>
+                          <span style={{ color: 'var(--dex-gray-600)' }}>{value}</span>
+                        </React.Fragment>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
 
@@ -230,10 +233,13 @@ export default function MyEventsPage(): React.ReactElement {
                     {editingId === event.id ? 'Abbrechen' : 'Angaben bearbeiten'}
                   </button>
                   <button
-                    className={`btn ${cancellingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
+                    className={`btn ${cancellingId === event.id ? 'btn-danger' : ''}`}
                     onClick={() => handleCancel(event.id)}
                     disabled={isCancelling}
-                    style={{ fontSize: '0.85rem' }}
+                    style={{
+                      fontSize: '0.85rem',
+                      ...(cancellingId !== event.id ? { background: 'var(--dex-orange)', color: '#fff' } : {}),
+                    }}
                   >
                     {cancellingId === event.id
                       ? (isCancelling ? 'Wird abgemeldet...' : 'Abmeldung bestätigen')
