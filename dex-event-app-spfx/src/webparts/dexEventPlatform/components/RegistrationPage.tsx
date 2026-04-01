@@ -71,6 +71,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [showDescription, setShowDescription] = React.useState(false);
 
   if (!event) {
     return (
@@ -185,9 +186,13 @@ export default function RegistrationPage(): React.ReactElement {
           <div className="registration-event__card">
             <div
               className="registration-event__image"
-              style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}
+              style={{
+                background: event.imageUrl
+                  ? `url(${event.imageUrl}) center/cover no-repeat`
+                  : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+              }}
             >
-              <button className="event-card__info-btn" aria-label="Event info">
+              <button className="event-card__info-btn" aria-label="Event info" onClick={() => setShowDescription(!showDescription)}>
                 <Info size={16} />
               </button>
               <div className="registration-event__overlay">
@@ -198,6 +203,15 @@ export default function RegistrationPage(): React.ReactElement {
                 </p>
               </div>
             </div>
+            {showDescription && event.description && (
+              <div style={{
+                padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
+                borderTop: '1px solid var(--dex-gray-200)',
+              }}>
+                {event.description}
+              </div>
+            )}
             {isFull && (
               <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
                 All places are taken. There are currently {event.waitlistCount} people on the waiting list

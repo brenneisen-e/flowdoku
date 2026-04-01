@@ -112,12 +112,20 @@ export default function AdminPage(): React.ReactElement {
                 style={{ padding: '20px 24px', cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div onClick={() => handleSelectEvent(event)} style={{ flex: 1 }}>
+                  <div onClick={() => handleSelectEvent(event)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 16 }}>
+                    {event.imageUrl && (
+                      <div style={{
+                        width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                        background: `url(${event.imageUrl}) center/cover no-repeat`,
+                      }} />
+                    )}
+                    <div>
                     <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
                       {formatDate(event.startDate)} - {formatDate(event.endDate)}
                       {event.location ? ` · ${event.location}` : ''}
                     </p>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
@@ -194,6 +202,15 @@ export default function AdminPage(): React.ReactElement {
           </span>
         </div>
       </div>
+
+      {/* Event-Bild */}
+      {selectedEvent.imageUrl && (
+        <div style={{
+          height: 180, borderRadius: 'var(--dex-radius-lg)',
+          background: `url(${selectedEvent.imageUrl}) center/cover no-repeat`,
+          marginBottom: 24,
+        }} />
+      )}
 
       {/* Event-Info + Aktionen */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>

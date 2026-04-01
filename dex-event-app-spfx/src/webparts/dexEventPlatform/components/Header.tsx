@@ -18,6 +18,7 @@ export default function Header(): React.ReactElement {
   const { currentUserRole, isAdmin } = useRoles();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
+  const isStart = currentPage === 'start';
 
   // Titel-Mapping je nach aktuellem Seitenstatus
   const getTitle = (): string => {
@@ -53,7 +54,7 @@ export default function Header(): React.ReactElement {
           </div>
         ) : (
           <>
-            <button className="back-btn" onClick={() => navigate('start')} aria-label="Back">
+            <button className="back-btn" onClick={() => navigate(isStart ? 'landing' : 'start')} aria-label="Back">
               <ChevronLeft size={20} />
             </button>
             <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
