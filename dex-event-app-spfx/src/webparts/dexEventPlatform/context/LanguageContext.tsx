@@ -163,6 +163,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.required': 'Pflicht',
     'create.cancel': 'Abbrechen',
     'create.preview': 'Vorschau anzeigen',
+    'create.next': 'Weiter',
     'create.submit': 'Event erstellen',
     'create.save': 'Änderungen speichern',
 
@@ -366,6 +367,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.required': 'Required',
     'create.cancel': 'Cancel',
     'create.preview': 'Show preview',
+    'create.next': 'Next',
     'create.submit': 'Create event',
     'create.save': 'Save changes',
 

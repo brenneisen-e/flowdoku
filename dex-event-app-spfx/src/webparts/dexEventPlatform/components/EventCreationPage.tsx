@@ -532,7 +532,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Event Titel
+                  <span className="required">*</span> {t('create.eventtitle')}
                   <span className="info-icon" title="Name des Events, z.B. 'B2Run Frankfurt 2026'" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" />
@@ -540,7 +540,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Event Typ
+                  <span className="required">*</span> {t('create.eventtype')}
                   <span className="info-icon" title="Kategorie des Events – bestimmt das Design der Event-Karte" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
@@ -552,7 +552,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
-                  <span className="required">*</span> Organisator
+                  <span className="required">*</span> {t('create.organizer')}
                   <span className="info-icon" title="Name der Person, die das Event organisiert" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input
@@ -678,7 +678,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Beschreibung
+                  <span className="required">*</span> {t('create.description')}
                   <span className="info-icon" title="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
@@ -737,7 +737,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
               <div className="form-group">
                 <label className="form-label">
-                  Veranstaltungsort
+                  {t('create.location')}
                   <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
@@ -746,14 +746,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Start (Datum & Uhrzeit)
+                    <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Ende (Datum & Uhrzeit)
+                    <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
@@ -765,7 +765,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  Outlook-Termin Text
+                  {t('create.outlookbody')}
                   <span className="info-icon" title="Optionaler Beschreibungstext für den Outlook-Kalendereintrag der Teilnehmer. Power Automate nutzt diesen Text als Body des Termins." style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <textarea
@@ -784,14 +784,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    Anmelde-Deadline
+                    {t('create.deadline')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="date" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    Letzte Abmeldemöglichkeit
+                    {t('create.lastcancel')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="date" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
@@ -801,14 +801,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    Max. Teilnehmer
+                    {t('create.maxparticipants')}
                     <span className="info-icon" title="Maximale Anzahl Teilnehmer. 0 = unbegrenzt. Bei Erreichen werden weitere auf die Warteliste gesetzt." style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="number" min={0} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="0 = unbegrenzt" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    Warteliste
+                    {t('create.waitlist')}
                     <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <div className="toggle-wrapper" style={{ marginTop: 8 }}>
@@ -816,7 +816,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
                       <span className="toggle-slider" />
                     </label>
-                    <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? 'Aktiviert' : 'Deaktiviert'}</span>
+                    <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
                   </div>
                 </div>
               </div>
@@ -828,9 +828,9 @@ export default function EventCreationPage(): React.ReactElement {
               {/* Dynamische Felder */}
               <div>
                 <div className="flex-between mb-16">
-                  <label className="form-label" style={{ marginBottom: 0 }}>Zusätzliche Registrierungsfelder</label>
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t('create.customfields')}</label>
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                    <Plus size={14} /> Feld hinzufügen
+                    <Plus size={14} /> {t('create.addfield')}
                   </button>
                 </div>
                 {customFields.map((field, idx) => (
@@ -883,7 +883,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <ChevronDown size={14} />
                       </button>
                     </div>
-                    <input className="form-input" placeholder="Feldname" value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
+                    <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
                     <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1 }}>
                       <option value="text">Text</option>
                       <option value="select">Dropdown</option>
@@ -926,13 +926,13 @@ export default function EventCreationPage(): React.ReactElement {
                           className="btn btn-secondary"
                           style={{ fontSize: '0.75rem', padding: '4px 8px', alignSelf: 'flex-start' }}
                         >
-                          + Option hinzufügen
+                          {t('create.addoption')}
                         </button>
                       </div>
                     )}
                     <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
-                      Pflicht
+                      {t('create.required')}
                     </label>
                     <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4 }}>
                       <X size={18} />
@@ -975,10 +975,10 @@ export default function EventCreationPage(): React.ReactElement {
           {!isSubmitting && (
             <div className="registration-actions mt-24">
               {currentStep === 0 ? (
-                <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
+                <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> {t('create.cancel')}</button>
               ) : (
                 <button className="btn btn-secondary" onClick={() => setCurrentStep(currentStep - 1)}>
-                  Zurück
+                  {t('general.back')}
                 </button>
               )}
 
@@ -989,7 +989,7 @@ export default function EventCreationPage(): React.ReactElement {
                   onClick={() => setCurrentStep(currentStep + 1)}
                   style={{ opacity: canProceed() ? 1 : 0.5 }}
                 >
-                  Weiter
+                  {t('create.next')}
                 </button>
               ) : (
                 <>
@@ -998,7 +998,7 @@ export default function EventCreationPage(): React.ReactElement {
                     disabled={!title}
                     onClick={() => setShowPreview(true)}
                   >
-                    Vorschau
+                    {t('create.preview')}
                   </button>
                   <button
                     className="btn btn-primary"
@@ -1006,7 +1006,7 @@ export default function EventCreationPage(): React.ReactElement {
                     onClick={handleSubmit}
                     style={{ opacity: !title || !description ? 0.5 : 1 }}
                   >
-                    <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
+                    <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
                   </button>
                 </>
               )}
@@ -1097,7 +1097,7 @@ export default function EventCreationPage(): React.ReactElement {
                 disabled={!title || !description}
                 onClick={() => { setShowPreview(false); handleSubmit(); }}
               >
-                <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
+                <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
               </button>
             </div>
           </div>
