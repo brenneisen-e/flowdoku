@@ -335,7 +335,7 @@ export class EventService {
       await this.configureDefaultView(listName, [
         'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
+        'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -379,7 +379,7 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'EventStatus', 'EventType', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-      'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
+      'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
     ]);
 
     await this.setEventsListPermissions(listName);
