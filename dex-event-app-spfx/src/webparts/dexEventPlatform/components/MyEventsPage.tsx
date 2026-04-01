@@ -139,6 +139,13 @@ export default function MyEventsPage(): React.ReactElement {
 
             return (
               <div key={event.id} className="card my-event-card">
+                {event.imageUrl && (
+                  <div style={{
+                    height: 120, borderRadius: 'var(--dex-radius) var(--dex-radius) 0 0',
+                    background: `url(${event.imageUrl}) center/cover no-repeat`,
+                    marginBottom: 0,
+                  }} />
+                )}
                 <div className="my-event-card__header">
                   <h3>{event.title}</h3>
                   <span className={`badge ${getStatusBadgeClass(registration.Status)}`}>
@@ -151,7 +158,7 @@ export default function MyEventsPage(): React.ReactElement {
                   <p><strong>Datum:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
                   <p><strong>Angemeldet am:</strong> {formatDate(registration.RegistrationDate)}</p>
                   {registration.Title && (
-                    <p><strong>Teilnehmer-Nr.:</strong> {registration.Title}</p>
+                    <p><strong>E-Mail-Adresse:</strong> {registration.Title}</p>
                   )}
                 </div>
 

@@ -14,6 +14,45 @@ import { EventService } from '../services/EventService';
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
 
+/**
+ * Komprimiert ein Bild clientseitig via Canvas.
+ * Max 1200px Breite, JPEG 80% Qualität.
+ */
+async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size >= file.size) {
+            // Komprimierung bringt nichts oder ist grösser → Original verwenden
+            resolve(file);
+            return;
+          }
+          const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+          console.log(`[DEX] Bild komprimiert: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
+          resolve(compressed);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface CustomFieldInput {
   id: string;
   label: string;
@@ -157,9 +196,9 @@ export default function EventCreationPage(): React.ReactElement {
     setError('');
     setProgress(0);
 
-    // Schritt 1: Bild hochladen
+    // Schritt 1: Bild komprimieren und hochladen
     setProgress(5);
-    setProgressLabel('Bild wird hochgeladen...');
+    setProgressLabel('Bild wird komprimiert und hochgeladen...');
     let imageUrl = eventImageUrl;
     if (imageFile) {
       try {
@@ -167,7 +206,8 @@ export default function EventCreationPage(): React.ReactElement {
         const ctx = (window as any).__dexSpfxContext;
         if (ctx) {
           const svc = new EventService(ctx);
-          const uploadedUrl = await svc.uploadEventImage(imageFile, title);
+          const compressed = await compressImage(imageFile);
+          const uploadedUrl = await svc.uploadEventImage(compressed, title);
           console.log('[DEX] Bild-Upload Ergebnis:', uploadedUrl);
           if (uploadedUrl) imageUrl = uploadedUrl;
         }
