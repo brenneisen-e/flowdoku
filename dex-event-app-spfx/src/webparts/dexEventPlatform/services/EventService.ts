@@ -1186,14 +1186,18 @@ export class EventService {
       const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets`;
       const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
 
+      // File als ArrayBuffer lesen (SPHttpClient erwartet kein File-Objekt direkt)
+      const arrayBuffer = await file.arrayBuffer();
+
       const response = await this.context.spHttpClient.post(
         uploadUrl,
         SPHttpClient.configurations.v1,
         {
           headers: {
             'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/octet-stream',
           },
-          body: file,
+          body: arrayBuffer,
         }
       );
 
