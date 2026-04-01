@@ -8,7 +8,8 @@
  */
 
 const GREEN = '#86bc25';
-const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run';
+const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
+const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -29,21 +30,10 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- Main Container -->
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 
-<!-- ===== HEADER: Deloitte Logo (schwarzer Hintergrund) ===== -->
+<!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
-<td style="background-color:#000000;padding:24px 30px;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-  <tr>
-    <td style="color:#ffffff;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.5px;">
-      Deloitte<span style="color:${GREEN};">.</span>
-    </td>
-  </tr>
-  <tr>
-    <td style="color:#ffffff;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;font-style:italic;padding-top:4px;">
-      Together makes progress
-    </td>
-  </tr>
-  </table>
+<td style="background-color:#ffffff;padding:20px 30px;border-bottom:2px solid ${GREEN};">
+  <img src="${LOGOS_URL}/deloitte-logo.png" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -54,16 +44,10 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 </td>
 </tr>
 
-<!-- ===== HERO IMAGE: Orb auf weißem Hintergrund ===== -->
+<!-- ===== HERO IMAGE: DEX Orb ===== -->
 <tr>
-<td style="background-color:#ffffff;text-align:center;padding:40px 30px;">
-  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-  <tr><td>
-    <div style="width:180px;height:180px;border-radius:50%;background:conic-gradient(from 0deg,#86bc25,#0076a8 90deg,#00bcd4 150deg,#4caf50 210deg,#8bc34a 270deg,#ffeb3b 320deg,#86bc25 360deg);margin:0 auto;text-align:center;line-height:180px;">
-      <div style="display:inline-block;width:117px;height:117px;border-radius:50%;background-color:#ffffff;vertical-align:middle;"></div>
-    </div>
-  </td></tr>
-  </table>
+<td style="background-color:#f5f5f5;text-align:center;padding:30px 30px;">
+  <img src="${LOGOS_URL}/dex-orb.png" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 

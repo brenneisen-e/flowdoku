@@ -80,9 +80,20 @@ export default function AdminPage(): React.ReactElement {
       <div className="page-container">
         <div className="flex-between mb-16">
           <h2>Admin / Organizer</h2>
-          <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
-            <Plus size={16} /> Neues Event erstellen
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a
+              href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem', textDecoration: 'none' }}
+            >
+              <FileText size={16} /> SharePoint-Liste
+            </a>
+            <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
+              <Plus size={16} /> Neues Event erstellen
+            </button>
+          </div>
         </div>
 
         {adminEvents.length === 0 ? (

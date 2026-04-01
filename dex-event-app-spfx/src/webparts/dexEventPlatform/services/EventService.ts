@@ -598,7 +598,22 @@ export class EventService {
         }
       }
 
-      // 2. Alte Registrierungsliste loeschen (alte Events ohne Subsite)
+      // 2. Event-Bild loeschen (wenn in DEX_EventImages)
+      if (event.EventImageUrl) {
+        try {
+          const url = new URL(event.EventImageUrl);
+          const serverRelUrl = url.pathname;
+          if (serverRelUrl.indexOf('DEX_EventImages') >= 0) {
+            await this._delete(
+              `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelUrl}')`
+            );
+          }
+        } catch {
+          console.warn('[DEX] Event-Bild konnte nicht geloescht werden');
+        }
+      }
+
+      // 3. Alte Registrierungsliste loeschen (alte Events ohne Subsite) (alte Events ohne Subsite)
       if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
         try {
           await this._delete(
@@ -1174,14 +1189,51 @@ export class EventService {
    * Event-Bild in die SiteAssets-Bibliothek hochladen.
    * Gibt die absolute URL des hochgeladenen Bildes zurueck.
    */
+  /**
+   * Sicherstellen dass der DEX_EventImages Ordner in SiteAssets existiert.
+   */
+  /**
+   * SiteAssets-Unterordner sicherstellen:
+   * - DEX_EventImages (Event-Bilder)
+   * - DEX_Logos (Deloitte-Logo fuer E-Mail-Templates, manuell hochgeladen)
+   */
+  public async ensureAssetsFolders(): Promise<void> {
+    const baseUrl = this.context.pageContext.web.serverRelativeUrl;
+    const folders = ['DEX_EventImages', 'DEX_Logos'];
+
+    for (const folder of folders) {
+      const folderUrl = `${baseUrl}/SiteAssets/${folder}`;
+      try {
+        const check = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')`,
+          SPHttpClient.configurations.v1
+        );
+        if (check.ok) continue;
+      } catch { /* */ }
+
+      try {
+        await this._post(`${this.siteUrl}/_api/web/folders`, {
+          '__metadata': { 'type': 'SP.Folder' },
+          'ServerRelativeUrl': folderUrl,
+        });
+        console.log(`[DEX] Ordner erstellt: SiteAssets/${folder}`);
+      } catch {
+        console.warn(`[DEX] Konnte ${folder} Ordner nicht erstellen`);
+      }
+    }
+  }
+
   public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
     try {
+      // Ordner sicherstellen
+      await this.ensureAssetsFolders();
+
       const ext = file.name.split('.').pop() || 'jpg';
       const safeName = eventTitle
         .replace(/[^a-zA-Z0-9]/g, '_')
         .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
 
-      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets`;
+      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets/DEX_EventImages`;
       const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
 
       // Request Digest holen fuer nativen fetch
