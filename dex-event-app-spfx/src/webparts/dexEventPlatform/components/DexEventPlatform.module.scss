@@ -99,7 +99,7 @@
 
     /* Main content */
     .main-content { flex: 1; background: var(--dex-gray-100); overflow-y: auto; }
-    .page-container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .page-container { max-width: 100%; margin: 0 auto; padding: 32px 24px; }
 
     /* Cards */
     .card {
@@ -306,6 +306,9 @@
     .my-event-card__actions { display: flex; gap: 12px; padding-top: 12px; border-top: 1px solid var(--dex-gray-200); }
 
     /* ========== Event Creation ========== */
+    .creation-layout {
+      display: grid; grid-template-columns: 3fr 2fr; gap: 24px; align-items: start;
+    }
     .creation-form { display: flex; flex-direction: column; }
     .custom-field-row {
       display: flex; gap: 12px; align-items: center; margin-bottom: 12px;
@@ -322,13 +325,64 @@
     .settings-info__row:last-child { border-bottom: none; }
     .settings-info__label { font-weight: 600; color: var(--dex-gray-600); }
 
-    /* ========== Responsive ========== */
-    @media (max-width: 768px) {
-      .start-grid { grid-template-columns: 1fr; }
-      .event-grid { grid-template-columns: 1fr; }
-      .registration-layout { grid-template-columns: 1fr; }
+    /* ========== Responsive - Tablet ========== */
+    @media (max-width: 1024px) {
+      .creation-layout { grid-template-columns: 1fr; }
       .settings-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ========== Responsive - Mobile ========== */
+    @media (max-width: 768px) {
+      .page-container { padding: 16px 12px; }
+
+      /* Header */
+      .header { padding: 0 12px; height: 52px; }
+      .header-title { font-size: 0.85rem; padding-left: 10px; }
+      .header-logo { font-size: 1.1rem; }
+
+      /* Start */
+      .start-grid { grid-template-columns: 1fr; gap: 16px; }
+      .start-card { padding: 32px 20px; min-height: 200px; }
+      .start-card__icon { width: 80px; height: 80px; }
+
+      /* Event Grid */
+      .event-grid { grid-template-columns: 1fr; gap: 16px; }
+      .event-card__image { height: 180px; }
+
+      /* Registration */
+      .registration-layout { grid-template-columns: 1fr; }
+      .registration-actions { flex-direction: column; gap: 8px; }
+      .registration-actions .btn { width: 100%; justify-content: center; }
+
+      /* My Events */
+      .my-event-card__header { flex-direction: column; align-items: flex-start; gap: 8px; }
       .my-event-card__details { grid-template-columns: 1fr; }
+      .my-event-card__actions { flex-direction: column; }
+      .my-event-card__actions .btn { width: 100%; justify-content: center; }
+
+      /* Event Creation */
+      .creation-layout { grid-template-columns: 1fr; }
+      .custom-field-row { flex-wrap: wrap; }
+
+      /* Settings */
+      .settings-grid { grid-template-columns: 1fr; }
+      .settings-grid > .card:nth-child(n+3) { grid-column: auto; }
+
+      /* Cards */
+      .card { padding: 20px 16px; }
+
+      /* Buttons */
+      .btn { padding: 10px 16px; font-size: 0.88rem; }
+      .btn-lg { padding: 12px 32px; font-size: 1rem; }
+    }
+
+    /* ========== Responsive - Small Mobile ========== */
+    @media (max-width: 480px) {
+      .page-container { padding: 12px 8px; }
+      .header-title { display: none; }
+      .event-card__image { height: 150px; }
+      .start-card { padding: 24px 16px; min-height: 160px; }
+      .start-card h2 { font-size: 1.1rem; }
     }
   }
 }

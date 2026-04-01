@@ -3,7 +3,7 @@
  *
  * Laedt Events aus der SharePoint-Liste DEX_Events.
  * Erstellt die Liste automatisch beim ersten Start.
- * Verwaltet Registrierungen in separaten Teilnehmerlisten.
+ * Verwaltet Registrierungen ueber Event-Subsites mit Teilnehmerlisten.
  *
  * - Eike, Maerz 2026
  */
@@ -17,7 +17,7 @@ interface EventContextType {
   events: DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantName?: string, participantEmail?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -50,8 +50,8 @@ const EventContext = React.createContext<EventContextType | undefined>(undefined
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
   const [isEventsLoading, setIsEventsLoading] = React.useState(true);
-  // Map von EventId -> RegistrationListName fuer schnellen Zugriff
-  const regListMap = React.useRef<Record<string, string>>({});
+  // Map von EventId -> SubsiteUrl fuer schnellen Zugriff
+  const subsiteMap = React.useRef<Record<string, string>>({});
 
   const eventService = React.useMemo(() => new EventService(props.context), []);
   const currentUserEmail = props.context.pageContext.user.email;
@@ -74,17 +74,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function mapSPEventToDeloitteEvent(e: SPEvent): Promise<DeloitteEvent> {
-    // RegistrationListName merken
-    if (e.RegistrationListName) {
-      regListMap.current[e.Id.toString()] = e.RegistrationListName;
+    // SubsiteUrl merken
+    if (e.SubsiteUrl) {
+      subsiteMap.current[e.Id.toString()] = e.SubsiteUrl;
     }
 
     // Teilnehmeranzahl ermitteln
     let currentParticipants = 0;
     let waitlistCount = 0;
-    if (e.RegistrationListName) {
+    if (e.SubsiteUrl) {
       try {
-        const counts = await eventService.getRegistrationCount(e.RegistrationListName);
+        const counts = await eventService.getRegistrationCount(e.SubsiteUrl);
         currentParticipants = counts.registered;
         waitlistCount = counts.waitlist;
       } catch { /* Teilnehmerliste nicht erreichbar */ }
@@ -131,44 +131,56 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventId;
   }
 
-  async function registerForEvent(eventId: string, customData: Record<string, string>): Promise<boolean> {
-    const regListName = regListMap.current[eventId];
-    if (!regListName) return false;
+  async function registerForEvent(
+    eventId: string,
+    customData: Record<string, string>,
+    participantName?: string,
+    participantEmail?: string
+  ): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+
+    const nameToUse = participantName || currentUserName;
+    const emailToUse = participantEmail || currentUserEmail;
 
     // Pruefen ob schon registriert
-    const existing = await eventService.getMyRegistration(regListName, currentUserEmail);
-    if (existing && existing.Status !== 'Cancelled') return false;
+    const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
+    if (existing && existing.Status !== 'Abgemeldet') return false;
 
     // Pruefen ob Platz frei oder Waitlist
     const event = events.find(e => e.id === eventId);
-    let status = 'Registered';
+    let status = 'Angemeldet';
     if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
-      status = 'Waitlist';
+      status = 'Warteliste';
     }
 
-    const success = await eventService.registerForEvent(
-      regListName, currentUserName, currentUserEmail, customData, status
-    );
+    let success: boolean;
+    if (existing && existing.Status === 'Abgemeldet') {
+      // Bestehende Zeile reaktivieren statt neuen Eintrag erstellen
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status);
+    } else {
+      success = await eventService.registerForEvent(
+        subsiteUrl, nameToUse, emailToUse, customData, status
+      );
+    }
 
     if (success) {
-      // Teilnehmer-IDs neu vergeben
-      await reassignParticipantIds(regListName);
+      await reassignParticipantIds(subsiteUrl);
       await loadEvents();
     }
     return success;
   }
 
   async function cancelRegistration(eventId: string): Promise<boolean> {
-    const regListName = regListMap.current[eventId];
-    if (!regListName) return false;
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
 
-    const myReg = await eventService.getMyRegistration(regListName, currentUserEmail);
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
     if (!myReg) return false;
 
-    const success = await eventService.cancelRegistration(regListName, myReg.Id);
+    const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id);
     if (success) {
-      // Teilnehmer-IDs neu vergeben nach Stornierung
-      await reassignParticipantIds(regListName);
+      await reassignParticipantIds(subsiteUrl);
       await loadEvents();
     }
     return success;
@@ -177,29 +189,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   /**
    * Teilnehmer-IDs neu vergeben.
    * Alle aktiven Teilnehmer (Registered, Checked-In) bekommen fortlaufende IDs.
-   * Abgemeldete und Waitlist-Teilnehmer bekommen keine ID.
    */
-  async function reassignParticipantIds(regListName: string): Promise<void> {
+  async function reassignParticipantIds(subsiteUrl: string): Promise<void> {
     try {
-      const allRegs = await eventService.getAllRegistrations(regListName);
-      // Nur aktive Teilnehmer, sortiert nach Registrierungsdatum
+      const allRegs = await eventService.getAllRegistrations(subsiteUrl);
       const active = allRegs
-        .filter(r => r.Status === 'Registered' || r.Status === 'Checked-In')
+        .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
         .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
 
-      // IDs neu vergeben (Title-Feld als ParticipantId nutzen)
       for (let i = 0; i < active.length; i++) {
         const newId = (i + 1).toString();
         if (active[i].Title !== newId) {
-          await eventService.updateRegistrationTitle(regListName, active[i].Id, newId);
+          await eventService.updateRegistrationTitle(subsiteUrl, active[i].Id, newId);
         }
       }
 
-      // Abgemeldete: ID loeschen
-      const cancelled = allRegs.filter(r => r.Status === 'Cancelled');
+      const cancelled = allRegs.filter(r => r.Status === 'Abgemeldet');
       for (const reg of cancelled) {
         if (reg.Title && reg.Title !== '') {
-          await eventService.updateRegistrationTitle(regListName, reg.Id, '');
+          await eventService.updateRegistrationTitle(subsiteUrl, reg.Id, '');
         }
       }
     } catch {
@@ -208,15 +216,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
-    const regListName = regListMap.current[eventId];
-    if (!regListName) return null;
-    return eventService.getMyRegistration(regListName, currentUserEmail);
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return null;
+    return eventService.getMyRegistration(subsiteUrl, currentUserEmail);
   }
 
   async function getAllRegistrations(eventId: string): Promise<SPRegistration[]> {
-    const regListName = regListMap.current[eventId];
-    if (!regListName) return [];
-    return eventService.getAllRegistrations(regListName);
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return [];
+    return eventService.getAllRegistrations(subsiteUrl);
   }
 
   async function refreshEvents(): Promise<void> {

@@ -178,7 +178,7 @@ export default function EventCreationPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="creation-layout">
         {/* ===== Linke Seite: Formular ===== */}
         <div>
           <div className="card">

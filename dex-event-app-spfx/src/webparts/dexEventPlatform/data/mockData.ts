@@ -119,13 +119,13 @@ export const myRegistrations: Registration[] = [
   {
     id: 'r1', eventId: 'e2', eventTitle: 'JPMorgan Lauf || Warteliste',
     salutation: 'Herr', firstName: 'Eike', surname: 'Brenneisen', email: 'ebrenneisen@deloitte.de',
-    status: 'Waitlist', registrationDate: '2026-03-10T14:30:00', waitlistPosition: 3,
+    status: 'Warteliste', registrationDate: '2026-03-10T14:30:00', waitlistPosition: 3,
     eventSpecificData: { tshirt: 'L' },
   },
   {
     id: 'r2', eventId: 'e4', eventTitle: 'B2Run Düsseldorf 2026',
     salutation: 'Herr', firstName: 'Eike', surname: 'Brenneisen', email: 'ebrenneisen@deloitte.de',
-    status: 'Registered', registrationDate: '2026-03-05T09:00:00',
+    status: 'Angemeldet', registrationDate: '2026-03-05T09:00:00',
     eventSpecificData: { tshirt: 'L', runDistance: '6km Run', team: 'Deloitte Runners' },
   },
 ];

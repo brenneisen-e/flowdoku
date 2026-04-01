@@ -158,6 +158,11 @@ export default function SettingsPage(): React.ReactElement {
               <button className="btn btn-secondary btn-block mt-8">
                 <Users size={18} /> Extract Mail Addresses
               </button>
+              {isSuperAdmin && (
+                <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('role-matrix')}>
+                  <FileText size={18} /> Rollen-Matrix anzeigen
+                </button>
+              )}
             </div>
           </div>
         )}
