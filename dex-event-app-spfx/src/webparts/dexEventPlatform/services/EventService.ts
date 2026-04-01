@@ -334,6 +334,85 @@ export class EventService {
     }
   }
 
+  // ==================== DEX_IDReorder Queue ====================
+
+  /**
+   * Queue-Liste fuer ID-Neuvergabe erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Eintraege und vergibt TeilnehmerIDs
+   * auf der jeweiligen Subsite-Teilnehmerliste lueckenlos neu.
+   *
+   * Spalten:
+   * - Title: Kurzbeschreibung (z.B. "Reorder: Test_20260408")
+   * - EventId: SP Item-ID des Events in DEX_Events
+   * - EventNumber: Hochlaufende EventNumber
+   * - SubsiteUrl: Absolute URL der Event-Subsite
+   * - Status: Pending, Processing, Done, Failed
+   */
+  public async ensureIDReorderList(): Promise<void> {
+    const listName = 'DEX_IDReorder';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Queue fuer TeilnehmerID-Neuvergabe nach Abmeldungen',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields = [
+      { title: 'EventId', type: 2 },
+      { title: 'EventNumber', type: 9 },
+      { title: 'SubsiteUrl', type: 2 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Processing', 'Done', 'Failed'], metaType: 'SP.FieldChoice' },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if ((f as { choices?: string[] }).choices) {
+        payload['Choices'] = { 'results': (f as { choices: string[] }).choices };
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'EventId', 'EventNumber', 'SubsiteUrl', 'Status',
+    ]);
+  }
+
+  /**
+   * ID-Reorder in Queue eintragen (nach Abmeldung).
+   */
+  public async queueIDReorder(
+    eventId: string,
+    eventNumber: number,
+    subsiteUrl: string,
+    eventTitle: string
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_IDReorderListItem' },
+          'Title': `Reorder: ${eventTitle}`,
+          'EventId': eventId,
+          'EventNumber': eventNumber,
+          'SubsiteUrl': subsiteUrl,
+          'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== DEX_Participants Liste ====================
 
   /**

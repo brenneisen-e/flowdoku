@@ -72,6 +72,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await eventService.ensureEmailsList();
     await eventService.ensureOutlookList();
     await eventService.ensureParticipantsList();
+    await eventService.ensureIDReorderList();
     await eventService.ensureAssetsFolders();
     await loadEvents();
     setIsEventsLoading(false);
@@ -216,6 +217,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(() => {});
       }
+      // ID-Reorder in Queue eintragen (falls gleichzeitig ein Reorder laeuft)
+      const regSubsiteUrl = subsiteMap.current[eventId];
+      if (regSubsiteUrl) {
+        eventService.queueIDReorder(
+          eventId, event.eventNumber || 0, regSubsiteUrl, event.title
+        ).catch(() => {});
+      }
       await loadEvents();
     }
     return success;
@@ -245,6 +253,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventService.queueOutlookEvent(
           currentUserEmail, eventId, event.title, 'Ausladen'
         ).catch(() => {});
+        // ID-Reorder in Queue eintragen
+        if (subsiteUrl) {
+          eventService.queueIDReorder(
+            eventId, event.eventNumber || 0, subsiteUrl, event.title
+          ).catch(() => {});
+        }
       }
       await loadEvents();
     }
