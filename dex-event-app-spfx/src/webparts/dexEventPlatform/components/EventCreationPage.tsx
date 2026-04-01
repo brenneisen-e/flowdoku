@@ -11,6 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { EventService } from '../services/EventService';
+import { eventCreatedEmail } from '../services/EmailTemplates';
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
 
@@ -85,6 +86,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [organizer, setOrganizer] = React.useState(
     editEvent ? editEvent.organizers[0] : `${currentUser.firstName} ${currentUser.surname}`
   );
+  const [organizerQuery, setOrganizerQuery] = React.useState('');
+  const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
+  const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   const [locationFilter, setLocationFilter] = React.useState(
     editEvent ? editEvent.locationAudience.join(', ') : ''
@@ -302,6 +307,23 @@ export default function EventCreationPage(): React.ReactElement {
       if (eventId) {
         setProgress(100);
         setProgressLabel('Event erfolgreich erstellt!');
+        // E-Mail an Organisator senden
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctx = (window as any).__dexSpfxContext;
+          if (ctx) {
+            const svc = new EventService(ctx);
+            // Subsite-URL aus dem neu geladenen Event holen
+            const allEvents = await svc.getEvents();
+            const created = allEvents.find(e => String(e.Id) === String(eventId));
+            const subsiteUrl = created?.SubsiteUrl || '';
+            const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
+            svc.queueEmail(
+              emailData.subject, currentUser.email, organizer, emailData.body,
+              'EventErstellt', title, String(eventId)
+            ).catch(() => {});
+          }
+        } catch { /* E-Mail-Fehler ignorieren */ }
         // Kurz 100% zeigen, dann zur Erfolgsseite
         setTimeout(() => {
           setIsSubmitting(false);
@@ -383,12 +405,59 @@ export default function EventCreationPage(): React.ReactElement {
                 </select>
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
                   <span className="required">*</span> Organisator
                   <span className="info-icon" title="Name der Person, die das Event organisiert" style={{ marginLeft: 8 }}>i</span>
                 </label>
-                <input className="form-input" value={organizer} onChange={e => setOrganizer(e.target.value)} />
+                <input
+                  className="form-input"
+                  value={organizer}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setOrganizer(val);
+                    if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
+                    if (val.length >= 2) {
+                      organizerTimerRef.current = setTimeout(async () => {
+                        setIsSearchingOrganizer(true);
+                        const results = await searchUsers(val);
+                        setOrganizerResults(results);
+                        setIsSearchingOrganizer(false);
+                      }, 300);
+                    } else {
+                      setOrganizerResults([]);
+                    }
+                  }}
+                  placeholder="Name eingeben zum Suchen..."
+                />
+                {isSearchingOrganizer && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+                )}
+                {organizerResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 200, overflowY: 'auto',
+                  }}>
+                    {organizerResults.map(u => (
+                      <div
+                        key={u.email}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                        }}
+                        onMouseDown={() => {
+                          setOrganizer(u.displayName);
+                          setOrganizerResults([]);
+                        }}
+                      >
+                        <strong>{u.displayName}</strong>
+                        <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
