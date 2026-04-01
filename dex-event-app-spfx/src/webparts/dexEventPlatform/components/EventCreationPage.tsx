@@ -124,6 +124,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [outlookBody, setOutlookBody] = React.useState('');
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  const [showPreview, setShowPreview] = React.useState(false);
+  const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
+    { id: 'event', label: 'Event-Karte' },
+    { id: 'personal', label: 'Personal Information' },
+    { id: 'specific', label: 'Event specific Information' },
+    { id: 'actions', label: 'Buttons' },
+  ]);
+  const [dragSectionId, setDragSectionId] = React.useState<string | null>(null);
+  const [dragOverSectionId, setDragOverSectionId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [progressLabel, setProgressLabel] = React.useState('');
@@ -367,10 +376,79 @@ export default function EventCreationPage(): React.ReactElement {
       ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Vorschau-Sektion rendern
+  const renderPreviewSection = (sectionId: string): React.ReactElement | null => {
+    switch (sectionId) {
+      case 'event':
+        return (
+          <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header section-header--red">Selected Event</div>
+            <div className="registration-event__card">
+              <div className="registration-event__image" style={{
+                background: eventImageUrl
+                  ? `url(${eventImageUrl}) center/cover`
+                  : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+              }}>
+                <div className="registration-event__overlay">
+                  <h4>{title || 'Event Titel'}</h4>
+                  <p>{formatPreviewDate(startDate)} until<br />{formatPreviewDate(endDate)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'personal':
+        return (
+          <div className="registration-form" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header">Personal Information</div>
+            <div style={{ padding: '16px 20px' }}>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> Salutation</label><select className="form-select" disabled><option>Please select</option></select></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> First Name</label><input className="form-input" disabled placeholder="First Name" /></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> Surname</label><input className="form-input" disabled placeholder="Surname" /></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> E-Mail</label><input className="form-input" disabled placeholder="email@deloitte.de" /></div>
+            </div>
+          </div>
+        );
+      case 'specific':
+        return (
+          <div className="registration-specific" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header">Event specific Information</div>
+            <div style={{ padding: '16px 20px' }}>
+              {customFields.filter(f => f.label).length === 0 ? (
+                <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.9rem' }}>No additional information required.</p>
+              ) : (
+                customFields.filter(f => f.label).map(field => (
+                  <div className="form-group" key={field.id}>
+                    <label className="form-label">{field.required && <span className="required">*</span>}{field.label}</label>
+                    {field.type === 'select' ? (
+                      <select className="form-select" disabled><option>Please select</option>{field.options.split(',').map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
+                    ) : field.type === 'checkbox' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
+                    ) : (
+                      <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      case 'actions':
+        return (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
+            <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
+            <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="page-container">
-      <div className="creation-layout">
-        {/* ===== Linke Seite: Formular ===== */}
+      <div>
+        {/* ===== Formular ===== */}
         <div>
           <div className="card">
             <div className="creation-form">
@@ -822,6 +900,14 @@ export default function EventCreationPage(): React.ReactElement {
             <div className="registration-actions mt-24">
               <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
               <button
+                className="btn btn-secondary"
+                disabled={!title}
+                onClick={() => setShowPreview(true)}
+                style={{ opacity: !title ? 0.5 : 1 }}
+              >
+                Vorschau anzeigen
+              </button>
+              <button
                 className="btn btn-primary"
                 disabled={!title || !description}
                 onClick={handleSubmit}
@@ -832,100 +918,96 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
           )}
         </div>
+      </div>
 
-        {/* ===== Rechte Seite: Live-Vorschau ===== */}
-        <div style={{ position: 'sticky', top: 16 }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
-            Vorschau: Registrierungsseite
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, transform: 'scale(0.5)', transformOrigin: 'top left', width: 'calc(100% / 0.5)' }}>
-            {/* Event-Karte */}
-            <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header section-header--red">Selected Event</div>
-              <div className="registration-event__card">
+      {/* ===== Vollbild-Vorschau Modal ===== */}
+      {showPreview && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520,
+            maxHeight: '90vh', overflow: 'auto', padding: 0,
+            boxShadow: '0 16px 64px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{
+              padding: '16px 24px', borderBottom: '1px solid var(--dex-gray-200)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              position: 'sticky', top: 0, background: '#fff', zIndex: 1, borderRadius: '16px 16px 0 0',
+            }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Vorschau: Registrierungsseite</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                  Sektionen per Drag &amp; Drop verschieben
+                </p>
+              </div>
+              <button onClick={() => setShowPreview(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {previewSections.map(section => (
                 <div
-                  className="registration-event__image"
+                  key={section.id}
+                  draggable
+                  onDragStart={() => setDragSectionId(section.id)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverSectionId(section.id); }}
+                  onDragLeave={() => { if (dragOverSectionId === section.id) setDragOverSectionId(null); }}
+                  onDrop={() => {
+                    if (dragSectionId && dragSectionId !== section.id) {
+                      const fromIdx = previewSections.findIndex(s => s.id === dragSectionId);
+                      const toIdx = previewSections.findIndex(s => s.id === section.id);
+                      if (fromIdx >= 0 && toIdx >= 0) {
+                        const updated = [...previewSections];
+                        const [moved] = updated.splice(fromIdx, 1);
+                        updated.splice(toIdx, 0, moved);
+                        setPreviewSections(updated);
+                      }
+                    }
+                    setDragSectionId(null);
+                    setDragOverSectionId(null);
+                  }}
+                  onDragEnd={() => { setDragSectionId(null); setDragOverSectionId(null); }}
                   style={{
-                    background: eventImageUrl
-                      ? `url(${eventImageUrl}) center/cover`
-                      : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                    opacity: dragSectionId === section.id ? 0.4 : 1,
+                    borderTop: dragOverSectionId === section.id ? '3px solid var(--dex-green)' : undefined,
+                    cursor: 'grab',
+                    position: 'relative',
                   }}
                 >
-                  <div className="registration-event__overlay">
-                    <h4>{title || 'Event Titel'}</h4>
-                    <p>
-                      {formatPreviewDate(startDate)} until<br />
-                      {formatPreviewDate(endDate)}
-                    </p>
+                  <div style={{
+                    position: 'absolute', top: 4, right: 8, fontSize: '0.65rem',
+                    color: 'var(--dex-gray-300)', fontWeight: 600, userSelect: 'none',
+                  }}>
+                    ⠿ verschieben
                   </div>
+                  {renderPreviewSection(section.id)}
                 </div>
-              </div>
+              ))}
             </div>
 
-            {/* Personal Information */}
-            <div className="registration-form" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header">Personal Information</div>
-              <div style={{ padding: '16px 20px' }}>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Salutation</label>
-                  <select className="form-select" disabled><option>Please select</option></select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> First Name</label>
-                  <input className="form-input" disabled placeholder="First Name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Surname</label>
-                  <input className="form-input" disabled placeholder="Surname" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> E-Mail</label>
-                  <input className="form-input" disabled placeholder="email@deloitte.de" />
-                </div>
-              </div>
-            </div>
-
-            {/* Event specific Information */}
-            <div className="registration-specific" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header">Event specific Information</div>
-              <div style={{ padding: '16px 20px' }}>
-                {customFields.filter(f => f.label).length === 0 ? (
-                  <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.9rem' }}>No additional information required.</p>
-                ) : (
-                  customFields.filter(f => f.label).map(field => (
-                    <div className="form-group" key={field.id}>
-                      <label className="form-label">
-                        {field.required && <span className="required">*</span>}
-                        {field.label}
-                      </label>
-                      {field.type === 'select' ? (
-                        <select className="form-select" disabled>
-                          <option>Please select</option>
-                          {field.options.split(',').map(o => o.trim()).filter(Boolean).map(opt => (
-                            <option key={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      ) : field.type === 'checkbox' ? (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}>
-                          <input type="checkbox" disabled /> {field.label}
-                        </label>
-                      ) : (
-                        <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Vorschau-Buttons (deaktiviert) */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
-              <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
-              <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
+            <div style={{
+              padding: '16px 24px', borderTop: '1px solid var(--dex-gray-200)',
+              display: 'flex', gap: 12, justifyContent: 'flex-end',
+              position: 'sticky', bottom: 0, background: '#fff', borderRadius: '0 0 16px 16px',
+            }}>
+              <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
+                Zurück zum Formular
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!title || !description}
+                onClick={() => { setShowPreview(false); handleSubmit(); }}
+              >
+                <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Email-Verteiler Modal */}
       {showEmailModal && (
