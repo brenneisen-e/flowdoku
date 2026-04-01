@@ -136,8 +136,8 @@ export default function AdminPage(): React.ReactElement {
                     >
                       <Trash2 size={14} />
                       {deletingId === event.id
-                        ? (isDeleting ? 'Wird geloescht...' : 'Wirklich loeschen?')
-                        : 'Loeschen'}
+                        ? (isDeleting ? 'Wird gelöscht...' : 'Wirklich löschen?')
+                        : 'Löschen'}
                     </button>
                     {deletingId === event.id && !isDeleting && (
                       <button
@@ -226,7 +226,7 @@ export default function AdminPage(): React.ReactElement {
               className="btn btn-primary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
-              <FileText size={16} /> Teilnehmerliste in SharePoint oeffnen
+              <FileText size={16} /> Teilnehmerliste in SharePoint öffnen
             </a>
           </div>
         </div>

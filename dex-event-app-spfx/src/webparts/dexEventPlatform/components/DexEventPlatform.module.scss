@@ -206,7 +206,7 @@
       width: clamp(100px, 18vh, 200px); height: clamp(100px, 18vh, 200px); border-radius: 50%;
       background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
       display: flex; align-items: center; justify-content: center; user-select: none; cursor: default;
-      animation: orbSpin 3s linear infinite, orbPulse 4s ease-in-out infinite, orbGlow 6s ease-in-out infinite;
+      animation: dexOrbSpin 3s linear infinite, dexOrbPulse 4s ease-in-out infinite, dexOrbGlow 6s ease-in-out infinite;
       filter: blur(0px);
       position: relative;
     }
@@ -214,7 +214,7 @@
       content: '';
       position: absolute; inset: -8px; border-radius: 50%;
       background: conic-gradient(from 180deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
-      animation: orbSpin 5s linear infinite reverse;
+      animation: dexOrbSpin 5s linear infinite reverse;
       opacity: 0.3;
       filter: blur(12px);
       z-index: -1;
@@ -223,15 +223,8 @@
       width: 65%; height: 65%; border-radius: 50%; background: var(--dex-gray-100);
       box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
     }
-    @keyframes orbSpin { to { transform: rotate(360deg); } }
-    @keyframes orbPulse {
-      0%, 100% { transform: rotate(0deg) scale(1); }
-      50% { transform: rotate(180deg) scale(1.06); }
-    }
-    @keyframes orbGlow {
-      0%, 100% { filter: drop-shadow(0 0 8px rgba(134, 188, 37, 0.3)); }
-      50% { filter: drop-shadow(0 0 24px rgba(0, 118, 168, 0.5)); }
-    }
+    // @keyframes sind in LandingPage.tsx als inline <style> injiziert,
+    // damit SPFx die Animationsnamen nicht hashed.
     .landing__text { text-align: center; max-width: 640px; }
     .landing__text h1 { font-size: clamp(1.1rem, 2.5vw, 1.6rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 4px; }
     .landing__text h1 strong { font-weight: 700; }

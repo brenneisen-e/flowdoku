@@ -53,7 +53,7 @@ export default function RegistrationPage(): React.ReactElement {
   const handleSubmit = async (): Promise<void> => {
     // Validierung Pflichtfelder
     if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
-      setError('Bitte alle Pflichtfelder ausfuellen.');
+      setError('Bitte alle Pflichtfelder ausfüllen.');
       return;
     }
 
@@ -61,7 +61,7 @@ export default function RegistrationPage(): React.ReactElement {
     const missingRequired = event.eventSpecificFields
       .filter(f => f.required && !eventSpecific[f.id]?.trim());
     if (missingRequired.length > 0) {
-      setError(`Bitte ausfuellen: ${missingRequired.map(f => f.label).join(', ')}`);
+      setError(`Bitte ausfüllen: ${missingRequired.map(f => f.label).join(', ')}`);
       return;
     }
 
@@ -87,7 +87,7 @@ export default function RegistrationPage(): React.ReactElement {
       if (success) {
         setSubmitted(true);
       } else {
-        setError('Registrierung fehlgeschlagen. Moeglicherweise bist du bereits angemeldet.');
+        setError('Registrierung fehlgeschlagen. Möglicherweise bist du bereits angemeldet.');
       }
     } catch {
       setError('Ein Fehler ist aufgetreten. Bitte versuche es erneut.');

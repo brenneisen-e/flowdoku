@@ -419,17 +419,7 @@ export class EventService {
       // 1. Subsite loeschen (neue Events)
       if (event.SubsiteUrl) {
         try {
-          await this.context.spHttpClient.post(
-            `${event.SubsiteUrl}/_api/web`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                'Accept': 'application/json;odata=verbose',
-                'Content-Type': 'application/json;odata=verbose',
-                'X-HTTP-Method': 'DELETE',
-              },
-            }
-          );
+          await this._delete(`${event.SubsiteUrl}/_api/web`);
         } catch {
           console.warn('[DEX] Subsite konnte nicht geloescht werden:', event.SubsiteUrl);
         }
@@ -438,17 +428,8 @@ export class EventService {
       // 2. Alte Registrierungsliste loeschen (alte Events ohne Subsite)
       if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
         try {
-          await this.context.spHttpClient.post(
-            `${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                'Accept': 'application/json;odata=verbose',
-                'Content-Type': 'application/json;odata=verbose',
-                'IF-MATCH': '*',
-                'X-HTTP-Method': 'DELETE',
-              },
-            }
+          await this._delete(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')`
           );
         } catch {
           console.warn('[DEX] Alte Registrierungsliste konnte nicht geloescht werden:', event.RegistrationListName);
@@ -456,17 +437,8 @@ export class EventService {
       }
 
       // 3. Event-Eintrag aus DEX_Events loeschen
-      const response = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'DELETE',
-          },
-        }
+      const response = await this._delete(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`
       );
       return response.ok;
     } catch {
@@ -884,6 +856,17 @@ export class EventService {
         'odata-version': '',
       },
       body: JSON.stringify(body),
+    };
+    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+  }
+
+  private async _delete(url: string): Promise<SPHttpClientResponse> {
+    const options: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json;odata=verbose',
+        'IF-MATCH': '*',
+        'X-HTTP-Method': 'DELETE',
+      },
     };
     return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
   }
