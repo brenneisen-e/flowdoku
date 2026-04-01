@@ -98,7 +98,22 @@ export class EventService {
   public async ensureEmailsList(): Promise<void> {
     const listName = 'DEX_Emails';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      try {
+        const listInfo = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+          SPHttpClient.configurations.v1
+        );
+        if (listInfo.ok) {
+          const data = await listInfo.json();
+          if (!data.HasUniqueRoleAssignments) {
+            await this.setEmailsListPermissions(listName);
+          }
+        }
+      } catch { /* ignore */ }
+      return;
+    }
 
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -137,35 +152,39 @@ export class EventService {
       'Recipient', 'RecipientName', 'EmailType', 'EventTitle', 'Status', 'SentDate',
     ]);
 
-    // Berechtigungen: Vererbung aufheben, nur Owners Full Control + Members Contribute
+    await this.setEmailsListPermissions(listName);
+  }
+
+  /**
+   * Berechtigungen fuer DEX_Emails: Owners Full Control, Members Contribute, Item-Level Security
+   */
+  private async setEmailsListPermissions(listName: string): Promise<void> {
     try {
       await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
-      // Owners: Full Control (1073741829)
       const ownersResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (ownersResp.ok) {
-        const ownersData = await ownersResp.json();
+        const d = await ownersResp.json();
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      // Members: Contribute (1073741827) - damit die App Queue-Einträge schreiben kann
       const membersResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
       );
       if (membersResp.ok) {
-        const membersData = await membersResp.json();
+        const d = await membersResp.json();
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
         );
       }
-    } catch { /* Berechtigungen optional */ }
+    } catch { /* */ }
 
-    // Item-Level Security: User sehen nur eigene Einträge
+    // Item-Level Security
     try {
       await this.context.spHttpClient.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
@@ -174,17 +193,15 @@ export class EventService {
           headers: {
             'Accept': 'application/json;odata=verbose',
             'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
+            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
           },
           body: JSON.stringify({
             '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 2,
-            'WriteSecurity': 2,
+            'ReadSecurity': 2, 'WriteSecurity': 2,
           }),
         }
       );
-    } catch { /* Item-Level Permissions optional */ }
+    } catch { /* */ }
   }
 
   /**
