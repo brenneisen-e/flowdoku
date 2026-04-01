@@ -53,7 +53,7 @@ export default function Header(): React.ReactElement {
           </div>
         ) : (
           <>
-            <button className="back-btn" onClick={() => goBack()} aria-label="Back">
+            <button className="back-btn" onClick={() => navigate('start')} aria-label="Back">
               <ChevronLeft size={20} />
             </button>
             <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
