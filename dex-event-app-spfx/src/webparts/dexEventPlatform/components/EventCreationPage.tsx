@@ -78,6 +78,8 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+  const [progressLabel, setProgressLabel] = React.useState('');
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   const [emailSearch, setEmailSearch] = React.useState('');
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
@@ -153,8 +155,11 @@ export default function EventCreationPage(): React.ReactElement {
     if (!title || !description) return;
     setIsSubmitting(true);
     setError('');
+    setProgress(0);
 
-    // Bild hochladen falls vorhanden
+    // Schritt 1: Bild hochladen
+    setProgress(5);
+    setProgressLabel('Bild wird hochgeladen...');
     let imageUrl = eventImageUrl;
     if (imageFile) {
       try {
@@ -169,8 +174,10 @@ export default function EventCreationPage(): React.ReactElement {
         console.warn('[DEX] Bild-Upload fehlgeschlagen');
       }
     }
+    setProgress(15);
 
     if (isEditMode && selectedEventId) {
+      setProgressLabel('Event wird aktualisiert...');
       // Event aktualisieren
       const updates: Record<string, unknown> = {
         'Title': title,
@@ -194,15 +201,37 @@ export default function EventCreationPage(): React.ReactElement {
         }))),
       };
 
+      setProgress(50);
       const success = await updateEvent(selectedEventId, updates);
-      setIsSubmitting(false);
       if (success) {
-        setSubmitted(true);
+        setProgress(100);
+        setProgressLabel('Änderungen gespeichert!');
+        setTimeout(() => { setIsSubmitting(false); setSubmitted(true); }, 500);
       } else {
+        setIsSubmitting(false);
+        setProgress(0);
         setError('Event konnte nicht aktualisiert werden.');
       }
     } else {
-      // Neues Event erstellen
+      // Neues Event erstellen – Progress-Animation parallel laufen lassen
+      setProgressLabel('Subsite wird erstellt...');
+      const progressSteps = [
+        { at: 20, label: 'Subsite wird erstellt...' },
+        { at: 35, label: 'Teilnehmerliste wird angelegt...' },
+        { at: 50, label: 'Spalten werden konfiguriert...' },
+        { at: 65, label: 'Berechtigungen werden gesetzt...' },
+        { at: 80, label: 'Event wird gespeichert...' },
+        { at: 90, label: 'Fast fertig...' },
+      ];
+      let stepIdx = 0;
+      const progressTimer = setInterval(() => {
+        if (stepIdx < progressSteps.length) {
+          setProgress(progressSteps[stepIdx].at);
+          setProgressLabel(progressSteps[stepIdx].label);
+          stepIdx++;
+        }
+      }, 2000);
+
       const eventId = await createEvent({
         title,
         type: eventType,
@@ -228,10 +257,18 @@ export default function EventCreationPage(): React.ReactElement {
         })),
       });
 
-      setIsSubmitting(false);
+      clearInterval(progressTimer);
       if (eventId) {
-        setSubmitted(true);
+        setProgress(100);
+        setProgressLabel('Event erfolgreich erstellt!');
+        // Kurz 100% zeigen, dann zur Erfolgsseite
+        setTimeout(() => {
+          setIsSubmitting(false);
+          setSubmitted(true);
+        }, 500);
       } else {
+        setIsSubmitting(false);
+        setProgress(0);
         setError('Event konnte nicht erstellt werden. Bitte versuche es erneut.');
       }
     }
@@ -532,19 +569,46 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
           </div>
 
-          <div className="registration-actions mt-24">
-            <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
-            <button
-              className="btn btn-primary"
-              disabled={!title || !description || isSubmitting}
-              onClick={handleSubmit}
-              style={{ opacity: !title || !description || isSubmitting ? 0.5 : 1 }}
-            >
-              <Send size={16} /> {isSubmitting
-                ? (isEditMode ? 'Wird gespeichert...' : 'Wird erstellt...')
-                : (isEditMode ? 'Änderungen speichern' : 'Event erstellen')}
-            </button>
-          </div>
+          {/* Fortschrittsanzeige */}
+          {isSubmitting && (
+            <div className="mt-24" style={{ padding: '20px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                  {progressLabel}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--dex-green)' }}>
+                  {progress}%
+                </span>
+              </div>
+              <div style={{
+                width: '100%', height: 8, background: 'var(--dex-gray-200)',
+                borderRadius: 4, overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${progress}%`, height: '100%',
+                  background: progress === 100
+                    ? 'var(--dex-green)'
+                    : 'linear-gradient(90deg, var(--dex-green), #0076a8)',
+                  borderRadius: 4,
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+          )}
+
+          {!isSubmitting && (
+            <div className="registration-actions mt-24">
+              <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
+              <button
+                className="btn btn-primary"
+                disabled={!title || !description}
+                onClick={handleSubmit}
+                style={{ opacity: !title || !description ? 0.5 : 1 }}
+              >
+                <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ===== Rechte Seite: Live-Vorschau ===== */}

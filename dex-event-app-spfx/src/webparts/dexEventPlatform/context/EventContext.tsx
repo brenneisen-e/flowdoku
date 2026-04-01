@@ -12,6 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
+import { registrationEmail, waitlistEmail, cancellationEmail } from '../services/EmailTemplates';
 
 interface EventContextType {
   events: DeloitteEvent[];
@@ -184,16 +185,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success && event) {
-      // E-Mail in Queue eintragen
-      const emailType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
+      // E-Mail in Queue eintragen (Deloitte-Template)
+      const emailData = status === 'Warteliste'
+        ? waitlistEmail(nameToUse, event.title)
+        : registrationEmail(nameToUse, event.title);
       eventService.queueEmail(
-        `${emailType}: ${event.title}`,
-        emailToUse,
-        nameToUse,
-        `Hallo ${nameToUse},<br><br>du wurdest erfolgreich für "${event.title}" ${status === 'Warteliste' ? 'auf die Warteliste gesetzt' : 'angemeldet'}.<br><br>Viele Grüße,<br>DEX Event Platform`,
-        emailType,
-        event.title,
-        eventId
+        emailData.subject, emailToUse, nameToUse, emailData.body,
+        status === 'Warteliste' ? 'Warteliste' : 'Anmeldung',
+        event.title, eventId
       ).catch(() => {});
       await loadEvents();
     }
@@ -211,14 +210,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (success) {
       const event = events.find(e => e.id === eventId);
       if (event) {
+        const emailData = cancellationEmail(currentUserName, event.title);
         eventService.queueEmail(
-          `Abmeldung: ${event.title}`,
-          currentUserEmail,
-          currentUserName,
-          `Hallo ${currentUserName},<br><br>du wurdest erfolgreich von "${event.title}" abgemeldet.<br><br>Viele Grüße,<br>DEX Event Platform`,
-          'Abmeldung',
-          event.title,
-          eventId
+          emailData.subject, currentUserEmail, currentUserName, emailData.body,
+          'Abmeldung', event.title, eventId
         ).catch(() => {});
       }
       await loadEvents();
