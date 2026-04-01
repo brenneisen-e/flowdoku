@@ -997,6 +997,49 @@ export class EventService {
     }
   }
 
+  // ==================== Bild-Upload ====================
+
+  /**
+   * Event-Bild in die SiteAssets-Bibliothek hochladen.
+   * Gibt die absolute URL des hochgeladenen Bildes zurueck.
+   */
+  public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
+    try {
+      // Dateiname: sanitized Event-Titel + Timestamp + Extension
+      const ext = file.name.split('.').pop() || 'jpg';
+      const safeName = eventTitle
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
+
+      // In SiteAssets hochladen (existiert standardmaessig auf jeder SP Site)
+      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets`;
+      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
+
+      const response = await this.context.spHttpClient.post(
+        uploadUrl,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+          },
+          body: file,
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        const serverRelUrl = result.d?.ServerRelativeUrl || result.ServerRelativeUrl;
+        if (serverRelUrl) {
+          return `${window.location.origin}${serverRelUrl}`;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
+      return null;
+    }
+  }
+
   // ==================== Hilfsmethoden ====================
 
   private async listExists(listName: string): Promise<boolean> {

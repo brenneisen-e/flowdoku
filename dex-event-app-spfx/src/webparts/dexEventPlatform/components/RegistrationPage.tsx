@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
+import { useRoles } from '../context/RoleContext';
 import { Salutation } from '../types';
 import { Info, Trash2, Send } from './Icons';
 
@@ -25,7 +26,23 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
+  const { canCreateEvents } = useRoles();
   const event = events.find(e => e.id === selectedEventId);
+
+  // Standort-Check: Würde dieses Event dem User angezeigt werden?
+  const locationFilter = event ? event.locationAudience.join(', ') : '';
+  const userLocationMatches = (): boolean => {
+    if (!locationFilter || !locationFilter.trim()) return true;
+    const filters = locationFilter.split(',').map(s => s.trim().toLowerCase());
+    if (filters.indexOf('all') >= 0) return true;
+    if (!currentUser.location) return false;
+    const loc = currentUser.location.toLowerCase();
+    return filters.some(f => {
+      const normalized = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae').replace(/ß/g, 'ss');
+      return loc.indexOf(f) >= 0 || loc.indexOf(normalized) >= 0;
+    });
+  };
+  const showLocationBanner = canCreateEvents && event && !userLocationMatches();
 
   const [salutation, setSalutation] = React.useState<Salutation | ''>('');
   const [firstName, setFirstName] = React.useState(currentUser.firstName);
@@ -130,6 +147,16 @@ export default function RegistrationPage(): React.ReactElement {
 
   return (
     <div className="page-container">
+      {showLocationBanner && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
+          background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
+          color: 'var(--dex-orange)', fontSize: '0.85rem',
+        }}>
+          Hinweis: Dieses Event ist für Standort <strong>{locationFilter}</strong> konfiguriert.
+          Dein Standort ({currentUser.location || 'unbekannt'}) würde es als normaler User nicht sehen.
+        </div>
+      )}
       <div className="registration-layout">
         {/* Event-Info links */}
         <div className="registration-event">
