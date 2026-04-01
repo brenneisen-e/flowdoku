@@ -29,6 +29,8 @@ export default function Header(): React.ReactElement {
       case 'create-event': return 'Deloitte Event Creation';
       case 'settings': return 'Settings';
       case 'profile': return 'My Profile';
+      case 'admin': return 'Admin';
+      case 'role-matrix': return 'Rollen-Matrix';
       default: return '';
     }
   };

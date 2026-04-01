@@ -2,13 +2,27 @@
  * Event Service - SharePoint-Operationen fuer Events und Teilnehmerlisten
  *
  * Erstellt DEX_Events-Liste automatisch beim ersten Start.
- * Erstellt pro Event eine separate Teilnehmerliste mit Item-Level Permissions.
+ * Erstellt pro Event eine Subsite mit einer "Teilnehmer"-Liste.
+ *
+ * Struktur auf SharePoint:
+ *   DOL-c-DE-B2Run (Hauptsite)
+ *   ├── DEX_Events (zentrale Event-Liste)
+ *   ├── DEX_Roles (Rollenverwaltung)
+ *   ├── b2run-frankfurt-2026 (Subsite)
+ *   │   └── Teilnehmer (Registrierungsliste)
+ *   ├── jpmorgan-muenchen-2026 (Subsite)
+ *   │   └── Teilnehmer (Registrierungsliste)
+ *   └── ...
  *
  * - Eike, Maerz 2026
  */
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
+
+// Fester Listenname auf jeder Subsite
+const REG_LIST_NAME = 'Teilnehmer';
+const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 
 export interface SPEvent {
   Id: number;
@@ -31,6 +45,7 @@ export interface SPEvent {
   OutlookEventId: string;
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
+  SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
 
 export interface CustomField {
@@ -44,7 +59,7 @@ export interface CustomField {
 
 export interface SPRegistration {
   Id: number;
-  Title: string; // Email
+  Title: string; // Teilnehmer-ID
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
@@ -71,16 +86,13 @@ export class EventService {
     const listName = 'DEX_Events';
     const exists = await this.listExists(listName);
     if (exists) {
-      // Bestehende Liste: fehlende Spalten nachtraeglich hinzufuegen
       await this.ensureMissingFields(listName);
 
-      // Default View aktualisieren
       await this.configureDefaultView(listName, [
         'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl',
+        'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
-      // Prüfen ob Vererbung noch aktiv ist und ggf. Permissions fixen
       try {
         const listInfo = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
@@ -106,28 +118,7 @@ export class EventService {
     });
 
     // Spalten hinzufuegen
-    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'EventStatus', type: 6, choices: ['Under Construction', 'Active', 'Completed', 'Cancelled'], metaType: 'SP.FieldChoice' },
-      { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
-      { title: 'Description', type: 3 }, // Note (multiline)
-      { title: 'Location', type: 2 },
-      { title: 'LocationFilter', type: 2 },
-      { title: 'Audience', type: 2 },
-      { title: 'StartDate', type: 4 },
-      { title: 'EndDate', type: 4 },
-      { title: 'RegistrationDeadline', type: 4 },
-      { title: 'LastDeregisterDate', type: 4 },
-      { title: 'MaxParticipants', type: 9 }, // Number
-      { title: 'WaitlistEnabled', type: 8 }, // Boolean
-      { title: 'EventImageUrl', type: 2 },
-      { title: 'Organizer', type: 2 },
-      { title: 'OrganizerEmail', type: 2 },
-      { title: 'OutlookEventId', type: 2 },
-      { title: 'CustomFields', type: 3 }, // Note (JSON)
-      { title: 'RegistrationListName', type: 2 },
-      { title: 'RegistrationListUrl', type: 2 }, // Klickbarer Link zur Teilnehmerliste
-    ];
-
+    const fields = this.getEventsFieldDefinitions();
     for (const f of fields) {
       const payload: Record<string, unknown> = {
         '__metadata': { 'type': f.metaType || 'SP.Field' },
@@ -136,28 +127,25 @@ export class EventService {
         'Required': false,
       };
       if (f.choices) {
-        (payload as Record<string, unknown>)['Choices'] = { 'results': f.choices };
+        payload['Choices'] = { 'results': f.choices };
       }
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
     }
 
-    // Default View konfigurieren: wichtige Spalten einblenden
     await this.configureDefaultView(listName, [
       'EventStatus', 'EventType', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-      'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl',
+      'WaitlistEnabled', 'Organizer', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
     ]);
 
-    // Berechtigungen: Vererbung aufheben, Owners Full Control, Members Read
     await this.setEventsListPermissions(listName);
   }
 
   /**
-   * Fehlende Spalten auf einer bestehenden DEX_Events-Liste nachtraeglich hinzufuegen.
-   * Prüft welche Spalten existieren und legt fehlende an.
+   * Feld-Definitionen fuer DEX_Events Liste
    */
-  private async ensureMissingFields(listName: string): Promise<void> {
-    const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+  private getEventsFieldDefinitions(): Array<{ title: string; type: number; choices?: string[]; metaType?: string }> {
+    return [
       { title: 'EventStatus', type: 6, choices: ['Under Construction', 'Active', 'Completed', 'Cancelled'], metaType: 'SP.FieldChoice' },
       { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
       { title: 'Description', type: 3 },
@@ -177,10 +165,17 @@ export class EventService {
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
+      { title: 'SubsiteUrl', type: 2 },
     ];
+  }
+
+  /**
+   * Fehlende Spalten auf einer bestehenden DEX_Events-Liste nachtraeglich hinzufuegen.
+   */
+  private async ensureMissingFields(listName: string): Promise<void> {
+    const requiredFields = this.getEventsFieldDefinitions();
 
     try {
-      // Existierende Felder laden
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
         SPHttpClient.configurations.v1
@@ -216,21 +211,15 @@ export class EventService {
   }
 
   /**
-   * Berechtigungen fuer DEX_Events setzen:
-   * - Vererbung aufheben (keine kopierten Rechte)
-   * - Site Owners: Full Control
-   * - Site Members: Read (koennen Events sehen, aber nicht bearbeiten)
-   * - Visitors: kein Zugriff
+   * Berechtigungen fuer DEX_Events setzen
    */
   private async setEventsListPermissions(listName: string): Promise<void> {
     try {
-      // Vererbung aufheben, KEINE bestehenden Berechtigungen kopieren
       await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
 
-      // Site Owners: Full Control (1073741829)
       const ownersResponse = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
@@ -243,7 +232,6 @@ export class EventService {
         );
       }
 
-      // Site Members: Read (1073741826)
       const membersResponse = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
         SPHttpClient.configurations.v1
@@ -261,13 +249,14 @@ export class EventService {
   }
 
   /**
-   * Default View einer Liste konfigurieren: Spalten hinzufuegen
+   * Default View einer Liste konfigurieren
    */
-  private async configureDefaultView(listName: string, fieldNames: string[]): Promise<void> {
+  private async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string): Promise<void> {
+    const url = baseUrl || this.siteUrl;
     try {
       for (const fieldName of fieldNames) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
+          `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
           {}
         );
       }
@@ -276,14 +265,17 @@ export class EventService {
     }
   }
 
+  // ==================== Events CRUD ====================
+
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
+
   /**
    * Alle Events laden
    */
   public async getEvents(): Promise<SPEvent[]> {
     try {
-      const select = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName';
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${select}&$orderby=StartDate desc&$top=100`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return [];
@@ -299,9 +291,8 @@ export class EventService {
    */
   public async getEvent(eventId: number): Promise<SPEvent | null> {
     try {
-      const select = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName';
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=${select}`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=${EventService.EVENT_SELECT}`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
@@ -312,7 +303,7 @@ export class EventService {
   }
 
   /**
-   * Neues Event erstellen + Teilnehmerliste anlegen
+   * Neues Event erstellen + Subsite mit Teilnehmerliste anlegen
    */
   public async createEvent(event: {
     title: string;
@@ -335,11 +326,17 @@ export class EventService {
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
-      // 1. Eindeutigen Listennamen generieren
-      const listSuffix = Date.now().toString(36);
-      const regListName = `DEX_Reg_${listSuffix}`;
+      // 1. Subsite fuer das Event erstellen
+      const subsiteUrl = await this.createEventSubsite(event.title, event.description);
+      if (!subsiteUrl) {
+        console.error('[DEX] Subsite konnte nicht erstellt werden');
+        return null;
+      }
 
-      // 2. Event in DEX_Events eintragen
+      // 2. Teilnehmerliste auf der Subsite erstellen
+      await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
+
+      // 3. Event in DEX_Events eintragen
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
         'Title': event.title,
@@ -360,8 +357,9 @@ export class EventService {
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
         'CustomFields': JSON.stringify(event.customFields),
-        'RegistrationListName': regListName,
-        'RegistrationListUrl': `${this.siteUrl}/Lists/${regListName}/AllItems.aspx`,
+        'RegistrationListName': REG_LIST_NAME,
+        'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
+        'SubsiteUrl': subsiteUrl,
       };
 
       const response = await this._post(
@@ -371,12 +369,7 @@ export class EventService {
 
       if (!response.ok) return null;
       const result = await response.json();
-      const eventId = result.d?.Id || result.Id;
-
-      // 3. Teilnehmerliste erstellen
-      await this.createRegistrationList(regListName, event.customFields, event.organizerEmail);
-
-      return eventId;
+      return result.d?.Id || result.Id;
     } catch {
       return null;
     }
@@ -411,23 +404,78 @@ export class EventService {
     }
   }
 
-  // ==================== Teilnehmerlisten ====================
+  // ==================== Subsites ====================
 
   /**
-   * Teilnehmerliste fuer ein Event erstellen.
-   * Basis-Spalten + dynamische Spalten aus den CustomFields.
-   * Item-Level Permissions: jeder sieht nur seinen eigenen Eintrag.
+   * URL-Suffix aus Event-Titel generieren.
+   * "B2Run Frankfurt 2026" → "b2run-frankfurt-2026-k8f3a"
+   */
+  private generateSubsiteUrl(title: string): string {
+    const slug = title
+      .toLowerCase()
+      .replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 40);
+    const suffix = Date.now().toString(36).slice(-5);
+    return `${slug}-${suffix}`;
+  }
+
+  /**
+   * Subsite fuer ein Event erstellen.
+   * Gibt die absolute URL der neuen Subsite zurueck.
+   */
+  private async createEventSubsite(title: string, description: string): Promise<string | null> {
+    try {
+      const urlSuffix = this.generateSubsiteUrl(title);
+
+      const payload = {
+        'parameters': {
+          '__metadata': { 'type': 'SP.WebCreationInformation' },
+          'Title': title,
+          'Url': urlSuffix,
+          'Description': description || `Event-Subsite: ${title}`,
+          'Language': 1031, // Deutsch
+          'WebTemplate': 'STS#3', // Modern Team Site ohne Microsoft 365 Group
+          'UseUniquePermissions': true,
+        }
+      };
+
+      const response = await this._post(`${this.siteUrl}/_api/web/webs/add`, payload);
+      if (!response.ok) {
+        console.error('[DEX] Subsite-Erstellung fehlgeschlagen:', response.status);
+        return null;
+      }
+
+      const result = await response.json();
+      // Die API gibt die absolute URL im Url-Feld zurueck
+      const subsiteAbsoluteUrl = result.d?.Url || result.Url;
+      if (subsiteAbsoluteUrl) return subsiteAbsoluteUrl;
+
+      // Fallback: URL manuell zusammenbauen
+      return `${this.siteUrl}/${urlSuffix}`;
+    } catch (e) {
+      console.error('[DEX] Subsite-Erstellung Fehler:', e);
+      return null;
+    }
+  }
+
+  // ==================== Teilnehmerlisten (auf Subsites) ====================
+
+  /**
+   * Teilnehmerliste auf einer Subsite erstellen.
+   * Liste heisst immer "Teilnehmer".
    */
   private async createRegistrationList(
-    listName: string,
+    subsiteUrl: string,
     customFields: CustomField[],
     organizerEmail: string
   ): Promise<void> {
     // Liste erstellen
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
+    await this._post(`${subsiteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Teilnehmerliste',
+      'Title': REG_LIST_NAME,
+      'Description': 'Teilnehmerliste fuer dieses Event',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
@@ -439,7 +487,7 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Registered', 'Waitlist', 'Checked-In', 'Cancelled'], metaType: 'SP.FieldChoice' },
       { title: 'RegistrationDate', type: 4 },
       { title: 'CancellationDate', type: 4 },
-      { title: 'CustomData', type: 3 }, // JSON mit allen Custom-Field-Werten
+      { title: 'CustomData', type: 3 },
     ];
 
     for (const f of baseFields) {
@@ -452,25 +500,28 @@ export class EventService {
       if ((f as { choices?: string[] }).choices) {
         payload['Choices'] = { 'results': (f as { choices: string[] }).choices };
       }
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, payload);
     }
 
-    // Item-Level Permissions setzen: jeder sieht nur seine eigenen Eintraege
-    await this.setItemLevelPermissions(listName);
+    // Default View konfigurieren
+    await this.configureDefaultView(REG_LIST_NAME, [
+      'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate',
+    ], subsiteUrl);
 
-    // Berechtigungen: Vererbung aufheben, Organizer + Owners Vollzugriff, Members Contribute
-    await this.setRegistrationListPermissions(listName, organizerEmail);
+    // Item-Level Permissions
+    await this.setItemLevelPermissions(subsiteUrl);
+
+    // Berechtigungen
+    await this.setRegistrationListPermissions(subsiteUrl, organizerEmail);
   }
 
   /**
-   * Item-Level Permissions auf einer Liste setzen.
-   * ReadSecurity=2: Nur eigene Eintraege lesen
-   * WriteSecurity=2: Nur eigene Eintraege bearbeiten
+   * Item-Level Permissions auf der Teilnehmerliste setzen.
    */
-  private async setItemLevelPermissions(listName: string): Promise<void> {
+  private async setItemLevelPermissions(subsiteUrl: string): Promise<void> {
     try {
-      const response = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+      await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`,
         SPHttpClient.configurations.v1,
         {
           headers: {
@@ -481,35 +532,27 @@ export class EventService {
           },
           body: JSON.stringify({
             '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 2, // Nur eigene Eintraege lesen
-            'WriteSecurity': 2, // Nur eigene Eintraege bearbeiten
+            'ReadSecurity': 2,
+            'WriteSecurity': 2,
           }),
         }
       );
-      if (!response.ok) {
-        // Fallback ignorieren
-      }
     } catch {
       // Item-Level Permissions konnten nicht gesetzt werden
     }
   }
 
   /**
-   * Berechtigungen fuer Teilnehmerliste setzen.
-   * - Vererbung aufheben
-   * - Site Owners: Full Control
-   * - Organizer: Full Control
-   * - Site Members: Contribute (damit sie sich eintragen koennen)
+   * Berechtigungen fuer Teilnehmerliste auf der Subsite setzen.
    */
-  private async setRegistrationListPermissions(listName: string, organizerEmail: string): Promise<void> {
+  private async setRegistrationListPermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     try {
-      // Vererbung aufheben, bestehende Berechtigungen kopieren
       await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
         {}
       );
 
-      // Site Owners: Full Control (1073741829)
+      // Site Owners der Hauptsite: Full Control
       const ownersResponse = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
         SPHttpClient.configurations.v1
@@ -517,12 +560,12 @@ export class EventService {
       if (ownersResponse.ok) {
         const ownersData = await ownersResponse.json();
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`,
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${ownersData.Id}, roledefid=1073741829)`,
           {}
         );
       }
 
-      // Site Members: Contribute (1073741827)
+      // Site Members: Contribute (damit sie sich registrieren koennen)
       const membersResponse = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
         SPHttpClient.configurations.v1
@@ -530,12 +573,12 @@ export class EventService {
       if (membersResponse.ok) {
         const membersData = await membersResponse.json();
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`,
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`,
           {}
         );
       }
 
-      // Organizer: Full Control (individuell)
+      // Organizer: Full Control
       if (organizerEmail) {
         try {
           const userResponse = await this.context.spHttpClient.get(
@@ -545,7 +588,7 @@ export class EventService {
           if (userResponse.ok) {
             const userData = await userResponse.json();
             await this._post(
-              `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
+              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
               {}
             );
           }
@@ -559,20 +602,19 @@ export class EventService {
   // ==================== Registrierungen ====================
 
   /**
-   * Registrierung fuer ein Event erstellen
+   * Registrierung fuer ein Event erstellen.
+   * Operiert auf der Subsite des Events.
    */
   public async registerForEvent(
-    registrationListName: string,
+    subsiteUrl: string,
     participantName: string,
     participantEmail: string,
     customData: Record<string, string>,
     status: string = 'Registered'
   ): Promise<boolean> {
     try {
-      // Listennamen escaped fuer SP
-      const escapedName = registrationListName.replace(/'/g, "''");
       const payload = {
-        '__metadata': { 'type': `SP.Data.${registrationListName.replace(/_/g, '_x005f_')}ListItem` },
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
         'ParticipantName': participantName,
         'ParticipantEmail': participantEmail,
@@ -582,7 +624,7 @@ export class EventService {
       };
 
       const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${escapedName}')/items`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
         payload
       );
       return response.ok;
@@ -595,12 +637,12 @@ export class EventService {
    * Eigene Registrierung fuer ein Event laden
    */
   public async getMyRegistration(
-    registrationListName: string,
+    subsiteUrl: string,
     email: string
   ): Promise<SPRegistration | null> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
@@ -615,10 +657,10 @@ export class EventService {
   /**
    * Alle Registrierungen fuer ein Event laden (nur fuer Organizer/Admin)
    */
-  public async getAllRegistrations(registrationListName: string): Promise<SPRegistration[]> {
+  public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items?$select=Id,Title,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return [];
@@ -633,12 +675,12 @@ export class EventService {
    * Registrierung stornieren
    */
   public async cancelRegistration(
-    registrationListName: string,
+    subsiteUrl: string,
     itemId: number
   ): Promise<boolean> {
     try {
       const response = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items(${itemId})`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         {
           headers: {
@@ -648,7 +690,7 @@ export class EventService {
             'X-HTTP-Method': 'MERGE',
           },
           body: JSON.stringify({
-            '__metadata': { 'type': `SP.Data.${registrationListName.replace(/_/g, '_x005f_')}ListItem` },
+            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
             'Status': 'Cancelled',
             'CancellationDate': new Date().toISOString(),
           }),
@@ -661,12 +703,12 @@ export class EventService {
   }
 
   /**
-   * Aktuelle Teilnehmeranzahl ermitteln (nur Registered + Checked-In)
+   * Aktuelle Teilnehmeranzahl ermitteln
    */
-  public async getRegistrationCount(registrationListName: string): Promise<{ registered: number; waitlist: number }> {
+  public async getRegistrationCount(subsiteUrl: string): Promise<{ registered: number; waitlist: number }> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items?$select=Status&$top=500`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=500`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return { registered: 0, waitlist: 0 };
@@ -681,16 +723,16 @@ export class EventService {
   }
 
   /**
-   * Title-Feld (= Teilnehmer-ID) eines Registrierungseintrags aktualisieren
+   * Title-Feld (= Teilnehmer-ID) aktualisieren
    */
   public async updateRegistrationTitle(
-    registrationListName: string,
+    subsiteUrl: string,
     itemId: number,
     newTitle: string
   ): Promise<boolean> {
     try {
       const response = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${registrationListName}')/items(${itemId})`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         SPHttpClient.configurations.v1,
         {
           headers: {
@@ -700,7 +742,7 @@ export class EventService {
             'X-HTTP-Method': 'MERGE',
           },
           body: JSON.stringify({
-            '__metadata': { 'type': `SP.Data.${registrationListName.replace(/_/g, '_x005f_')}ListItem` },
+            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
             'Title': newTitle,
           }),
         }
