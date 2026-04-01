@@ -113,6 +113,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
+      subsiteUrl: e.SubsiteUrl || '',
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,

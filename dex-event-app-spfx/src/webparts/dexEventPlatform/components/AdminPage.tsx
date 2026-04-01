@@ -217,17 +217,16 @@ export default function AdminPage(): React.ReactElement {
         <div className="card" style={{ padding: 24 }}>
           <h3 className="mb-16">Aktionen</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button className="btn btn-primary btn-block" onClick={() => navigate('create-event')}>
-              <Plus size={16} /> Neues Event erstellen
-            </button>
             <a
-              href={`${siteUrl}/Lists`}
+              href={selectedEvent.subsiteUrl
+                ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx`
+                : `${siteUrl}/Lists`}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-secondary btn-block"
+              className="btn btn-primary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
-              <FileText size={16} /> Teilnehmerliste in SharePoint öffnen
+              <FileText size={16} /> Teilnehmerliste in SharePoint oeffnen
             </a>
           </div>
         </div>

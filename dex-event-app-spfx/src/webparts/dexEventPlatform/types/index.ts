@@ -22,6 +22,7 @@ export interface DeloitteEvent {
   currentParticipants: number;
   waitlistCount: number;
   imageUrl?: string;
+  subsiteUrl?: string;
   eventSpecificFields: EventSpecificField[];
 }
 
