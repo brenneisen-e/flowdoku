@@ -217,13 +217,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(() => {});
       }
-      // ID-Reorder in Queue eintragen (falls gleichzeitig ein Reorder laeuft)
-      const regSubsiteUrl = subsiteMap.current[eventId];
-      if (regSubsiteUrl) {
-        eventService.queueIDReorder(
-          eventId, event.eventNumber || 0, regSubsiteUrl, event.title
-        ).catch(() => {});
-      }
       await loadEvents();
     }
     return success;
