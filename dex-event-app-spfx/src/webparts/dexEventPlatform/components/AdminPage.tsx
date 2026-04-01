@@ -15,7 +15,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText } from './Icons';
+import { Plus, Users, FileText, Trash2 } from './Icons';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -37,12 +37,14 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getAllRegistrations } = useEvents();
+  const { events, getAllRegistrations, deleteEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isSuperAdmin, siteUrl } = useRoles();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine
   const adminEvents = isSuperAdmin
@@ -95,11 +97,10 @@ export default function AdminPage(): React.ReactElement {
               <div
                 key={event.id}
                 className="card card-clickable"
-                onClick={() => handleSelectEvent(event)}
                 style={{ padding: '20px 24px', cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+                  <div onClick={() => handleSelectEvent(event)} style={{ flex: 1 }}>
                     <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
                       {formatDate(event.startDate)} - {formatDate(event.endDate)}
@@ -116,6 +117,37 @@ export default function AdminPage(): React.ReactElement {
                     }}>
                       {event.status}
                     </span>
+                    <button
+                      className={`btn ${deletingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
+                      style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (deletingId === event.id) {
+                          setIsDeleting(true);
+                          deleteEvent(event.id).then(() => {
+                            setDeletingId(null);
+                            setIsDeleting(false);
+                          });
+                        } else {
+                          setDeletingId(event.id);
+                        }
+                      }}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 size={14} />
+                      {deletingId === event.id
+                        ? (isDeleting ? 'Wird geloescht...' : 'Wirklich loeschen?')
+                        : 'Loeschen'}
+                    </button>
+                    {deletingId === event.id && !isDeleting && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                        onClick={(e) => { e.stopPropagation(); setDeletingId(null); }}
+                      >
+                        Abbrechen
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

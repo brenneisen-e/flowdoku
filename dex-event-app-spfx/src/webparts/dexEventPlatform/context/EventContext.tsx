@@ -21,6 +21,7 @@ interface EventContextType {
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  deleteEvent: (eventId: string) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -227,6 +228,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getAllRegistrations(subsiteUrl);
   }
 
+  async function deleteEvent(eventId: string): Promise<boolean> {
+    const success = await eventService.deleteEvent(Number(eventId));
+    if (success) {
+      delete subsiteMap.current[eventId];
+      await loadEvents();
+    }
+    return success;
+  }
+
   async function refreshEvents(): Promise<void> {
     await loadEvents();
   }
@@ -237,7 +247,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, refreshEvents,
       },
     },
     props.children

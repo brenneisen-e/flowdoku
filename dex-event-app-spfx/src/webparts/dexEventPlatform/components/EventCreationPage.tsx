@@ -79,11 +79,12 @@ export default function EventCreationPage(): React.ReactElement {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
-    setTitle('Deloitte B2Run Koeln 2026');
-    setEventType('B2Run');
-    setDescription('Gemeinsam laufen wir beim B2Run in Koeln! 5,6 km durch den Rheinpark. Treffpunkt um 17:30 Uhr am Deloitte-Zelt. Laufshirts werden gestellt.');
-    setLocation('RheinEnergieStadion, Koeln');
-    setLocationFilter('Köln, Düsseldorf');
+    const dateStr = toLocal(nextWeek).replace(/[-T:]/g, '').substring(0, 8);
+    setTitle(`Test_${dateStr}`);
+    setEventType('Other');
+    setDescription('Testbeschreibung fuer ein Demo-Event.');
+    setLocation('Testort');
+    setLocationFilter('');
     setAudience('All');
     setStartDate(toLocal(nextWeek));
     setEndDate(toLocal(nextWeekEnd));
