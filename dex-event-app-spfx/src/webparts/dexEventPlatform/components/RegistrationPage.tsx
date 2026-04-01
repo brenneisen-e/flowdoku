@@ -71,6 +71,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(false);
 
   if (!event) {
@@ -85,9 +86,11 @@ export default function RegistrationPage(): React.ReactElement {
   }
 
   const isFull = event.currentParticipants >= event.maxParticipants;
+  const errorBorder = { border: '2px solid var(--dex-red)' };
 
   const handleSubmit = async (): Promise<void> => {
     // Validierung Pflichtfelder
+    setShowErrors(true);
     if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
       setError('Bitte alle Pflichtfelder ausfüllen.');
       return;
@@ -244,7 +247,7 @@ export default function RegistrationPage(): React.ReactElement {
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> Salutation</label>
-              <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)}>
+              <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)} style={showErrors && !salutation ? errorBorder : {}}>
                 <option value="">Please select</option>
                 <option value="Herr">Herr</option>
                 <option value="Frau">Frau</option>
@@ -254,17 +257,17 @@ export default function RegistrationPage(): React.ReactElement {
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> First Name</label>
-              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
+              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> Surname</label>
-              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder="Surname" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
+              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder="Surname" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> E-Mail</label>
-              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" disabled={!registerForOther} style={!registerForOther ? { background: 'var(--dex-gray-100)' } : {}} />
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
           </div>
         </div>
@@ -284,12 +287,12 @@ export default function RegistrationPage(): React.ReactElement {
                     {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
                   </label>
                   {field.type === 'select' ? (
-                    <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })}>
+                    <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
                       <option value="">Please select</option>
                       {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   ) : (
-                    <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} />
+                    <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
                   )}
                 </div>
               ))
