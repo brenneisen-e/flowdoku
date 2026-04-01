@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
+import { useRoles } from '../context/RoleContext';
 import { Salutation } from '../types';
 import { Info, Trash2, Send } from './Icons';
 
@@ -25,7 +26,41 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
+  const { canCreateEvents } = useRoles();
   const event = events.find(e => e.id === selectedEventId);
+
+  // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
+  const showLocationBanner = canCreateEvents && event && (() => {
+    const locFilters = event.locationAudience;
+    const audFilters = event.audienceFilter || [];
+    const hasLoc = locFilters.length > 0;
+    const hasAud = audFilters.length > 0;
+    if (!hasLoc && !hasAud) return false; // kein Filter = alle sehen es
+
+    const loc = (currentUser.location || '').toLowerCase();
+    const email = currentUser.email.toLowerCase();
+
+    const locMatch = !hasLoc || locFilters.some(f => {
+      const fl = f.trim().toLowerCase();
+      if (fl === 'all') return true;
+      const norm = fl.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
+      return loc.indexOf(fl) >= 0 || loc.indexOf(norm) >= 0;
+    });
+
+    const audMatch = !hasAud || audFilters.some(f => {
+      const fl = f.trim().toLowerCase();
+      if (fl.indexOf('@') >= 0) return email === fl;
+      if (fl === 'deall') return true;
+      if (fl.startsWith('de')) return loc.indexOf(fl.substring(2)) >= 0;
+      return false;
+    });
+
+    const mode = event.filterMode || 'OR';
+    const visible = mode === 'AND'
+      ? (hasLoc && hasAud ? locMatch && audMatch : hasLoc ? locMatch : audMatch)
+      : (locMatch || audMatch);
+    return !visible;
+  })();
 
   const [salutation, setSalutation] = React.useState<Salutation | ''>('');
   const [firstName, setFirstName] = React.useState(currentUser.firstName);
@@ -130,6 +165,19 @@ export default function RegistrationPage(): React.ReactElement {
 
   return (
     <div className="page-container">
+      {showLocationBanner && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
+          background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
+          color: 'var(--dex-orange)', fontSize: '0.85rem',
+        }}>
+          Hinweis: Du würdest dieses Event als normaler User nicht sehen.
+          {event && event.locationAudience.length > 0 && <> Standort-Filter: <strong>{event.locationAudience.join(', ')}</strong>.</>}
+          {event && event.audienceFilter && event.audienceFilter.length > 0 && <> Zielgruppe: <strong>{event.audienceFilter.join(', ')}</strong>.</>}
+          {event && event.filterMode === 'AND' && <> (UND-Verknüpfung)</>}
+          {' '}Dein Standort: {currentUser.location || 'unbekannt'}.
+        </div>
+      )}
       <div className="registration-layout">
         {/* Event-Info links */}
         <div className="registration-event">

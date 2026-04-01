@@ -14,6 +14,8 @@ export interface DeloitteEvent {
   organizers: string[];
   location: string;
   locationAudience: string[];
+  audienceFilter: string[];
+  filterMode: 'AND' | 'OR';
   startDate: string;
   endDate: string;
   registrationDeadline: string;
@@ -33,6 +35,7 @@ export interface EventSpecificField {
   required: boolean;
   options?: string[];
   helpText?: string;
+  spInternalName?: string;
 }
 
 export interface Registration {
@@ -50,7 +53,7 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
-export type UserRole = 'SuperAdmin' | 'EventAdmin' | 'User';
+export type UserRole = 'Admin' | 'Organizer' | 'User';
 
 export interface User {
   id: string;

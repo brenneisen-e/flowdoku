@@ -32,7 +32,8 @@ export interface SPEvent {
   Description: string;
   Location: string;
   LocationFilter: string;
-  Audience: string;
+  Audience: string; // Zielgruppen-Filter (Gruppen + Emails, kommasepariert)
+  FilterMode: string; // 'AND' | 'OR' - Verknüpfung Standort+Zielgruppe
   StartDate: string;
   EndDate: string;
   RegistrationDeadline: string;
@@ -152,6 +153,7 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'LocationFilter', type: 2 },
       { title: 'Audience', type: 2 },
+      { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
       { title: 'StartDate', type: 4 },
       { title: 'EndDate', type: 4 },
       { title: 'RegistrationDeadline', type: 4 },
@@ -267,7 +269,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -313,6 +315,7 @@ export class EventService {
     location: string;
     locationFilter: string;
     audience: string;
+    filterMode: string;
     startDate: string;
     endDate: string;
     registrationDeadline: string;
@@ -336,6 +339,16 @@ export class EventService {
       // 2. Teilnehmerliste auf der Subsite erstellen
       await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
 
+      // FieldMap aus createRegistrationList auslesen
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fieldMap: Record<string, string> = (this as any)._lastFieldMap || {};
+
+      // Custom Fields mit SP InternalName anreichern
+      const enrichedCustomFields = event.customFields.map(cf => ({
+        ...cf,
+        spInternalName: fieldMap[cf.id] || '',
+      }));
+
       // 3. Event in DEX_Events eintragen
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
@@ -346,6 +359,7 @@ export class EventService {
         'Location': event.location,
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
+        'FilterMode': event.filterMode || 'OR',
         'StartDate': event.startDate || null,
         'EndDate': event.endDate || null,
         'RegistrationDeadline': event.registrationDeadline || null,
@@ -356,7 +370,7 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
-        'CustomFields': JSON.stringify(event.customFields),
+        'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
@@ -536,6 +550,7 @@ export class EventService {
 
     // Basis-Spalten
     const baseFields = [
+      { title: 'TeilnehmerID', type: 9 }, // Number - fortlaufende ID
       { title: 'ParticipantName', type: 2 },
       { title: 'ParticipantEmail', type: 2 },
       { title: 'Status', type: 6, choices: ['Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
@@ -557,9 +572,69 @@ export class EventService {
       await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, payload);
     }
 
-    // Default View konfigurieren
+    // Custom Fields als eigene Spalten anlegen + InternalName merken
+    const customFieldViewNames: string[] = [];
+    const fieldMap: Record<string, string> = {}; // cf.id -> SP InternalName
+    for (const cf of customFields) {
+      if (!cf.label) continue;
+      let fieldPayload: Record<string, unknown>;
+
+      if (cf.type === 'select' && cf.options && cf.options.length > 0) {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.FieldChoice' },
+          'Title': cf.label,
+          'FieldTypeKind': 6,
+          'Required': false,
+          'Choices': { 'results': cf.options },
+        };
+      } else if (cf.type === 'number') {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 9,
+          'Required': false,
+        };
+      } else if (cf.type === 'checkbox') {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 8,
+          'Required': false,
+        };
+      } else {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': cf.label,
+          'FieldTypeKind': 2,
+          'Required': false,
+        };
+      }
+
+      try {
+        const fieldResponse = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`,
+          fieldPayload
+        );
+        if (fieldResponse.ok) {
+          const fieldResult = await fieldResponse.json();
+          const internalName = fieldResult.d?.InternalName || fieldResult.InternalName || cf.label;
+          fieldMap[cf.id] = internalName;
+          customFieldViewNames.push(internalName);
+        }
+      } catch {
+        console.warn('[DEX] Custom Field konnte nicht angelegt werden:', cf.label);
+      }
+    }
+
+    // FieldMap auf der Subsite speichern (als Property Bag oder in einem Hidden Field)
+    // Wir speichern die Map spaeter im CustomFields JSON des Events
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any)._lastFieldMap = fieldMap;
+
+    // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'ParticipantName', 'ParticipantEmail', 'Status', 'RegistrationDate', 'CancellationDate',
+      ...customFieldViewNames,
     ], subsiteUrl);
 
     // Item-Level Permissions
@@ -664,18 +739,39 @@ export class EventService {
     participantName: string,
     participantEmail: string,
     customData: Record<string, string>,
-    status: string = 'Angemeldet'
+    status: string = 'Angemeldet',
+    customFieldMap?: Record<string, string> // cf.id -> SP InternalName
   ): Promise<boolean> {
     try {
-      const payload = {
+      // Naechste TeilnehmerID ermitteln
+      let nextId = 1;
+      try {
+        const counts = await this.getRegistrationCount(subsiteUrl);
+        nextId = counts.registered + counts.waitlist + 1;
+      } catch { /* Fallback: 1 */ }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
+        'TeilnehmerID': nextId,
         'ParticipantName': participantName,
         'ParticipantEmail': participantEmail,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CustomData': JSON.stringify(customData),
       };
+
+      // Custom Field Werte in die echten SP-Spalten schreiben
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            payload[spFieldName] = customData[cfId];
+          }
+        }
+      }
 
       const response = await this._post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
@@ -697,9 +793,30 @@ export class EventService {
     itemId: number,
     participantName: string,
     customData: Record<string, string>,
-    status: string = 'Angemeldet'
+    status: string = 'Angemeldet',
+    customFieldMap?: Record<string, string>
   ): Promise<boolean> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'ParticipantName': participantName,
+        'Status': status,
+        'RegistrationDate': new Date().toISOString(),
+        'CancellationDate': null,
+        'CustomData': JSON.stringify(customData),
+      };
+
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            body[spFieldName] = customData[cfId];
+          }
+        }
+      }
+
       const response = await this.context.spHttpClient.post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         SPHttpClient.configurations.v1,
@@ -710,14 +827,52 @@ export class EventService {
             'IF-MATCH': '*',
             'X-HTTP-Method': 'MERGE',
           },
-          body: JSON.stringify({
-            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
-            'ParticipantName': participantName,
-            'Status': status,
-            'RegistrationDate': new Date().toISOString(),
-            'CancellationDate': null,
-            'CustomData': JSON.stringify(customData),
-          }),
+          body: JSON.stringify(body),
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Custom Data einer Registrierung aktualisieren (Teilnehmer aendert eigene Angaben).
+   */
+  public async updateRegistrationData(
+    subsiteUrl: string,
+    itemId: number,
+    customData: Record<string, string>,
+    customFieldMap?: Record<string, string>
+  ): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'CustomData': JSON.stringify(customData),
+      };
+
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            body[spFieldName] = customData[cfId];
+          }
+        }
+      }
+
+      const response = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify(body),
         }
       );
       return response.ok;
@@ -843,6 +998,49 @@ export class EventService {
       return response.ok;
     } catch {
       return false;
+    }
+  }
+
+  // ==================== Bild-Upload ====================
+
+  /**
+   * Event-Bild in die SiteAssets-Bibliothek hochladen.
+   * Gibt die absolute URL des hochgeladenen Bildes zurueck.
+   */
+  public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
+    try {
+      // Dateiname: sanitized Event-Titel + Timestamp + Extension
+      const ext = file.name.split('.').pop() || 'jpg';
+      const safeName = eventTitle
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
+
+      // In SiteAssets hochladen (existiert standardmaessig auf jeder SP Site)
+      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets`;
+      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
+
+      const response = await this.context.spHttpClient.post(
+        uploadUrl,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+          },
+          body: file,
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        const serverRelUrl = result.d?.ServerRelativeUrl || result.ServerRelativeUrl;
+        if (serverRelUrl) {
+          return `${window.location.origin}${serverRelUrl}`;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
+      return null;
     }
   }
 

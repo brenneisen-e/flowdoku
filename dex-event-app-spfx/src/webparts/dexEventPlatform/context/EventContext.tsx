@@ -22,6 +22,7 @@ interface EventContextType {
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -33,6 +34,7 @@ export interface CreateEventInput {
   location: string;
   locationFilter: string;
   audience: string;
+  filterMode: string;
   startDate: string;
   endDate: string;
   registrationDeadline: string;
@@ -104,7 +106,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
       organizers: [e.Organizer || ''],
       location: e.Location || '',
-      locationAudience: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
+      locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
+      audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
+      filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',
       startDate: e.StartDate || '',
       endDate: e.EndDate || '',
       registrationDeadline: e.RegistrationDeadline || '',
@@ -121,6 +125,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         required: cf.required,
         options: cf.options,
         helpText: '',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spInternalName: (cf as any).spInternalName || '',
       })),
     };
   }
@@ -156,13 +162,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status = 'Warteliste';
     }
 
+    // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
+    const fieldMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const spName = (f as any).spInternalName;
+        if (spName) fieldMap[f.id] = spName;
+      }
+    }
+
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      // Bestehende Zeile reaktivieren statt neuen Eintrag erstellen
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status, fieldMap);
     } else {
       success = await eventService.registerForEvent(
-        subsiteUrl, nameToUse, emailToUse, customData, status
+        subsiteUrl, nameToUse, emailToUse, customData, status, fieldMap
       );
     }
 
@@ -206,6 +221,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  async function updateMyRegistration(eventId: string, customData: Record<string, string>): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return false;
+
+    // FieldMap aus Event extrahieren
+    const event = events.find(e => e.id === eventId);
+    const fieldMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        if (f.spInternalName) fieldMap[f.id] = f.spInternalName;
+      }
+    }
+
+    return eventService.updateRegistrationData(subsiteUrl, myReg.Id, customData, fieldMap);
+  }
+
   async function refreshEvents(): Promise<void> {
     await loadEvents();
   }
@@ -216,7 +250,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateMyRegistration, refreshEvents,
       },
     },
     props.children

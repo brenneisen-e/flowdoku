@@ -1,5 +1,5 @@
 /**
- * Event-Erstellung (nur fuer EventAdmin / SuperAdmin)
+ * Event-Erstellung (nur fuer Organizer / SuperAdmin)
  *
  * Erstellt ein Event in der DEX_Events-Liste und eine
  * separate Teilnehmerliste mit Item-Level Permissions.
@@ -9,8 +9,10 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
+import { useRoles } from '../context/RoleContext';
+import { EventService } from '../services/EventService';
 import { EventType } from '../types';
-import { Trash2, Send, Plus, X, ChevronUp, ChevronDown } from './Icons';
+import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
 
 interface CustomFieldInput {
   id: string;
@@ -25,6 +27,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack } = useNavigation();
   const { createEvent } = useEvents();
   const { currentUser } = useCurrentUser();
+  const { searchUsers } = useRoles();
   const [title, setTitle] = React.useState('');
   const [organizer, setOrganizer] = React.useState(
     `${currentUser.firstName} ${currentUser.surname}`
@@ -32,6 +35,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [location, setLocation] = React.useState('');
   const [locationFilter, setLocationFilter] = React.useState('');
   const [audience, setAudience] = React.useState('');
+  const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>('OR');
   const [description, setDescription] = React.useState('');
   const [eventType, setEventType] = React.useState<EventType>('Other');
   const [startDate, setStartDate] = React.useState('');
@@ -41,8 +45,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [maxParticipants, setMaxParticipants] = React.useState('');
   const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
   const [eventImageUrl, setEventImageUrl] = React.useState('');
+  const [imageFile, setImageFile] = React.useState<File | null>(null);
+  const [imagePreview, setImagePreview] = React.useState('');
   const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [showEmailModal, setShowEmailModal] = React.useState(false);
+  const [emailSearch, setEmailSearch] = React.useState('');
+  const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
 
@@ -115,6 +125,22 @@ export default function EventCreationPage(): React.ReactElement {
     setIsSubmitting(true);
     setError('');
 
+    // Bild hochladen falls vorhanden
+    let imageUrl = eventImageUrl;
+    if (imageFile) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ctx = (window as any).__dexSpfxContext;
+        if (ctx) {
+          const svc = new EventService(ctx);
+          const uploadedUrl = await svc.uploadEventImage(imageFile, title);
+          if (uploadedUrl) imageUrl = uploadedUrl;
+        }
+      } catch {
+        console.warn('[DEX] Bild-Upload fehlgeschlagen');
+      }
+    }
+
     const eventId = await createEvent({
       title,
       type: eventType,
@@ -123,13 +149,14 @@ export default function EventCreationPage(): React.ReactElement {
       location,
       locationFilter,
       audience,
+      filterMode,
       startDate: startDate ? new Date(startDate).toISOString() : '',
       endDate: endDate ? new Date(endDate).toISOString() : '',
       registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
       lastDeregisterDate: lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : '',
       maxParticipants: Number(maxParticipants) || 0,
       waitlistEnabled,
-      eventImageUrl,
+      eventImageUrl: imageUrl,
       organizer,
       organizerEmail: currentUser.email,
       outlookEventId: '',
@@ -201,12 +228,18 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group">
-                <label className="form-label"><span className="required">*</span> Event Titel</label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} />
+                <label className="form-label">
+                  <span className="required">*</span> Event Titel
+                  <span className="info-icon" title="Name des Events, z.B. 'B2Run Frankfurt 2026'" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" />
               </div>
 
               <div className="form-group">
-                <label className="form-label"><span className="required">*</span> Event Typ</label>
+                <label className="form-label">
+                  <span className="required">*</span> Event Typ
+                  <span className="info-icon" title="Kategorie des Events – bestimmt das Design der Event-Karte" style={{ marginLeft: 8 }}>i</span>
+                </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
                   <option value="Other">Sonstiges Deloitte Event</option>
                   <option value="B2Run">B2Run</option>
@@ -215,13 +248,19 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group">
-                <label className="form-label"><span className="required">*</span> Organisator</label>
+                <label className="form-label">
+                  <span className="required">*</span> Organisator
+                  <span className="info-icon" title="Name der Person, die das Event organisiert" style={{ marginLeft: 8 }}>i</span>
+                </label>
                 <input className="form-input" value={organizer} onChange={e => setOrganizer(e.target.value)} />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Veranstaltungsort</label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} />
+                <label className="form-label">
+                  Veranstaltungsort
+                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
 
               <div className="form-group">
@@ -245,52 +284,135 @@ export default function EventCreationPage(): React.ReactElement {
                     </label>
                   ))}
                 </div>
+                {(locationFilter || audience) && (
+                  <button
+                    className="btn btn-outline mt-8"
+                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                    onClick={() => setShowEmailModal(true)}
+                    type="button"
+                  >
+                    <Users size={14} /> Zielgruppe prüfen
+                  </button>
+                )}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Audience / Zielgruppe</label>
-                <input className="form-input" value={audience} onChange={e => setAudience(e.target.value)} placeholder="z.B. Technology & Transformation, All" />
+                <label className="form-label">
+                  Zielgruppen-Filter
+                  <span className="info-icon" title="Verteilergruppen (z.B. DEALL, SAPALL) oder einzelne E-Mail-Adressen. Personen die hier gelistet sind, sehen das Event zusätzlich zum Standort-Filter." style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <input
+                  className="form-input"
+                  value={audience}
+                  onChange={e => setAudience(e.target.value)}
+                  placeholder="z.B. DEALL, SAPALL, mmustermann@deloitte.de"
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+                  Kommasepariert. Gruppen: DEALL, DEKOELN, SAPALL. Einzelne E-Mails: name@deloitte.de
+                </p>
               </div>
 
+              {/* UND/ODER Verknüpfung */}
+              {locationFilter && audience && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Filterverknüpfung
+                    <span className="info-icon" title="UND: User muss beide Filter erfüllen. ODER: Einer der Filter reicht aus." style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
+                      <input type="radio" name="filterMode" value="OR" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} />
+                      <strong>ODER</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Standort oder Zielgruppe reicht</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
+                      <input type="radio" name="filterMode" value="AND" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} />
+                      <strong>UND</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Beides muss zutreffen</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="form-group">
-                <label className="form-label"><span className="required">*</span> Beschreibung</label>
+                <label className="form-label">
+                  <span className="required">*</span> Beschreibung
+                  <span className="info-icon" title="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
+                </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Event-Bild URL</label>
-                <input className="form-input" value={eventImageUrl} onChange={e => setEventImageUrl(e.target.value)} placeholder="https://..." />
+                <label className="form-label">
+                  Event-Bild
+                  <span className="info-icon" title="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." style={{ marginLeft: 8 }}>i</span>
+                </label>
+                {imagePreview && (
+                  <img src={imagePreview} alt="Vorschau" style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 'var(--dex-radius)', marginBottom: 8 }} />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ fontSize: '0.85rem' }}
+                  onChange={e => {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) {
+                      setImageFile(file);
+                      const reader = new FileReader();
+                      reader.onload = ev => setImagePreview(ev.target?.result as string || '');
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Startdatum</label>
+                  <label className="form-label">
+                    <span className="required">*</span> Startdatum
+                    <span className="info-icon" title="Wann beginnt das Event?" style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Enddatum</label>
+                  <label className="form-label">
+                    <span className="required">*</span> Enddatum
+                    <span className="info-icon" title="Wann endet das Event?" style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
-                  <label className="form-label">Anmelde-Deadline</label>
+                  <label className="form-label">
+                    Anmelde-Deadline
+                    <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <input className="form-input" type="datetime-local" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Letzte Abmeldemöglichkeit</label>
+                  <label className="form-label">
+                    Letzte Abmeldemöglichkeit
+                    <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <input className="form-input" type="datetime-local" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
-                  <label className="form-label">Max. Teilnehmer</label>
+                  <label className="form-label">
+                    Max. Teilnehmer
+                    <span className="info-icon" title="Maximale Anzahl Teilnehmer. 0 = unbegrenzt. Bei Erreichen werden weitere auf die Warteliste gesetzt." style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <input className="form-input" type="number" min={0} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="0 = unbegrenzt" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Warteliste</label>
+                  <label className="form-label">
+                    Warteliste
+                    <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
+                  </label>
                   <div className="toggle-wrapper" style={{ marginTop: 8 }}>
                     <label className="toggle">
                       <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
@@ -458,6 +580,129 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      {/* Email-Verteiler Modal */}
+      {showEmailModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowEmailModal(false)}>
+          <div
+            className="card"
+            style={{ width: '90%', maxWidth: 600, maxHeight: '80vh', overflow: 'auto', padding: 24 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0 }}>
+                <Users size={18} /> Zielgruppe prüfen
+              </h3>
+              <button
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
+                onClick={() => setShowEmailModal(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', fontSize: '0.85rem' }}>
+              <div style={{ marginBottom: 6 }}>
+                <strong>Standort-Filter:</strong>{' '}
+                {locationFilter ? locationFilter.split(',').map(s => s.trim()).map(s => (
+                  <span key={s} className="badge badge-green" style={{ marginRight: 6 }}>{s}</span>
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <strong>Zielgruppen-Filter:</strong>{' '}
+                {audience ? audience.split(',').map(s => s.trim()).map(s => (
+                  <span key={s} className="badge badge-orange" style={{ marginRight: 6 }}>{s}</span>
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+              </div>
+              {locationFilter && audience && (
+                <div>
+                  <strong>Verknüpfung:</strong>{' '}
+                  <span className={`badge ${filterMode === 'AND' ? 'badge-red' : 'badge-green'}`}>
+                    {filterMode === 'AND' ? 'UND (beide müssen zutreffen)' : 'ODER (eines reicht)'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">User suchen (Name oder E-Mail)</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="form-input"
+                  value={emailSearch}
+                  onChange={e => setEmailSearch(e.target.value)}
+                  placeholder="z.B. Max Mustermann oder mmustermann@"
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && emailSearch.length >= 2) {
+                      setIsSearchingEmails(true);
+                      const results = await searchUsers(emailSearch);
+                      setEmailSearchResults(results);
+                      setIsSearchingEmails(false);
+                    }
+                  }}
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ whiteSpace: 'nowrap' }}
+                  disabled={emailSearch.length < 2 || isSearchingEmails}
+                  onClick={async () => {
+                    setIsSearchingEmails(true);
+                    const results = await searchUsers(emailSearch);
+                    setEmailSearchResults(results);
+                    setIsSearchingEmails(false);
+                  }}
+                >
+                  {isSearchingEmails ? '...' : 'Suchen'}
+                </button>
+              </div>
+            </div>
+
+            {emailSearchResults.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                  {emailSearchResults.length} Ergebnis{emailSearchResults.length !== 1 ? 'se' : ''}:
+                </p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                      <th style={{ textAlign: 'left', padding: 6 }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>E-Mail</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>Standort</th>
+                      <th style={{ textAlign: 'center', padding: 6 }}>Sichtbar?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailSearchResults.map(u => {
+                      const filters = locationFilter ? locationFilter.split(',').map(s => s.trim().toLowerCase()) : [];
+                      const isAll = filters.length === 0 || filters.indexOf('all') >= 0;
+                      const loc = (u.location || '').toLowerCase();
+                      const visible = isAll || filters.some(f => {
+                        const norm = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
+                        return loc.indexOf(f) >= 0 || loc.indexOf(norm) >= 0;
+                      });
+                      return (
+                        <tr key={u.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 6 }}>{u.displayName}</td>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{u.email}</td>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-500)' }}>{u.location || '-'}</td>
+                          <td style={{ padding: 6, textAlign: 'center' }}>
+                            {visible
+                              ? <span style={{ color: '#22c55e', fontWeight: 600 }}>&#10003;</span>
+                              : <span style={{ color: '#ef4444', fontWeight: 500 }}>&mdash;</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

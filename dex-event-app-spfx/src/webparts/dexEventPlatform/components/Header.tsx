@@ -15,7 +15,7 @@ import { ChevronLeft, Settings, Mail } from './Icons';
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack } = useNavigation();
   const { currentUser } = useCurrentUser();
-  const { currentUserRole, isSuperAdmin } = useRoles();
+  const { currentUserRole, isAdmin } = useRoles();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
 
@@ -37,8 +37,8 @@ export default function Header(): React.ReactElement {
 
   // Rollen-Farbe
   const roleColors: Record<string, { bg: string; color: string }> = {
-    'SuperAdmin': { bg: '#e8f5e9', color: '#2e7d32' },
-    'EventAdmin': { bg: '#e3f2fd', color: '#1565c0' },
+    'Admin': { bg: '#e8f5e9', color: '#2e7d32' },
+    'Organizer': { bg: '#e3f2fd', color: '#1565c0' },
     'User': { bg: '#f5f5f5', color: '#666' },
   };
   const rc = roleColors[currentUserRole] || roleColors['User'];
@@ -130,7 +130,7 @@ export default function Header(): React.ReactElement {
                 >
                   View full profile
                 </button>
-                {isSuperAdmin && (
+                {isAdmin && (
                   <button
                     className="btn btn-primary btn-block"
                     style={{ fontSize: '0.85rem' }}
