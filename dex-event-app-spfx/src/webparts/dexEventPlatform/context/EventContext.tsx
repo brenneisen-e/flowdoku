@@ -200,10 +200,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function deleteEvent(eventId: string): Promise<boolean> {
     const success = await eventService.deleteEvent(Number(eventId));
-    if (success) {
-      delete subsiteMap.current[eventId];
-      await loadEvents();
-    }
+    delete subsiteMap.current[eventId];
+    // Events immer neu laden, auch wenn Subsite-Loeschung fehlschlug
+    await loadEvents();
     return success;
   }
 
