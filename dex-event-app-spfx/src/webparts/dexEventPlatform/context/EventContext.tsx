@@ -69,6 +69,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function initEvents(): Promise<void> {
     await eventService.ensureEventsList();
     await eventService.ensureEmailsList();
+    await eventService.ensureAssetsFolders();
     await loadEvents();
     setIsEventsLoading(false);
   }
