@@ -205,7 +205,7 @@
     .landing__orb {
       width: clamp(100px, 18vh, 200px); height: clamp(100px, 18vh, 200px); border-radius: 50%;
       background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
-      display: flex; align-items: center; justify-content: center;
+      display: flex; align-items: center; justify-content: center; user-select: none; cursor: default;
       animation: orbSpin 3s linear infinite, orbPulse 4s ease-in-out infinite, orbGlow 6s ease-in-out infinite;
       filter: blur(0px);
       position: relative;
