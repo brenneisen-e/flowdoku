@@ -39,7 +39,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { events, getAllRegistrations, deleteEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { isSuperAdmin, siteUrl } = useRoles();
+  const { isAdmin, siteUrl } = useRoles();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
@@ -47,7 +47,7 @@ export default function AdminPage(): React.ReactElement {
   const [isDeleting, setIsDeleting] = React.useState(false);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine
-  const adminEvents = isSuperAdmin
+  const adminEvents = isAdmin
     ? events
     : events.filter(e => e.organizers.some(o => o.toLowerCase().includes(currentUser.surname.toLowerCase())));
 

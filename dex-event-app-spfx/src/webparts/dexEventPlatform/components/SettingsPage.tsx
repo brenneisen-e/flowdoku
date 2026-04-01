@@ -1,6 +1,6 @@
 /**
  * Settings-Seite
- * Zeigt User-Infos, Rollenmanagement (SuperAdmin), Admin-Aktionen und Download-Link.
+ * Zeigt User-Infos, Rollenmanagement (Admin), Admin-Aktionen und Download-Link.
  */
 
 import * as React from 'react';
@@ -14,13 +14,13 @@ export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, currentUserRole, isSuperAdmin, canCreateEvents,
+    roles, currentUserRole, isAdmin, canCreateEvents,
     addRole, updateRole, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
-  const [newRole, setNewRole] = React.useState<UserRole>('EventAdmin');
+  const [newRole, setNewRole] = React.useState<UserRole>('Organizer');
   const [newLocation, setNewLocation] = React.useState('');
   const [isAdding, setIsAdding] = React.useState(false);
   const [showAddForm, setShowAddForm] = React.useState(false);
@@ -102,8 +102,8 @@ export default function SettingsPage(): React.ReactElement {
   // Rollen-Badge Farbe
   const roleBadge = (role: string): React.ReactElement => {
     const colors: Record<string, { bg: string; color: string }> = {
-      'SuperAdmin': { bg: '#e8f5e9', color: '#2e7d32' },
-      'EventAdmin': { bg: '#e3f2fd', color: '#1565c0' },
+      'Admin': { bg: '#e8f5e9', color: '#2e7d32' },
+      'Organizer': { bg: '#e3f2fd', color: '#1565c0' },
       'User': { bg: '#f5f5f5', color: '#666' },
     };
     const c = colors[role] || colors['User'];
@@ -144,7 +144,7 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Admin Actions - sichtbar fuer EventAdmin und SuperAdmin */}
+        {/* Admin Actions - sichtbar fuer Organizer und Admin */}
         {canCreateEvents && (
           <div className="card">
             <h3 className="mb-16">Admin Actions</h3>
@@ -158,7 +158,7 @@ export default function SettingsPage(): React.ReactElement {
               <button className="btn btn-secondary btn-block mt-8">
                 <Users size={18} /> Extract Mail Addresses
               </button>
-              {isSuperAdmin && (
+              {isAdmin && (
                 <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('role-matrix')}>
                   <FileText size={18} /> Rollen-Matrix anzeigen
                 </button>
@@ -167,8 +167,8 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         )}
 
-        {/* Rollenmanagement - nur fuer SuperAdmin */}
-        {isSuperAdmin && (
+        {/* Rollenmanagement - nur fuer Admin */}
+        {isAdmin && (
           <div className="card">
             <h3 className="mb-16">Role Management</h3>
             <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 16 }}>
@@ -224,8 +224,8 @@ export default function SettingsPage(): React.ReactElement {
                             }}
                             disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
                           >
-                            <option value="SuperAdmin">SuperAdmin</option>
-                            <option value="EventAdmin">EventAdmin</option>
+                            <option value="Admin">Admin</option>
+                            <option value="Organizer">Organizer</option>
                             <option value="User">User</option>
                           </select>
                         </td>
@@ -367,8 +367,8 @@ export default function SettingsPage(): React.ReactElement {
                     onChange={e => setNewRole(e.target.value as UserRole)}
                     style={{ fontSize: '0.85rem', maxWidth: 200 }}
                   >
-                    <option value="EventAdmin">EventAdmin</option>
-                    <option value="SuperAdmin">SuperAdmin</option>
+                    <option value="Organizer">Organizer</option>
+                    <option value="Admin">Admin</option>
                   </select>
                 </div>
 

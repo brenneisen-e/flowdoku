@@ -33,6 +33,7 @@ export interface EventSpecificField {
   required: boolean;
   options?: string[];
   helpText?: string;
+  spInternalName?: string;
 }
 
 export interface Registration {
@@ -50,7 +51,7 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
-export type UserRole = 'SuperAdmin' | 'EventAdmin' | 'User';
+export type UserRole = 'Admin' | 'Organizer' | 'User';
 
 export interface User {
   id: string;

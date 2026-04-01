@@ -121,6 +121,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         required: cf.required,
         options: cf.options,
         helpText: '',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spInternalName: (cf as any).spInternalName || '',
       })),
     };
   }
@@ -156,13 +158,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status = 'Warteliste';
     }
 
+    // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
+    const fieldMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const spName = (f as any).spInternalName;
+        if (spName) fieldMap[f.id] = spName;
+      }
+    }
+
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      // Bestehende Zeile reaktivieren statt neuen Eintrag erstellen
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, nameToUse, customData, status, fieldMap);
     } else {
       success = await eventService.registerForEvent(
-        subsiteUrl, nameToUse, emailToUse, customData, status
+        subsiteUrl, nameToUse, emailToUse, customData, status, fieldMap
       );
     }
 

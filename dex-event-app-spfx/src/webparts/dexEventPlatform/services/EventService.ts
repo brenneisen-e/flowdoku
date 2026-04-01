@@ -336,6 +336,16 @@ export class EventService {
       // 2. Teilnehmerliste auf der Subsite erstellen
       await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
 
+      // FieldMap aus createRegistrationList auslesen
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fieldMap: Record<string, string> = (this as any)._lastFieldMap || {};
+
+      // Custom Fields mit SP InternalName anreichern
+      const enrichedCustomFields = event.customFields.map(cf => ({
+        ...cf,
+        spInternalName: fieldMap[cf.id] || '',
+      }));
+
       // 3. Event in DEX_Events eintragen
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
@@ -356,7 +366,7 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
-        'CustomFields': JSON.stringify(event.customFields),
+        'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
@@ -557,12 +567,11 @@ export class EventService {
       await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, payload);
     }
 
-    // Custom Fields als eigene Spalten anlegen
+    // Custom Fields als eigene Spalten anlegen + InternalName merken
     const customFieldViewNames: string[] = [];
+    const fieldMap: Record<string, string> = {}; // cf.id -> SP InternalName
     for (const cf of customFields) {
       if (!cf.label) continue;
-      // Interner Spaltenname: sanitized Label (max 32 Zeichen, keine Sonderzeichen)
-      const internalName = cf.id.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 32);
       let fieldPayload: Record<string, unknown>;
 
       if (cf.type === 'select' && cf.options && cf.options.length > 0) {
@@ -597,12 +606,25 @@ export class EventService {
       }
 
       try {
-        await this._post(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, fieldPayload);
-        customFieldViewNames.push(cf.label);
+        const fieldResponse = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`,
+          fieldPayload
+        );
+        if (fieldResponse.ok) {
+          const fieldResult = await fieldResponse.json();
+          const internalName = fieldResult.d?.InternalName || fieldResult.InternalName || cf.label;
+          fieldMap[cf.id] = internalName;
+          customFieldViewNames.push(internalName);
+        }
       } catch {
         console.warn('[DEX] Custom Field konnte nicht angelegt werden:', cf.label);
       }
     }
+
+    // FieldMap auf der Subsite speichern (als Property Bag oder in einem Hidden Field)
+    // Wir speichern die Map spaeter im CustomFields JSON des Events
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any)._lastFieldMap = fieldMap;
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
@@ -712,10 +734,12 @@ export class EventService {
     participantName: string,
     participantEmail: string,
     customData: Record<string, string>,
-    status: string = 'Angemeldet'
+    status: string = 'Angemeldet',
+    customFieldMap?: Record<string, string> // cf.id -> SP InternalName
   ): Promise<boolean> {
     try {
-      const payload = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
         'ParticipantName': participantName,
@@ -724,6 +748,17 @@ export class EventService {
         'RegistrationDate': new Date().toISOString(),
         'CustomData': JSON.stringify(customData),
       };
+
+      // Custom Field Werte in die echten SP-Spalten schreiben
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            payload[spFieldName] = customData[cfId];
+          }
+        }
+      }
 
       const response = await this._post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
@@ -745,9 +780,30 @@ export class EventService {
     itemId: number,
     participantName: string,
     customData: Record<string, string>,
-    status: string = 'Angemeldet'
+    status: string = 'Angemeldet',
+    customFieldMap?: Record<string, string>
   ): Promise<boolean> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'ParticipantName': participantName,
+        'Status': status,
+        'RegistrationDate': new Date().toISOString(),
+        'CancellationDate': null,
+        'CustomData': JSON.stringify(customData),
+      };
+
+      if (customFieldMap) {
+        for (const cfId of Object.keys(customData)) {
+          if (cfId === 'salutation') continue;
+          const spFieldName = customFieldMap[cfId];
+          if (spFieldName && customData[cfId]) {
+            body[spFieldName] = customData[cfId];
+          }
+        }
+      }
+
       const response = await this.context.spHttpClient.post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         SPHttpClient.configurations.v1,
@@ -758,14 +814,7 @@ export class EventService {
             'IF-MATCH': '*',
             'X-HTTP-Method': 'MERGE',
           },
-          body: JSON.stringify({
-            '__metadata': { 'type': REG_LIST_ITEM_TYPE },
-            'ParticipantName': participantName,
-            'Status': status,
-            'RegistrationDate': new Date().toISOString(),
-            'CancellationDate': null,
-            'CustomData': JSON.stringify(customData),
-          }),
+          body: JSON.stringify(body),
         }
       );
       return response.ok;

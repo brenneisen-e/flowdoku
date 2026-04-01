@@ -2,7 +2,9 @@
  * Role Context - Rollenverwaltung ueber SharePoint-Liste
  *
  * Erstellt beim ersten Start automatisch die DEX_Roles-Liste
- * auf dem SharePoint. SuperAdmins koennen andere User berechtigen.
+ * auf dem SharePoint. Admins koennen andere User berechtigen.
+ *
+ * Rollen: Admin (ehem. SuperAdmin), Organizer (ehem. EventAdmin), User
  *
  * - Eike, Maerz 2026
  */
@@ -16,8 +18,8 @@ interface RoleContextType {
   roles: RoleAssignment[];
   currentUserRole: UserRole;
   isRolesLoading: boolean;
-  isSuperAdmin: boolean;
-  isEventAdmin: boolean;
+  isAdmin: boolean;
+  isOrganizer: boolean;
   canCreateEvents: boolean;
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
@@ -26,6 +28,14 @@ interface RoleContextType {
   refreshRoles: () => Promise<void>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string } | null>;
   searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string }>>;
+}
+
+// Migration: alte SP-Werte auf neue mappen
+function migrateRole(spRole: string): UserRole {
+  if (spRole === 'SuperAdmin') return 'Admin';
+  if (spRole === 'EventAdmin') return 'Organizer';
+  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
+  return 'User';
 }
 
 const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
@@ -39,55 +49,46 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
 
-  // Rollen-Liste erstellen und laden beim Start
   React.useEffect(() => {
     initRoles().catch(() => setIsRolesLoading(false));
   }, []);
 
   async function initRoles(): Promise<void> {
-    // Liste automatisch erstellen falls noetig
     await spService.ensureRolesList();
-
-    // Rollen laden
     const spRoles = await spService.getRoles();
 
-    // Pruefen ob aktueller User schon in der Liste ist
     const myRole = spRoles.find(
       r => r.Title && r.Title.toLowerCase() === currentUserEmail.toLowerCase()
     );
 
     if (spRoles.length === 0) {
-      // Erste Ausfuehrung: aktuellen User als SuperAdmin eintragen
-      await spService.addRole(
-        currentUserEmail,
-        currentUserName,
-        'SuperAdmin',
-        '',
-        'System (Erstinstallation)'
-      );
-      setCurrentUserRole('SuperAdmin');
+      // Erste Ausfuehrung: aktuellen User als Admin eintragen
+      await spService.addRole(currentUserEmail, currentUserName, 'Admin', '', 'System (Erstinstallation)');
+      setCurrentUserRole('Admin');
       setRoles([{
-        id: 0,
-        userEmail: currentUserEmail,
-        userName: currentUserName,
-        role: 'SuperAdmin',
-        location: '',
-        assignedBy: 'System (Erstinstallation)',
+        id: 0, userEmail: currentUserEmail, userName: currentUserName,
+        role: 'Admin', location: '', assignedBy: 'System (Erstinstallation)',
         assignedDate: new Date().toISOString(),
       }]);
     } else {
-      // Rollen in App-Format umwandeln
       const mapped: RoleAssignment[] = spRoles.map(r => ({
         id: r.Id,
         userEmail: r.Title || '',
         userName: r.UserName || '',
-        role: (r.Role as UserRole) || 'User',
+        role: migrateRole(r.Role),
         location: r.UserLocation || '',
         assignedBy: r.AssignedBy || '',
         assignedDate: r.AssignedDate || '',
       }));
       setRoles(mapped);
-      setCurrentUserRole(myRole ? (myRole.Role as UserRole) : 'User');
+      setCurrentUserRole(myRole ? migrateRole(myRole.Role) : 'User');
+
+      // Alte Werte in SP migrieren (im Hintergrund)
+      for (const r of spRoles) {
+        if (r.Role === 'SuperAdmin' || r.Role === 'EventAdmin') {
+          spService.updateRole(r.Id, migrateRole(r.Role)).catch(() => {});
+        }
+      }
     }
 
     setIsRolesLoading(false);
@@ -96,20 +97,15 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   async function refreshRoles(): Promise<void> {
     const spRoles = await spService.getRoles();
     const mapped: RoleAssignment[] = spRoles.map(r => ({
-      id: r.Id,
-      userEmail: r.Title || '',
-      userName: r.UserName || '',
-      role: (r.Role as UserRole) || 'User',
-      location: r.UserLocation || '',
-      assignedBy: r.AssignedBy || '',
-      assignedDate: r.AssignedDate || '',
+      id: r.Id, userEmail: r.Title || '', userName: r.UserName || '',
+      role: migrateRole(r.Role), location: r.UserLocation || '',
+      assignedBy: r.AssignedBy || '', assignedDate: r.AssignedDate || '',
     }));
     setRoles(mapped);
-
     const myRole = spRoles.find(
       r => r.Title && r.Title.toLowerCase() === currentUserEmail.toLowerCase()
     );
-    setCurrentUserRole(myRole ? (myRole.Role as UserRole) : 'User');
+    setCurrentUserRole(myRole ? migrateRole(myRole.Role) : 'User');
   }
 
   async function addRole(
@@ -117,13 +113,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   ): Promise<boolean> {
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
-      // SP-Berechtigungen setzen je nach Rolle
-      if (role === 'SuperAdmin') {
-        // SuperAdmin: Full Control auf beide Listen
+      if (role === 'Admin') {
         await spService.grantFullControlOnRolesList(userEmail);
         await spService.grantFullControlOnEventsList(userEmail);
-      } else if (role === 'EventAdmin') {
-        // EventAdmin: Read auf Roles, Full Control auf Events
+      } else if (role === 'Organizer') {
         await spService.grantReadOnRolesList(userEmail);
         await spService.grantFullControlOnEventsList(userEmail);
       }
@@ -133,14 +126,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }
 
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
-    // Alten User finden fuer Berechtigungsaenderung
     const oldRole = roles.find(r => r.id === itemId);
     const success = await spService.updateRole(itemId, newRole);
     if (success && oldRole) {
-      if (newRole === 'SuperAdmin') {
+      if (newRole === 'Admin') {
         await spService.grantFullControlOnRolesList(oldRole.userEmail);
         await spService.grantFullControlOnEventsList(oldRole.userEmail);
-      } else if (newRole === 'EventAdmin') {
+      } else if (newRole === 'Organizer') {
         await spService.grantReadOnRolesList(oldRole.userEmail);
         await spService.grantFullControlOnEventsList(oldRole.userEmail);
       } else if (newRole === 'User') {
@@ -156,10 +148,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const roleEntry = roles.find(r => r.id === itemId);
     const success = await spService.deleteRole(itemId);
     if (success) {
-      // Erst UI aktualisieren, dann Berechtigungen im Hintergrund entziehen
       await refreshRoles();
       if (roleEntry) {
-        // Non-blocking: Berechtigungen entziehen ohne auf Ergebnis zu warten
         spService.revokeAccessOnRolesList(roleEntry.userEmail).catch(() => {});
         spService.revokeAccessOnEventsList(roleEntry.userEmail).catch(() => {});
       }
@@ -175,9 +165,9 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.searchUsers(query);
   }
 
-  const isSuperAdmin = currentUserRole === 'SuperAdmin';
-  const isEventAdmin = currentUserRole === 'EventAdmin' || currentUserRole === 'SuperAdmin';
-  const canCreateEvents = isEventAdmin;
+  const isAdmin = currentUserRole === 'Admin';
+  const isOrganizer = currentUserRole === 'Organizer' || currentUserRole === 'Admin';
+  const canCreateEvents = isOrganizer;
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
   return React.createElement(
@@ -185,7 +175,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     {
       value: {
         roles, currentUserRole, isRolesLoading,
-        isSuperAdmin, isEventAdmin, canCreateEvents, siteUrl,
+        isAdmin, isOrganizer, canCreateEvents, siteUrl,
         addRole, updateRole, removeRole, refreshRoles, searchUser, searchUsers,
       },
     },

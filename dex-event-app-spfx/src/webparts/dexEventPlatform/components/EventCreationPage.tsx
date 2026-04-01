@@ -1,5 +1,5 @@
 /**
- * Event-Erstellung (nur fuer EventAdmin / SuperAdmin)
+ * Event-Erstellung (nur fuer Organizer / SuperAdmin)
  *
  * Erstellt ein Event in der DEX_Events-Liste und eine
  * separate Teilnehmerliste mit Item-Level Permissions.

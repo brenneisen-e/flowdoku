@@ -2,7 +2,7 @@
  * Rollen-Matrix - Uebersicht aller Berechtigungen pro Rolle
  *
  * Zeigt eine Tabelle mit allen Funktionen und welche Rolle Zugriff hat.
- * Nur fuer SuperAdmin zugaenglich.
+ * Nur fuer Admin zugaenglich.
  */
 
 import * as React from 'react';
@@ -99,12 +99,12 @@ export default function RoleMatrixPage(): React.ReactElement {
                 </th>
                 <th style={{ ...thStyle, textAlign: 'center', width: '20%' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                    <span style={roleBadgeStyle('#f59e0b')}>EventAdmin</span>
+                    <span style={roleBadgeStyle('#f59e0b')}>Organizer</span>
                   </div>
                 </th>
                 <th style={{ ...thStyle, textAlign: 'center', width: '20%' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                    <span style={roleBadgeStyle('#86efac')}>SuperAdmin</span>
+                    <span style={roleBadgeStyle('#86efac')}>Admin</span>
                   </div>
                 </th>
               </tr>

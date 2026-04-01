@@ -82,7 +82,7 @@ export class SharePointService {
         'Title': 'Role',
         'FieldTypeKind': 6, // Choice
         'Required': true,
-        'Choices': { 'results': ['SuperAdmin', 'EventAdmin', 'User'] },
+        'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
       },
       {
         '__metadata': { 'type': 'SP.Field' },

@@ -48,8 +48,8 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
 
   // Rollen-Farbe
   const roleColors: Record<string, { bg: string; color: string }> = {
-    'SuperAdmin': { bg: '#e8f5e9', color: '#2e7d32' },
-    'EventAdmin': { bg: '#e3f2fd', color: '#1565c0' },
+    'Admin': { bg: '#e8f5e9', color: '#2e7d32' },
+    'Organizer': { bg: '#e3f2fd', color: '#1565c0' },
     'User': { bg: '#f5f5f5', color: '#666' },
   };
   const rc = roleColors[currentUserRole] || roleColors['User'];
