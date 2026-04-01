@@ -120,14 +120,13 @@ export default function AdminPage(): React.ReactElement {
                     <button
                       className={`btn ${deletingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
                       style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         if (deletingId === event.id) {
                           setIsDeleting(true);
-                          deleteEvent(event.id).then(() => {
-                            setDeletingId(null);
-                            setIsDeleting(false);
-                          });
+                          await deleteEvent(event.id);
+                          setDeletingId(null);
+                          setIsDeleting(false);
                         } else {
                           setDeletingId(event.id);
                         }
