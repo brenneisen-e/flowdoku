@@ -44,6 +44,7 @@ export interface SPEvent {
   Organizer: string;
   OrganizerEmail: string;
   OutlookEventId: string;
+  CalendarLink: string;
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -237,6 +238,89 @@ export class EventService {
     }
   }
 
+  // ==================== DEX_Outlook Liste ====================
+
+  /**
+   * Outlook-Termin-Queue-Liste erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Eintraege und laedt Teilnehmer
+   * zum Outlook-Termin ein oder aus. Der Flow holt sich alle Event-Details
+   * (Titel, Datum, Ort, CalendarLink) aus der DEX_Events-Liste via EventId.
+   *
+   * Spalten:
+   * - Title: Kurzbeschreibung (z.B. "Einladung: B2Run")
+   * - Attendee: E-Mail-Adresse des Teilnehmers
+   * - EventId: ID des Events in DEX_Events (Referenz)
+   * - ActionType: Einladen, Ausladen
+   * - Status: Pending, Sent, Failed
+   * - SentDate: Wann wurde die Aktion ausgefuehrt
+   */
+  public async ensureOutlookList(): Promise<void> {
+    const listName = 'DEX_Outlook';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Outlook-Termin-Queue: Power Automate laedt Teilnehmer ein/aus',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'Attendee', type: 2 },
+      { title: 'EventId', type: 2 },
+      { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
+      { title: 'SentDate', type: 4 },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) {
+        payload['Choices'] = { 'results': f.choices };
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'Attendee', 'EventId', 'ActionType', 'Status', 'SentDate',
+    ]);
+  }
+
+  /**
+   * Outlook-Termin-Einladung in die Queue eintragen.
+   * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
+   */
+  public async queueOutlookEvent(
+    attendee: string,
+    eventId: string,
+    eventTitle: string,
+    actionType: 'Einladen' | 'Ausladen'
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+          'Title': `${actionType}: ${eventTitle}`,
+          'Attendee': attendee,
+          'EventId': eventId,
+          'ActionType': actionType,
+          'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== DEX_Events Liste ====================
 
   /**
@@ -323,6 +407,7 @@ export class EventService {
       { title: 'Organizer', type: 2 },
       { title: 'OrganizerEmail', type: 2 },
       { title: 'OutlookEventId', type: 2 },
+      { title: 'CalendarLink', type: 2 },
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -428,7 +513,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
