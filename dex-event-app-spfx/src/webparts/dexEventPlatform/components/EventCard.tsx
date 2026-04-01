@@ -46,7 +46,11 @@ export default function EventCard({ event, index }: Props): React.ReactElement {
 
   return (
     <div className="event-card" onClick={() => navigate('registration', event.id)}>
-      <div className="event-card__image" style={{ background: getEventGradient(event.type, index) }}>
+      <div className="event-card__image" style={{
+        background: event.imageUrl
+          ? `url(${event.imageUrl}) center/cover no-repeat`
+          : getEventGradient(event.type, index),
+      }}>
         <button
           className="event-card__info-btn"
           onClick={(e: React.MouseEvent) => {

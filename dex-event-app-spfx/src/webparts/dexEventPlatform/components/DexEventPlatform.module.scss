@@ -263,7 +263,7 @@
     }
     .event-card:hover { box-shadow: var(--dex-shadow-hover); transform: translateY(-2px); }
     .event-card__image {
-      position: relative; height: 240px; display: flex; flex-direction: column;
+      position: relative; height: 320px; display: flex; flex-direction: column;
       justify-content: flex-end; overflow: hidden;
     }
     .event-card__info-btn {

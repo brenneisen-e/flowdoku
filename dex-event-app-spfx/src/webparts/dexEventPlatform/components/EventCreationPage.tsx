@@ -168,6 +168,7 @@ export default function EventCreationPage(): React.ReactElement {
         if (ctx) {
           const svc = new EventService(ctx);
           const uploadedUrl = await svc.uploadEventImage(imageFile, title);
+          console.log('[DEX] Bild-Upload Ergebnis:', uploadedUrl);
           if (uploadedUrl) imageUrl = uploadedUrl;
         }
       } catch {
