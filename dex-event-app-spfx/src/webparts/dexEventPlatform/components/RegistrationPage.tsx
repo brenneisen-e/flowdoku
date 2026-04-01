@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Info, Trash2, Send } from './Icons';
 
