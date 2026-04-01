@@ -229,7 +229,8 @@ export default function SettingsPage(): React.ReactElement {
                         <td style={{ padding: 10 }}>
                           <input
                             className="form-input"
-                            value={r.location || ''}
+                            key={`loc-${r.id}-${r.location}`}
+                            defaultValue={r.location || ''}
                             style={{ fontSize: '0.85rem', padding: '4px 8px', width: '100%', minWidth: 120 }}
                             placeholder="Standort"
                             onBlur={async (e) => {
@@ -237,11 +238,6 @@ export default function SettingsPage(): React.ReactElement {
                               if (newLoc !== (r.location || '')) {
                                 await updateRoleLocation(r.id, newLoc);
                               }
-                            }}
-                            onChange={(e) => {
-                              // Lokales Update fuer sofortige Anzeige
-                              const input = e.target;
-                              input.value = e.target.value;
                             }}
                           />
                         </td>
