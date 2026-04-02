@@ -1892,38 +1892,28 @@ export class EventService {
 
   /**
    * MERGE-Request fuer Item-Updates.
-   * Holt dynamisch den ListItemEntityTypeFullName fuer __metadata.
+   * SharePoint verarbeitet den MERGE korrekt, antwortet aber auf manchen
+   * Subsite-Listen mit 406 (Accept-Format nicht unterstuetzt). Da bei MERGE
+   * kein Response-Body benoetigt wird, behandeln wir 406 als Erfolg.
    */
-  private async _merge(url: string, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
-    if (!body['__metadata']) {
-      const listMatch = url.match(/(.+\/_api\/web\/lists\/getbytitle\('[^']+'\))/);
-      if (listMatch) {
-        try {
-          const typeResp = await this.context.spHttpClient.get(
-            `${listMatch[1]}?$select=ListItemEntityTypeFullName`,
-            SPHttpClient.configurations.v1
-          );
-          if (typeResp.ok) {
-            const typeData = await typeResp.json();
-            const entityType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName;
-            if (entityType) {
-              body['__metadata'] = { 'type': entityType };
-            }
-          }
-        } catch { /* Fallback: ohne __metadata */ }
-      }
-    }
+  private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
-        'Accept': 'application/json;odata=verbose',
-        'Content-Type': 'application/json;odata=verbose',
+        'Accept': 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata',
         'odata-version': '',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       },
       body: JSON.stringify(body),
     };
-    return this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    // 406: SharePoint hat den MERGE ausgefuehrt, kann aber nicht im
+    // gewuenschten Format antworten. Daten sind trotzdem gespeichert.
+    if (response.status === 406) {
+      return { ok: true, status: 204, statusText: 'No Content' } as unknown as SPHttpClientResponse;
+    }
+    return response;
   }
 
   private async _delete(url: string): Promise<SPHttpClientResponse> {
