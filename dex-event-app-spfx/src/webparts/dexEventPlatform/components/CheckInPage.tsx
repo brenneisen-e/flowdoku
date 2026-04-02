@@ -72,6 +72,8 @@ export default function CheckInPage(): React.ReactElement {
     return map;
   }, [events]);
 
+  const lastScannedRef = React.useRef<string>('');
+
   // html5-qrcode Scanner starten
   const startCamera = async (): Promise<void> => {
     setCameraError('');
@@ -82,15 +84,12 @@ export default function CheckInPage(): React.ReactElement {
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText) => {
-          // Erfolgreich gescannt — pausieren, verarbeiten, dann weiterscannen
-          try {
-            await scanner.pause();
-          } catch { /* */ }
+          // Gleichen Code nicht doppelt verarbeiten
+          if (decodedText === lastScannedRef.current) return;
+          lastScannedRef.current = decodedText;
           await processCode(decodedText);
-          // Nach 2 Sekunden weiterscannen
-          setTimeout(() => {
-            try { scanner.resume(); } catch { /* */ }
-          }, 2000);
+          // Nach 3 Sekunden wieder fuer den gleichen Code offen sein
+          setTimeout(() => { lastScannedRef.current = ''; }, 3000);
         },
         () => { /* ignore scan failures */ }
       );
