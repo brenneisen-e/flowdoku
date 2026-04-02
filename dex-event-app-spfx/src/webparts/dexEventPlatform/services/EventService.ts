@@ -1891,10 +1891,11 @@ export class EventService {
   }
 
   /**
-   * MERGE-Request ohne __metadata (fuer Subsite-Listen wo der ListItemType unbekannt ist)
+   * MERGE-Request: nutzt gleiche Header wie _post (odata=verbose + odata-version),
+   * holt dynamisch den ListItemEntityTypeFullName fuer __metadata.
    */
   private async _merge(url: string, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
-    // Dynamisch ListItemEntityTypeFullName ermitteln fuer odata=verbose
+    // Dynamisch ListItemEntityTypeFullName ermitteln
     if (!body['__metadata']) {
       const listMatch = url.match(/(.+\/_api\/web\/lists\/getbytitle\('[^']+'\))/);
       if (listMatch) {
@@ -1917,6 +1918,7 @@ export class EventService {
       headers: {
         'Accept': 'application/json;odata=verbose',
         'Content-Type': 'application/json;odata=verbose',
+        'odata-version': '',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       },
