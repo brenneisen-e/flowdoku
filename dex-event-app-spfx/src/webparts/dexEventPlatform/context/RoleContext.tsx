@@ -119,7 +119,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         await spService.grantFullControlOnEventsList(userEmail);
       } else if (role === 'Organizer') {
         await spService.grantReadOnRolesList(userEmail);
-        await spService.grantFullControlOnEventsList(userEmail);
+        await spService.grantContributeOnEventsList(userEmail);
       }
       await refreshRoles();
     }
@@ -135,7 +135,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         await spService.grantFullControlOnEventsList(oldRole.userEmail);
       } else if (newRole === 'Organizer') {
         await spService.grantReadOnRolesList(oldRole.userEmail);
-        await spService.grantFullControlOnEventsList(oldRole.userEmail);
+        await spService.grantContributeOnEventsList(oldRole.userEmail);
       } else if (newRole === 'User') {
         await spService.revokeAccessOnRolesList(oldRole.userEmail);
         await spService.revokeAccessOnEventsList(oldRole.userEmail);

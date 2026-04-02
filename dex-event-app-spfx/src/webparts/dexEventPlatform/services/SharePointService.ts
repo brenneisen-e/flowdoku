@@ -309,6 +309,24 @@ export class SharePointService {
   }
 
   /**
+   * Einem User Contribute-Rechte auf die DEX_Events-Liste geben (fuer Organizer).
+   */
+  public async grantContributeOnEventsList(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+      await this.ensureListHasUniquePermissions('DEX_Events');
+      // Contribute = 1073741827
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741827)`,
+        {}
+      );
+    } catch (e) {
+      console.error('[DEX] grantContributeOnEventsList Error:', e);
+    }
+  }
+
+  /**
    * Einem User die Berechtigung auf die DEX_Events-Liste entziehen.
    */
   public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
