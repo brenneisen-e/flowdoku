@@ -557,7 +557,6 @@ export class EventService {
         await this._merge(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${existing.Id})`,
           {
-            '__metadata': { 'type': 'SP.Data.DEX_x005f_ParticipantsListItem' },
             'Vorname': vorname,
             'Nachname': nachname,
             'EventRegistered': registered.join(','),
@@ -598,7 +597,6 @@ export class EventService {
       await this._merge(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${existing.Id})`,
         {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_ParticipantsListItem' },
           'EventRegistered': registered.join(','),
           'EventOnWaitlist': waitlist.join(','),
         }
@@ -1464,7 +1462,6 @@ export class EventService {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
-        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Vorname': firstName,
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
@@ -1524,7 +1521,6 @@ export class EventService {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
-        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'CustomData': JSON.stringify(customData),
         'LastModifiedDate': new Date().toISOString(),
       };
@@ -1619,7 +1615,6 @@ export class EventService {
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         {
-          '__metadata': { 'type': REG_LIST_ITEM_TYPE },
           'Status': 'Abgemeldet',
           'CancellationDate': new Date().toISOString(),
           'TeilnehmerID': null,
@@ -1641,7 +1636,7 @@ export class EventService {
     try {
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { '__metadata': { 'type': REG_LIST_ITEM_TYPE }, 'Status': 'Eingecheckt' }
+        { 'Status': 'Eingecheckt' }
       );
       return response.ok;
     } catch {
@@ -1659,7 +1654,7 @@ export class EventService {
     try {
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { '__metadata': { 'type': REG_LIST_ITEM_TYPE }, 'Status': 'Angemeldet' }
+        { 'Status': 'Angemeldet' }
       );
       return response.ok;
     } catch {
@@ -1677,7 +1672,7 @@ export class EventService {
     try {
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { '__metadata': { 'type': REG_LIST_ITEM_TYPE }, 'Status': 'QR versendet' }
+        { 'Status': 'QR versendet' }
       );
       return response.ok;
     } catch {
@@ -1742,7 +1737,7 @@ export class EventService {
     try {
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { '__metadata': { 'type': REG_LIST_ITEM_TYPE }, 'Title': newTitle }
+        { 'Title': newTitle }
       );
       return response.ok;
     } catch {
@@ -1901,8 +1896,8 @@ export class EventService {
   private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
-        'Accept': 'application/json;odata=verbose',
-        'Content-Type': 'application/json;odata=verbose',
+        'Accept': 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       },
