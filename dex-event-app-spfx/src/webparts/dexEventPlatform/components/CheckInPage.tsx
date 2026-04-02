@@ -28,6 +28,7 @@ export default function CheckInPage(): React.ReactElement {
   const [isScanning, setIsScanning] = React.useState(false);
   const [cameraError, setCameraError] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
+  const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
     name: string; email: string; event: { subsiteUrl: string; title: string };
     regId: number; status: string; department?: string; jobTitle?: string; photoUrl?: string;
@@ -232,6 +233,10 @@ export default function CheckInPage(): React.ReactElement {
     setResultMessage('');
     setResultType('');
     setIsProcessing(false);
+    // Zum Bestätigungs-Dialog scrollen
+    setTimeout(() => {
+      confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
   };
 
   // Check-in bestätigen
@@ -342,7 +347,7 @@ export default function CheckInPage(): React.ReactElement {
 
       {/* Bestätigungs-Dialog nach Scan */}
       {pendingCheckIn && (
-        <div className="card" style={{
+        <div ref={confirmCardRef} className="card" style={{
           padding: 24, marginBottom: 16, border: '2px solid var(--dex-green)',
           borderRadius: 16, background: '#fff',
         }}>
