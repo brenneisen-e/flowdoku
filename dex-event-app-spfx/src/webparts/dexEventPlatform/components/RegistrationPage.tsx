@@ -27,7 +27,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents } = useRoles();
+  const { canCreateEvents, searchUsers } = useRoles();
   const { t } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
@@ -75,6 +75,11 @@ export default function RegistrationPage(): React.ReactElement {
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(false);
+  // Deloitte-Mitarbeitersuche
+  const [userSearch, setUserSearch] = React.useState('');
+  const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [isSearchingUser, setIsSearchingUser] = React.useState(false);
+  const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!event) {
     return (
@@ -234,17 +239,83 @@ export default function RegistrationPage(): React.ReactElement {
             </p>
 
             {canCreateEvents && (
-              <button
-                className="btn btn-outline"
-                style={{ marginBottom: 20, fontSize: '0.85rem' }}
-                onClick={() => {
-                  setRegisterForOther(!registerForOther);
-                  if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); }
-                  else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); }
-                }}
-              >
-                {registerForOther ? t('reg.registerself') : t('reg.registerother')}
-              </button>
+              <>
+                <button
+                  className="btn btn-outline"
+                  style={{ marginBottom: 20, fontSize: '0.85rem' }}
+                  onClick={() => {
+                    setRegisterForOther(!registerForOther);
+                    if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
+                    else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
+                  }}
+                >
+                  {registerForOther ? t('reg.registerself') : t('reg.registerother')}
+                </button>
+                {registerForOther && (
+                  <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
+                    <label className="form-label">{t('reg.searchemployee') || 'Deloitte Mitarbeiter suchen'}</label>
+                    <input
+                      className="form-input"
+                      value={userSearch}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setUserSearch(val);
+                        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                        if (val.length >= 2) {
+                          searchTimerRef.current = setTimeout(async () => {
+                            setIsSearchingUser(true);
+                            const results = await searchUsers(val);
+                            setUserResults(results);
+                            setIsSearchingUser(false);
+                          }, 300);
+                        } else {
+                          setUserResults([]);
+                        }
+                      }}
+                      placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
+                    />
+                    {isSearchingUser && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+                    )}
+                    {userResults.length > 0 && (
+                      <div style={{
+                        position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                        background: '#fff', border: '1px solid var(--dex-gray-200)',
+                        borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        maxHeight: 200, overflowY: 'auto',
+                      }}>
+                        {userResults.map(u => {
+                          const nameParts = u.displayName.split(' ');
+                          const uFirstName = nameParts[0] || '';
+                          const uSurname = nameParts.slice(1).join(' ') || '';
+                          return (
+                            <div
+                              key={u.email}
+                              style={{
+                                padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
+                                borderBottom: '1px solid var(--dex-gray-100)',
+                              }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--dex-gray-50)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                              onMouseDown={() => {
+                                setFirstName(uFirstName);
+                                setSurname(uSurname);
+                                setEmail(u.email);
+                                setUserSearch(u.displayName);
+                                setUserResults([]);
+                              }}
+                            >
+                              <strong>{u.displayName}</strong>
+                              <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
+                              {u.location && <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8, fontSize: '0.8rem' }}>({u.location})</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             <div className="form-group">
