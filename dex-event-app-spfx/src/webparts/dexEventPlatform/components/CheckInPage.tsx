@@ -138,9 +138,12 @@ export default function CheckInPage(): React.ReactElement {
     setResultMessage('');
     setResultType('');
 
+    // Debug: Zeige gescannten Code kurz an
+    console.log('[DEX CheckIn] Scanned code:', code);
+
     const parts = code.split('|');
     if (parts.length !== 3 || parts[0] !== 'DEX') {
-      setResultMessage('Ungültiger QR-Code.');
+      setResultMessage(`Ungültiger QR-Code: "${code}"`);
       setResultType('error');
       setIsProcessing(false);
       return;
@@ -148,10 +151,20 @@ export default function CheckInPage(): React.ReactElement {
 
     const eventNumber = parseInt(parts[1], 10);
     const email = parts[2];
-    const event = eventByNumber[eventNumber];
+
+    // EventNumber oder SP-ID Lookup
+    let event = eventByNumber[eventNumber];
+
+    // Fallback: Wenn EventNumber 0 oder nicht gefunden, versuche SP-ID
+    if (!event) {
+      const byId = events.find(e => e.id === parts[1]);
+      if (byId) {
+        event = { id: byId.id, title: byId.title, subsiteUrl: byId.subsiteUrl || '', eventNumber: byId.eventNumber };
+      }
+    }
 
     if (!event || !event.subsiteUrl || !eventService) {
-      setResultMessage(`Event #${eventNumber} nicht gefunden.`);
+      setResultMessage(`Event #${eventNumber} nicht gefunden. (Code: ${code})`);
       setResultType('error');
       setIsProcessing(false);
       return;
