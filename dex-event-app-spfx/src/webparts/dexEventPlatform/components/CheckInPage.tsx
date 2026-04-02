@@ -34,6 +34,23 @@ export default function CheckInPage(): React.ReactElement {
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
 
+  // Erkennen ob die App in der SharePoint Mobile App laeuft
+  const isSharePointMobileApp = React.useMemo(() => {
+    const ua = navigator.userAgent;
+    return /SharePoint/i.test(ua) && /Mobile|Android|iPhone|iPad/i.test(ua);
+  }, []);
+
+  // URL fuer den Browser-Link generieren
+  const getBrowserUrl = (): string => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = (window as any).__dexSpfxContext;
+    if (ctx) {
+      return ctx.pageContext.site.absoluteUrl + ctx.pageContext.site.serverRelativeUrl.replace(ctx.pageContext.site.serverRelativeUrl, '') + '/SitePages/' +
+        (window.location.pathname.split('/').pop() || 'Test_App.aspx');
+    }
+    return window.location.href;
+  };
+
   // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets)
   const openExternalScanner = (): void => {
     const checkinUrl = `${siteUrl}/SiteAssets/checkin.aspx`;
@@ -219,6 +236,42 @@ export default function CheckInPage(): React.ReactElement {
           border: resultType === 'success' ? '2px solid #86bc25' : resultType === 'error' ? '2px solid #ef5350' : '2px solid #42a5f5',
         }}>
           {resultMessage}
+        </div>
+      )}
+
+      {/* SharePoint Mobile App Warnung */}
+      {isSharePointMobileApp && (
+        <div className="card" style={{
+          padding: 20, marginBottom: 16,
+          background: '#fff3e0', border: '2px solid #ff9800', borderRadius: 12,
+        }}>
+          <h3 style={{ margin: '0 0 8px', color: '#e65100', fontSize: '1rem' }}>
+            Kamera nicht verfügbar in der SharePoint App
+          </h3>
+          <p style={{ color: '#bf360c', fontSize: '0.85rem', lineHeight: 1.6, margin: '0 0 12px' }}>
+            Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts.
+            Bitte öffne diese Seite in <strong>Edge</strong> oder <strong>Safari</strong> auf deinem Handy — dort funktioniert der QR-Scanner.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: '0.85rem' }}
+              onClick={() => {
+                const url = window.location.href;
+                navigator.clipboard.writeText(url).then(() => {
+                  setResultMessage('Link kopiert! Öffne ihn in Edge oder Safari.');
+                  setResultType('info');
+                }).catch(() => {
+                  window.prompt('Link kopieren und in Edge/Safari öffnen:', url);
+                });
+              }}
+            >
+              Link kopieren
+            </button>
+          </div>
+          <p style={{ color: '#bf360c', fontSize: '0.75rem', marginTop: 8, marginBottom: 0 }}>
+            Tipp: Lege dir die Seite als Lesezeichen in Edge an für schnellen Zugriff beim Event.
+          </p>
         </div>
       )}
 
