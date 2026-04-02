@@ -201,12 +201,12 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
 
-    const success = await eventService.checkInParticipant(event.subsiteUrl, reg.Id);
-    if (success) {
+    try {
+      await eventService.checkInParticipant(event.subsiteUrl, reg.Id);
       setCheckedInCount(prev => prev + 1);
       setResultMessage(`${name} — ${t('checkin.success')}`);
       setResultType('success');
-    } else {
+    } catch {
       setResultMessage(`${name} — Check-in fehlgeschlagen.`);
       setResultType('error');
     }
