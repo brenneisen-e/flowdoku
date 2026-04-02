@@ -1893,11 +1893,30 @@ export class EventService {
   /**
    * MERGE-Request ohne __metadata (fuer Subsite-Listen wo der ListItemType unbekannt ist)
    */
-  private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
+  private async _merge(url: string, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
+    // Dynamisch ListItemEntityTypeFullName ermitteln fuer odata=verbose
+    if (!body['__metadata']) {
+      const listMatch = url.match(/(.+\/_api\/web\/lists\/getbytitle\('[^']+'\))/);
+      if (listMatch) {
+        try {
+          const typeResp = await this.context.spHttpClient.get(
+            `${listMatch[1]}?$select=ListItemEntityTypeFullName`,
+            SPHttpClient.configurations.v1
+          );
+          if (typeResp.ok) {
+            const typeData = await typeResp.json();
+            const itemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName;
+            if (itemType) {
+              body = { '__metadata': { 'type': itemType }, ...body };
+            }
+          }
+        } catch { /* Fallback: ohne __metadata */ }
+      }
+    }
     const options: ISPHttpClientOptions = {
       headers: {
-        'Accept': 'application/json;odata=nometadata',
-        'Content-Type': 'application/json;odata=nometadata',
+        'Accept': 'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       },
