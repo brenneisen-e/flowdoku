@@ -82,16 +82,19 @@ export default function CheckInPage(): React.ReactElement {
       scannerRef.current = scanner;
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { fps: 15, qrbox: { width: 300, height: 300 }, aspectRatio: 1.0 },
         async (decodedText) => {
           // Gleichen Code nicht doppelt verarbeiten
           if (decodedText === lastScannedRef.current) return;
           lastScannedRef.current = decodedText;
+          console.log('[DEX Scanner] QR erkannt:', decodedText);
+          setResultMessage(`QR erkannt: ${decodedText}`);
+          setResultType('info');
           await processCode(decodedText);
           // Nach 3 Sekunden wieder fuer den gleichen Code offen sein
           setTimeout(() => { lastScannedRef.current = ''; }, 3000);
         },
-        () => { /* ignore scan failures */ }
+        () => { /* scan frame without QR - normal */ }
       );
       setIsScanning(true);
     } catch (err) {

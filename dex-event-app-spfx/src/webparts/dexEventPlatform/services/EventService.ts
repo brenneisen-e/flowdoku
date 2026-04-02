@@ -1610,6 +1610,24 @@ export class EventService {
   }
 
   /**
+   * Teilnehmer auschecken (Status zurueck auf 'Angemeldet' setzen)
+   */
+  public async checkOutParticipant(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'Status': 'Angemeldet' }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Status eines Teilnehmers auf 'QR versendet' setzen
    */
   public async setQRSentStatus(
