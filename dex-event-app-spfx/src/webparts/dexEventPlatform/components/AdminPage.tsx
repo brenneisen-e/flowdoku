@@ -89,32 +89,30 @@ export default function AdminPage(): React.ReactElement {
     // Event-Auswahl
     return (
       <div className="page-container">
-        <div className="flex-between mb-16">
-          <h2>{t('admin.title')}</h2>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {isAdmin && (
-              <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
-                <Users size={16} /> {t('admin.participants')}
-              </button>
-            )}
-            {isAdmin && (
-              <button className="btn btn-secondary" onClick={() => navigate('flowcharts')} style={{ fontSize: '0.85rem' }}>
-                ↻ {t('admin.processes')}
-              </button>
-            )}
-            <a
-              href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-secondary"
-              style={{ fontSize: '0.85rem', textDecoration: 'none' }}
-            >
-              <FileText size={16} /> {t('admin.splist')}
-            </a>
-            <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
-              <Plus size={16} /> {t('admin.newevent')}
+        <h2 className="mb-16">{t('admin.title')}</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {isAdmin && (
+            <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
+              <Users size={16} /> {t('admin.participants')}
             </button>
-          </div>
+          )}
+          {isAdmin && (
+            <button className="btn btn-secondary" onClick={() => navigate('flowcharts')} style={{ fontSize: '0.85rem' }}>
+              ↻ {t('admin.processes')}
+            </button>
+          )}
+          <a
+            href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.85rem', textDecoration: 'none' }}
+          >
+            <FileText size={16} /> {t('admin.splist')}
+          </a>
+          <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
+            <Plus size={16} /> {t('admin.newevent')}
+          </button>
         </div>
 
         {adminEvents.length === 0 ? (
@@ -132,8 +130,8 @@ export default function AdminPage(): React.ReactElement {
                 className="card card-clickable"
                 style={{ padding: '20px 24px', cursor: 'pointer' }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div onClick={() => handleSelectEvent(event)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
                     {event.imageUrl && (
                       <div style={{
                         width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
@@ -148,7 +146,7 @@ export default function AdminPage(): React.ReactElement {
                     </p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
                       {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
                     </span>
@@ -315,12 +313,18 @@ export default function AdminPage(): React.ReactElement {
       </div>
 
       {/* Zähler + QR/Check-in Aktionen */}
-      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
             {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
+        </div>
+        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
+            {registrations.filter(r => r.Status === 'QR versendet').length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
