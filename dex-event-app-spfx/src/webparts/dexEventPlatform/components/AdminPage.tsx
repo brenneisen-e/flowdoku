@@ -428,6 +428,7 @@ export default function AdminPage(): React.ReactElement {
                   <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                 </tr>
               </thead>
               <tbody>
@@ -437,9 +438,38 @@ export default function AdminPage(): React.ReactElement {
                     <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                     <td style={{ padding: 8 }}>
-                      <span className="badge badge-green">{reg.Status}</span>
+                      <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                    <td style={{ padding: 8 }}>
+                      {reg.Status === 'Eingecheckt' ? (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          onClick={async () => {
+                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                            await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
+                            const regs = await getAllRegistrations(selectedEvent.id);
+                            setRegistrations(regs);
+                          }}
+                        >
+                          Auschecken
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          onClick={async () => {
+                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                            await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
+                            const regs = await getAllRegistrations(selectedEvent.id);
+                            setRegistrations(regs);
+                          }}
+                        >
+                          Einchecken
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
