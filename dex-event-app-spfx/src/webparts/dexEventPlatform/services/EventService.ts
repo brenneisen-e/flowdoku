@@ -1460,11 +1460,19 @@ export class EventService {
     customFieldMap?: Record<string, string>
   ): Promise<boolean> {
     try {
+      // Naechste TeilnehmerID ermitteln
+      let nextId = 1;
+      try {
+        const counts = await this.getRegistrationCount(subsiteUrl);
+        nextId = counts.registered + counts.waitlist + 1;
+      } catch { /* Fallback: 1 */ }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
         'Vorname': firstName,
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
+        'TeilnehmerID': nextId,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
