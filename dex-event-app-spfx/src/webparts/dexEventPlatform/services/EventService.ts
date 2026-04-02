@@ -1095,7 +1095,24 @@ export class EventService {
         }
       }
 
-      // 3. Event-Eintrag aus DEX_Events loeschen
+      // 3. DEX_Participants aufraeumen: EventNumber aus allen Teilnehmern entfernen
+      if (event.EventNumber) {
+        try {
+          const allParticipants = await this.getAllParticipants();
+          const en = event.EventNumber.toString();
+          for (const p of allParticipants) {
+            const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
+            const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
+            if (hasRegistered || hasWaitlist) {
+              await this.removeParticipantEvent(p.Email, event.EventNumber);
+            }
+          }
+        } catch {
+          console.warn('[DEX] DEX_Participants konnte nicht aufgeraeumt werden');
+        }
+      }
+
+      // 4. Event-Eintrag aus DEX_Events loeschen
       const response = await this._delete(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`
       );
