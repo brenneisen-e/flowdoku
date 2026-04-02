@@ -41,7 +41,7 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getAllRegistrations, deleteEvent } = useEvents();
+  const { events, isEventsLoading, getAllRegistrations, deleteEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
   const { t } = useLanguage();
@@ -115,7 +115,18 @@ export default function AdminPage(): React.ReactElement {
           </button>
         </div>
 
-        {adminEvents.length === 0 ? (
+        {isEventsLoading ? (
+          <div className="card text-center" style={{ padding: 48 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, border: '4px solid var(--dex-gray-200)',
+                borderTop: '4px solid var(--dex-green)', borderRadius: '50%',
+                animation: 'dexOrbSpin 1s linear infinite',
+              }} />
+            </div>
+            <p style={{ color: 'var(--dex-gray-400)' }}>Events werden geladen...</p>
+          </div>
+        ) : adminEvents.length === 0 ? (
           <div className="card text-center" style={{ padding: 48 }}>
             <p style={{ color: 'var(--dex-gray-400)' }}>{t('admin.noevents')}</p>
             <button className="btn btn-primary mt-24" onClick={() => navigate('create-event')}>

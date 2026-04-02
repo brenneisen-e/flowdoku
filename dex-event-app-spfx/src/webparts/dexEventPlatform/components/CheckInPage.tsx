@@ -31,7 +31,7 @@ export default function CheckInPage(): React.ReactElement {
   const confirmCardRef = React.useRef<HTMLDivElement>(null);
   const [pendingCheckIn, setPendingCheckIn] = React.useState<{
     name: string; email: string; event: { subsiteUrl: string; title: string };
-    regId: number; status: string; department?: string; jobTitle?: string; photoUrl?: string;
+    regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
   } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,6 +228,8 @@ export default function CheckInPage(): React.ReactElement {
       department: (reg as any).Department || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       jobTitle: (reg as any).JobTitle || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      location: (reg as any).Location || '',
       photoUrl,
     });
     setResultMessage('');
@@ -376,7 +378,10 @@ export default function CheckInPage(): React.ReactElement {
                 <p style={{ margin: '0 0 2px', fontSize: '0.85rem' }}>{pendingCheckIn.jobTitle}</p>
               )}
               {pendingCheckIn.department && (
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.department}</p>
+                <p style={{ margin: '0 0 2px', fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.department}</p>
+              )}
+              {pendingCheckIn.location && (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.location}</p>
               )}
             </div>
             <span style={{
@@ -436,9 +441,12 @@ export default function CheckInPage(): React.ReactElement {
         <video
           ref={videoRef}
           style={{
-            width: '100%', maxWidth: 500, margin: '0 auto',
-            display: isScanning ? 'block' : 'none',
-            borderRadius: 12, border: '3px solid var(--dex-green)',
+            width: '100%', maxWidth: 500, height: isScanning ? 400 : 0,
+            margin: '0 auto', display: 'block',
+            borderRadius: 12, border: isScanning ? '3px solid var(--dex-green)' : 'none',
+            objectFit: 'cover', background: '#000',
+            transition: 'height 0.3s ease',
+            overflow: 'hidden',
           }}
           playsInline
           muted

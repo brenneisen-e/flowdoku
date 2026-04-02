@@ -1654,7 +1654,7 @@ export class EventService {
   ): Promise<SPRegistration | null> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData,Department,JobTitle,Location&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
