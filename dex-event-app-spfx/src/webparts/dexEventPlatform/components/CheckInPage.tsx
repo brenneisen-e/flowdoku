@@ -438,19 +438,21 @@ export default function CheckInPage(): React.ReactElement {
             </div>
           </>
         )}
-        <video
-          ref={videoRef}
-          style={{
-            width: '100%', maxWidth: 500, height: isScanning ? 400 : 0,
-            margin: '0 auto', display: 'block',
-            borderRadius: 12, border: isScanning ? '3px solid var(--dex-green)' : 'none',
-            objectFit: 'cover', background: '#000',
-            transition: 'height 0.3s ease',
-            overflow: 'hidden',
-          }}
-          playsInline
-          muted
-        />
+        <div style={{ position: 'relative', width: '100%', maxWidth: 500, margin: '0 auto', overflow: 'hidden', borderRadius: 12 }}>
+          <video
+            ref={videoRef}
+            style={{
+              width: '100%', height: isScanning ? 400 : 0,
+              display: 'block',
+              border: isScanning ? '3px solid var(--dex-green)' : 'none',
+              objectFit: 'cover', background: '#000',
+              transition: 'height 0.3s ease',
+              borderRadius: 12,
+            }}
+            playsInline
+            muted
+          />
+        </div>
       </div>
 
       {/* Foto-Upload — nur sichtbar wenn Live-Scanner NICHT aktiv */}
