@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Info, Trash2, Send } from './Icons';
 
@@ -27,6 +28,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents } = useRoles();
+  const { t } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
   // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
@@ -77,9 +79,9 @@ export default function RegistrationPage(): React.ReactElement {
   if (!event) {
     return (
       <div className="page-container text-center">
-        <h2>Event not found</h2>
+        <h2>{t('reg.eventnotfound')}</h2>
         <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
-          Back to Events
+          {t('reg.backtoevents')}
         </button>
       </div>
     );
@@ -92,7 +94,7 @@ export default function RegistrationPage(): React.ReactElement {
     // Validierung Pflichtfelder
     setShowErrors(true);
     if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
-      setError('Bitte alle Pflichtfelder ausfüllen.');
+      setError(t('reg.requiredfields'));
       return;
     }
 
@@ -100,7 +102,7 @@ export default function RegistrationPage(): React.ReactElement {
     const missingRequired = event.eventSpecificFields
       .filter(f => f.required && !eventSpecific[f.id]?.trim());
     if (missingRequired.length > 0) {
-      setError(`Bitte ausfüllen: ${missingRequired.map(f => f.label).join(', ')}`);
+      setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
       return;
     }
 
@@ -126,10 +128,10 @@ export default function RegistrationPage(): React.ReactElement {
       if (success) {
         setSubmitted(true);
       } else {
-        setError('Registrierung fehlgeschlagen. Möglicherweise bist du bereits angemeldet.');
+        setError(t('reg.error'));
       }
     } catch {
-      setError('Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+      setError(t('reg.genericerror'));
     } finally {
       setIsSubmitting(false);
     }
@@ -148,18 +150,18 @@ export default function RegistrationPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <h2>{isFull ? 'Auf die Warteliste gesetzt' : 'Registrierung erfolgreich!'}</h2>
+          <h2>{isFull ? t('reg.waitlisttitle') : t('reg.success')}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             {isFull
-              ? `Du wurdest auf die Warteliste für "${event.title}" gesetzt. Du wirst benachrichtigt, sobald ein Platz frei wird.`
-              : `Du wurdest erfolgreich für "${event.title}" registriert. Eine Bestätigung wurde an ${email} gesendet.`}
+              ? t('reg.waitlistmsg').replace('{title}', event.title)
+              : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)}
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
-              My Events
+              {t('myevents.title')}
             </button>
             <button className="btn btn-secondary" onClick={() => navigate('register')}>
-              Register for another event
+              {t('reg.registeranother')}
             </button>
           </div>
         </div>
@@ -175,17 +177,17 @@ export default function RegistrationPage(): React.ReactElement {
           background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
           color: 'var(--dex-orange)', fontSize: '0.85rem',
         }}>
-          Hinweis: Du würdest dieses Event als normaler User nicht sehen.
-          {event && event.locationAudience.length > 0 && <> Standort-Filter: <strong>{event.locationAudience.join(', ')}</strong>.</>}
-          {event && event.audienceFilter && event.audienceFilter.length > 0 && <> Zielgruppe: <strong>{event.audienceFilter.join(', ')}</strong>.</>}
-          {event && event.filterMode === 'AND' && <> (UND-Verknüpfung)</>}
-          {' '}Dein Standort: {currentUser.location || 'unbekannt'}.
+          {t('reg.locationnotice')}
+          {event && event.locationAudience.length > 0 && <> {t('reg.locationfilter')}: <strong>{event.locationAudience.join(', ')}</strong>.</>}
+          {event && event.audienceFilter && event.audienceFilter.length > 0 && <> {t('reg.audience')}: <strong>{event.audienceFilter.join(', ')}</strong>.</>}
+          {event && event.filterMode === 'AND' && <> ({t('reg.andmode')})</>}
+          {' '}{t('reg.yourlocation')}: {currentUser.location || t('reg.unknown')}.
         </div>
       )}
       <div className="registration-layout">
         {/* Event-Info links */}
         <div className="registration-event">
-          <div className="section-header section-header--red">Selected Event</div>
+          <div className="section-header section-header--red">{t('reg.selectedevent')}</div>
           <div className="registration-event__card">
             <div
               className="registration-event__image"
@@ -201,7 +203,7 @@ export default function RegistrationPage(): React.ReactElement {
               <div className="registration-event__overlay">
                 <h4>{event.title}</h4>
                 <p>
-                  {formatDate(event.startDate)} until<br />
+                  {formatDate(event.startDate)} {t('reg.until')}<br />
                   {formatDate(event.endDate)}
                 </p>
               </div>
@@ -217,7 +219,7 @@ export default function RegistrationPage(): React.ReactElement {
             )}
             {isFull && (
               <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
-                All places are taken. There are currently {event.waitlistCount} people on the waiting list
+                {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
               </p>
             )}
           </div>
@@ -225,10 +227,10 @@ export default function RegistrationPage(): React.ReactElement {
 
         {/* Persoenliche Daten */}
         <div className="registration-form">
-          <div className="section-header">Personal Information</div>
+          <div className="section-header">{t('reg.personalinfo')}</div>
           <div style={{ padding: '24px 20px' }}>
             <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
-              <span className="required">*</span> = Pflichtfeld
+              <span className="required">*</span> = {t('reg.requiredfield')}
             </p>
 
             {canCreateEvents && (
@@ -241,14 +243,14 @@ export default function RegistrationPage(): React.ReactElement {
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); }
                 }}
               >
-                {registerForOther ? 'Für mich selbst registrieren' : 'Für jemand anderen registrieren'}
+                {registerForOther ? t('reg.registerself') : t('reg.registerother')}
               </button>
             )}
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> Salutation</label>
+              <label className="form-label"><span className="required">*</span> {t('reg.salutation')}</label>
               <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)} style={showErrors && !salutation ? errorBorder : {}}>
-                <option value="">Please select</option>
+                <option value="">{t('reg.pleaseselect')}</option>
                 <option value="Herr">Herr</option>
                 <option value="Frau">Frau</option>
                 <option value="Divers">Divers</option>
@@ -256,17 +258,17 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> First Name</label>
-              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <label className="form-label"><span className="required">*</span> {t('reg.firstname')}</label>
+              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> Surname</label>
-              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder="Surname" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <label className="form-label"><span className="required">*</span> {t('reg.surname')}</label>
+              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> E-Mail</label>
+              <label className="form-label"><span className="required">*</span> {t('reg.email')}</label>
               <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
           </div>
@@ -274,10 +276,10 @@ export default function RegistrationPage(): React.ReactElement {
 
         {/* Eventspezifische Felder */}
         <div className="registration-specific">
-          <div className="section-header">Event specific Information</div>
+          <div className="section-header">{t('reg.eventinfo')}</div>
           <div style={{ padding: '24px 20px' }}>
             {event.eventSpecificFields.length === 0 ? (
-              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>No additional information required.</p>
+              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
               event.eventSpecificFields.map(field => (
                 <div className="form-group" key={field.id}>
@@ -288,7 +290,7 @@ export default function RegistrationPage(): React.ReactElement {
                   </label>
                   {field.type === 'select' ? (
                     <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
-                      <option value="">Please select</option>
+                      <option value="">{t('reg.pleaseselect')}</option>
                       {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   ) : (
@@ -304,12 +306,7 @@ export default function RegistrationPage(): React.ReactElement {
       {/* Datenschutz-Hinweis */}
       <div className="footer-disclaimer mt-24" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
         <p>
-          As part of the event {event.title}, audio, image, and video recordings will be made for
-          Deloitte. By the clear confirming action, e.g., posing or smiling at the camera, you
-          consent to the creation of audio, image, and video recordings. The recordings may be used
-          for Deloitte internal publication purposes (e.g., DeloitteNet). The consent can be revoked
-          at any time with future effect and without any negative consequences by sending an email to
-          privacy@deloitte.de.
+          {t('reg.privacy').replace('{title}', event.title)}
         </p>
       </div>
 
@@ -322,9 +319,9 @@ export default function RegistrationPage(): React.ReactElement {
 
       {/* Buttons */}
       <div className="registration-actions mt-24">
-        <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> Delete</button>
+        <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
-          <Send size={16} /> {isSubmitting ? 'Wird gesendet...' : 'Register'}
+          <Send size={16} /> {isSubmitting ? t('reg.submitting') : t('reg.register')}
         </button>
       </div>
     </div>

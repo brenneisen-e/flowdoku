@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail } from '../services/EmailTemplates';
 import { EventType } from '../types';
@@ -68,6 +69,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
+  const { t } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
@@ -124,6 +126,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [outlookBody, setOutlookBody] = React.useState('');
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  const [currentStep, setCurrentStep] = React.useState(0);
+  const [showPreview, setShowPreview] = React.useState(false);
+  const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
+    { id: 'event', label: 'Event-Karte' },
+    { id: 'personal', label: 'Personal Information' },
+    { id: 'specific', label: 'Event specific Information' },
+    { id: 'actions', label: 'Buttons' },
+  ]);
+  const [dragSectionId, setDragSectionId] = React.useState<string | null>(null);
+  const [dragOverSectionId, setDragOverSectionId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [progressLabel, setProgressLabel] = React.useState('');
@@ -367,12 +379,136 @@ export default function EventCreationPage(): React.ReactElement {
       ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Vorschau-Sektion rendern
+  const renderPreviewSection = (sectionId: string): React.ReactElement | null => {
+    switch (sectionId) {
+      case 'event':
+        return (
+          <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header section-header--red">Selected Event</div>
+            <div className="registration-event__card">
+              <div className="registration-event__image" style={{
+                background: eventImageUrl
+                  ? `url(${eventImageUrl}) center/cover`
+                  : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+              }}>
+                <div className="registration-event__overlay">
+                  <h4>{title || 'Event Titel'}</h4>
+                  <p>{formatPreviewDate(startDate)} until<br />{formatPreviewDate(endDate)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'personal':
+        return (
+          <div className="registration-form" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header">Personal Information</div>
+            <div style={{ padding: '16px 20px' }}>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> Salutation</label><select className="form-select" disabled><option>Please select</option></select></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> First Name</label><input className="form-input" disabled placeholder="First Name" /></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> Surname</label><input className="form-input" disabled placeholder="Surname" /></div>
+              <div className="form-group"><label className="form-label"><span className="required">*</span> E-Mail</label><input className="form-input" disabled placeholder="email@deloitte.de" /></div>
+            </div>
+          </div>
+        );
+      case 'specific':
+        return (
+          <div className="registration-specific" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+            <div className="section-header">Event specific Information</div>
+            <div style={{ padding: '16px 20px' }}>
+              {customFields.filter(f => f.label).length === 0 ? (
+                <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.9rem' }}>No additional information required.</p>
+              ) : (
+                customFields.filter(f => f.label).map(field => (
+                  <div className="form-group" key={field.id}>
+                    <label className="form-label">{field.required && <span className="required">*</span>}{field.label}</label>
+                    {field.type === 'select' ? (
+                      <select className="form-select" disabled><option>Please select</option>{field.options.split(',').map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
+                    ) : field.type === 'checkbox' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
+                    ) : (
+                      <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      case 'actions':
+        return (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
+            <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
+            <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const steps = [
+    { label: 'Grundlagen', icon: '1' },
+    { label: 'Zeit & Ort', icon: '2' },
+    { label: 'Kapazität', icon: '3' },
+    { label: 'Felder', icon: '4' },
+  ];
+
+  const canProceed = (): boolean => {
+    switch (currentStep) {
+      case 0: return !!(title && organizer && description);
+      case 1: return !!(startDate && endDate);
+      default: return true;
+    }
+  };
+
   return (
     <div className="page-container">
-      <div className="creation-layout">
-        {/* ===== Linke Seite: Formular ===== */}
+      <div>
+        {/* ===== Step Progress Bar ===== */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+            {/* Verbindungslinie */}
+            <div style={{ position: 'absolute', top: 20, left: '10%', right: '10%', height: 3, background: 'var(--dex-gray-200)', zIndex: 0 }} />
+            <div style={{ position: 'absolute', top: 20, left: '10%', height: 3, background: 'var(--dex-green)', zIndex: 1, width: `${Math.min(currentStep / (steps.length - 1) * 80, 80)}%`, transition: 'width 0.4s ease' }} />
+            {steps.map((step, idx) => (
+              <div
+                key={idx}
+                onClick={() => { if (idx <= currentStep || canProceed()) setCurrentStep(idx); }}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                  zIndex: 2, cursor: idx <= currentStep ? 'pointer' : 'default',
+                  flex: 1,
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: '1rem',
+                  background: idx <= currentStep ? 'var(--dex-green)' : '#fff',
+                  color: idx <= currentStep ? '#fff' : 'var(--dex-gray-400)',
+                  border: idx <= currentStep ? '3px solid var(--dex-green)' : '3px solid var(--dex-gray-200)',
+                  transition: 'all 0.3s ease',
+                  boxShadow: idx === currentStep ? '0 0 0 4px rgba(134,188,37,0.2)' : 'none',
+                }}>
+                  {idx < currentStep ? '✓' : step.icon}
+                </div>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: idx === currentStep ? 700 : 500,
+                  color: idx <= currentStep ? 'var(--dex-green)' : 'var(--dex-gray-400)',
+                  transition: 'color 0.3s ease',
+                }}>
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ===== Formular ===== */}
         <div>
-          <div className="card">
+          <div className="card" style={{ borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <div className="creation-form">
               {error && (
                 <div style={{ padding: '10px 16px', background: '#fce4ec', color: '#c62828', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem' }}>
@@ -380,19 +516,23 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <button
-                  className="btn btn-outline"
-                  onClick={fillDemo}
-                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                >
-                  Demo
-                </button>
-              </div>
+              {!isEditMode && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={fillDemo}
+                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  >
+                    Demo
+                  </button>
+                </div>
+              )}
 
+              {/* ===== Step 0: Grundlagen ===== */}
+              <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Event Titel
+                  <span className="required">*</span> {t('create.eventtitle')}
                   <span className="info-icon" title="Name des Events, z.B. 'B2Run Frankfurt 2026'" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" />
@@ -400,7 +540,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Event Typ
+                  <span className="required">*</span> {t('create.eventtype')}
                   <span className="info-icon" title="Kategorie des Events – bestimmt das Design der Event-Karte" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
@@ -412,7 +552,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
-                  <span className="required">*</span> Organisator
+                  <span className="required">*</span> {t('create.organizer')}
                   <span className="info-icon" title="Name der Person, die das Event organisiert" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input
@@ -463,14 +603,6 @@ export default function EventCreationPage(): React.ReactElement {
                     ))}
                   </div>
                 )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Veranstaltungsort
-                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
-                </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
 
               <div className="form-group">
@@ -546,7 +678,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  <span className="required">*</span> Beschreibung
+                  <span className="required">*</span> {t('create.description')}
                   <span className="info-icon" title="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
@@ -599,17 +731,29 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              </div>
+
+              {/* ===== Step 1: Zeit & Ort ===== */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              <div className="form-group">
+                <label className="form-label">
+                  {t('create.location')}
+                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+              </div>
+
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Start (Datum & Uhrzeit)
+                    <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    <span className="required">*</span> Ende (Datum & Uhrzeit)
+                    <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
@@ -621,7 +765,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label">
-                  Outlook-Termin Text
+                  {t('create.outlookbody')}
                   <span className="info-icon" title="Optionaler Beschreibungstext für den Outlook-Kalendereintrag der Teilnehmer. Power Automate nutzt diesen Text als Body des Termins." style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <textarea
@@ -633,34 +777,38 @@ export default function EventCreationPage(): React.ReactElement {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              </div>
+
+              {/* ===== Step 2: Kapazität & Fristen ===== */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    Anmelde-Deadline
+                    {t('create.deadline')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="date" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    Letzte Abmeldemöglichkeit
+                    {t('create.lastcancel')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="date" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
-                    Max. Teilnehmer
+                    {t('create.maxparticipants')}
                     <span className="info-icon" title="Maximale Anzahl Teilnehmer. 0 = unbegrenzt. Bei Erreichen werden weitere auf die Warteliste gesetzt." style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <input className="form-input" type="number" min={0} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="0 = unbegrenzt" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
-                    Warteliste
+                    {t('create.waitlist')}
                     <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <div className="toggle-wrapper" style={{ marginTop: 8 }}>
@@ -668,17 +816,21 @@ export default function EventCreationPage(): React.ReactElement {
                       <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
                       <span className="toggle-slider" />
                     </label>
-                    <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? 'Aktiviert' : 'Deaktiviert'}</span>
+                    <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
                   </div>
                 </div>
               </div>
 
+              </div>
+
+              {/* ===== Step 3: Registrierungsfelder ===== */}
+              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               {/* Dynamische Felder */}
-              <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 24, marginTop: 8 }}>
+              <div>
                 <div className="flex-between mb-16">
-                  <label className="form-label" style={{ marginBottom: 0 }}>Zusätzliche Registrierungsfelder</label>
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t('create.customfields')}</label>
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                    <Plus size={14} /> Feld hinzufügen
+                    <Plus size={14} /> {t('create.addfield')}
                   </button>
                 </div>
                 {customFields.map((field, idx) => (
@@ -731,7 +883,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <ChevronDown size={14} />
                       </button>
                     </div>
-                    <input className="form-input" placeholder="Feldname" value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
+                    <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
                     <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1 }}>
                       <option value="text">Text</option>
                       <option value="select">Dropdown</option>
@@ -774,13 +926,13 @@ export default function EventCreationPage(): React.ReactElement {
                           className="btn btn-secondary"
                           style={{ fontSize: '0.75rem', padding: '4px 8px', alignSelf: 'flex-start' }}
                         >
-                          + Option hinzufügen
+                          {t('create.addoption')}
                         </button>
                       </div>
                     )}
                     <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
-                      Pflicht
+                      {t('create.required')}
                     </label>
                     <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4 }}>
                       <X size={18} />
@@ -790,6 +942,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             </div>
           </div>
+
+              </div>
 
           {/* Fortschrittsanzeige */}
           {isSubmitting && (
@@ -820,112 +974,135 @@ export default function EventCreationPage(): React.ReactElement {
 
           {!isSubmitting && (
             <div className="registration-actions mt-24">
-              <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> Abbrechen</button>
-              <button
-                className="btn btn-primary"
-                disabled={!title || !description}
-                onClick={handleSubmit}
-                style={{ opacity: !title || !description ? 0.5 : 1 }}
-              >
-                <Send size={16} /> {isEditMode ? 'Änderungen speichern' : 'Event erstellen'}
-              </button>
+              {currentStep === 0 ? (
+                <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> {t('create.cancel')}</button>
+              ) : (
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(currentStep - 1)}>
+                  {t('general.back')}
+                </button>
+              )}
+
+              {currentStep < steps.length - 1 ? (
+                <button
+                  className="btn btn-primary"
+                  disabled={!canProceed()}
+                  onClick={() => setCurrentStep(currentStep + 1)}
+                  style={{ opacity: canProceed() ? 1 : 0.5 }}
+                >
+                  {t('create.next')}
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!title}
+                    onClick={() => setShowPreview(true)}
+                  >
+                    {t('create.preview')}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!title || !description}
+                    onClick={handleSubmit}
+                    style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  >
+                    <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
+      </div>
 
-        {/* ===== Rechte Seite: Live-Vorschau ===== */}
-        <div style={{ position: 'sticky', top: 16 }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
-            Vorschau: Registrierungsseite
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, transform: 'scale(0.5)', transformOrigin: 'top left', width: 'calc(100% / 0.5)' }}>
-            {/* Event-Karte */}
-            <div className="registration-event" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header section-header--red">Selected Event</div>
-              <div className="registration-event__card">
+      {/* ===== Vollbild-Vorschau Modal ===== */}
+      {showPreview && (
+        <div className="preview-modal" style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div className="preview-modal-inner" style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520,
+            maxHeight: '90vh', overflow: 'auto', padding: 0,
+            boxShadow: '0 16px 64px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{
+              padding: '16px 24px', borderBottom: '1px solid var(--dex-gray-200)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              position: 'sticky', top: 0, background: '#fff', zIndex: 1, borderRadius: '16px 16px 0 0',
+            }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Vorschau: Registrierungsseite</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                  Sektionen per Drag &amp; Drop verschieben
+                </p>
+              </div>
+              <button onClick={() => setShowPreview(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {previewSections.map(section => (
                 <div
-                  className="registration-event__image"
+                  key={section.id}
+                  draggable
+                  onDragStart={() => setDragSectionId(section.id)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverSectionId(section.id); }}
+                  onDragLeave={() => { if (dragOverSectionId === section.id) setDragOverSectionId(null); }}
+                  onDrop={() => {
+                    if (dragSectionId && dragSectionId !== section.id) {
+                      const fromIdx = previewSections.findIndex(s => s.id === dragSectionId);
+                      const toIdx = previewSections.findIndex(s => s.id === section.id);
+                      if (fromIdx >= 0 && toIdx >= 0) {
+                        const updated = [...previewSections];
+                        const [moved] = updated.splice(fromIdx, 1);
+                        updated.splice(toIdx, 0, moved);
+                        setPreviewSections(updated);
+                      }
+                    }
+                    setDragSectionId(null);
+                    setDragOverSectionId(null);
+                  }}
+                  onDragEnd={() => { setDragSectionId(null); setDragOverSectionId(null); }}
                   style={{
-                    background: eventImageUrl
-                      ? `url(${eventImageUrl}) center/cover`
-                      : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                    opacity: dragSectionId === section.id ? 0.4 : 1,
+                    borderTop: dragOverSectionId === section.id ? '3px solid var(--dex-green)' : undefined,
+                    cursor: 'grab',
+                    position: 'relative',
                   }}
                 >
-                  <div className="registration-event__overlay">
-                    <h4>{title || 'Event Titel'}</h4>
-                    <p>
-                      {formatPreviewDate(startDate)} until<br />
-                      {formatPreviewDate(endDate)}
-                    </p>
+                  <div style={{
+                    position: 'absolute', top: 4, right: 8, fontSize: '0.65rem',
+                    color: 'var(--dex-gray-300)', fontWeight: 600, userSelect: 'none',
+                  }}>
+                    ⠿ verschieben
                   </div>
+                  {renderPreviewSection(section.id)}
                 </div>
-              </div>
+              ))}
             </div>
 
-            {/* Personal Information */}
-            <div className="registration-form" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header">Personal Information</div>
-              <div style={{ padding: '16px 20px' }}>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Salutation</label>
-                  <select className="form-select" disabled><option>Please select</option></select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> First Name</label>
-                  <input className="form-input" disabled placeholder="First Name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> Surname</label>
-                  <input className="form-input" disabled placeholder="Surname" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><span className="required">*</span> E-Mail</label>
-                  <input className="form-input" disabled placeholder="email@deloitte.de" />
-                </div>
-              </div>
-            </div>
-
-            {/* Event specific Information */}
-            <div className="registration-specific" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-              <div className="section-header">Event specific Information</div>
-              <div style={{ padding: '16px 20px' }}>
-                {customFields.filter(f => f.label).length === 0 ? (
-                  <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.9rem' }}>No additional information required.</p>
-                ) : (
-                  customFields.filter(f => f.label).map(field => (
-                    <div className="form-group" key={field.id}>
-                      <label className="form-label">
-                        {field.required && <span className="required">*</span>}
-                        {field.label}
-                      </label>
-                      {field.type === 'select' ? (
-                        <select className="form-select" disabled>
-                          <option>Please select</option>
-                          {field.options.split(',').map(o => o.trim()).filter(Boolean).map(opt => (
-                            <option key={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      ) : field.type === 'checkbox' ? (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}>
-                          <input type="checkbox" disabled /> {field.label}
-                        </label>
-                      ) : (
-                        <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Vorschau-Buttons (deaktiviert) */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
-              <button className="btn btn-danger" disabled style={{ opacity: 0.5 }}><Trash2 size={16} /> Delete</button>
-              <button className="btn btn-primary" disabled style={{ opacity: 0.5 }}><Send size={16} /> Register</button>
+            <div style={{
+              padding: '16px 24px', borderTop: '1px solid var(--dex-gray-200)',
+              display: 'flex', gap: 12, justifyContent: 'flex-end',
+              position: 'sticky', bottom: 0, background: '#fff', borderRadius: '0 0 16px 16px',
+            }}>
+              <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
+                Zurück zum Formular
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!title || !description}
+                onClick={() => { setShowPreview(false); handleSubmit(); }}
+              >
+                <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Email-Verteiler Modal */}
       {showEmailModal && (

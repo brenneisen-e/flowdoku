@@ -1,9 +1,9 @@
 /**
- * Check-In Seite - QR-Code Scanner fuer Event-Check-in
+ * Check-In Seite - Oeffnet den QR-Code Scanner in einem neuen Fenster
  *
- * Nutzt die BarcodeDetector API (Chrome/Edge) zum Scannen.
- * QR-Code Format: DEX|{EventNumber}|{Email}
- * Nach dem Scan wird der Teilnehmer angezeigt und kann eingecheckt werden.
+ * Der Scanner laeuft als eigenstaendige HTML-Seite (checkin.html in SiteAssets),
+ * damit die Kamera ohne iFrame-Einschraenkungen funktioniert.
+ * Fallback: Manuelle Code-Eingabe direkt in der App.
  */
 
 import * as React from 'react';
@@ -11,193 +11,99 @@ import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { EventService, SPRegistration } from '../services/EventService';
-import { DeloitteEvent } from '../types';
-
-interface ScanResult {
-  eventNumber: number;
-  email: string;
-  event: DeloitteEvent | null;
-  registration: SPRegistration | null;
-  error?: string;
-}
+import { useLanguage } from '../context/LanguageContext';
 
 export default function CheckInPage(): React.ReactElement {
   const { events } = useEvents();
-  const { navigate, selectedEventId } = useNavigation();
-  const { isAdmin, isOrganizer } = useRoles();
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [isScanning, setIsScanning] = React.useState(false);
-  const [scanResult, setScanResult] = React.useState<ScanResult | null>(null);
-  const [isCheckingIn, setIsCheckingIn] = React.useState(false);
-  const [checkInSuccess, setCheckInSuccess] = React.useState(false);
+  const { selectedEventId } = useNavigation();
+  const { isAdmin, isOrganizer, siteUrl } = useRoles();
+  const { t } = useLanguage();
   const [manualCode, setManualCode] = React.useState('');
-  const [statusMessage, setStatusMessage] = React.useState('');
-  const [checkedInCount, setCheckedInCount] = React.useState(0);
-  const scanIntervalRef = React.useRef<number | null>(null);
+  const [resultMessage, setResultMessage] = React.useState('');
+  const [resultType, setResultType] = React.useState<'success' | 'error' | 'info' | ''>('');
+  const [isProcessing, setIsProcessing] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const context = (window as any).__dexSpfxContext;
   const eventService = React.useMemo(() => context ? new EventService(context) : null, []);
 
-  // Event-Filter: Wenn von der AdminPage mit eventId navigiert, nur dieses Event
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
 
-  // EventNumber -> Event Map
-  const eventByNumber = React.useMemo(() => {
-    const map: Record<number, DeloitteEvent> = {};
-    for (const e of events) {
-      if (e.eventNumber) map[e.eventNumber] = e;
+  // Scanner in neuem Fenster oeffnen
+  const openScanner = (): void => {
+    const checkinUrl = `${siteUrl}/SiteAssets/checkin.html`;
+    const params = new URLSearchParams();
+    params.set('siteUrl', siteUrl);
+    if (selectedEvent) {
+      params.set('subsiteUrl', selectedEvent.subsiteUrl || '');
+      params.set('eventTitle', selectedEvent.title);
+      params.set('eventNumber', (selectedEvent.eventNumber || 0).toString());
     }
-    return map;
-  }, [events]);
-
-  // Kamera starten
-  const startScanning = async (): Promise<void> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setIsScanning(true);
-        startDetection();
-      }
-    } catch {
-      setStatusMessage('Kamera konnte nicht gestartet werden. Bitte Berechtigung erteilen.');
-    }
+    window.open(`${checkinUrl}?${params.toString()}`, '_blank', 'width=500,height=800,menubar=no,toolbar=no');
   };
 
-  // Kamera stoppen
-  const stopScanning = (): void => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setIsScanning(false);
-  };
+  // Manuelle Code-Verarbeitung
+  const handleManualSubmit = async (): Promise<void> => {
+    if (!manualCode.trim() || !eventService) return;
+    setIsProcessing(true);
+    setResultMessage('');
+    setResultType('');
 
-  // BarcodeDetector Loop
-  const startDetection = (): void => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const BarcodeDetectorClass = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorClass) {
-      setStatusMessage('BarcodeDetector wird von diesem Browser nicht unterstützt. Bitte Chrome oder Edge verwenden, oder Code manuell eingeben.');
-      return;
-    }
-
-    const detector = new BarcodeDetectorClass({ formats: ['qr_code'] });
-
-    scanIntervalRef.current = window.setInterval(async () => {
-      if (!videoRef.current || videoRef.current.readyState !== 4) return;
-      try {
-        const barcodes = await detector.detect(videoRef.current);
-        if (barcodes.length > 0) {
-          const code = barcodes[0].rawValue;
-          if (code) {
-            stopScanning();
-            await processCode(code);
-          }
-        }
-      } catch { /* ignore detection errors */ }
-    }, 500);
-  };
-
-  // QR-Code verarbeiten
-  const processCode = async (code: string): Promise<void> => {
-    setScanResult(null);
-    setCheckInSuccess(false);
-    setStatusMessage('');
-
-    // Format: DEX|{EventNumber}|{Email}
-    const parts = code.split('|');
+    const parts = manualCode.trim().split('|');
     if (parts.length !== 3 || parts[0] !== 'DEX') {
-      setScanResult({ eventNumber: 0, email: '', event: null, registration: null, error: 'Ungültiger QR-Code. Format: DEX|EventNumber|Email' });
+      setResultMessage('Ungültiger Code. Format: DEX|EventNumber|Email');
+      setResultType('error');
+      setIsProcessing(false);
       return;
     }
 
     const eventNumber = parseInt(parts[1], 10);
     const email = parts[2];
+    const event = events.find(e => e.eventNumber === eventNumber);
 
-    if (isNaN(eventNumber) || !email) {
-      setScanResult({ eventNumber: 0, email: '', event: null, registration: null, error: 'Ungültige Daten im QR-Code.' });
-      return;
-    }
-
-    const event = eventByNumber[eventNumber];
-    if (!event) {
-      setScanResult({ eventNumber, email, event: null, registration: null, error: `Event #${eventNumber} nicht gefunden.` });
-      return;
-    }
-
-    // Registrierung laden
-    if (!eventService || !event.subsiteUrl) {
-      setScanResult({ eventNumber, email, event, registration: null, error: 'Event-Subsite nicht verfügbar.' });
+    if (!event || !event.subsiteUrl) {
+      setResultMessage(`Event #${eventNumber} nicht gefunden.`);
+      setResultType('error');
+      setIsProcessing(false);
       return;
     }
 
     const reg = await eventService.getRegistrationByEmail(event.subsiteUrl, email);
     if (!reg) {
-      setScanResult({ eventNumber, email, event, registration: null, error: `${email} ist nicht für dieses Event registriert.` });
+      setResultMessage(`${email} ist nicht für dieses Event registriert.`);
+      setResultType('error');
+      setIsProcessing(false);
       return;
     }
 
-    setScanResult({ eventNumber, email, event, registration: reg });
-  };
-
-  // Check-in durchfuehren
-  const handleCheckIn = async (): Promise<void> => {
-    if (!scanResult?.event || !scanResult?.registration || !eventService) return;
-    setIsCheckingIn(true);
-
-    const success = await eventService.checkInParticipant(
-      scanResult.event.subsiteUrl!,
-      scanResult.registration.Id
-    );
-
-    if (success) {
-      setCheckInSuccess(true);
-      setCheckedInCount(prev => prev + 1);
-      // Update result to show new status
-      setScanResult({
-        ...scanResult,
-        registration: { ...scanResult.registration, Status: 'Eingecheckt' },
-      });
-    } else {
-      setStatusMessage('Check-in fehlgeschlagen. Bitte erneut versuchen.');
+    if (reg.Status === 'Eingecheckt') {
+      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+      setResultMessage(`${name} — bereits eingecheckt.`);
+      setResultType('info');
+      setIsProcessing(false);
+      return;
     }
-    setIsCheckingIn(false);
-  };
 
-  // Manueller Code eingeben
-  const handleManualSubmit = async (): Promise<void> => {
-    if (!manualCode.trim()) return;
-    await processCode(manualCode.trim());
+    if (reg.Status === 'Abgemeldet') {
+      setResultMessage(`Teilnehmer ist abgemeldet — Check-in nicht möglich.`);
+      setResultType('error');
+      setIsProcessing(false);
+      return;
+    }
+
+    const success = await eventService.checkInParticipant(event.subsiteUrl, reg.Id);
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+    if (success) {
+      setResultMessage(`${name} — erfolgreich eingecheckt!`);
+      setResultType('success');
+    } else {
+      setResultMessage(`Check-in fehlgeschlagen für ${name}.`);
+      setResultType('error');
+    }
+
     setManualCode('');
+    setIsProcessing(false);
   };
-
-  // Neuen Scan starten
-  const resetScan = (): void => {
-    setScanResult(null);
-    setCheckInSuccess(false);
-    setStatusMessage('');
-  };
-
-  // Cleanup
-  React.useEffect(() => {
-    return () => {
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach(t => t.stop());
-      }
-    };
-  }, []);
 
   if (!isAdmin && !isOrganizer) {
     return (
@@ -207,154 +113,63 @@ export default function CheckInPage(): React.ReactElement {
     );
   }
 
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'Eingecheckt': return 'var(--dex-green)';
-      case 'Angemeldet': case 'QR versendet': return '#1565c0';
-      case 'Warteliste': return 'var(--dex-orange)';
-      case 'Abgemeldet': return 'var(--dex-red)';
-      default: return 'var(--dex-gray-400)';
-    }
-  };
-
-  const displayName = (reg: SPRegistration): string =>
-    (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>
-          Check-in {selectedEvent ? `— ${selectedEvent.title}` : ''}
-        </h2>
-        {checkedInCount > 0 && (
-          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--dex-green)' }}>
-            {checkedInCount} eingecheckt in dieser Session
-          </span>
-        )}
+      <h2 style={{ marginBottom: 8 }}>
+        Check-in {selectedEvent ? `— ${selectedEvent.title}` : ''}
+      </h2>
+      <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 24 }}>
+        Öffne den QR-Code Scanner in einem neuen Fenster für vollen Kamera-Zugriff.
+      </p>
+
+      {/* Scanner-Button */}
+      <div className="card" style={{ padding: 32, textAlign: 'center', marginBottom: 24 }}>
+        <button
+          className="btn btn-primary"
+          onClick={openScanner}
+          style={{ fontSize: '1.1rem', padding: '16px 40px' }}
+        >
+          QR-Code Scanner öffnen
+        </button>
+        <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.8rem', marginTop: 12 }}>
+          Öffnet ein neues Fenster mit Kamera-Zugriff für kontinuierliches Scannen.
+          <br />Die Datei <code>checkin.html</code> muss in SiteAssets hochgeladen sein.
+        </p>
       </div>
 
-      {/* Scanner-Bereich */}
-      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        {!isScanning && !scanResult && (
-          <div style={{ textAlign: 'center' }}>
-            <button className="btn btn-primary" onClick={startScanning} style={{ fontSize: '1rem', padding: '12px 32px' }}>
-              📷 QR-Code scannen
-            </button>
-            <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem', marginTop: 12 }}>
-              Oder Code manuell eingeben:
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
-              <input
-                className="form-input"
-                value={manualCode}
-                onChange={e => setManualCode(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleManualSubmit(); }}
-                placeholder="DEX|1|email@deloitte.de"
-                style={{ maxWidth: 300 }}
-              />
-              <button className="btn btn-secondary" onClick={handleManualSubmit}>Prüfen</button>
-            </div>
-          </div>
-        )}
-
-        {isScanning && (
-          <div style={{ textAlign: 'center' }}>
-            <video
-              ref={videoRef}
-              style={{ width: '100%', maxWidth: 400, borderRadius: 'var(--dex-radius)', border: '3px solid var(--dex-green)' }}
-              playsInline
-              muted
-            />
-            <p style={{ color: 'var(--dex-green)', fontWeight: 600, marginTop: 8 }}>Scanne QR-Code...</p>
-            <button className="btn btn-secondary" onClick={stopScanning} style={{ marginTop: 8 }}>Abbrechen</button>
-          </div>
-        )}
-
-        {statusMessage && (
-          <p style={{ color: 'var(--dex-orange)', textAlign: 'center', marginTop: 12 }}>{statusMessage}</p>
-        )}
-      </div>
-
-      {/* Scan-Ergebnis */}
-      {scanResult && (
-        <div className="card" style={{ padding: 24 }}>
-          {scanResult.error ? (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--dex-red)', fontWeight: 600, fontSize: '1.1rem' }}>
-                {scanResult.error}
-              </p>
-              <button className="btn btn-primary" onClick={resetScan} style={{ marginTop: 16 }}>
-                Neuer Scan
-              </button>
-            </div>
-          ) : (
-            <div>
-              {/* Teilnehmer-Info */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px 0', fontSize: '1.3rem' }}>
-                    {scanResult.registration ? displayName(scanResult.registration) : scanResult.email}
-                  </h3>
-                  <p style={{ color: 'var(--dex-gray-500)', margin: '0 0 8px 0' }}>{scanResult.email}</p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Event:</strong> {scanResult.event?.title || `#${scanResult.eventNumber}`}
-                  </p>
-                </div>
-                <span style={{
-                  padding: '6px 16px',
-                  borderRadius: 20,
-                  fontSize: '0.9rem',
-                  fontWeight: 700,
-                  color: '#fff',
-                  background: scanResult.registration ? getStatusColor(scanResult.registration.Status) : 'var(--dex-gray-400)',
-                }}>
-                  {scanResult.registration?.Status || 'Unbekannt'}
-                </span>
-              </div>
-
-              {/* Check-in Aktion */}
-              {scanResult.registration && scanResult.registration.Status !== 'Eingecheckt' && scanResult.registration.Status !== 'Abgemeldet' && (
-                <button
-                  className="btn btn-primary"
-                  onClick={handleCheckIn}
-                  disabled={isCheckingIn}
-                  style={{ width: '100%', fontSize: '1.1rem', padding: '14px 0', background: 'var(--dex-green)' }}
-                >
-                  {isCheckingIn ? 'Wird eingecheckt...' : 'Einchecken'}
-                </button>
-              )}
-
-              {checkInSuccess && (
-                <div style={{ textAlign: 'center', marginTop: 16, padding: 16, background: '#e8f5e9', borderRadius: 'var(--dex-radius)' }}>
-                  <p style={{ color: '#2e7d32', fontWeight: 700, fontSize: '1.1rem', margin: 0 }}>
-                    Erfolgreich eingecheckt!
-                  </p>
-                </div>
-              )}
-
-              {scanResult.registration?.Status === 'Eingecheckt' && !checkInSuccess && (
-                <div style={{ textAlign: 'center', padding: 16, background: '#fff3e0', borderRadius: 'var(--dex-radius)' }}>
-                  <p style={{ color: '#e65100', fontWeight: 600, margin: 0 }}>
-                    Bereits eingecheckt
-                  </p>
-                </div>
-              )}
-
-              {scanResult.registration?.Status === 'Abgemeldet' && (
-                <div style={{ textAlign: 'center', padding: 16, background: '#ffebee', borderRadius: 'var(--dex-radius)' }}>
-                  <p style={{ color: 'var(--dex-red)', fontWeight: 600, margin: 0 }}>
-                    Teilnehmer ist abgemeldet — Check-in nicht möglich
-                  </p>
-                </div>
-              )}
-
-              <button className="btn btn-secondary" onClick={resetScan} style={{ width: '100%', marginTop: 12 }}>
-                Nächsten Teilnehmer scannen
-              </button>
-            </div>
-          )}
+      {/* Manuelle Eingabe */}
+      <div className="card" style={{ padding: 24 }}>
+        <h3 style={{ marginBottom: 12 }}>Manuelle Eingabe</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="form-input"
+            value={manualCode}
+            onChange={e => setManualCode(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleManualSubmit(); }}
+            placeholder="DEX|1|email@deloitte.de"
+            style={{ flex: 1 }}
+            disabled={isProcessing}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={handleManualSubmit}
+            disabled={isProcessing || !manualCode.trim()}
+          >
+            {isProcessing ? '...' : 'Einchecken'}
+          </button>
         </div>
-      )}
+
+        {resultMessage && (
+          <div style={{
+            marginTop: 12, padding: '12px 16px', borderRadius: 8,
+            background: resultType === 'success' ? '#e8f5e9' : resultType === 'error' ? '#ffebee' : '#e3f2fd',
+            color: resultType === 'success' ? '#2e7d32' : resultType === 'error' ? '#c62828' : '#1565c0',
+            fontWeight: 600,
+          }}>
+            {resultMessage}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

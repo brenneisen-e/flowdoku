@@ -377,6 +377,27 @@
       /* Buttons */
       .btn { padding: 10px 16px; font-size: 0.88rem; }
       .btn-lg { padding: 12px 32px; font-size: 1rem; }
+
+      /* Admin Counter Grid */
+      .admin-counters { grid-template-columns: repeat(2, 1fr) !important; }
+
+      /* Admin Action Buttons */
+      .admin-actions { flex-direction: column !important; }
+      .admin-actions .btn { width: 100%; justify-content: center; }
+
+      /* Form 2-Column Grids */
+      .form-grid-2col { grid-template-columns: 1fr !important; }
+
+      /* Flowchart */
+      .flowchart-tabs { flex-wrap: wrap; }
+      .flowchart-node { max-width: 180px !important; font-size: 0.75rem !important; }
+
+      /* Preview Modal */
+      .preview-modal { padding: 12px !important; }
+      .preview-modal-inner { max-width: 100% !important; max-height: 95vh !important; }
+
+      /* Participants Table */
+      .participants-table td, .participants-table th { padding: 6px 8px !important; font-size: 0.8rem !important; }
     }
 
     /* ========== Responsive - Small Mobile ========== */
@@ -386,6 +407,9 @@
       .event-card__image { height: 150px; }
       .start-card { padding: 24px 16px; min-height: 160px; }
       .start-card h2 { font-size: 1.1rem; }
+
+      /* Admin Counter Grid - 1 column on very small screens */
+      .admin-counters { grid-template-columns: 1fr !important; }
     }
   }
 }

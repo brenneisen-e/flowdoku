@@ -11,6 +11,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
+import { LanguageProvider } from '../context/LanguageContext';
 import { EventProvider } from '../context/EventContext';
 import { UserProvider } from '../context/UserContext';
 import { RoleProvider } from '../context/RoleContext';
@@ -158,15 +159,17 @@ export default function DexEventPlatform(props: IDexEventPlatformProps): React.R
 
   return (
     <div className={styles.dexApp}>
-      <UserProvider context={props.context}>
-        <RoleProvider context={props.context}>
-          <NavigationProvider>
-            <EventProvider context={props.context}>
-              <AppContent />
-            </EventProvider>
-          </NavigationProvider>
-        </RoleProvider>
-      </UserProvider>
+      <LanguageProvider>
+        <UserProvider context={props.context}>
+          <RoleProvider context={props.context}>
+            <NavigationProvider>
+              <EventProvider context={props.context}>
+                <AppContent />
+              </EventProvider>
+            </NavigationProvider>
+          </RoleProvider>
+        </UserProvider>
+      </LanguageProvider>
     </div>
   );
 }

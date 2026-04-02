@@ -10,6 +10,7 @@
 import * as React from 'react';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient } from '@microsoft/sp-http';
 
@@ -43,8 +44,22 @@ export interface ProfilePageProps {
 export default function ProfilePage(props: ProfilePageProps): React.ReactElement {
   const { currentUser, photoUrl: userPhotoUrl } = useCurrentUser();
   const { currentUserRole } = useRoles();
+  const { t } = useLanguage();
   const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [isProfileLoading, setIsProfileLoading] = React.useState(true);
+
+  // Translated labels for profile fields (keyed by SP property name)
+  const labelMap: Record<string, string> = {
+    'FirstName': t('profile.firstname'),
+    'LastName': t('profile.lastname'),
+    'Title': t('profile.jobtitle'),
+    'Department': t('profile.department'),
+    'Office': t('profile.office'),
+    'WorkEmail': t('profile.email'),
+    'WorkPhone': t('profile.phone'),
+    'CellPhone': t('profile.mobile'),
+    'Manager': t('profile.manager'),
+  };
 
   // Rollen-Farbe
   const roleColors: Record<string, { bg: string; color: string }> = {
@@ -147,7 +162,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
 
         {/* Profil-Details */}
         <div style={{ padding: '20px 24px' }}>
-          <h3 style={{ fontSize: '1rem', marginBottom: 16, color: 'var(--dex-gray-700, #444)' }}>Profil Details</h3>
+          <h3 style={{ fontSize: '1rem', marginBottom: 16, color: 'var(--dex-gray-700, #444)' }}>{t('profile.details')}</h3>
 
           {isProfileLoading ? (
             <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Profildaten...</p>
@@ -158,7 +173,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
                 padding: '10px 0', borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)',
                 gap: 16,
               }}>
-                <span style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', flexShrink: 0 }}>{row.label}</span>
+                <span style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', flexShrink: 0 }}>{labelMap[row.key] || row.label}</span>
                 <span style={{
                   fontWeight: 500, fontSize: '0.85rem', textAlign: 'right',
                   wordBreak: 'break-word', maxWidth: '60%',
@@ -170,10 +185,10 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           ) : (
             // Fallback: Basisdaten anzeigen
             [
-              { label: 'Vorname', value: currentUser.firstName },
-              { label: 'Nachname', value: currentUser.surname },
-              { label: 'E-Mail', value: currentUser.email },
-              { label: 'Standort', value: currentUser.location },
+              { label: t('profile.firstname'), value: currentUser.firstName },
+              { label: t('profile.lastname'), value: currentUser.surname },
+              { label: t('profile.email'), value: currentUser.email },
+              { label: t('profile.office'), value: currentUser.location },
               { label: 'Login', value: currentUser.id },
             ].filter(r => r.value).map(row => (
               <div key={row.label} style={{
@@ -193,8 +208,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
           borderRadius: '0 0 var(--dex-radius-lg, 12px) var(--dex-radius-lg, 12px)',
           fontSize: '0.8rem', color: 'var(--dex-gray-400, #aaa)',
         }}>
-          Diese Daten werden aus deinem SharePoint-Profil gelesen. Um sie zu aktualisieren,
-          wende dich an deine IT oder aktualisiere dein Profil in Microsoft 365.
+          {t('profile.note')}
         </div>
       </div>
     </div>

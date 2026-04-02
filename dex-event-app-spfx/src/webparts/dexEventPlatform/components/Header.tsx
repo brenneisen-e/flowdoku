@@ -10,12 +10,14 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Mail } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, isAdmin } = useRoles();
+  const { t } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
@@ -23,19 +25,19 @@ export default function Header(): React.ReactElement {
   // Titel-Mapping je nach aktuellem Seitenstatus
   const getTitle = (): string => {
     switch (currentPage) {
-      case 'start': return 'Event Experience Platform';
-      case 'register': return 'Registration | Available events at your location';
+      case 'start': return t('start.title');
+      case 'register': return t('header.registration');
       case 'registration': return 'Registration Deloitte Events';
-      case 'my-events': return 'My Events';
-      case 'create-event': return 'Deloitte Event Creation';
-      case 'edit-event': return 'Event bearbeiten';
-      case 'settings': return 'Settings';
-      case 'profile': return 'My Profile';
-      case 'admin': return 'Admin';
-      case 'role-matrix': return 'Rollen-Matrix';
-      case 'participants': return 'Teilnehmer-Übersicht';
-      case 'flowcharts': return 'Prozess-Übersicht';
-      case 'check-in': return 'Check-in';
+      case 'my-events': return t('myevents.title');
+      case 'create-event': return t('header.createevent');
+      case 'edit-event': return t('header.editevent');
+      case 'settings': return t('header.settings');
+      case 'profile': return t('header.profile');
+      case 'admin': return t('header.admin');
+      case 'role-matrix': return t('header.rolematrix');
+      case 'participants': return t('header.participants');
+      case 'flowcharts': return t('header.flowcharts');
+      case 'check-in': return t('header.checkin');
       default: return '';
     }
   };
@@ -147,7 +149,7 @@ export default function Header(): React.ReactElement {
                   style={{ fontSize: '0.85rem' }}
                   onClick={() => { setShowPopup(false); navigate('profile'); }}
                 >
-                  View full profile
+                  {t('profile.viewfull')}
                 </button>
                 {isAdmin && (
                   <button
@@ -155,7 +157,7 @@ export default function Header(): React.ReactElement {
                     style={{ fontSize: '0.85rem' }}
                     onClick={() => { setShowPopup(false); navigate('settings'); }}
                   >
-                    <Settings size={14} /> Role Management
+                    <Settings size={14} /> {t('settings.rolemanagement')}
                   </button>
                 )}
               </div>

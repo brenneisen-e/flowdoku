@@ -13,10 +13,12 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
 import { EventService } from '../services/EventService';
+import { qrCodeEmail } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -42,6 +44,7 @@ export default function AdminPage(): React.ReactElement {
   const { events, getAllRegistrations, deleteEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
+  const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
@@ -87,16 +90,16 @@ export default function AdminPage(): React.ReactElement {
     return (
       <div className="page-container">
         <div className="flex-between mb-16">
-          <h2>Admin / Organizer</h2>
+          <h2>{t('admin.title')}</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             {isAdmin && (
               <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
-                <Users size={16} /> Teilnehmer
+                <Users size={16} /> {t('admin.participants')}
               </button>
             )}
             {isAdmin && (
               <button className="btn btn-secondary" onClick={() => navigate('flowcharts')} style={{ fontSize: '0.85rem' }}>
-                ↻ Prozesse
+                ↻ {t('admin.processes')}
               </button>
             )}
             <a
@@ -106,17 +109,17 @@ export default function AdminPage(): React.ReactElement {
               className="btn btn-secondary"
               style={{ fontSize: '0.85rem', textDecoration: 'none' }}
             >
-              <FileText size={16} /> SharePoint-Liste
+              <FileText size={16} /> {t('admin.splist')}
             </a>
             <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
-              <Plus size={16} /> Neues Event erstellen
+              <Plus size={16} /> {t('admin.newevent')}
             </button>
           </div>
         </div>
 
         {adminEvents.length === 0 ? (
           <div className="card text-center" style={{ padding: 48 }}>
-            <p style={{ color: 'var(--dex-gray-400)' }}>Keine Events gefunden.</p>
+            <p style={{ color: 'var(--dex-gray-400)' }}>{t('admin.noevents')}</p>
             <button className="btn btn-primary mt-24" onClick={() => navigate('create-event')}>
               Erstes Event erstellen
             </button>
@@ -196,7 +199,7 @@ export default function AdminPage(): React.ReactElement {
   }
 
   // Event ausgewählt - Detail-Ansicht
-  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt');
+  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste');
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
 
@@ -267,7 +270,7 @@ export default function AdminPage(): React.ReactElement {
               className="btn btn-primary btn-block"
               onClick={() => navigate('edit-event', selectedEvent.id)}
             >
-              <FileText size={16} /> Event bearbeiten
+              <FileText size={16} /> {t('admin.editbutton')}
             </button>
             <a
               href={selectedEvent.subsiteUrl
@@ -278,13 +281,13 @@ export default function AdminPage(): React.ReactElement {
               className="btn btn-primary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
-              <FileText size={16} /> Teilnehmerliste in SharePoint öffnen
+              <FileText size={16} /> {t('admin.opensp')}
             </a>
             <button
               className="btn btn-secondary btn-block"
               onClick={() => {
                 const emails = registrations
-                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt')
+                  .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
                   .map(r => r.ParticipantEmail)
                   .join('; ');
                 if (emails) {
@@ -298,54 +301,54 @@ export default function AdminPage(): React.ReactElement {
                 }
               }}
             >
-              <Copy size={16} /> {copiedEmails ? 'Kopiert!' : 'E-Mail-Adressen kopieren'}
+              <Copy size={16} /> {copiedEmails ? t('admin.copied') : t('admin.copyemails')}
             </button>
             <a
-              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
+              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
               className="btn btn-secondary btn-block"
               style={{ textDecoration: 'none', textAlign: 'center' }}
             >
-              <Mail size={16} /> E-Mail an alle Teilnehmer
+              <Mail size={16} /> {t('admin.emailall')}
             </a>
           </div>
         </div>
       </div>
 
       {/* Zähler + QR/Check-in Aktionen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
             {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Angemeldet</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
             {registrations.filter(r => r.Status === 'Eingecheckt').length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Eingecheckt</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
             {registrations.filter(r => r.Status === 'Warteliste').length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Warteliste</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
             {registrations.filter(r => r.Status === 'Abgemeldet').length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>Abgemeldet</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
         <button
           className="btn btn-primary"
           onClick={() => navigate('check-in', selectedEvent.id)}
           style={{ flex: 1 }}
         >
-          📷 QR-Code Check-in starten
+          {t('admin.checkin')}
         </button>
         <button
           className="btn btn-secondary"
@@ -367,14 +370,15 @@ export default function AdminPage(): React.ReactElement {
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                qrImageHtml = `<div style="text-align:center;"><img src="${qrDataUrl}" alt="QR-Code" style="width:300px;height:300px;" /></div>`;
+                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch { /* Fallback: Text */ }
-              // QR-Code E-Mail queuen
+              // QR-Code E-Mail im Deloitte-Template queuen
+              const emailData = qrCodeEmail(name, selectedEvent.title, qrImageHtml);
               await eventServiceRef.queueEmail(
-                `Dein QR-Code für ${selectedEvent.title}`,
+                emailData.subject,
                 reg.ParticipantEmail,
                 name,
-                `<p>Hallo ${name},</p><p>hier ist dein QR-Code für <strong>${selectedEvent.title}</strong>:</p>${qrImageHtml}<p>Bitte zeige diesen Code beim Check-in vor.</p>`,
+                emailData.body,
                 'QRCode',
                 selectedEvent.title,
                 selectedEvent.id

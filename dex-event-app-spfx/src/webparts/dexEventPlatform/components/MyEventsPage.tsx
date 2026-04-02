@@ -9,6 +9,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField } from '../types';
 import { SPRegistration } from '../services/EventService';
+import { useLanguage } from '../context/LanguageContext';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -33,12 +34,12 @@ function getStatusBadgeClass(status: string): string {
   }
 }
 
-function getStatusLabel(status: string): string {
+function getStatusLabel(status: string, t: (key: string) => string): string {
   switch (status) {
-    case 'Angemeldet': return 'Angemeldet';
-    case 'Warteliste': return 'Warteliste';
-    case 'Abgemeldet': return 'Abgemeldet';
-    case 'Eingecheckt': return 'Eingecheckt';
+    case 'Angemeldet': return t('status.registered');
+    case 'Warteliste': return t('status.waitlist');
+    case 'Abgemeldet': return t('status.cancelled');
+    case 'Eingecheckt': return t('status.checkedin');
     default: return status;
   }
 }
@@ -46,6 +47,7 @@ function getStatusLabel(status: string): string {
 export default function MyEventsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { events, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
+  const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
@@ -115,19 +117,19 @@ export default function MyEventsPage(): React.ReactElement {
   if (isLoading) {
     return (
       <div className="page-container text-center">
-        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>Lade deine Registrierungen...</p>
+        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>{t('myevents.loading')}</p>
       </div>
     );
   }
 
   return (
     <div className="page-container">
-      <h2 className="mb-16">Meine Events</h2>
+      <h2 className="mb-16">{t('myevents.title')}</h2>
 
       {activeEntries.length === 0 && cancelledEntries.length === 0 && (
         <div className="card text-center" style={{ padding: 48 }}>
-          <p style={{ color: 'var(--dex-gray-400)' }}>Du bist noch für kein Event registriert.</p>
-          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>Events durchsuchen</button>
+          <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.empty')}</p>
+          <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>{t('myevents.browse')}</button>
         </div>
       )}
 
@@ -166,14 +168,14 @@ export default function MyEventsPage(): React.ReactElement {
                 <div className="my-event-card__header">
                   <h3>{event.title}</h3>
                   <span className={`badge ${getStatusBadgeClass(registration.Status)}`}>
-                    {getStatusLabel(registration.Status)}
+                    {getStatusLabel(registration.Status, t)}
                   </span>
                 </div>
 
                 <div className="my-event-card__details">
-                  <p><strong>Ort:</strong> {event.location || '-'}</p>
-                  <p><strong>Datum:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
-                  <p><strong>Angemeldet am:</strong> {formatDate(registration.RegistrationDate)}</p>
+                  <p><strong>{t('myevents.location')}:</strong> {event.location || '-'}</p>
+                  <p><strong>{t('myevents.date')}:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
+                  <p><strong>{t('myevents.registeredon')}:</strong> {formatDate(registration.RegistrationDate)}</p>
                   {registration.Title && (
                     <p><strong>E-Mail-Adresse:</strong> {registration.Title}</p>
                   )}
@@ -221,10 +223,10 @@ export default function MyEventsPage(): React.ReactElement {
                           setIsSaving(false);
                         }}
                       >
-                        {isSaving ? 'Wird gespeichert...' : 'Speichern'}
+                        {isSaving ? t('myevents.saving') : t('myevents.save')}
                       </button>
                       <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => setEditingId(null)}>
-                        Abbrechen
+                        {t('general.cancel')}
                       </button>
                     </div>
                   </div>
@@ -254,7 +256,7 @@ export default function MyEventsPage(): React.ReactElement {
                       }
                     }}
                   >
-                    {editingId === event.id ? 'Abbrechen' : 'Angaben bearbeiten'}
+                    {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                   </button>
                   <button
                     className="btn"
@@ -266,12 +268,12 @@ export default function MyEventsPage(): React.ReactElement {
                     }}
                   >
                     {cancellingId === event.id
-                      ? (isCancelling ? 'Wird abgemeldet...' : 'Abmeldung bestätigen')
-                      : 'Abmelden'}
+                      ? (isCancelling ? t('myevents.confirming') : t('myevents.confirmcancel'))
+                      : t('myevents.cancel')}
                   </button>
                   {cancellingId === event.id && !isCancelling && (
                     <button className="btn btn-primary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
-                      Anmeldung behalten
+                      {t('myevents.keepreg')}
                     </button>
                   )}
                 </div>
@@ -283,16 +285,16 @@ export default function MyEventsPage(): React.ReactElement {
 
       {cancelledEntries.length > 0 && (
         <div>
-          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>Abgemeldete Events</h3>
+          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.cancelledevents')}</h3>
           <div className="my-events-list">
             {cancelledEntries.map(({ event, registration }) => (
               <div key={event.id} className="card my-event-card" style={{ opacity: 0.6 }}>
                 <div className="my-event-card__header">
                   <h3>{event.title}</h3>
-                  <span className="badge badge-red">Abgemeldet</span>
+                  <span className="badge badge-red">{t('status.cancelled')}</span>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
-                  Abgemeldet am: {registration.CancellationDate ? formatDate(registration.CancellationDate) : '-'}
+                  {t('myevents.cancelledon')}: {registration.CancellationDate ? formatDate(registration.CancellationDate) : '-'}
                 </p>
               </div>
             ))}
