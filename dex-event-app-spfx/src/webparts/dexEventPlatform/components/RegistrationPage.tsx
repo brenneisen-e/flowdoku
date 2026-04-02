@@ -285,9 +285,18 @@ export default function RegistrationPage(): React.ReactElement {
                         maxHeight: 200, overflowY: 'auto',
                       }}>
                         {userResults.map(u => {
-                          const nameParts = u.displayName.split(' ');
-                          const uFirstName = nameParts[0] || '';
-                          const uSurname = nameParts.slice(1).join(' ') || '';
+                          // "Nachname, Vorname" oder "Vorname Nachname" Format
+                          let uFirstName = '';
+                          let uSurname = '';
+                          if (u.displayName.includes(',')) {
+                            const parts = u.displayName.split(',').map(s => s.trim());
+                            uSurname = parts[0] || '';
+                            uFirstName = parts[1] || '';
+                          } else {
+                            const parts = u.displayName.split(' ');
+                            uFirstName = parts[0] || '';
+                            uSurname = parts.slice(1).join(' ') || '';
+                          }
                           return (
                             <div
                               key={u.email}
@@ -330,17 +339,17 @@ export default function RegistrationPage(): React.ReactElement {
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.firstname')} disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.surname')} disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ ...(!registerForOther ? { background: 'var(--dex-gray-100)' } : {}), ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (!registerForOther) return; }} placeholder="email@deloitte.de" disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
           </div>
         </div>
