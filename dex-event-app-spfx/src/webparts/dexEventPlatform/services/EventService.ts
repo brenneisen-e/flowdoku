@@ -1896,8 +1896,8 @@ export class EventService {
   private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
-        'Accept': 'application/json;odata=nometadata',
-        'Content-Type': 'application/json;odata=nometadata',
+        'Accept': 'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       },
