@@ -28,6 +28,10 @@ export default function CheckInPage(): React.ReactElement {
   const [isScanning, setIsScanning] = React.useState(false);
   const [cameraError, setCameraError] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
+  const [pendingCheckIn, setPendingCheckIn] = React.useState<{
+    name: string; email: string; event: { subsiteUrl: string; title: string };
+    regId: number; status: string; department?: string; jobTitle?: string; photoUrl?: string;
+  } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const context = (window as any).__dexSpfxContext;
@@ -201,16 +205,55 @@ export default function CheckInPage(): React.ReactElement {
       return;
     }
 
+    // Statt sofort einzuchecken, Info-Karte anzeigen und auf Bestätigung warten
+    // Profilbild laden
+    let photoUrl = '';
     try {
-      await eventService.checkInParticipant(event.subsiteUrl, reg.Id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const siteBase = ctx.pageContext.web.absoluteUrl;
+        photoUrl = `${siteBase}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(email)}`;
+      }
+    } catch { /* */ }
+
+    setPendingCheckIn({
+      name,
+      email,
+      event: { subsiteUrl: event.subsiteUrl, title: event.title },
+      regId: reg.Id,
+      status: reg.Status,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      department: (reg as any).Department || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      jobTitle: (reg as any).JobTitle || '',
+      photoUrl,
+    });
+    setResultMessage('');
+    setResultType('');
+    setIsProcessing(false);
+  };
+
+  // Check-in bestätigen
+  const confirmCheckIn = async (): Promise<void> => {
+    if (!pendingCheckIn || !eventService) return;
+    try {
+      await eventService.checkInParticipant(pendingCheckIn.event.subsiteUrl, pendingCheckIn.regId);
       setCheckedInCount(prev => prev + 1);
-      setResultMessage(`${name} — ${t('checkin.success')}`);
+      setResultMessage(`${pendingCheckIn.name} — ${t('checkin.success')}`);
       setResultType('success');
     } catch {
-      setResultMessage(`${name} — Check-in fehlgeschlagen.`);
+      setResultMessage(`${pendingCheckIn.name} — Check-in fehlgeschlagen.`);
       setResultType('error');
     }
-    setIsProcessing(false);
+    setPendingCheckIn(null);
+    processingRef.current = false;
+  };
+
+  const cancelCheckIn = (): void => {
+    setPendingCheckIn(null);
+    lastScannedRef.current = '';
+    processingRef.current = false;
   };
 
   const handleManualSubmit = async (): Promise<void> => {
@@ -294,6 +337,70 @@ export default function CheckInPage(): React.ReactElement {
           <p style={{ color: '#bf360c', fontSize: '0.75rem', marginTop: 8, marginBottom: 0 }}>
             Tipp: Lege dir die Seite als Lesezeichen in Edge an für schnellen Zugriff beim Event.
           </p>
+        </div>
+      )}
+
+      {/* Bestätigungs-Dialog nach Scan */}
+      {pendingCheckIn && (
+        <div className="card" style={{
+          padding: 24, marginBottom: 16, border: '2px solid var(--dex-green)',
+          borderRadius: 16, background: '#fff',
+        }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
+            {pendingCheckIn.photoUrl ? (
+              <img
+                src={pendingCheckIn.photoUrl}
+                alt={pendingCheckIn.name}
+                style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div style={{
+                width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg, #86bc25, #0076a8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontWeight: 700, fontSize: '1.4rem',
+              }}>
+                {pendingCheckIn.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+              </div>
+            )}
+            <div style={{ flex: 1 }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '1.2rem' }}>{pendingCheckIn.name}</h3>
+              <p style={{ margin: '0 0 2px', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>{pendingCheckIn.email}</p>
+              {pendingCheckIn.jobTitle && (
+                <p style={{ margin: '0 0 2px', fontSize: '0.85rem' }}>{pendingCheckIn.jobTitle}</p>
+              )}
+              {pendingCheckIn.department && (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.department}</p>
+              )}
+            </div>
+            <span style={{
+              padding: '6px 14px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 700,
+              background: pendingCheckIn.status === 'Eingecheckt' ? '#e8f5e9' : '#e3f2fd',
+              color: pendingCheckIn.status === 'Eingecheckt' ? '#2e7d32' : '#1565c0',
+            }}>
+              {pendingCheckIn.status}
+            </span>
+          </div>
+          <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
+            Event: <strong>{pendingCheckIn.event.title}</strong>
+          </p>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button
+              className="btn btn-primary"
+              onClick={confirmCheckIn}
+              style={{ flex: 1, fontSize: '1rem', padding: '12px 0', background: 'var(--dex-green)' }}
+            >
+              Einchecken bestätigen
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={cancelCheckIn}
+              style={{ padding: '12px 20px' }}
+            >
+              Abbrechen
+            </button>
+          </div>
         </div>
       )}
 
