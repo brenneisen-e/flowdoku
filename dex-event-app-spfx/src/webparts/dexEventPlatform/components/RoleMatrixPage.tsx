@@ -32,6 +32,7 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Registrierungen', feature: 'Für andere registrieren', user: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Teilnehmerliste eigener Events sehen', user: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Alle Teilnehmerlisten sehen', user: false, organizer: false, admin: true },
+  { category: 'Registrierungen', feature: 'Teilnehmer abmelden', user: false, organizer: 'Eigene Events', admin: true },
   { category: 'Registrierungen', feature: 'E-Mail-Adressen kopieren', user: false, organizer: 'Eigene Events', admin: true },
 
   // Administration
@@ -42,16 +43,17 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Administration', feature: 'Standort-Filter konfigurieren', user: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Zielgruppen-Filter konfigurieren', user: false, organizer: true, admin: true },
 
-  // SharePoint
-  { category: 'SharePoint', feature: 'DEX_Events Liste: Lesen', user: true, organizer: true, admin: true },
-  { category: 'SharePoint', feature: 'DEX_Events Liste: Schreiben', user: false, organizer: true, admin: true },
-  { category: 'SharePoint', feature: 'DEX_Roles Liste: Lesen', user: false, organizer: 'Read only', admin: true },
-  { category: 'SharePoint', feature: 'DEX_Roles Liste: Schreiben', user: false, organizer: false, admin: true },
-  { category: 'SharePoint', feature: 'DEX_Emails Liste: Lesen', user: false, organizer: false, admin: true },
-  { category: 'SharePoint', feature: 'DEX_Emails Liste: Schreiben (Queue)', user: 'Nur eigene', organizer: 'Nur eigene', admin: true },
-  { category: 'SharePoint', feature: 'Event-Subsites: Full Control', user: false, organizer: 'Eigene Events', admin: true },
-  { category: 'SharePoint', feature: 'Teilnehmerliste: Eigene Einträge', user: true, organizer: true, admin: true },
-  { category: 'SharePoint', feature: 'Teilnehmerliste: Alle Einträge', user: false, organizer: 'Eigene Events', admin: true },
+  // SharePoint (Visitors = DEALL, Owners = Admins)
+  { category: 'SharePoint', feature: 'DEX_Events: Lesen', user: 'Visitors (Read)', organizer: 'Contribute', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Events: Schreiben', user: false, organizer: 'Contribute', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Roles: Lesen', user: false, organizer: 'Read', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Roles: Schreiben', user: false, organizer: false, admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Emails: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Outlook: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_IDReorder: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Participants: eigene Einträge', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'Event-Subsite', user: 'Visitors (Read)', organizer: 'Full Control', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'Teilnehmerliste: eigener Eintrag', user: 'Contribute + ILS', organizer: 'Full Control', admin: 'Full Control' },
 
   // Profil
   { category: 'Profil', feature: 'Eigenes Profil ansehen', user: true, organizer: true, admin: true },
