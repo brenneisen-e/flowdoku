@@ -486,16 +486,16 @@ export class EventService {
 
     try {
       const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName,Title&$filter=Hidden eq false&$top=200`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return;
       const data = await response.json();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existingFields = new Set((data.value || []).map((f: any) => f.InternalName));
+      const existingNames = new Set((data.value || []).flatMap((f: any) => [f.InternalName, f.Title]));
 
       for (const f of requiredFields) {
-        if (!existingFields.has(f.title)) {
+        if (!existingNames.has(f.title)) {
           await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
             '__metadata': { 'type': 'SP.Field' },
             'Title': f.title,
