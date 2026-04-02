@@ -784,7 +784,13 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} style={errorBorderStyle('startDate')} />
+                  <DateTimePicker
+                    dateConvention={DateConvention.DateTime}
+                    timeConvention={TimeConvention.Hours24}
+                    value={startDate ? new Date(startDate) : undefined}
+                    onChange={(date: Date) => setStartDate(date ? date.toISOString().slice(0, 16) : '')}
+                    showLabels={false}
+                  />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
                 <div className="form-group">
@@ -792,7 +798,13 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} style={errorBorderStyle('endDate')} />
+                  <DateTimePicker
+                    dateConvention={DateConvention.DateTime}
+                    timeConvention={TimeConvention.Hours24}
+                    value={endDate ? new Date(endDate) : undefined}
+                    onChange={(date: Date) => setEndDate(date ? date.toISOString().slice(0, 16) : '')}
+                    showLabels={false}
+                  />
                   {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
               </div>

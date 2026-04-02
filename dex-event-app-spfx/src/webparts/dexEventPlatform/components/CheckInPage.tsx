@@ -93,9 +93,9 @@ export default function CheckInPage(): React.ReactElement {
           if (!code || code === lastScannedRef.current || processingRef.current) return;
           lastScannedRef.current = code;
           processingRef.current = true;
+          // Vibration bei Erkennung
+          try { navigator.vibrate(200); } catch { /* */ }
           console.log('[DEX Scanner] QR erkannt:', code);
-          setResultMessage(`QR erkannt: ${code}`);
-          setResultType('info');
           await processCode(code);
           processingRef.current = false;
           setTimeout(() => { lastScannedRef.current = ''; }, 3000);
@@ -404,83 +404,90 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
-      {/* QR-Code scannen — zwei Optionen */}
+      {/* Live-Scanner — Kamerabild + Steuerung */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 8 }}>QR-Code scannen</h3>
-        <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
-          QR-Code fotografieren oder aus der Galerie wählen — Check-in wird sofort ausgeführt.
-        </p>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            padding: '16px 24px', borderRadius: 12, border: 'none',
-            background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
-            fontSize: '1rem', fontWeight: 700, flex: '1 1 200px',
-          }}>
-            Kamera öffnen
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={e => {
-                const file = e.target.files && e.target.files[0];
-                if (file) handlePhotoUpload(file);
-                e.target.value = '';
-              }}
-            />
-          </label>
-          <label style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            padding: '16px 24px', borderRadius: 12, border: '2px solid var(--dex-gray-300)',
-            background: '#fff', color: 'var(--dex-gray-700)', cursor: 'pointer',
-            fontSize: '1rem', fontWeight: 600, flex: '1 1 200px',
-          }}>
-            Aus Galerie wählen
-            <input
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={e => {
-                const file = e.target.files && e.target.files[0];
-                if (file) handlePhotoUpload(file);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Live-Kamera Scanner (html5-qrcode) */}
-      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Live-Scanner</h3>
         {!isScanning ? (
-          <div style={{ textAlign: 'center' }}>
-            <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1rem', padding: '12px 32px' }}>
-              {t('checkin.scan')}
-            </button>
-            {cameraError && (
-              <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', marginTop: 12 }}>{cameraError}</p>
-            )}
-          </div>
+          <>
+            <h3 style={{ marginBottom: 12 }}>Live-Scanner</h3>
+            <div style={{ textAlign: 'center' }}>
+              <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
+                {t('checkin.scan')}
+              </button>
+              {cameraError && (
+                <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', marginTop: 12 }}>{cameraError}</p>
+              )}
+            </div>
+          </>
         ) : (
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ color: 'var(--dex-green)', fontWeight: 600, marginBottom: 8 }}>{t('checkin.scanning')}</p>
-            <button className="btn btn-secondary" onClick={stopCamera} style={{ marginBottom: 12 }}>
-              {t('general.cancel')}
-            </button>
-          </div>
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, color: 'var(--dex-green)' }}>{t('checkin.scanning')}</h3>
+              <button className="btn btn-secondary" onClick={stopCamera} style={{ fontSize: '0.85rem' }}>
+                Scanner stoppen
+              </button>
+            </div>
+          </>
         )}
         <video
           ref={videoRef}
           style={{
-            width: '100%', maxWidth: 400, margin: '0 auto', display: isScanning ? 'block' : 'none',
+            width: '100%', maxWidth: 500, margin: '0 auto',
+            display: isScanning ? 'block' : 'none',
             borderRadius: 12, border: '3px solid var(--dex-green)',
           }}
           playsInline
           muted
         />
       </div>
+
+      {/* Foto-Upload — nur sichtbar wenn Live-Scanner NICHT aktiv */}
+      {!isScanning && (
+        <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+          <h3 style={{ marginBottom: 8 }}>QR-Code scannen</h3>
+          <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
+            Alternativ: QR-Code fotografieren oder aus der Galerie wählen.
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              padding: '14px 24px', borderRadius: 12, border: 'none',
+              background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
+              fontSize: '0.95rem', fontWeight: 700, flex: '1 1 180px',
+            }}>
+              Kamera öffnen
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files && e.target.files[0];
+                  if (file) handlePhotoUpload(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              padding: '14px 24px', borderRadius: 12, border: '2px solid var(--dex-gray-300)',
+              background: '#fff', color: 'var(--dex-gray-700)', cursor: 'pointer',
+              fontSize: '0.95rem', fontWeight: 600, flex: '1 1 180px',
+            }}>
+              Aus Galerie wählen
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files && e.target.files[0];
+                  if (file) handlePhotoUpload(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Manuelle Eingabe */}
       <div className="card" style={{ padding: 24 }}>
