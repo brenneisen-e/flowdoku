@@ -819,6 +819,9 @@ export default function EventCreationPage(): React.ReactElement {
                     value={endDate ? new Date(endDate) : undefined}
                     onChange={(date: Date) => setEndDate(date ? date.toISOString().slice(0, 16) : '')}
                     showLabels={false}
+                    formatDate={(date?: Date) => date ? date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+                    strings={datePickerStrings}
+                    firstDayOfWeek={1}
                   />
                   {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
