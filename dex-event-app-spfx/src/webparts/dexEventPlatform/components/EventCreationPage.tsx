@@ -70,7 +70,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
@@ -450,6 +450,18 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
+  const datePickerStrings = {
+    months: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+    shortMonths: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
+    days: ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'],
+    shortDays: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+    goToToday: 'Heute',
+    prevMonthAriaLabel: 'Vorheriger Monat',
+    nextMonthAriaLabel: 'Nächster Monat',
+    prevYearAriaLabel: 'Vorheriges Jahr',
+    nextYearAriaLabel: 'Nächstes Jahr',
+  };
+
   const steps = [
     { label: 'Grundlagen', icon: '1' },
     { label: 'Zeit & Ort', icon: '2' },
@@ -790,6 +802,9 @@ export default function EventCreationPage(): React.ReactElement {
                     value={startDate ? new Date(startDate) : undefined}
                     onChange={(date: Date) => setStartDate(date ? date.toISOString().slice(0, 16) : '')}
                     showLabels={false}
+                    formatDate={(date?: Date) => date ? date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+                    strings={datePickerStrings}
+                    firstDayOfWeek={1}
                   />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
