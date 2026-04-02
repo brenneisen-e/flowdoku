@@ -397,10 +397,23 @@ export class EventService {
     eventTitle: string
   ): Promise<boolean> {
     try {
+      // ListItemEntityTypeFullName dynamisch ermitteln
+      let listItemType = 'SP.Data.DEX_x005f_IDReorderListItem';
+      try {
+        const typeResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback auf Standard-Name */ }
+
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`,
         {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_IDReorderListItem' },
+          '__metadata': { 'type': listItemType },
           'Title': `Reorder: ${eventTitle}`,
           'EventId': eventId,
           'EventNumber': eventNumber,
