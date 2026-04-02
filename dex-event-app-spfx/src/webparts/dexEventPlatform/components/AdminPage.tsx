@@ -445,7 +445,7 @@ export default function AdminPage(): React.ReactElement {
               <tbody>
                 {activeRegs.map((reg, i) => (
                   <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.Title || (i + 1)}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>
                     <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                     <td style={{ padding: 8 }}>
