@@ -1891,36 +1891,15 @@ export class EventService {
   }
 
   /**
-   * MERGE-Request: nutzt gleiche Header wie _post (odata=verbose + odata-version),
-   * holt dynamisch den ListItemEntityTypeFullName fuer __metadata.
+   * PATCH-Request fuer Item-Updates (modern, kein __metadata noetig).
    */
-  private async _merge(url: string, body: Record<string, unknown>): Promise<SPHttpClientResponse> {
-    // Dynamisch ListItemEntityTypeFullName ermitteln
-    if (!body['__metadata']) {
-      const listMatch = url.match(/(.+\/_api\/web\/lists\/getbytitle\('[^']+'\))/);
-      if (listMatch) {
-        try {
-          const typeResp = await this.context.spHttpClient.get(
-            `${listMatch[1]}?$select=ListItemEntityTypeFullName`,
-            SPHttpClient.configurations.v1
-          );
-          if (typeResp.ok) {
-            const typeData = await typeResp.json();
-            const itemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName;
-            if (itemType) {
-              body = { '__metadata': { 'type': itemType }, ...body };
-            }
-          }
-        } catch { /* Fallback: ohne __metadata */ }
-      }
-    }
+  private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
-        'Accept': 'application/json;odata=verbose',
-        'Content-Type': 'application/json;odata=verbose',
-        'odata-version': '',
+        'Accept': 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata',
         'IF-MATCH': '*',
-        'X-HTTP-Method': 'MERGE',
+        'X-HTTP-Method': 'PATCH',
       },
       body: JSON.stringify(body),
     };
