@@ -189,13 +189,10 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const membersResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (membersResp.ok) {
-        const d = await membersResp.json();
+      const deallId = await this.getDeallGroupId();
+      if (deallId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
         );
       }
     } catch { /* */ }
@@ -239,13 +236,10 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const membersResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (membersResp.ok) {
-        const d = await membersResp.json();
+      const deallId = await this.getDeallGroupId();
+      if (deallId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
         );
       }
     } catch { /* */ }
@@ -1997,6 +1991,33 @@ export class EventService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * ID der SharePoint-Gruppe "DEALL" (alle Deloitte-Mitarbeiter) ermitteln.
+   */
+  private async getDeallGroupId(): Promise<number | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/sitegroups?$filter=Title eq 'DEALL'&$select=Id&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const groups = data.value || data.d?.results || [];
+        if (groups.length > 0) return groups[0].Id || groups[0].d?.Id;
+      }
+      // Fallback: per associatedmembergroup
+      const memberResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (memberResp.ok) {
+        const d = await memberResp.json();
+        return d.d?.Id || d.Id || null;
+      }
+    } catch { /* */ }
+    return null;
   }
 
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {
