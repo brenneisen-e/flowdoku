@@ -87,7 +87,7 @@ export default function EventCreationPage(): React.ReactElement {
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
   const [organizer, setOrganizer] = React.useState(
-    editEvent ? editEvent.organizers[0] : `${currentUser.firstName} ${currentUser.surname}`
+    editEvent ? editEvent.organizers.join(', ') : `${currentUser.firstName} ${currentUser.surname}`
   );
   const [organizerQuery, setOrganizerQuery] = React.useState('');
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
@@ -592,10 +592,12 @@ export default function EventCreationPage(): React.ReactElement {
                     const val = e.target.value;
                     setOrganizer(val);
                     if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
-                    if (val.length >= 2) {
+                    // Nur den Teil nach dem letzten Komma fuer die Suche nutzen
+                    const lastPart = val.split(',').pop()?.trim() || '';
+                    if (lastPart.length >= 2) {
                       organizerTimerRef.current = setTimeout(async () => {
                         setIsSearchingOrganizer(true);
-                        const results = await searchUsers(val);
+                        const results = await searchUsers(lastPart);
                         setOrganizerResults(results);
                         setIsSearchingOrganizer(false);
                       }, 300);
@@ -603,7 +605,7 @@ export default function EventCreationPage(): React.ReactElement {
                       setOrganizerResults([]);
                     }
                   }}
-                  placeholder="Name eingeben zum Suchen..."
+                  placeholder="Name oder E-Mail eingeben zum Suchen..."
                   style={errorBorderStyle('organizer')}
                 />
                 {isSearchingOrganizer && (
@@ -624,7 +626,11 @@ export default function EventCreationPage(): React.ReactElement {
                           borderBottom: '1px solid var(--dex-gray-100)',
                         }}
                         onMouseDown={() => {
-                          setOrganizer(u.displayName);
+                          // Letzten Teil (Suchbegriff) durch ausgewaehlten Namen ersetzen
+                          const parts = organizer.split(',').map(s => s.trim());
+                          parts.pop(); // Suchbegriff entfernen
+                          parts.push(u.displayName);
+                          setOrganizer(parts.filter(Boolean).join(', '));
                           setOrganizerResults([]);
                         }}
                       >
