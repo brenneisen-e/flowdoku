@@ -803,8 +803,8 @@ export default function EventCreationPage(): React.ReactElement {
                     onChange={(date: Date) => setStartDate(date ? date.toISOString().slice(0, 16) : '')}
                     showLabels={false}
                     formatDate={(date?: Date) => date ? date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    datePickerProps={{ strings: datePickerStrings, firstDayOfWeek: 1 } as any}
+                    strings={datePickerStrings}
+                    firstDayOfWeek={1}
                   />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
