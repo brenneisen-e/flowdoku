@@ -452,7 +452,7 @@ export default function AdminPage(): React.ReactElement {
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
-                    <td style={{ padding: 8 }}>
+                    <td style={{ padding: 8, display: 'flex', gap: 4 }}>
                       {reg.Status === 'Eingecheckt' ? (
                         <button
                           className="btn btn-secondary"
@@ -480,6 +480,38 @@ export default function AdminPage(): React.ReactElement {
                           Einchecken
                         </button>
                       )}
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                        onClick={async () => {
+                          if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                          const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                          if (!confirm(`${name} (${reg.ParticipantEmail}) wirklich abmelden?`)) return;
+                          await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
+                          // Abmelde-Email und Outlook-Ausladen in Queue eintragen
+                          if (reg.ParticipantEmail) {
+                            eventServiceRef.queueEmail(
+                              `Abmeldung: ${selectedEvent.title}`, reg.ParticipantEmail, name,
+                              `Hallo ${name},\n\nDeine Anmeldung für "${selectedEvent.title}" wurde storniert.\n\nViele Grüße\nDein DEX-Team`,
+                              'Abmeldung', selectedEvent.title, selectedEvent.id
+                            ).catch(() => {});
+                            eventServiceRef.queueOutlookEvent(
+                              reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
+                            ).catch(() => {});
+                          }
+                          // IDReorder in Queue eintragen
+                          if (selectedEvent.subsiteUrl) {
+                            eventServiceRef.queueIDReorder(
+                              selectedEvent.id, selectedEvent.eventNumber || 0,
+                              selectedEvent.subsiteUrl, selectedEvent.title
+                            ).catch(() => {});
+                          }
+                          const regs = await getAllRegistrations(selectedEvent.id);
+                          setRegistrations(regs);
+                        }}
+                      >
+                        Abmelden
+                      </button>
                     </td>
                   </tr>
                 ))}
