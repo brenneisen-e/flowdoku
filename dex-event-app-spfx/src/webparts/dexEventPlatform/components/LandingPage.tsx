@@ -44,29 +44,35 @@ export default function LandingPage(): React.ReactElement {
       {/* Sprachauswahl */}
       <div style={{
         position: 'absolute', top: 12, left: 16,
-        display: 'flex', gap: 8,
+        display: 'flex', gap: 4,
       }}>
         <button
           onClick={() => setLocale('de')}
           style={{
-            background: 'none', border: locale === 'de' ? '2px solid var(--dex-green)' : '2px solid transparent',
-            borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: '1.2rem',
-            opacity: locale === 'de' ? 1 : 0.5, transition: 'all 0.2s',
+            background: locale === 'de' ? 'var(--dex-green)' : 'rgba(255,255,255,0.1)',
+            border: 'none',
+            borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+            color: locale === 'de' ? '#fff' : 'var(--dex-gray-400)',
+            fontWeight: locale === 'de' ? 700 : 500,
+            transition: 'all 0.2s',
           }}
           title="Deutsch"
         >
-          🇩🇪
+          DE
         </button>
         <button
           onClick={() => setLocale('en')}
           style={{
-            background: 'none', border: locale === 'en' ? '2px solid var(--dex-green)' : '2px solid transparent',
-            borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: '1.2rem',
-            opacity: locale === 'en' ? 1 : 0.5, transition: 'all 0.2s',
+            background: locale === 'en' ? 'var(--dex-green)' : 'rgba(255,255,255,0.1)',
+            border: 'none',
+            borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+            color: locale === 'en' ? '#fff' : 'var(--dex-gray-400)',
+            fontWeight: locale === 'en' ? 700 : 500,
+            transition: 'all 0.2s',
           }}
           title="English"
         >
-          🇬🇧
+          EN
         </button>
       </div>
       <div className="landing__hero">
