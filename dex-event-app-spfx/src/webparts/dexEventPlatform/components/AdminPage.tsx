@@ -499,6 +499,12 @@ export default function AdminPage(): React.ReactElement {
                               reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
                             ).catch(() => {});
                           }
+                          // DEX_Participants aufraeumen
+                          if (reg.ParticipantEmail && selectedEvent.eventNumber) {
+                            eventServiceRef.removeParticipantEvent(
+                              reg.ParticipantEmail, selectedEvent.eventNumber
+                            ).catch(() => {});
+                          }
                           // IDReorder in Queue eintragen
                           if (selectedEvent.subsiteUrl) {
                             eventServiceRef.queueIDReorder(
