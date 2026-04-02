@@ -12,14 +12,14 @@ import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { EventService, SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
+import { Html5Qrcode } from 'html5-qrcode';
 
 export default function CheckInPage(): React.ReactElement {
   const { events } = useEvents();
   const { selectedEventId } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { t } = useLanguage();
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const scannerRef = React.useRef<Html5Qrcode | null>(null);
   const [manualCode, setManualCode] = React.useState('');
   const [resultMessage, setResultMessage] = React.useState('');
   const [resultType, setResultType] = React.useState<'success' | 'error' | 'info' | ''>('');
@@ -27,7 +27,6 @@ export default function CheckInPage(): React.ReactElement {
   const [isScanning, setIsScanning] = React.useState(false);
   const [cameraError, setCameraError] = React.useState('');
   const [checkedInCount, setCheckedInCount] = React.useState(0);
-  const scanIntervalRef = React.useRef<number | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const context = (window as any).__dexSpfxContext;
@@ -56,88 +55,63 @@ export default function CheckInPage(): React.ReactElement {
     return map;
   }, [events]);
 
-  // Kamera starten
+  // html5-qrcode Scanner starten
   const startCamera = async (): Promise<void> => {
     setCameraError('');
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError('Kamera-API nicht verfügbar.');
-      return;
-    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setIsScanning(true);
-        startDetection();
-      }
+      const scanner = new Html5Qrcode('qr-reader');
+      scannerRef.current = scanner;
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        async (decodedText) => {
+          // Erfolgreich gescannt — pausieren, verarbeiten, dann weiterscannen
+          try {
+            await scanner.pause();
+          } catch { /* */ }
+          await processCode(decodedText);
+          // Nach 2 Sekunden weiterscannen
+          setTimeout(() => {
+            try { scanner.resume(); } catch { /* */ }
+          }, 2000);
+        },
+        () => { /* ignore scan failures */ }
+      );
+      setIsScanning(true);
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const error = err as any;
-      setCameraError(error?.name === 'NotAllowedError'
-        ? 'Kamera-Berechtigung verweigert. Bitte Foto-Upload oder manuelle Eingabe nutzen.'
-        : `Kamera nicht verfügbar: ${error?.message || error?.name}. Bitte Foto-Upload nutzen.`);
+      const msg = typeof error === 'string' ? error : error?.message || 'Unbekannter Fehler';
+      setCameraError(`Kamera konnte nicht gestartet werden: ${msg}`);
     }
   };
 
-  const stopCamera = (): void => {
-    if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
-    if (videoRef.current && videoRef.current.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
+  const stopCamera = async (): Promise<void> => {
+    try {
+      if (scannerRef.current) {
+        await scannerRef.current.stop();
+        scannerRef.current = null;
+      }
+    } catch { /* */ }
     setIsScanning(false);
-  };
-
-  const startDetection = (): void => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const BarcodeDetectorClass = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorClass) {
-      setCameraError('BarcodeDetector nicht unterstützt. Bitte Chrome/Edge verwenden oder Foto-Upload nutzen.');
-      stopCamera();
-      return;
-    }
-    const detector = new BarcodeDetectorClass({ formats: ['qr_code'] });
-    scanIntervalRef.current = window.setInterval(async () => {
-      if (isProcessing || !videoRef.current || videoRef.current.readyState !== 4) return;
-      try {
-        const barcodes = await detector.detect(videoRef.current);
-        if (barcodes.length > 0 && barcodes[0].rawValue) {
-          await processCode(barcodes[0].rawValue);
-        }
-      } catch { /* */ }
-    }, 500);
   };
 
   // Foto-Upload: QR-Code aus Bild lesen
   const handlePhotoUpload = async (file: File): Promise<void> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const BarcodeDetectorClass = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorClass) {
-      setResultMessage('BarcodeDetector nicht unterstützt. Bitte Code manuell eingeben.');
-      setResultType('error');
-      return;
-    }
-    const detector = new BarcodeDetectorClass({ formats: ['qr_code'] });
-    const img = new Image();
-    img.onload = async () => {
-      try {
-        const barcodes = await detector.detect(img);
-        if (barcodes.length > 0 && barcodes[0].rawValue) {
-          await processCode(barcodes[0].rawValue);
-        } else {
-          setResultMessage('Kein QR-Code im Bild erkannt. Bitte erneut versuchen.');
-          setResultType('error');
-        }
-      } catch {
-        setResultMessage('Fehler beim Lesen des QR-Codes.');
+    try {
+      const tempScanner = new Html5Qrcode('qr-reader-temp');
+      const result = await tempScanner.scanFile(file, true);
+      await tempScanner.clear();
+      if (result) {
+        await processCode(result);
+      } else {
+        setResultMessage('Kein QR-Code im Bild erkannt.');
         setResultType('error');
       }
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(file);
+    } catch {
+      setResultMessage('Kein QR-Code im Bild erkannt. Bitte erneut versuchen.');
+      setResultType('error');
+    }
   };
 
   // Code verarbeiten und einchecken
@@ -209,9 +183,8 @@ export default function CheckInPage(): React.ReactElement {
 
   React.useEffect(() => {
     return () => {
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
       }
     };
   }, []);
@@ -249,36 +222,56 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
-      {/* Foto-Upload (funktioniert ueberall — primaere Methode auf Mobile) */}
+      {/* QR-Code scannen — zwei Optionen */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
         <h3 style={{ marginBottom: 8 }}>QR-Code scannen</h3>
         <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
-          Kamera öffnet sich automatisch — QR-Code fotografieren und Check-in wird sofort ausgeführt.
+          QR-Code fotografieren oder aus der Galerie wählen — Check-in wird sofort ausgeführt.
         </p>
-        <label style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          padding: '16px 24px', borderRadius: 12, border: 'none',
-          background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
-          fontSize: '1.1rem', fontWeight: 700, width: '100%',
-        }}>
-          QR-Code fotografieren
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={e => {
-              const file = e.target.files && e.target.files[0];
-              if (file) handlePhotoUpload(file);
-              e.target.value = '';
-            }}
-          />
-        </label>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            padding: '16px 24px', borderRadius: 12, border: 'none',
+            background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
+            fontSize: '1rem', fontWeight: 700, flex: '1 1 200px',
+          }}>
+            Kamera öffnen
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files && e.target.files[0];
+                if (file) handlePhotoUpload(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          <label style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            padding: '16px 24px', borderRadius: 12, border: '2px solid var(--dex-gray-300)',
+            background: '#fff', color: 'var(--dex-gray-700)', cursor: 'pointer',
+            fontSize: '1rem', fontWeight: 600, flex: '1 1 200px',
+          }}>
+            Aus Galerie wählen
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files && e.target.files[0];
+                if (file) handlePhotoUpload(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
       </div>
 
-      {/* Kamera-Scanner (optional — funktioniert nicht in allen SPFx-Umgebungen) */}
+      {/* Live-Kamera Scanner (html5-qrcode) */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Live-Kamera (optional)</h3>
+        <h3 style={{ marginBottom: 12 }}>Live-Scanner</h3>
         {!isScanning ? (
           <div style={{ textAlign: 'center' }}>
             <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1rem', padding: '12px 32px' }}>
@@ -290,43 +283,16 @@ export default function CheckInPage(): React.ReactElement {
           </div>
         ) : (
           <div style={{ textAlign: 'center' }}>
-            <video ref={videoRef} playsInline muted style={{
-              width: '100%', maxWidth: 400, borderRadius: 12, border: '3px solid var(--dex-green)',
-            }} />
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
-            <p style={{ color: 'var(--dex-green)', fontWeight: 600, marginTop: 8 }}>{t('checkin.scanning')}</p>
-            <button className="btn btn-secondary" onClick={stopCamera} style={{ marginTop: 8 }}>
+            <p style={{ color: 'var(--dex-green)', fontWeight: 600, marginBottom: 8 }}>{t('checkin.scanning')}</p>
+            <button className="btn btn-secondary" onClick={stopCamera} style={{ marginBottom: 12 }}>
               {t('general.cancel')}
             </button>
           </div>
         )}
+        <div id="qr-reader" style={{ width: '100%', maxWidth: 400, margin: '0 auto' }} />
       </div>
 
-      {/* Foto-Upload */}
-      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Foto-Upload</h3>
-        <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 12 }}>
-          {t('checkin.photodesc') || 'QR-Code fotografieren oder aus Galerie wählen.'}
-        </p>
-        <label style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '10px 20px', borderRadius: 8, border: '2px dashed var(--dex-gray-300)',
-          cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-600)',
-        }}>
-          Foto auswählen
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={e => {
-              const file = e.target.files && e.target.files[0];
-              if (file) handlePhotoUpload(file);
-              e.target.value = '';
-            }}
-          />
-        </label>
-      </div>
+      <div id="qr-reader-temp" style={{ display: 'none' }} />
 
       {/* Manuelle Eingabe */}
       <div className="card" style={{ padding: 24 }}>
