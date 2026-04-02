@@ -18,7 +18,7 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -490,9 +490,9 @@ export default function AdminPage(): React.ReactElement {
                           await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
                           // Abmelde-Email und Outlook-Ausladen in Queue eintragen
                           if (reg.ParticipantEmail) {
+                            const emailData = cancellationEmail(name, selectedEvent.title);
                             eventServiceRef.queueEmail(
-                              `Abmeldung: ${selectedEvent.title}`, reg.ParticipantEmail, name,
-                              `Hallo ${name},\n\nDeine Anmeldung für "${selectedEvent.title}" wurde storniert.\n\nViele Grüße\nDein DEX-Team`,
+                              emailData.subject, reg.ParticipantEmail, name, emailData.body,
                               'Abmeldung', selectedEvent.title, selectedEvent.id
                             ).catch(() => {});
                             eventServiceRef.queueOutlookEvent(
