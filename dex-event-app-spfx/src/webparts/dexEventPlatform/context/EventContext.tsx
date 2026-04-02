@@ -236,23 +236,36 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (event) {
         // Dual-Write: DEX_Participants aktualisieren
         if (event.eventNumber) {
-          eventService.removeParticipantEvent(currentUserEmail, event.eventNumber).catch(() => {});
+          try {
+            await eventService.removeParticipantEvent(currentUserEmail, event.eventNumber);
+          } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
-        const emailData = cancellationEmail(currentUserName, event.title);
-        eventService.queueEmail(
-          emailData.subject, currentUserEmail, currentUserName, emailData.body,
-          'Abmeldung', event.title, eventId
-        ).catch(() => {});
+        // Abmelde-E-Mail in Queue eintragen
+        try {
+          const emailData = cancellationEmail(currentUserName, event.title);
+          const emailOk = await eventService.queueEmail(
+            emailData.subject, currentUserEmail, currentUserName, emailData.body,
+            'Abmeldung', event.title, eventId
+          );
+          if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
+        } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
         // Outlook-Termin-Einladung zurückziehen
-        eventService.queueOutlookEvent(
-          currentUserEmail, eventId, event.title, 'Ausladen'
-        ).catch(() => {});
+        try {
+          await eventService.queueOutlookEvent(
+            currentUserEmail, eventId, event.title, 'Ausladen'
+          );
+        } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
         // ID-Reorder in Queue eintragen
         if (subsiteUrl) {
-          eventService.queueIDReorder(
-            eventId, event.eventNumber || 0, subsiteUrl, event.title
-          ).catch(() => {});
+          try {
+            const reorderOk = await eventService.queueIDReorder(
+              eventId, event.eventNumber || 0, subsiteUrl, event.title
+            );
+            if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
+          } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
         }
+      } else {
+        console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);
       }
       await loadEvents();
     }
