@@ -189,7 +189,7 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const deallId = await this.getDeallGroupId();
+      const deallId = await this.getVisitorsGroupId();
       if (deallId) {
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
@@ -236,7 +236,7 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const deallId = await this.getDeallGroupId();
+      const deallId = await this.getVisitorsGroupId();
       if (deallId) {
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
@@ -831,14 +831,10 @@ export class EventService {
         );
       }
 
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741826)`,
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741826)`,
           {}
         );
       }
@@ -1367,16 +1363,11 @@ export class EventService {
         );
       }
 
-      // Members der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
-        const membersId = membersData.d?.Id || membersData.Id;
+      // Visitors der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${membersId}, roledefid=1073741826)`,
+          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741826)`,
           {}
         );
       }
@@ -1453,15 +1444,11 @@ export class EventService {
         );
       }
 
-      // Site Members: Contribute (damit sie sich registrieren koennen)
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
+      // Visitors: Contribute (damit User sich registrieren koennen)
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`,
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`,
           {}
         );
       }
@@ -1996,24 +1983,17 @@ export class EventService {
   /**
    * ID der SharePoint-Gruppe "DEALL" (alle Deloitte-Mitarbeiter) ermitteln.
    */
-  private async getDeallGroupId(): Promise<number | null> {
+  /**
+   * ID der Visitors-Gruppe ermitteln (dort ist DEALL / alle Deloitte-Mitarbeiter hinterlegt).
+   */
+  private async getVisitorsGroupId(): Promise<number | null> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/sitegroups?$filter=Title eq 'DEALL'&$select=Id&$top=1`,
+        `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
-        const data = await resp.json();
-        const groups = data.value || data.d?.results || [];
-        if (groups.length > 0) return groups[0].Id || groups[0].d?.Id;
-      }
-      // Fallback: per associatedmembergroup
-      const memberResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (memberResp.ok) {
-        const d = await memberResp.json();
+        const d = await resp.json();
         return d.d?.Id || d.Id || null;
       }
     } catch { /* */ }
