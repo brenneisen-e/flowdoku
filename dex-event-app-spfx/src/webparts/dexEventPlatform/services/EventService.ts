@@ -397,10 +397,23 @@ export class EventService {
     eventTitle: string
   ): Promise<boolean> {
     try {
+      // ListItemEntityTypeFullName dynamisch ermitteln
+      let listItemType = 'SP.Data.DEX_x005f_IDReorderListItem';
+      try {
+        const typeResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.ListItemEntityTypeFullName || typeData.d?.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback auf Standard-Name */ }
+
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`,
         {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_IDReorderListItem' },
+          '__metadata': { 'type': listItemType },
           'Title': `Reorder: ${eventTitle}`,
           'EventId': eventId,
           'EventNumber': eventNumber,
@@ -808,11 +821,33 @@ export class EventService {
   private async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string): Promise<void> {
     const url = baseUrl || this.siteUrl;
     try {
+      // Bestehende View-Felder laden um Duplikate zu vermeiden
+      const existingResponse = await this.context.spHttpClient.get(
+        `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
+        SPHttpClient.configurations.v1
+      );
+      let existingFields: string[] = [];
+      if (existingResponse.ok) {
+        const existingData = await existingResponse.json();
+        existingFields = existingData.Items || existingData.d?.Items || existingData.SchemaXml ? [] : [];
+        // Fallback: Versuche Items Array
+        if (existingData.Items) {
+          existingFields = existingData.Items;
+        } else if (existingData.d?.Items) {
+          existingFields = existingData.d.Items;
+        } else if (existingData.value) {
+          existingFields = existingData.value;
+        }
+      }
+
       for (const fieldName of fieldNames) {
-        await this._post(
-          `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
-          {}
-        );
+        // Nur hinzufuegen wenn noch nicht in der View
+        if (existingFields.indexOf(fieldName) < 0) {
+          await this._post(
+            `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
+            {}
+          );
+        }
       }
     } catch {
       // View-Konfiguration ist optional

@@ -73,3 +73,15 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 Examples:
 - ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`, `für`
 - ❌ `Loeschen`, `oeffnen`, `Uebersicht`, `ausfuellen`, `hinzufuegen`, `Zurueck`, `fuer`
+
+### Power Automate Flow Anleitungen
+
+**WICHTIG:** Der User kann in Power Automate **KEINEN Code View** öffnen oder JSON direkt einfügen. Alle Anleitungen für Power Automate Flows müssen **ausschließlich über die UI** erklärt werden:
+
+- **Expressions:** Immer über den **Expression-Tab (fx)** eingeben, nie als Text
+- **Actions konfigurieren:** Immer über die **Parameter-Ansicht** (Dropdowns, Eingabefelder)
+- **Conditions:** Werte über den **Expression-Tab (fx)** eingeben, nicht als String tippen
+- **Run After:** Über die **Settings** Tab → Run after konfigurieren
+- **Rename:** Über die **drei Punkte (⋮)** → Rename
+
+Nie sagen "füge dieses JSON ein" oder "öffne den Code View" — stattdessen jeden Klick in der UI beschreiben.
