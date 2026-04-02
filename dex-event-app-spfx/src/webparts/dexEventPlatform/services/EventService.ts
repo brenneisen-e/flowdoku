@@ -221,6 +221,37 @@ export class EventService {
   }
 
   /**
+   * Berechtigungen fuer Queue-Listen (DEX_Outlook, DEX_IDReorder):
+   * Owners Full Control, Members Contribute, Item-Level Security
+   */
+  private async setQueueListPermissions(listName: string): Promise<void> {
+    try {
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+      const ownersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (ownersResp.ok) {
+        const d = await ownersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
+        );
+      }
+      const membersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (membersResp.ok) {
+        const d = await membersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
+        );
+      }
+    } catch { /* */ }
+  }
+
+  /**
    * E-Mail in die Queue eintragen (wird von Power Automate versendet).
    */
   public async queueEmail(
@@ -306,6 +337,8 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'Attendee', 'EventId', 'ActionType', 'Status', 'SentDate',
     ]);
+
+    await this.setQueueListPermissions(listName);
   }
 
   /**
@@ -386,6 +419,8 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'EventId', 'EventNumber', 'SubsiteUrl', 'Status',
     ]);
+
+    await this.setQueueListPermissions(listName);
   }
 
   /**
@@ -473,6 +508,8 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'Vorname', 'Nachname', 'Email', 'EventRegistered', 'EventOnWaitlist',
     ]);
+
+    await this.setEmailsListPermissions(listName);
   }
 
   private async ensureMissingParticipantsFields(listName: string): Promise<void> {
