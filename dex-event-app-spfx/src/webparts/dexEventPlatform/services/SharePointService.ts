@@ -62,6 +62,7 @@ export class SharePointService {
             headers: {
               'Accept': 'application/json;odata=verbose',
               'Content-Type': 'application/json;odata=verbose',
+              'odata-version': '',
               'IF-MATCH': '*',
               'X-HTTP-Method': 'MERGE',
             },
@@ -557,6 +558,7 @@ export class SharePointService {
       const headers: HeadersInit = {
         'Accept': 'application/json;odata=verbose',
         'Content-Type': 'application/json;odata=verbose',
+        'odata-version': '',
         'IF-MATCH': '*',
         'X-HTTP-Method': 'MERGE',
       };
@@ -590,6 +592,7 @@ export class SharePointService {
           headers: {
             'Accept': 'application/json;odata=verbose',
             'Content-Type': 'application/json;odata=verbose',
+            'odata-version': '',
             'IF-MATCH': '*',
             'X-HTTP-Method': 'MERGE',
           },
