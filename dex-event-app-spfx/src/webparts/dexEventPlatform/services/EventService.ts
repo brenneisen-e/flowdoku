@@ -63,7 +63,8 @@ export interface CustomField {
 
 export interface SPRegistration {
   Id: number;
-  Title: string; // Teilnehmer-ID
+  Title: string; // Email
+  TeilnehmerID?: number;
   Vorname?: string;
   Nachname?: string;
   ParticipantName: string;
@@ -1596,7 +1597,7 @@ export class EventService {
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,TeilnehmerID,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`;
 
     while (url) {
       try {
