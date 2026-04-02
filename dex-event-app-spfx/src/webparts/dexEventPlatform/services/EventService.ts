@@ -189,13 +189,10 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const membersResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (membersResp.ok) {
-        const d = await membersResp.json();
+      const deallId = await this.getVisitorsGroupId();
+      if (deallId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
         );
       }
     } catch { /* */ }
@@ -239,13 +236,10 @@ export class EventService {
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
         );
       }
-      const membersResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
-      );
-      if (membersResp.ok) {
-        const d = await membersResp.json();
+      const deallId = await this.getVisitorsGroupId();
+      if (deallId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {}
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${deallId}, roledefid=1073741827)`, {}
         );
       }
     } catch { /* */ }
@@ -837,14 +831,10 @@ export class EventService {
         );
       }
 
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741826)`,
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741826)`,
           {}
         );
       }
@@ -1373,16 +1363,11 @@ export class EventService {
         );
       }
 
-      // Members der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
-        const membersId = membersData.d?.Id || membersData.Id;
+      // Visitors der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${membersId}, roledefid=1073741826)`,
+          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741826)`,
           {}
         );
       }
@@ -1459,15 +1444,11 @@ export class EventService {
         );
       }
 
-      // Site Members: Contribute (damit sie sich registrieren koennen)
-      const membersResponse = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
+      // Visitors: Contribute (damit User sich registrieren koennen)
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
         await this._post(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${membersData.Id}, roledefid=1073741827)`,
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`,
           {}
         );
       }
@@ -1997,6 +1978,26 @@ export class EventService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * ID der SharePoint-Gruppe "DEALL" (alle Deloitte-Mitarbeiter) ermitteln.
+   */
+  /**
+   * ID der Visitors-Gruppe ermitteln (dort ist DEALL / alle Deloitte-Mitarbeiter hinterlegt).
+   */
+  private async getVisitorsGroupId(): Promise<number | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const d = await resp.json();
+        return d.d?.Id || d.Id || null;
+      }
+    } catch { /* */ }
+    return null;
   }
 
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {

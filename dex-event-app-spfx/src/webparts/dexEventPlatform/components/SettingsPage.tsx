@@ -405,7 +405,123 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         )}
 
+        {/* Berechtigungs-Übersicht - nur fuer Admin */}
+        {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
+
       </div>
+    </div>
+  );
+}
+
+/**
+ * Zeigt die Berechtigungen aller DEX-Listen an.
+ */
+function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
+  const { siteUrl } = props;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = (window as any).__dexSpfxContext;
+  const SPHttpClient = require('@microsoft/sp-http').SPHttpClient;
+
+  type ListPerms = { listName: string; perms: Array<{ name: string; type: string; level: string }>; loading: boolean; error?: string };
+  const [lists, setLists] = React.useState<ListPerms[]>([]);
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  const listNames = ['DEX_Events', 'DEX_Roles', 'DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder', 'DEX_Participants'];
+
+  async function loadPermissions(): Promise<void> {
+    if (!ctx) return;
+    const results: ListPerms[] = [];
+
+    for (const listName of listNames) {
+      try {
+        const resp = await ctx.spHttpClient.get(
+          `${siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name`,
+          SPHttpClient.configurations.v1
+        );
+        if (!resp.ok) {
+          results.push({ listName, perms: [], loading: false, error: `${resp.status}` });
+          continue;
+        }
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const perms = items.map((item: any) => {
+          const member = item.Member || {};
+          const bindings = item.RoleDefinitionBindings || item.RoleDefinitionBindings?.results || [];
+          const roleNames = (Array.isArray(bindings) ? bindings : bindings.results || [])
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((b: any) => b.Name).filter((n: string) => n !== 'Limited Access');
+          const pType = member.PrincipalType === 8 ? 'Gruppe' : 'User';
+          return { name: member.Title || '?', type: pType, level: roleNames.join(', ') || '-' };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }).filter((p: any) => p.level !== '-');
+        results.push({ listName, perms, loading: false });
+      } catch {
+        results.push({ listName, perms: [], loading: false, error: 'Fehler' });
+      }
+    }
+    setLists(results);
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3
+        className="mb-16"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+        onClick={() => { setIsOpen(!isOpen); if (!isOpen && lists.length === 0) loadPermissions(); }}
+      >
+        🔒 Listen-Berechtigungen {isOpen ? '▾' : '▸'}
+      </h3>
+      {isOpen && (
+        <div>
+          {lists.length === 0 && <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Berechtigungen...</p>}
+          {lists.map(list => (
+            <div key={list.listName} style={{ marginBottom: 16 }}>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: 4 }}>{list.listName}</h4>
+              {list.error ? (
+                <p style={{ color: 'var(--dex-danger, red)', fontSize: '0.8rem' }}>Fehler: {list.error}</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
+                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Typ</th>
+                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Berechtigung</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.perms.map((p, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                        <td style={{ padding: 4 }}>{p.name}</td>
+                        <td style={{ padding: 4, color: 'var(--dex-gray-500)' }}>{p.type}</td>
+                        <td style={{ padding: 4 }}>
+                          <span style={{
+                            padding: '2px 6px', borderRadius: 4, fontSize: '0.75rem',
+                            background: p.level.includes('Full Control') ? '#e8f5e9' : p.level.includes('Contribute') ? '#fff3e0' : '#e3f2fd',
+                            color: p.level.includes('Full Control') ? '#2e7d32' : p.level.includes('Contribute') ? '#e65100' : '#1565c0',
+                          }}>
+                            {p.level}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {list.perms.length === 0 && !list.error && (
+                      <tr><td colSpan={3} style={{ padding: 4, color: 'var(--dex-gray-400)' }}>Erbt Parent-Berechtigungen</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ))}
+          <button
+            className="btn btn-secondary mt-8"
+            style={{ fontSize: '0.8rem' }}
+            onClick={loadPermissions}
+          >
+            Aktualisieren
+          </button>
+        </div>
+      )}
     </div>
   );
 }
