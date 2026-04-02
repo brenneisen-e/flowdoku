@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"
@@ -22,6 +22,7 @@
     "@microsoft/sp-office-ui-fabric-core": "1.22.2",
     "@microsoft/sp-property-pane": "1.22.2",
     "@microsoft/sp-webpart-base": "1.22.2",
+    "@pnp/spfx-controls-react": "3.24.0",
     "@rushstack/eslint-config": "^2.5.1",
     "@types/webpack-env": "^1.18.8",
     "ajv": "^8.18.0",

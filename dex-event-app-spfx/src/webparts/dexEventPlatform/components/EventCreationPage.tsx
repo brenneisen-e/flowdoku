@@ -15,6 +15,7 @@ import { EventService } from '../services/EventService';
 import { eventCreatedEmail } from '../services/EmailTemplates';
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
+import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -1033,14 +1034,12 @@ export default function EventCreationPage(): React.ReactElement {
       {/* ===== Vollbild-Vorschau Modal ===== */}
       {showPreview && (
         <div className="preview-modal" style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 24,
+          position: 'fixed', inset: 0, background: '#fff', zIndex: 1000,
+          display: 'flex', flexDirection: 'column',
         }}>
           <div className="preview-modal-inner" style={{
-            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520,
-            maxHeight: '90vh', overflow: 'auto', padding: 0,
-            boxShadow: '0 16px 64px rgba(0,0,0,0.3)',
+            background: '#fff', borderRadius: 0, width: '100%', maxWidth: '100%',
+            height: '100%', overflow: 'auto', padding: 0,
           }}>
             <div style={{
               padding: '16px 24px', borderBottom: '1px solid var(--dex-gray-200)',

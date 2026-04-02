@@ -237,20 +237,6 @@ export default function CheckInPage(): React.ReactElement {
         )}
       </div>
 
-      {/* Externer Scanner (eigenes Fenster mit vollem Kamera-Zugriff) */}
-      <div className="card" style={{ padding: 24, marginBottom: 16, textAlign: 'center', background: 'linear-gradient(135deg, #1a1a2e, #16213e)', borderRadius: 16 }}>
-        <button
-          className="btn btn-primary"
-          onClick={openExternalScanner}
-          style={{ fontSize: '1.1rem', padding: '14px 36px', background: 'var(--dex-green)', border: 'none' }}
-        >
-          Scanner im neuen Fenster öffnen
-        </button>
-        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', marginTop: 10, marginBottom: 0 }}>
-          Öffnet <code style={{ color: 'rgba(255,255,255,0.7)' }}>checkin.aspx</code> aus SiteAssets — voller Kamera-Zugriff, kontinuierliches Scannen.
-        </p>
-      </div>
-
       {/* Ergebnis-Anzeige */}
       {resultMessage && (
         <div style={{
@@ -263,9 +249,36 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
-      {/* Kamera-Scanner */}
+      {/* Foto-Upload (funktioniert ueberall — primaere Methode auf Mobile) */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Kamera-Scanner</h3>
+        <h3 style={{ marginBottom: 8 }}>QR-Code scannen</h3>
+        <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
+          Kamera öffnet sich automatisch — QR-Code fotografieren und Check-in wird sofort ausgeführt.
+        </p>
+        <label style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          padding: '16px 24px', borderRadius: 12, border: 'none',
+          background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
+          fontSize: '1.1rem', fontWeight: 700, width: '100%',
+        }}>
+          QR-Code fotografieren
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files && e.target.files[0];
+              if (file) handlePhotoUpload(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+
+      {/* Kamera-Scanner (optional — funktioniert nicht in allen SPFx-Umgebungen) */}
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <h3 style={{ marginBottom: 12 }}>Live-Kamera (optional)</h3>
         {!isScanning ? (
           <div style={{ textAlign: 'center' }}>
             <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1rem', padding: '12px 32px' }}>
