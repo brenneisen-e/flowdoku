@@ -608,8 +608,11 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Standort-Filter
-                  <span className="info-icon" title="Welche Standorte sollen das Event sehen und sich registrieren können?" style={{ marginLeft: 8 }}>i</span>
                 </label>
+                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
+                  Standardmäßig können <strong>alle Mitarbeiter</strong> dieses Event sehen. Wenn du hier Standorte auswählst, wird das Event <strong>nur für Mitarbeiter dieser Standorte</strong> sichtbar.<br />
+                  <em>Beispiel: Du wählst "Köln" und "Düsseldorf" → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
+                </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {locationOptions.map(loc => (
                     <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.9rem' }}>
@@ -626,6 +629,11 @@ export default function EventCreationPage(): React.ReactElement {
                     </label>
                   ))}
                 </div>
+                {!locationFilter && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-green)', marginTop: 8 }}>
+                    Kein Standort ausgewählt → Event ist für alle sichtbar.
+                  </p>
+                )}
                 {(locationFilter || audience) && (
                   <button
                     className="btn btn-outline mt-8"
@@ -641,8 +649,11 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Zielgruppen-Filter
-                  <span className="info-icon" title="Verteilergruppen (z.B. DEALL, SAPALL) oder einzelne E-Mail-Adressen. Personen die hier gelistet sind, sehen das Event zusätzlich zum Standort-Filter." style={{ marginLeft: 8 }}>i</span>
                 </label>
+                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
+                  Hier kannst du <strong>zusätzliche Personen oder Gruppen</strong> einladen, die das Event sehen sollen — unabhängig vom Standort.<br />
+                  <em>Beispiel: Du trägst "SAPALL" ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
+                </p>
                 <input
                   className="form-input"
                   value={audience}
@@ -659,13 +670,17 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     Filterverknüpfung
-                    <span className="info-icon" title="UND: User muss beide Filter erfüllen. ODER: Einer der Filter reicht aus." style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <div style={{ display: 'flex', gap: 12 }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
+                    Bestimmt, wie Standort-Filter und Zielgruppen-Filter kombiniert werden.<br />
+                    <em>Beispiel ODER: Standort = Köln, Zielgruppe = SAPALL → Jeder der in Köln sitzt ODER in der SAP-Gruppe ist, sieht das Event.<br />
+                    Beispiel UND: Nur wer in Köln sitzt UND in der SAP-Gruppe ist, sieht das Event.</em>
+                  </p>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                       <input type="radio" name="filterMode" value="OR" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} />
                       <strong>ODER</strong>
-                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Standort oder Zielgruppe reicht</span>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Einer der Filter reicht</span>
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                       <input type="radio" name="filterMode" value="AND" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} />
