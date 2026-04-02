@@ -964,7 +964,10 @@ export class EventService {
         return null;
       }
 
-      // 2. Teilnehmerliste auf der Subsite erstellen
+      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen
+      await this.setSubsitePermissions(subsiteUrl, event.organizerEmail);
+
+      // 3. Teilnehmerliste auf der Subsite erstellen
       await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
 
       // FieldMap aus createRegistrationList auslesen
@@ -1312,6 +1315,61 @@ export class EventService {
 
     // Berechtigungen
     await this.setRegistrationListPermissions(subsiteUrl, organizerEmail);
+  }
+
+  /**
+   * Subsite-Berechtigungen: Owners Full Control, Members Read (damit User die Subsite betreten koennen).
+   */
+  private async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
+    try {
+      // Owners der Hauptsite: Full Control auf der Subsite
+      const ownersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (ownersResponse.ok) {
+        const ownersData = await ownersResponse.json();
+        const ownersId = ownersData.d?.Id || ownersData.Id;
+        await this._post(
+          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${ownersId}, roledefid=1073741829)`,
+          {}
+        );
+      }
+
+      // Members der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
+      const membersResponse = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (membersResponse.ok) {
+        const membersData = await membersResponse.json();
+        const membersId = membersData.d?.Id || membersData.Id;
+        await this._post(
+          `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${membersId}, roledefid=1073741826)`,
+          {}
+        );
+      }
+
+      // Organizer: Full Control auf der Subsite
+      if (organizerEmail) {
+        try {
+          const userResponse = await this.context.spHttpClient.get(
+            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
+            SPHttpClient.configurations.v1
+          );
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            const userId = userData.d?.Id || userData.Id;
+            await this._post(
+              `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+              {}
+            );
+          }
+        } catch { /* Organizer-Berechtigung optional */ }
+      }
+    } catch {
+      console.warn('[DEX] Subsite-Berechtigungen konnten nicht gesetzt werden');
+    }
   }
 
   /**
