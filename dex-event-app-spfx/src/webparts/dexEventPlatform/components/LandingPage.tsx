@@ -20,10 +20,6 @@ export default function LandingPage(): React.ReactElement {
       style.id = id;
       style.textContent = `
         @keyframes dexOrbSpin { to { transform: rotate(360deg); } }
-        @keyframes dexOrbPulse {
-          0%, 100% { transform: rotate(0deg) scale(1); }
-          50% { transform: rotate(180deg) scale(1.06); }
-        }
         @keyframes dexOrbGlow {
           0%, 100% { filter: drop-shadow(0 0 8px rgba(134, 188, 37, 0.3)); }
           50% { filter: drop-shadow(0 0 24px rgba(0, 118, 168, 0.5)); }
