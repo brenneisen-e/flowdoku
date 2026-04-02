@@ -129,6 +129,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
+  const [triedNext, setTriedNext] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
     { id: 'event', label: 'Event-Karte' },
     { id: 'personal', label: 'Personal Information' },
@@ -456,13 +457,28 @@ export default function EventCreationPage(): React.ReactElement {
     { label: 'Felder', icon: '4' },
   ];
 
-  const canProceed = (): boolean => {
+  const getStepErrors = (): string[] => {
+    const errors: string[] = [];
     switch (currentStep) {
-      case 0: return !!(title && organizer && description);
-      case 1: return !!(startDate && endDate);
-      default: return true;
+      case 0:
+        if (!title) errors.push('title');
+        if (!organizer) errors.push('organizer');
+        if (!description) errors.push('description');
+        break;
+      case 1:
+        if (!startDate) errors.push('startDate');
+        if (!endDate) errors.push('endDate');
+        break;
     }
+    return errors;
   };
+
+  const canProceed = (): boolean => getStepErrors().length === 0;
+
+  const fieldHasError = (fieldName: string): boolean => triedNext && getStepErrors().indexOf(fieldName) >= 0;
+
+  const errorBorderStyle = (fieldName: string): React.CSSProperties =>
+    fieldHasError(fieldName) ? { borderColor: 'var(--dex-red)', boxShadow: '0 0 0 2px rgba(218,41,28,0.15)' } : {};
 
   return (
     <div className="page-container">
@@ -536,7 +552,8 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="required">*</span> {t('create.eventtitle')}
                   <span className="info-icon" title="Name des Events, z.B. 'B2Run Frankfurt 2026'" style={{ marginLeft: 8 }}>i</span>
                 </label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" />
+                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" style={errorBorderStyle('title')} />
+                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
               </div>
 
               <div className="form-group">
@@ -575,6 +592,7 @@ export default function EventCreationPage(): React.ReactElement {
                     }
                   }}
                   placeholder="Name eingeben zum Suchen..."
+                  style={errorBorderStyle('organizer')}
                 />
                 {isSearchingOrganizer && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
@@ -697,7 +715,8 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="required">*</span> {t('create.description')}
                   <span className="info-icon" title="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
                 </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
+                {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
               </div>
 
               <div className="form-group">
@@ -765,14 +784,16 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <input className="form-input" type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} style={errorBorderStyle('startDate')} />
+                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <input className="form-input" type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} style={errorBorderStyle('endDate')} />
+                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
               </div>
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
@@ -852,7 +873,6 @@ export default function EventCreationPage(): React.ReactElement {
                 {customFields.map((field, idx) => (
                   <div
                     key={field.id}
-                    className="custom-field-row"
                     draggable
                     onDragStart={() => setDragFieldId(field.id)}
                     onDragOver={(e) => { e.preventDefault(); setDragOverFieldId(field.id); }}
@@ -875,91 +895,109 @@ export default function EventCreationPage(): React.ReactElement {
                     style={{
                       opacity: dragFieldId === field.id ? 0.4 : 1,
                       borderTop: dragOverFieldId === field.id ? '3px solid var(--dex-green)' : undefined,
+                      background: 'var(--dex-gray-50, #fafafa)',
+                      borderRadius: 12,
+                      padding: 16,
+                      marginBottom: 12,
+                      border: '1px solid var(--dex-gray-200)',
                     }}
                   >
-                    <div
-                      style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'grab', padding: '0 4px' }}
-                      title="Ziehen zum Verschieben"
-                    >
-                      <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', userSelect: 'none', lineHeight: 1 }}>⠿</span>
-                      <button
-                        onClick={() => moveCustomField(field.id, 'up')}
-                        disabled={idx === 0}
-                        style={{ background: 'none', border: 'none', padding: 2, color: idx === 0 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === 0 ? 'default' : 'pointer' }}
-                        title="Nach oben"
+                    {/* Feld-Header: Drag + Name + Typ + Pflicht + Löschen */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: field.type === 'select' ? 12 : 0 }}>
+                      <div
+                        style={{ cursor: 'grab', padding: '0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
+                        title="Ziehen zum Verschieben"
                       >
-                        <ChevronUp size={14} />
-                      </button>
-                      <button
-                        onClick={() => moveCustomField(field.id, 'down')}
-                        disabled={idx === customFields.length - 1}
-                        style={{ background: 'none', border: 'none', padding: 2, color: idx === customFields.length - 1 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === customFields.length - 1 ? 'default' : 'pointer' }}
-                        title="Nach unten"
-                      >
-                        <ChevronDown size={14} />
+                        <span style={{ fontSize: '1rem', color: 'var(--dex-gray-400)', userSelect: 'none', lineHeight: 1 }}>⠿</span>
+                        <div style={{ display: 'flex', gap: 2 }}>
+                          <button
+                            onClick={() => moveCustomField(field.id, 'up')}
+                            disabled={idx === 0}
+                            style={{ background: 'none', border: 'none', padding: 0, color: idx === 0 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '0.7rem' }}
+                          >▲</button>
+                          <button
+                            onClick={() => moveCustomField(field.id, 'down')}
+                            disabled={idx === customFields.length - 1}
+                            style={{ background: 'none', border: 'none', padding: 0, color: idx === customFields.length - 1 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === customFields.length - 1 ? 'default' : 'pointer', fontSize: '0.7rem' }}
+                          >▼</button>
+                        </div>
+                      </div>
+                      <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
+                      <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1, maxWidth: 140 }}>
+                        <option value="text">Text</option>
+                        <option value="select">Dropdown</option>
+                        <option value="number">Zahl</option>
+                        <option value="checkbox">Checkbox</option>
+                      </select>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
+                        {t('create.required')}
+                      </label>
+                      <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}>
+                        <X size={18} />
                       </button>
                     </div>
-                    <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
-                    <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1 }}>
-                      <option value="text">Text</option>
-                      <option value="select">Dropdown</option>
-                      <option value="number">Zahl</option>
-                      <option value="checkbox">Checkbox</option>
-                    </select>
+
+                    {/* Dropdown-Optionen als Tag-Liste */}
                     {field.type === 'select' && (
-                      <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {(field.options ? field.options.split(',').filter(o => o.trim()) : []).map((opt, optIdx) => (
-                          <div key={optIdx} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            <input
-                              className="form-input"
-                              value={opt.trim()}
-                              placeholder={`Option ${optIdx + 1}`}
-                              onChange={e => {
-                                const opts = field.options ? field.options.split(',') : [];
-                                opts[optIdx] = e.target.value;
-                                updateCustomField(field.id, { options: opts.join(',') });
-                              }}
-                              style={{ flex: 1 }}
-                            />
-                            <button
-                              onClick={() => {
-                                const opts = field.options.split(',').filter(o => o.trim());
-                                opts.splice(optIdx, 1);
-                                updateCustomField(field.id, { options: opts.join(',') });
-                              }}
-                              style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 2, cursor: 'pointer' }}
-                              title="Option entfernen"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => {
-                            const opts = field.options ? field.options + ',' : '';
-                            updateCustomField(field.id, { options: opts });
-                          }}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 8px', alignSelf: 'flex-start' }}
-                        >
-                          {t('create.addoption')}
-                        </button>
+                      <div style={{ marginLeft: 32, paddingTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 8, fontWeight: 600 }}>Dropdown-Optionen:</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {(field.options ? field.options.split(',').filter(o => o.trim()) : []).map((opt, optIdx) => (
+                            <div key={optIdx} style={{
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              background: '#fff', border: '1px solid var(--dex-gray-300)',
+                              borderRadius: 20, padding: '4px 8px 4px 12px', fontSize: '0.85rem',
+                            }}>
+                              <input
+                                value={opt.trim()}
+                                placeholder={`Option ${optIdx + 1}`}
+                                onChange={e => {
+                                  const opts = field.options ? field.options.split(',') : [];
+                                  opts[optIdx] = e.target.value;
+                                  updateCustomField(field.id, { options: opts.join(',') });
+                                }}
+                                style={{
+                                  border: 'none', background: 'transparent', outline: 'none',
+                                  width: Math.max(60, (opt.trim().length + 2) * 8), fontSize: '0.85rem',
+                                }}
+                              />
+                              <button
+                                onClick={() => {
+                                  const opts = field.options.split(',').filter(o => o.trim());
+                                  opts.splice(optIdx, 1);
+                                  updateCustomField(field.id, { options: opts.join(',') });
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'var(--dex-gray-400)', padding: 0, cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const opts = field.options ? field.options + ',' : '';
+                              updateCustomField(field.id, { options: opts });
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              background: 'none', border: '2px dashed var(--dex-gray-300)',
+                              borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem',
+                              color: 'var(--dex-gray-500)', cursor: 'pointer',
+                            }}
+                          >
+                            + Option
+                          </button>
+                        </div>
                       </div>
                     )}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                      <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
-                      {t('create.required')}
-                    </label>
-                    <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4 }}>
-                      <X size={18} />
-                    </button>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
+              </div>{/* close Step 3 */}
 
-              </div>
+            </div>{/* close creation-form */}
+          </div>{/* close card */}
 
           {/* Fortschrittsanzeige */}
           {isSubmitting && (
@@ -1001,9 +1039,13 @@ export default function EventCreationPage(): React.ReactElement {
               {currentStep < steps.length - 1 ? (
                 <button
                   className="btn btn-primary"
-                  disabled={!canProceed()}
-                  onClick={() => setCurrentStep(currentStep + 1)}
-                  style={{ opacity: canProceed() ? 1 : 0.5 }}
+                  onClick={() => {
+                    setTriedNext(true);
+                    if (canProceed()) {
+                      setTriedNext(false);
+                      setCurrentStep(currentStep + 1);
+                    }
+                  }}
                 >
                   {t('create.next')}
                 </button>
