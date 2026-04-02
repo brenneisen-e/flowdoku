@@ -12,14 +12,15 @@ import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { EventService, SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
-import { Html5Qrcode } from 'html5-qrcode';
+import QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
   const { events } = useEvents();
   const { selectedEventId } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { t } = useLanguage();
-  const scannerRef = React.useRef<Html5Qrcode | null>(null);
+  const scannerRef = React.useRef<QrScanner | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
   const [manualCode, setManualCode] = React.useState('');
   const [resultMessage, setResultMessage] = React.useState('');
   const [resultType, setResultType] = React.useState<'success' | 'error' | 'info' | ''>('');
@@ -73,29 +74,37 @@ export default function CheckInPage(): React.ReactElement {
   }, [events]);
 
   const lastScannedRef = React.useRef<string>('');
+  const processingRef = React.useRef<boolean>(false);
 
-  // html5-qrcode Scanner starten
+  // qr-scanner starten
   const startCamera = async (): Promise<void> => {
     setCameraError('');
+    if (!videoRef.current) return;
+
     try {
-      const scanner = new Html5Qrcode('qr-reader');
-      scannerRef.current = scanner;
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 15, qrbox: { width: 300, height: 300 }, aspectRatio: 1.0 },
-        async (decodedText) => {
-          // Gleichen Code nicht doppelt verarbeiten
-          if (decodedText === lastScannedRef.current) return;
-          lastScannedRef.current = decodedText;
-          console.log('[DEX Scanner] QR erkannt:', decodedText);
-          setResultMessage(`QR erkannt: ${decodedText}`);
+      const scanner = new QrScanner(
+        videoRef.current,
+        async (result) => {
+          const code = result.data;
+          if (!code || code === lastScannedRef.current || processingRef.current) return;
+          lastScannedRef.current = code;
+          processingRef.current = true;
+          console.log('[DEX Scanner] QR erkannt:', code);
+          setResultMessage(`QR erkannt: ${code}`);
           setResultType('info');
-          await processCode(decodedText);
-          // Nach 3 Sekunden wieder fuer den gleichen Code offen sein
+          await processCode(code);
+          processingRef.current = false;
           setTimeout(() => { lastScannedRef.current = ''; }, 3000);
         },
-        () => { /* scan frame without QR - normal */ }
+        {
+          preferredCamera: 'environment',
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          maxScansPerSecond: 5,
+        }
       );
+      scannerRef.current = scanner;
+      await scanner.start();
       setIsScanning(true);
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,24 +114,21 @@ export default function CheckInPage(): React.ReactElement {
     }
   };
 
-  const stopCamera = async (): Promise<void> => {
-    try {
-      if (scannerRef.current) {
-        await scannerRef.current.stop();
-        scannerRef.current = null;
-      }
-    } catch { /* */ }
+  const stopCamera = (): void => {
+    if (scannerRef.current) {
+      scannerRef.current.stop();
+      scannerRef.current.destroy();
+      scannerRef.current = null;
+    }
     setIsScanning(false);
   };
 
   // Foto-Upload: QR-Code aus Bild lesen
   const handlePhotoUpload = async (file: File): Promise<void> => {
     try {
-      const tempScanner = new Html5Qrcode('qr-reader-temp');
-      const result = await tempScanner.scanFile(file, true);
-      await tempScanner.clear();
-      if (result) {
-        await processCode(result);
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      if (result && result.data) {
+        await processCode(result.data);
       } else {
         setResultMessage('Kein QR-Code im Bild erkannt.');
         setResultType('error');
@@ -216,7 +222,8 @@ export default function CheckInPage(): React.ReactElement {
   React.useEffect(() => {
     return () => {
       if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
       }
     };
   }, []);
@@ -357,10 +364,16 @@ export default function CheckInPage(): React.ReactElement {
             </button>
           </div>
         )}
-        <div id="qr-reader" style={{ width: '100%', maxWidth: 400, margin: '0 auto' }} />
+        <video
+          ref={videoRef}
+          style={{
+            width: '100%', maxWidth: 400, margin: '0 auto', display: isScanning ? 'block' : 'none',
+            borderRadius: 12, border: '3px solid var(--dex-green)',
+          }}
+          playsInline
+          muted
+        />
       </div>
-
-      <div id="qr-reader-temp" style={{ display: 'none' }} />
 
       {/* Manuelle Eingabe */}
       <div className="card" style={{ padding: 24 }}>
