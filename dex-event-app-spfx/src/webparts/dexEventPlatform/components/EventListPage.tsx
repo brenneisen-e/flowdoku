@@ -91,11 +91,16 @@ function isEventVisibleForUser(
 }
 
 export default function EventListPage(): React.ReactElement {
-  const { events, isEventsLoading } = useEvents();
+  const { events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, currentUserRole } = useRoles();
   const [onlyActive, setOnlyActive] = React.useState(true);
   const [showDebug, setShowDebug] = React.useState(false);
+  const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
+
+  React.useEffect(() => {
+    getMyEventNumbers().then(setMyNumbers).catch(err => console.warn('[DEX]', err));
+  }, [events]);
 
   const statusFiltered = onlyActive
     ? events.filter((e) => e.status === 'Active')
@@ -111,9 +116,11 @@ export default function EventListPage(): React.ReactElement {
   return (
     <div className="page-container">
       {/* Debug-Panel fuer mobiles Testen */}
+      {canCreateEvents && (
       <div style={{ marginBottom: 8, textAlign: 'right' }}>
         <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
       </div>
+      )}
       {showDebug && (
         <div style={{ background: '#1e1e1e', color: '#0f0', padding: 12, borderRadius: 8, fontSize: '0.7rem', fontFamily: 'monospace', marginBottom: 16, maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
           {`User: ${currentUser.email}
@@ -147,7 +154,13 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
       </div>
       <div className="event-grid">
         {filteredEvents.map((event, i) => (
-          <EventCard key={event.id} event={event} index={i} />
+          <EventCard
+            key={event.id}
+            event={event}
+            index={i}
+            isRegistered={myNumbers.registered.includes(event.eventNumber)}
+            isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+          />
         ))}
       </div>
       {filteredEvents.length === 0 && (

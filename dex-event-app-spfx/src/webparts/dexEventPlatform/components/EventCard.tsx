@@ -37,15 +37,39 @@ function getEventGradient(_type: string, index: number): string {
 interface Props {
   event: DeloitteEvent;
   index: number;
+  isRegistered?: boolean;
+  isWaitlisted?: boolean;
 }
 
-export default function EventCard({ event, index }: Props): React.ReactElement {
+export default function EventCard({ event, index, isRegistered, isWaitlisted }: Props): React.ReactElement {
   const { navigate } = useNavigation();
   const freePlaces = event.maxParticipants - event.currentParticipants;
   const isFull = freePlaces <= 0;
+  const alreadySignedUp = isRegistered || isWaitlisted;
 
   return (
-    <div className="event-card" onClick={() => navigate('registration', event.id)}>
+    <div className="event-card" style={{ position: 'relative' }} onClick={() => !alreadySignedUp ? navigate('registration', event.id) : undefined}>
+      {alreadySignedUp && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
+          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+            {isWaitlisted ? 'Auf der Warteliste' : 'Bereits angemeldet'}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 16 }}>
+            {event.title}
+          </div>
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: '0.85rem', padding: '8px 20px' }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); navigate('my-events'); }}
+          >
+            Zu Meine Events
+          </button>
+        </div>
+      )}
       <div className="event-card__image" style={{
         background: event.imageUrl
           ? `url(${event.imageUrl}) center/cover no-repeat`

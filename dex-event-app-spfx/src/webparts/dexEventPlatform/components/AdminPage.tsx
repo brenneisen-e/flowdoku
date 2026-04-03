@@ -61,7 +61,10 @@ export default function AdminPage(): React.ReactElement {
   // SuperAdmin sieht alle Events, EventAdmin nur seine
   const adminEvents = isAdmin
     ? events
-    : events.filter(e => e.organizers.some(o => o.toLowerCase().includes(currentUser.surname.toLowerCase())));
+    : events.filter(e => {
+      const fullName = `${currentUser.firstName} ${currentUser.surname}`.toLowerCase();
+      return e.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
+    });
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
@@ -209,7 +212,8 @@ export default function AdminPage(): React.ReactElement {
 
   // Event ausgewählt - Detail-Ansicht
   const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-  const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste');
+  const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste')
+    .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
 
   return (
@@ -494,23 +498,23 @@ export default function AdminPage(): React.ReactElement {
                             eventServiceRef.queueEmail(
                               emailData.subject, reg.ParticipantEmail, name, emailData.body,
                               'Abmeldung', selectedEvent.title, selectedEvent.id
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                             eventServiceRef.queueOutlookEvent(
                               reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           // DEX_Participants aufraeumen
                           if (reg.ParticipantEmail && selectedEvent.eventNumber) {
                             eventServiceRef.removeParticipantEvent(
                               reg.ParticipantEmail, selectedEvent.eventNumber
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           // IDReorder in Queue eintragen
                           if (selectedEvent.subsiteUrl) {
                             eventServiceRef.queueIDReorder(
                               selectedEvent.id, selectedEvent.eventNumber || 0,
                               selectedEvent.subsiteUrl, selectedEvent.title
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           const regs = await getAllRegistrations(selectedEvent.id);
                           setRegistrations(regs);
@@ -531,15 +535,48 @@ export default function AdminPage(): React.ReactElement {
             <h4 style={{ marginTop: 24, color: 'var(--dex-orange)' }}>Warteliste ({waitlistRegs.length})</h4>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Platz</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {waitlistRegs.map(reg => (
+                  {waitlistRegs.map((reg, i) => (
                     <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                      <td style={{ padding: 8, fontWeight: 600, color: 'var(--dex-orange)' }}>{i + 1}</td>
                       <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                      <td style={{ padding: 8 }}>
-                        <span className="badge badge-orange">Warteliste</span>
-                      </td>
                       <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                      <td style={{ padding: 8 }}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                          onClick={async () => {
+                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                            const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                            if (!confirm(`${name} von der Warteliste entfernen?`)) return;
+                            await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
+                            if (reg.ParticipantEmail) {
+                              const emailData = cancellationEmail(name, selectedEvent.title);
+                              eventServiceRef.queueEmail(
+                                emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                                'Abmeldung', selectedEvent.title, selectedEvent.id
+                              ).catch(err => console.warn('[DEX]', err));
+                            }
+                            if (reg.ParticipantEmail && selectedEvent.eventNumber) {
+                              eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
+                            }
+                            const regs = await getAllRegistrations(selectedEvent.id);
+                            setRegistrations(regs);
+                          }}
+                        >
+                          Entfernen
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

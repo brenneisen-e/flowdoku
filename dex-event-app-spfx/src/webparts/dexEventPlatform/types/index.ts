@@ -26,6 +26,8 @@ export interface DeloitteEvent {
   waitlistCount: number;
   imageUrl?: string;
   subsiteUrl?: string;
+  emailLanguage: string; // 'DE' | 'EN'
+  emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   eventSpecificFields: EventSpecificField[];
 }
 
