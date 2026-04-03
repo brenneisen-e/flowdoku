@@ -69,12 +69,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }, []);
 
   async function initEvents(): Promise<void> {
-    await eventService.ensureEventsList();
-    await eventService.ensureEmailsList();
-    await eventService.ensureOutlookList();
-    await eventService.ensureParticipantsList();
-    await eventService.ensureIDReorderList();
-    await eventService.ensureAssetsFolders();
+    // ensure-Aufrufe koennen fehlschlagen wenn User nur Read-Rechte hat
+    try { await eventService.ensureEventsList(); } catch { /* */ }
+    try { await eventService.ensureEmailsList(); } catch { /* */ }
+    try { await eventService.ensureOutlookList(); } catch { /* */ }
+    try { await eventService.ensureParticipantsList(); } catch { /* */ }
+    try { await eventService.ensureIDReorderList(); } catch { /* */ }
+    try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     await loadEvents();
     setIsEventsLoading(false);
   }

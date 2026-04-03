@@ -1974,7 +1974,8 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')`,
         SPHttpClient.configurations.v1
       );
-      return response.ok;
+      // 200 = OK, 403 = existiert aber kein Zugriff (User hat nur Read)
+      return response.ok || response.status === 403;
     } catch {
       return false;
     }
