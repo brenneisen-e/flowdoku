@@ -87,7 +87,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       // Alte Werte in SP migrieren (im Hintergrund)
       for (const r of spRoles) {
         if (r.Role === 'SuperAdmin' || r.Role === 'EventAdmin') {
-          spService.updateRole(r.Id, migrateRole(r.Role)).catch(() => {});
+          spService.updateRole(r.Id, migrateRole(r.Role)).catch(err => console.warn('[DEX] role migration failed:', err));
         }
       }
     }
@@ -114,13 +114,15 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   ): Promise<boolean> {
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
-      if (role === 'Admin') {
-        await spService.grantFullControlOnRolesList(userEmail);
-        await spService.grantFullControlOnEventsList(userEmail);
-      } else if (role === 'Organizer') {
-        await spService.grantReadOnRolesList(userEmail);
-        await spService.grantContributeOnEventsList(userEmail);
-      }
+      try {
+        if (role === 'Admin') {
+          await spService.grantFullControlOnRolesList(userEmail);
+          await spService.grantFullControlOnEventsList(userEmail);
+        } else if (role === 'Organizer') {
+          await spService.grantReadOnRolesList(userEmail);
+          await spService.grantContributeOnEventsList(userEmail);
+        }
+      } catch (err) { console.warn('[DEX] permission grant for addRole failed (best-effort):', err); }
       await refreshRoles();
     }
     return success;
@@ -130,16 +132,18 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const oldRole = roles.find(r => r.id === itemId);
     const success = await spService.updateRole(itemId, newRole);
     if (success && oldRole) {
-      if (newRole === 'Admin') {
-        await spService.grantFullControlOnRolesList(oldRole.userEmail);
-        await spService.grantFullControlOnEventsList(oldRole.userEmail);
-      } else if (newRole === 'Organizer') {
-        await spService.grantReadOnRolesList(oldRole.userEmail);
-        await spService.grantContributeOnEventsList(oldRole.userEmail);
-      } else if (newRole === 'User') {
-        await spService.revokeAccessOnRolesList(oldRole.userEmail);
-        await spService.revokeAccessOnEventsList(oldRole.userEmail);
-      }
+      try {
+        if (newRole === 'Admin') {
+          await spService.grantFullControlOnRolesList(oldRole.userEmail);
+          await spService.grantFullControlOnEventsList(oldRole.userEmail);
+        } else if (newRole === 'Organizer') {
+          await spService.grantReadOnRolesList(oldRole.userEmail);
+          await spService.grantContributeOnEventsList(oldRole.userEmail);
+        } else if (newRole === 'User') {
+          await spService.revokeAccessOnRolesList(oldRole.userEmail);
+          await spService.revokeAccessOnEventsList(oldRole.userEmail);
+        }
+      } catch (err) { console.warn('[DEX] permission grant for updateRole failed (best-effort):', err); }
       await refreshRoles();
     }
     return success;
@@ -151,8 +155,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     if (success) {
       await refreshRoles();
       if (roleEntry) {
-        spService.revokeAccessOnRolesList(roleEntry.userEmail).catch(() => {});
-        spService.revokeAccessOnEventsList(roleEntry.userEmail).catch(() => {});
+        spService.revokeAccessOnRolesList(roleEntry.userEmail).catch(err => console.warn('[DEX] revokeAccessOnRolesList failed:', err));
+        spService.revokeAccessOnEventsList(roleEntry.userEmail).catch(err => console.warn('[DEX] revokeAccessOnEventsList failed:', err));
       }
     }
     return success;

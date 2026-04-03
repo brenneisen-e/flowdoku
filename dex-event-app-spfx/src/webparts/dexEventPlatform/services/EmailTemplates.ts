@@ -139,12 +139,24 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 // ==================== Platzhalter-Ersetzung ====================
 
 /**
+ * HTML-Sonderzeichen escapen um XSS zu verhindern.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * Platzhalter in Subject und Body ersetzen.
  */
 export function replacePlaceholders(text: string, vars: Record<string, string>): string {
   let result = text;
   for (const [key, value] of Object.entries(vars)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value));
   }
   // Logo-URLs ersetzen
   result = result.replace(/\{\{LOGO_URL\}\}/g, `${LOGOS_URL}/deloitte-logo-white.png`);

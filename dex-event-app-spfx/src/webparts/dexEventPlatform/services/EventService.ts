@@ -1146,11 +1146,7 @@ export class EventService {
       await this.setSubsitePermissions(subsiteUrl, event.organizerEmail);
 
       // 3. Teilnehmerliste auf der Subsite erstellen
-      await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
-
-      // FieldMap aus createRegistrationList auslesen
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fieldMap: Record<string, string> = (this as any)._lastFieldMap || {};
+      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
 
       // Custom Fields mit SP InternalName anreichern
       const enrichedCustomFields = event.customFields.map(cf => ({
@@ -1384,7 +1380,7 @@ export class EventService {
     subsiteUrl: string,
     customFields: CustomField[],
     organizerEmail: string
-  ): Promise<void> {
+  ): Promise<Record<string, string>> {
     // Liste erstellen
     await this._post(`${subsiteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -1480,10 +1476,7 @@ export class EventService {
       }
     }
 
-    // FieldMap auf der Subsite speichern (als Property Bag oder in einem Hidden Field)
-    // Wir speichern die Map spaeter im CustomFields JSON des Events
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this as any)._lastFieldMap = fieldMap;
+    // FieldMap wird als Rueckgabewert an den Caller zurueckgegeben
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
@@ -1496,6 +1489,8 @@ export class EventService {
 
     // Berechtigungen
     await this.setRegistrationListPermissions(subsiteUrl, organizerEmail);
+
+    return fieldMap;
   }
 
   /**

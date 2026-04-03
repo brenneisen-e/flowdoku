@@ -99,7 +99,7 @@ export default function EventListPage(): React.ReactElement {
   const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
 
   React.useEffect(() => {
-    getMyEventNumbers().then(setMyNumbers).catch(() => {});
+    getMyEventNumbers().then(setMyNumbers).catch(err => console.warn('[DEX]', err));
   }, [events]);
 
   const statusFiltered = onlyActive
@@ -116,9 +116,11 @@ export default function EventListPage(): React.ReactElement {
   return (
     <div className="page-container">
       {/* Debug-Panel fuer mobiles Testen */}
+      {canCreateEvents && (
       <div style={{ marginBottom: 8, textAlign: 'right' }}>
         <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
       </div>
+      )}
       {showDebug && (
         <div style={{ background: '#1e1e1e', color: '#0f0', padding: 12, borderRadius: 8, fontSize: '0.7rem', fontFamily: 'monospace', marginBottom: 16, maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
           {`User: ${currentUser.email}

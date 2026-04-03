@@ -96,16 +96,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       subsiteMap.current[e.Id.toString()] = e.SubsiteUrl;
     }
 
-    // Teilnehmeranzahl ermitteln
-    let currentParticipants = 0;
-    let waitlistCount = 0;
-    if (e.SubsiteUrl) {
-      try {
-        const counts = await eventService.getRegistrationCount(e.SubsiteUrl);
-        currentParticipants = counts.registered;
-        waitlistCount = counts.waitlist;
-      } catch { /* Teilnehmerliste nicht erreichbar */ }
-    }
+    // Teilnehmeranzahl: default 0, wird lazy geladen wenn User ein Event oeffnet
+    const currentParticipants = 0;
+    const waitlistCount = 0;
 
     // Custom Fields parsen
     let customFields: CustomField[] = [];
@@ -208,7 +201,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (event.eventNumber) {
         eventService.upsertParticipant(
           firstNameToUse, lastNameToUse, emailToUse, event.eventNumber, status
-        ).catch(() => {});
+        ).catch(err => console.warn('[DEX] upsertParticipant failed:', err));
       }
       // E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
       const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
@@ -226,12 +219,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       eventService.queueEmail(
         emailData.subject, emailToUse, nameToUse, emailData.body,
         templateType, event.title, eventId
-      ).catch(() => {});
+      ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       // Outlook-Termin-Einladung in Queue eintragen
       if (status !== 'Warteliste') {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
-        ).catch(() => {});
+        ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
       }
       await loadEvents();
     }

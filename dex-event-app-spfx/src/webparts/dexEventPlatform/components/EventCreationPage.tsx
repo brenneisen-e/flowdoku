@@ -155,6 +155,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [imageUploadError, setImageUploadError] = React.useState('');
 
   const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
 
@@ -241,8 +242,9 @@ export default function EventCreationPage(): React.ReactElement {
           console.log('[DEX] Bild-Upload Ergebnis:', uploadedUrl);
           if (uploadedUrl) imageUrl = uploadedUrl;
         }
-      } catch {
-        console.warn('[DEX] Bild-Upload fehlgeschlagen');
+      } catch (err) {
+        console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+        setImageUploadError('Bild-Upload fehlgeschlagen. Das Event wird ohne Bild erstellt.');
       }
     }
     setProgress(15);
@@ -325,7 +327,9 @@ export default function EventCreationPage(): React.ReactElement {
         outlookEventId: '',
         outlookBody,
         emailLanguage,
-        emailTemplateOverrides: Object.keys(emailTemplateOverrides).length > 0 ? JSON.stringify(emailTemplateOverrides) : '',
+        emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
+          ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
+          : '',
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -350,7 +354,7 @@ export default function EventCreationPage(): React.ReactElement {
             svc.queueEmail(
               emailData.subject, currentUser.email, organizer, emailData.body,
               'EventErstellt', title, String(eventId)
-            ).catch(() => {});
+            ).catch(err => console.warn('[DEX]', err));
           }
         } catch { /* E-Mail-Fehler ignorieren */ }
         // Kurz 100% zeigen, dann zur Erfolgsseite
@@ -487,7 +491,7 @@ export default function EventCreationPage(): React.ReactElement {
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
         const svc = new EventService(ctx);
-        svc.getAllEmailTemplates().then(setEmailTemplates).catch(() => {});
+        svc.getAllEmailTemplates().then(setEmailTemplates).catch(err => console.warn('[DEX]', err));
       }
     }
   }, [currentStep]);
@@ -797,6 +801,7 @@ export default function EventCreationPage(): React.ReactElement {
                     onChange={e => {
                       const file = e.target.files && e.target.files[0];
                       if (file) {
+                        setImageUploadError('');
                         setImageFile(file);
                         const reader = new FileReader();
                         reader.onload = ev => setImagePreview(ev.target?.result as string || '');
@@ -805,6 +810,9 @@ export default function EventCreationPage(): React.ReactElement {
                     }}
                   />
                 </label>
+                {imageUploadError && (
+                  <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
+                )}
               </div>
 
               </div>

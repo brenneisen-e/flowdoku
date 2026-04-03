@@ -61,7 +61,10 @@ export default function AdminPage(): React.ReactElement {
   // SuperAdmin sieht alle Events, EventAdmin nur seine
   const adminEvents = isAdmin
     ? events
-    : events.filter(e => e.organizers.some(o => o.toLowerCase().includes(currentUser.surname.toLowerCase())));
+    : events.filter(e => {
+      const fullName = `${currentUser.firstName} ${currentUser.surname}`.toLowerCase();
+      return e.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
+    });
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
@@ -495,23 +498,23 @@ export default function AdminPage(): React.ReactElement {
                             eventServiceRef.queueEmail(
                               emailData.subject, reg.ParticipantEmail, name, emailData.body,
                               'Abmeldung', selectedEvent.title, selectedEvent.id
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                             eventServiceRef.queueOutlookEvent(
                               reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           // DEX_Participants aufraeumen
                           if (reg.ParticipantEmail && selectedEvent.eventNumber) {
                             eventServiceRef.removeParticipantEvent(
                               reg.ParticipantEmail, selectedEvent.eventNumber
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           // IDReorder in Queue eintragen
                           if (selectedEvent.subsiteUrl) {
                             eventServiceRef.queueIDReorder(
                               selectedEvent.id, selectedEvent.eventNumber || 0,
                               selectedEvent.subsiteUrl, selectedEvent.title
-                            ).catch(() => {});
+                            ).catch(err => console.warn('[DEX]', err));
                           }
                           const regs = await getAllRegistrations(selectedEvent.id);
                           setRegistrations(regs);
@@ -562,10 +565,10 @@ export default function AdminPage(): React.ReactElement {
                               eventServiceRef.queueEmail(
                                 emailData.subject, reg.ParticipantEmail, name, emailData.body,
                                 'Abmeldung', selectedEvent.title, selectedEvent.id
-                              ).catch(() => {});
+                              ).catch(err => console.warn('[DEX]', err));
                             }
                             if (reg.ParticipantEmail && selectedEvent.eventNumber) {
-                              eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(() => {});
+                              eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
                             }
                             const regs = await getAllRegistrations(selectedEvent.id);
                             setRegistrations(regs);
