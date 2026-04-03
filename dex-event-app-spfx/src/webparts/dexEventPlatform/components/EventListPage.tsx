@@ -91,11 +91,16 @@ function isEventVisibleForUser(
 }
 
 export default function EventListPage(): React.ReactElement {
-  const { events, isEventsLoading } = useEvents();
+  const { events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, currentUserRole } = useRoles();
   const [onlyActive, setOnlyActive] = React.useState(true);
   const [showDebug, setShowDebug] = React.useState(false);
+  const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
+
+  React.useEffect(() => {
+    getMyEventNumbers().then(setMyNumbers).catch(() => {});
+  }, [events]);
 
   const statusFiltered = onlyActive
     ? events.filter((e) => e.status === 'Active')
@@ -147,7 +152,13 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
       </div>
       <div className="event-grid">
         {filteredEvents.map((event, i) => (
-          <EventCard key={event.id} event={event} index={i} />
+          <EventCard
+            key={event.id}
+            event={event}
+            index={i}
+            isRegistered={myNumbers.registered.includes(event.eventNumber)}
+            isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+          />
         ))}
       </div>
       {filteredEvents.length === 0 && (
