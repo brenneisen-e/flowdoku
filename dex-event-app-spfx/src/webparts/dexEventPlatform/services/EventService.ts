@@ -1202,6 +1202,7 @@ export class EventService {
     }
   }
 
+
   /**
    * Event aktualisieren
    */

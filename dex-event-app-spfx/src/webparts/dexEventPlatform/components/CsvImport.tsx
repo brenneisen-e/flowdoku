@@ -235,7 +235,7 @@ export default function CsvImport({ siteUrl }: Props): React.ReactElement {
           eventImageUrl: '',
           organizer: ev.organizer,
           organizerEmail: '',
-          outlookEventId: ev.outlookEventId,
+          outlookEventId: ev.outlookEventId, // CalendarLink uebernehmen fuer Outlook-Einladungen bei Anmeldung
           outlookBody: '',
           emailLanguage: 'EN',
           customFields: ev.customFields,
