@@ -91,10 +91,11 @@ function isEventVisibleForUser(
 }
 
 export default function EventListPage(): React.ReactElement {
-  const { events } = useEvents();
+  const { events, isEventsLoading } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents } = useRoles();
+  const { canCreateEvents, currentUserRole } = useRoles();
   const [onlyActive, setOnlyActive] = React.useState(true);
+  const [showDebug, setShowDebug] = React.useState(false);
 
   const statusFiltered = onlyActive
     ? events.filter((e) => e.status === 'Active')
@@ -109,6 +110,27 @@ export default function EventListPage(): React.ReactElement {
 
   return (
     <div className="page-container">
+      {/* Debug-Panel fuer mobiles Testen */}
+      <div style={{ marginBottom: 8, textAlign: 'right' }}>
+        <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
+      </div>
+      {showDebug && (
+        <div style={{ background: '#1e1e1e', color: '#0f0', padding: 12, borderRadius: 8, fontSize: '0.7rem', fontFamily: 'monospace', marginBottom: 16, maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+          {`User: ${currentUser.email}
+Location: "${currentUser.location}"
+Role: ${currentUserRole}
+canCreateEvents: ${canCreateEvents}
+isEventsLoading: ${isEventsLoading}
+events.length: ${events.length}
+statusFiltered.length: ${statusFiltered.length}
+filteredEvents.length: ${filteredEvents.length}
+onlyActive: ${onlyActive}
+
+Events Detail:
+${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.locationAudience.join(',')}] aud=[${e.audienceFilter.join(',')}] filterMode=${e.filterMode} visible=${isEventVisibleForUser(e, currentUser.email, currentUser.location)}`).join('\n') || '(keine Events geladen)'}
+`}
+        </div>
+      )}
       <div className="flex-between mb-16">
         <div />
         <div className="toggle-wrapper">
