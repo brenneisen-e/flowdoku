@@ -50,7 +50,7 @@ function matchesAudience(userEmail: string, userLocation: string, audienceFilter
     }
 
     // Gruppen-Patterns
-    if (f === 'deall') return true; // Alle DE-Mitarbeiter
+    if (f === 'all' || f === 'deall') return true; // Alle Mitarbeiter
     // Standort-Gruppen: DEKOELN, DEHAMBURG, etc.
     if (f.startsWith('de')) {
       const city = f.substring(2);
