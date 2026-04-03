@@ -9,6 +9,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Users, Trash2 } from './Icons';
+import CsvImport from './CsvImport';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -404,6 +405,9 @@ export default function SettingsPage(): React.ReactElement {
             )}
           </div>
         )}
+
+        {/* CSV Import - nur fuer Admin */}
+        {isAdmin && <CsvImport siteUrl={siteUrl} />}
 
         {/* Berechtigungs-Übersicht - nur fuer Admin */}
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
