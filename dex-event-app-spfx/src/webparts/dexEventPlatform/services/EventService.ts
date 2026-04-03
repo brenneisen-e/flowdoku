@@ -47,6 +47,8 @@ export interface SPEvent {
   OutlookEventId: string;
   CalendarLink: string;
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
+  EmailLanguage: string; // DE oder EN
+  EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -87,7 +89,7 @@ export interface SPParticipant {
 
 export class EventService {
   private context: WebPartContext;
-  private siteUrl: string;
+  public siteUrl: string;
 
   constructor(context: WebPartContext) {
     this.context = context;
@@ -457,6 +459,151 @@ export class EventService {
     }
   }
 
+  // ==================== DEX_EmailTemplates Liste ====================
+
+  /**
+   * Email-Templates-Liste erstellen und Default-Templates einfuegen.
+   * Templates koennen pro Event ueberschrieben werden (im Event JSON).
+   *
+   * Platzhalter: {{Name}}, {{EventTitle}}, {{AppUrl}}
+   */
+  public async ensureEmailTemplatesList(): Promise<void> {
+    const listName = 'DEX_EmailTemplates';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Email-Vorlagen für die DEX Event Experience Platform (DE + EN)',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields = [
+      { title: 'TemplateType', type: 2 },
+      { title: 'Language', type: 2 },
+      { title: 'Subject', type: 2 },
+      { title: 'HeadingColor', type: 2 },
+      { title: 'Heading', type: 2 },
+      { title: 'BodyHtml', type: 3 },
+    ];
+
+    for (const f of fields) {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      });
+    }
+
+    // Default-Templates: DE + EN fuer jeden Typ
+    const defaults = [
+      // ===== ENGLISCH =====
+      { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMy Events\u201C) so the spot might be allocated to another participant.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>We will notify you as soon as a spot becomes available.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Spot available: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You got a spot!',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
+      // ===== DEUTSCH =====
+      { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMeine Events\u201C) ab, damit der Platz an einen anderen Teilnehmer vergeben werden kann.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Du musst nichts weiter tun.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">Event Experience Platform</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Platz frei: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du bist nachgerückt!',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>Gute Nachrichten! Ein Platz ist frei geworden und du bist von der Warteliste <strong>als Teilnehmer bestätigt</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> ab.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
+    ];
+
+    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+    try {
+      const typeResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1
+      );
+      if (typeResp.ok) {
+        const typeData = await typeResp.json();
+        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback */ }
+
+    for (const t of defaults) {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+        '__metadata': { 'type': listItemType },
+        'Title': `${t.TemplateType}_${t.Language}`,
+        'TemplateType': t.TemplateType,
+        'Language': t.Language,
+        'Subject': t.Subject,
+        'HeadingColor': t.HeadingColor,
+        'Heading': t.Heading,
+        'BodyHtml': t.BodyHtml,
+      });
+    }
+
+    await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
+  }
+
+  /**
+   * Email-Template aus DEX_EmailTemplates laden.
+   * Fallback auf eingebautes Template wenn nicht gefunden.
+   */
+  public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType}' and Language eq '${language}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        if (items.length > 0) {
+          return {
+            subject: items[0].Subject || '',
+            headingColor: items[0].HeadingColor || '#86bc25',
+            heading: items[0].Heading || '',
+            bodyHtml: items[0].BodyHtml || '',
+          };
+        }
+      }
+    } catch { /* */ }
+    return null;
+  }
+
+  /**
+   * Alle Email-Templates laden (fuer Event-Erstellung / Admin).
+   */
+  public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; bodyHtml: string }>> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,BodyHtml&$orderby=TemplateType,Language&$top=50`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (data.value || data.d?.results || []).map((item: any) => ({
+          id: item.Id,
+          templateType: item.TemplateType || '',
+          language: item.Language || 'EN',
+          subject: item.Subject || '',
+          headingColor: item.HeadingColor || '#86bc25',
+          heading: item.Heading || '',
+          bodyHtml: item.BodyHtml || '',
+        }));
+      }
+    } catch { /* */ }
+    return [];
+  }
+
   // ==================== DEX_Participants Liste ====================
 
   /**
@@ -761,6 +908,8 @@ export class EventService {
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
+      { title: 'EmailLanguage', type: 2 }, // DE oder EN
+      { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -908,7 +1057,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden

@@ -90,7 +90,40 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 </html>`;
 }
 
-// ==================== E-Mail Templates ====================
+// ==================== Platzhalter-Ersetzung ====================
+
+/**
+ * Platzhalter in Subject und Body ersetzen.
+ */
+export function replacePlaceholders(text: string, vars: Record<string, string>): string {
+  let result = text;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  // Logo-URLs ersetzen
+  result = result.replace(/\{\{LOGO_URL\}\}/g, `${LOGOS_URL}/deloitte-logo-white.png`);
+  result = result.replace(/\{\{ORB_URL\}\}/g, `${LOGOS_URL}/dex-orb.png`);
+  return result;
+}
+
+/**
+ * Email aus SharePoint-Template generieren.
+ * Nutzt wrapTemplate fuer das Deloitte-Design.
+ */
+export function buildEmailFromTemplate(
+  template: { subject: string; headingColor: string; heading: string; bodyHtml: string },
+  vars: Record<string, string>
+): { subject: string; body: string } {
+  const subject = replacePlaceholders(template.subject, vars);
+  const heading = replacePlaceholders(template.heading, vars);
+  const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
+  return {
+    subject,
+    body: wrapTemplate(template.headingColor, heading, `Event ${vars['EventTitle'] || ''}`, bodyHtml),
+  };
+}
+
+// ==================== E-Mail Templates (Fallback) ====================
 
 /**
  * Anmeldebestätigung

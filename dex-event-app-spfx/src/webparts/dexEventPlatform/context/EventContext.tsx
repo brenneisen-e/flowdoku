@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate } from '../services/EmailTemplates';
 
 interface EventContextType {
   events: DeloitteEvent[];
@@ -74,6 +74,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureEmailsList(); } catch { /* */ }
     try { await eventService.ensureOutlookList(); } catch { /* */ }
     try { await eventService.ensureParticipantsList(); } catch { /* */ }
+    try { await eventService.ensureEmailTemplatesList(); } catch { /* */ }
     try { await eventService.ensureIDReorderList(); } catch { /* */ }
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     await loadEvents();
@@ -129,6 +130,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
+      emailLanguage: e.EmailLanguage || 'EN',
+      emailTemplateOverrides: e.EmailTemplateOverrides || '',
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,
@@ -204,14 +207,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           firstNameToUse, lastNameToUse, emailToUse, event.eventNumber, status
         ).catch(() => {});
       }
-      // E-Mail in Queue eintragen (Deloitte-Template)
-      const emailData = status === 'Warteliste'
-        ? waitlistEmail(nameToUse, event.title)
-        : registrationEmail(nameToUse, event.title);
+      // E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
+      const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
+      const lang = event.emailLanguage || 'EN';
+      const vars = { Name: nameToUse, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
+      let emailData: { subject: string; body: string };
+      const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      if (spTemplate) {
+        emailData = buildEmailFromTemplate(spTemplate, vars);
+      } else {
+        emailData = status === 'Warteliste'
+          ? waitlistEmail(nameToUse, event.title)
+          : registrationEmail(nameToUse, event.title);
+      }
       eventService.queueEmail(
         emailData.subject, emailToUse, nameToUse, emailData.body,
-        status === 'Warteliste' ? 'Warteliste' : 'Anmeldung',
-        event.title, eventId
+        templateType, event.title, eventId
       ).catch(() => {});
       // Outlook-Termin-Einladung in Queue eintragen
       if (status !== 'Warteliste') {
@@ -241,9 +252,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             await eventService.removeParticipantEvent(currentUserEmail, event.eventNumber);
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
-        // Abmelde-E-Mail in Queue eintragen
+        // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
         try {
-          const emailData = cancellationEmail(currentUserName, event.title);
+          const lang = event.emailLanguage || 'EN';
+          const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
+          let emailData: { subject: string; body: string };
+          const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+          if (spTpl) {
+            emailData = buildEmailFromTemplate(spTpl, cancelVars);
+          } else {
+            emailData = cancellationEmail(currentUserName, event.title);
+          }
           const emailOk = await eventService.queueEmail(
             emailData.subject, currentUserEmail, currentUserName, emailData.body,
             'Abmeldung', event.title, eventId
