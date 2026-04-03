@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64 } from '../services/EmailTemplates';
 
 interface EventContextType {
   events: DeloitteEvent[];
@@ -79,6 +79,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureEmailTemplatesList(); } catch { /* */ }
     try { await eventService.ensureIDReorderList(); } catch { /* */ }
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
+    try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
     await loadEvents();
     setIsEventsLoading(false);
   }

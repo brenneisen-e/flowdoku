@@ -12,6 +12,52 @@ const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperie
 const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
 const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
 
+// Base64-Cache fuer Logos (werden einmal von SharePoint geladen)
+let logoBase64: string = '';
+let orbBase64: string = '';
+
+/**
+ * Logos von SharePoint laden und als Base64 Data-URI cachen.
+ * Wird einmal beim App-Start aufgerufen.
+ */
+export async function loadLogosAsBase64(spHttpClient: unknown, siteUrl: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = spHttpClient as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SPHttp = require('@microsoft/sp-http').SPHttpClient as any;
+
+  try {
+    const logoResp = await client.get(
+      `${siteUrl}/_api/web/GetFileByServerRelativeUrl('/sites/DOL-c-DE-EventExperiencePlatform/SiteAssets/DEX_Logos/deloitte-logo-white.png')/$value`,
+      SPHttp.configurations.v1
+    );
+    if (logoResp.ok) {
+      const blob = await logoResp.blob();
+      logoBase64 = await blobToDataUri(blob);
+    }
+  } catch { /* Logo nicht verfuegbar */ }
+
+  try {
+    const orbResp = await client.get(
+      `${siteUrl}/_api/web/GetFileByServerRelativeUrl('/sites/DOL-c-DE-EventExperiencePlatform/SiteAssets/DEX_Logos/dex-orb.png')/$value`,
+      SPHttp.configurations.v1
+    );
+    if (orbResp.ok) {
+      const blob = await orbResp.blob();
+      orbBase64 = await blobToDataUri(blob);
+    }
+  } catch { /* Orb nicht verfuegbar */ }
+}
+
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(blob);
+  });
+}
+
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
@@ -34,7 +80,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="${logoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -48,7 +94,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="${orbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 

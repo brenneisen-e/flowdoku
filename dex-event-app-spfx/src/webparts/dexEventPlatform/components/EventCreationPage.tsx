@@ -132,6 +132,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
   );
   const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
+  const [emailLogoPreview, setEmailLogoPreview] = React.useState('');
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -1075,6 +1076,28 @@ export default function EventCreationPage(): React.ReactElement {
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
                     Alle automatischen E-Mails (Anmeldung, Abmeldung, Nachrücken) werden in dieser Sprache versendet.
                   </p>
+                </div>
+
+                <div className="form-group" style={{ marginTop: 24 }}>
+                  <label className="form-label">Event-Logo für E-Mails (optional)</label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
+                    Ersetzt das DEX-Logo im E-Mail Header. Deloitte-Logo bleibt immer. Max. 200px breit, wird automatisch komprimiert.
+                  </p>
+                  {emailLogoPreview && (
+                    <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <img src={emailLogoPreview} alt="Event-Logo" style={{ maxWidth: 180, maxHeight: 80, borderRadius: 4 }} />
+                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => setEmailLogoPreview('')}>Entfernen</button>
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const compressed = await compressImage(file, 200, 0.85);
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
+                    reader.readAsDataURL(compressed);
+                  }} />
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>
