@@ -125,6 +125,13 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState('');
+  const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
+  const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
+    editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
+  );
+  const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -316,6 +323,8 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: currentUser.email,
         outlookEventId: '',
         outlookBody,
+        emailLanguage,
+        emailTemplateOverrides: Object.keys(emailTemplateOverrides).length > 0 ? JSON.stringify(emailTemplateOverrides) : '',
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -467,7 +476,20 @@ export default function EventCreationPage(): React.ReactElement {
     { label: 'Zeit & Ort', icon: '2' },
     { label: 'Kapazität', icon: '3' },
     { label: 'Felder', icon: '4' },
+    { label: 'Kommunikation', icon: '✉' },
   ];
+
+  // Templates laden wenn Step 4 (Kommunikation) erreicht wird
+  React.useEffect(() => {
+    if (currentStep === 4 && emailTemplates.length === 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const svc = new EventService(ctx);
+        svc.getAllEmailTemplates().then(setEmailTemplates).catch(() => {});
+      }
+    }
+  }, [currentStep]);
 
   const getStepErrors = (): string[] => {
     const errors: string[] = [];
@@ -1031,6 +1053,139 @@ export default function EventCreationPage(): React.ReactElement {
                 ))}
               </div>
               </div>{/* close Step 3 */}
+
+              {/* ===== Step 4: Kommunikation ===== */}
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+                <h3 className="mb-16">Kommunikation</h3>
+
+                <div className="form-group">
+                  <label className="form-label">E-Mail Sprache</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(['DE', 'EN'] as const).map(lang => (
+                      <button
+                        key={lang}
+                        className={`btn ${emailLanguage === lang ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ minWidth: 80 }}
+                        onClick={() => setEmailLanguage(lang)}
+                      >
+                        {lang === 'DE' ? '🇩🇪 Deutsch' : '🇬🇧 English'}
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+                    Alle automatischen E-Mails (Anmeldung, Abmeldung, Nachrücken) werden in dieser Sprache versendet.
+                  </p>
+                </div>
+
+                <div className="form-group" style={{ marginTop: 24 }}>
+                  <label className="form-label">Outlook-Termin Beschreibung</label>
+                  <textarea
+                    className="form-input"
+                    rows={4}
+                    value={outlookBody}
+                    onChange={e => setOutlookBody(e.target.value)}
+                    placeholder="Text für den Outlook-Kalendereintrag (optional)..."
+                  />
+                </div>
+
+                <h4 style={{ marginTop: 24, marginBottom: 12 }}>E-Mail Vorlagen ({emailLanguage})</h4>
+                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
+                  Platzhalter: <code>{'{{Name}}'}</code> = Teilnehmername, <code>{'{{EventTitle}}'}</code> = Event-Titel.
+                  Änderungen gelten nur für dieses Event.
+                </p>
+
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
+                  const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
+                  const override = emailTemplateOverrides[tType];
+                  const isEditing = editingTemplate === tType;
+                  const currentSubject = override?.subject || defaultTpl?.subject || '';
+                  const currentBody = override?.bodyHtml || defaultTpl?.bodyHtml || '';
+                  const currentHeading = override?.heading || defaultTpl?.heading || '';
+
+                  const typeLabels: Record<string, string> = {
+                    Anmeldung: 'Anmeldebestätigung',
+                    Warteliste: 'Warteliste-Bestätigung',
+                    Abmeldung: 'Abmeldebestätigung',
+                    Nachruecken: 'Nachrücken',
+                  };
+
+                  return (
+                    <div key={tType} style={{
+                      border: '1px solid var(--dex-gray-200)', borderRadius: 8,
+                      padding: 12, marginBottom: 12, background: override ? '#f0fdf4' : '#fff',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <strong style={{ fontSize: '0.85rem' }}>{typeLabels[tType] || tType}</strong>
+                          {override && <span style={{ fontSize: '0.7rem', color: 'var(--dex-green)', marginLeft: 8 }}>angepasst</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                            onClick={() => setEditingTemplate(isEditing ? null : tType)}
+                          >
+                            {isEditing ? 'Schließen' : 'Bearbeiten'}
+                          </button>
+                          {override && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
+                              onClick={() => {
+                                const copy = { ...emailTemplateOverrides };
+                                delete copy[tType];
+                                setEmailTemplateOverrides(copy);
+                              }}
+                            >
+                              Zurücksetzen
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {!isEditing && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                          Betreff: {currentSubject}
+                        </div>
+                      )}
+                      {isEditing && (
+                        <div style={{ marginTop: 8 }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Betreff</label>
+                          <input
+                            className="form-input"
+                            value={currentSubject}
+                            onChange={e => setEmailTemplateOverrides({
+                              ...emailTemplateOverrides,
+                              [tType]: { subject: e.target.value, heading: currentHeading, bodyHtml: currentBody },
+                            })}
+                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
+                          />
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Überschrift</label>
+                          <input
+                            className="form-input"
+                            value={currentHeading}
+                            onChange={e => setEmailTemplateOverrides({
+                              ...emailTemplateOverrides,
+                              [tType]: { subject: currentSubject, heading: e.target.value, bodyHtml: currentBody },
+                            })}
+                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
+                          />
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Inhalt (HTML)</label>
+                          <textarea
+                            className="form-input"
+                            rows={6}
+                            value={currentBody}
+                            onChange={e => setEmailTemplateOverrides({
+                              ...emailTemplateOverrides,
+                              [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: e.target.value },
+                            })}
+                            style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>{/* close Step 4 */}
 
             </div>{/* close creation-form */}
           </div>{/* close card */}

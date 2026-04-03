@@ -1115,6 +1115,8 @@ export class EventService {
     organizerEmail: string;
     outlookEventId: string;
     outlookBody: string;
+    emailLanguage?: string;
+    emailTemplateOverrides?: string;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -1179,6 +1181,8 @@ export class EventService {
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
         'OutlookBody': event.outlookBody || '',
+        'EmailLanguage': event.emailLanguage || 'EN',
+        'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,

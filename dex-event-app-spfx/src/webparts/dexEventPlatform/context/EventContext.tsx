@@ -49,6 +49,8 @@ export interface CreateEventInput {
   organizerEmail: string;
   outlookEventId: string;
   outlookBody: string;
+  emailLanguage?: string;
+  emailTemplateOverrides?: string;
   customFields: CustomField[];
 }
 
