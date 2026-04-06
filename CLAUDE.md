@@ -31,9 +31,10 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 
 ### SharePoint Site
 
-- Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-B2Run`
-- Lists: DEX_Events, DEX_Roles, DEX_Emails
+- Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+- Lists: DEX_Events, DEX_Roles, DEX_Emails, DEX_Outlook, DEX_IDReorder, DEX_Participants, DEX_EmailTemplates
 - Per-Event: Subsite with "Teilnehmer" registration list
+- Shared Mailbox: `no_reply.events@deloitte.de`
 
 ### Key Architecture
 
@@ -85,3 +86,20 @@ Examples:
 - **Rename:** Über die **drei Punkte (⋮)** → Rename
 
 Nie sagen "füge dieses JSON ein" oder "öffne den Code View" — stattdessen jeden Klick in der UI beschreiben.
+
+### Power Automate Flow-Änderungen Workflow
+
+**WICHTIG:** Wenn eine Änderung in einem Power Automate Flow nötig ist:
+
+1. **Beschreibe die Änderung** als UI-Anleitung (siehe oben)
+2. **Warte auf Bestätigung** vom User, dass die Änderung durchgeführt wurde
+3. **Fordere den aktuellen Flow-JSON** vom User an (Code View → kopieren)
+4. **Aktualisiere `docs/flow-jsons.md`** mit dem neuen JSON
+
+Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen aller 4 DEX-Flows:
+- DEX_IDReorder_TeilnehmerIDs
+- DEX_SEND_MAIL
+- DEX_CreateOutlookEvent
+- DEX_Outlook_Einladungen
+
+Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. Sie dient als einzige Referenz für den aktuellen Stand der Flows.
