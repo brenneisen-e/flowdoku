@@ -309,7 +309,7 @@ PROCESS_BATCH_SCOPE:
 **Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
 **Letztes Update:** 2026-04-06
 
-Ablauf: Trigger → Deloitte Logo laden → Base64 → DEX Orb laden → Base64 → Logo-Platzhalter ersetzen → Email senden → Status=Sent
+Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden → Status=Sent
 
 ```json
 TRIGGER:
@@ -330,48 +330,55 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
-GET_FILE_CONTENT (Deloitte Logo):
+GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-      "id": "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png",
-      "inferContentType": true
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1"
     },
-    "host": { "operationId": "GetFileContent" }
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "HttpRequest"
+    }
   },
-  "runAfter": {},
-  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png": "/SiteAssets/DEX_Logos/Deloitte_Logo.png" }
+  "runAfter": {}
 }
 
-COMPOSE (Logo → Base64 DataUri):
-{
-  "type": "Compose",
-  "inputs": "@dataUri(body('Get_file_content'))",
-  "runAfter": { "Get_file_content": ["Succeeded"] }
-}
-
-GET_FILE_CONTENT_1 (DEX Orb):
+GET_EVENT (Event-Daten für EventId):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-      "id": "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png",
-      "inferContentType": true
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+      "$filter": "@concat('ID eq ', triggerBody()?['EventId'])",
+      "$top": 1
     },
-    "host": { "operationId": "GetFileContent" }
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItems"
+    }
   },
-  "runAfter": { "Compose": ["Succeeded"] },
-  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png": "/SiteAssets/DEX_Logos/dex-orb.png" }
+  "runAfter": { "Get_Config": ["Succeeded"] }
 }
 
-COMPOSE_1 (Orb → Base64 DataUri):
+COMPOSE_LOGO (Logo Base64 aus Config):
 {
   "type": "Compose",
-  "inputs": "@dataUri(body('Get_file_content_1'))",
-  "runAfter": { "Get_file_content_1": ["Succeeded"] }
+  "inputs": "@first(body('Get_Config')?['value'])?['LogoBase64']",
+  "runAfter": { "Get_Event": ["Succeeded"] }
+}
+
+COMPOSE_IMAGE (Event-Bild oder Default-Bild):
+{
+  "type": "Compose",
+  "inputs": "@if(empty(first(outputs('Get_Event')?['body/value'])?['EmailImageBase64']), first(body('Get_Config')?['value'])?['DefaultImageBase64'], first(outputs('Get_Event')?['body/value'])?['EmailImageBase64'])",
+  "runAfter": { "Compose_Logo": ["Succeeded"] }
 }
 
 SEND_EMAIL (Shared Mailbox):
@@ -382,7 +389,7 @@ SEND_EMAIL (Shared Mailbox):
       "emailMessage/MailboxAddress": "no_reply.events@deloitte.de",
       "emailMessage/To": "@triggerBody()?['Recipient']",
       "emailMessage/Subject": "@triggerBody()?['Title']",
-      "emailMessage/Body": "@replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose')), '{{ORB_URL}}', outputs('Compose_1'))",
+      "emailMessage/Body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
       "emailMessage/Importance": "Normal"
     },
     "host": {
@@ -391,7 +398,7 @@ SEND_EMAIL (Shared Mailbox):
       "operationId": "SharedMailboxSendEmailV2"
     }
   },
-  "runAfter": { "Compose_1": ["Succeeded"] }
+  "runAfter": { "Compose_Image": ["Succeeded"] }
 }
 
 SET_SENT:
@@ -406,7 +413,11 @@ SET_SENT:
       "item/Status/Value": "Sent",
       "item/SentDate": "@utcNow()"
     },
-    "host": { "operationId": "PatchItem" }
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline-1",
+      "operationId": "PatchItem"
+    }
   },
   "runAfter": { "Send_an_email_from_a_shared_mailbox_(V2)": ["Succeeded"] }
 }
