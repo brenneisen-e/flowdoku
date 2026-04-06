@@ -306,11 +306,110 @@ PROCESS_BATCH_SCOPE:
 ## 2. DEX_SEND_MAIL
 
 **Trigger:** Neuer Eintrag in DEX_Emails
-**Zweck:** E-Mails aus Queue versenden über Shared Mailbox
-**Letztes Update:** BITTE JSON EINFÜGEN
+**Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
+**Letztes Update:** 2026-04-06
+
+Ablauf: Trigger → Deloitte Logo laden → Base64 → DEX Orb laden → Base64 → Logo-Platzhalter ersetzen → Email senden → Status=Sent
 
 ```json
--- BITTE AKTUELLEN FLOW JSON HIER EINFÜGEN --
+TRIGGER:
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline-1",
+      "operationId": "GetOnNewItems"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+
+GET_FILE_CONTENT (Deloitte Logo):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "id": "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png",
+      "inferContentType": true
+    },
+    "host": { "operationId": "GetFileContent" }
+  },
+  "runAfter": {},
+  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png": "/SiteAssets/DEX_Logos/Deloitte_Logo.png" }
+}
+
+COMPOSE (Logo → Base64 DataUri):
+{
+  "type": "Compose",
+  "inputs": "@dataUri(body('Get_file_content'))",
+  "runAfter": { "Get_file_content": ["Succeeded"] }
+}
+
+GET_FILE_CONTENT_1 (DEX Orb):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "id": "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png",
+      "inferContentType": true
+    },
+    "host": { "operationId": "GetFileContent" }
+  },
+  "runAfter": { "Compose": ["Succeeded"] },
+  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png": "/SiteAssets/DEX_Logos/dex-orb.png" }
+}
+
+COMPOSE_1 (Orb → Base64 DataUri):
+{
+  "type": "Compose",
+  "inputs": "@dataUri(body('Get_file_content_1'))",
+  "runAfter": { "Get_file_content_1": ["Succeeded"] }
+}
+
+SEND_EMAIL (Shared Mailbox):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "emailMessage/MailboxAddress": "no_reply.events@deloitte.de",
+      "emailMessage/To": "@triggerBody()?['Recipient']",
+      "emailMessage/Subject": "@triggerBody()?['Title']",
+      "emailMessage/Body": "@replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose')), '{{ORB_URL}}', outputs('Compose_1'))",
+      "emailMessage/Importance": "Normal"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "SharedMailboxSendEmailV2"
+    }
+  },
+  "runAfter": { "Compose_1": ["Succeeded"] }
+}
+
+SET_SENT:
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/Status/Value": "Sent",
+      "item/SentDate": "@utcNow()"
+    },
+    "host": { "operationId": "PatchItem" }
+  },
+  "runAfter": { "Send_an_email_from_a_shared_mailbox_(V2)": ["Succeeded"] }
+}
 ```
 
 ---
