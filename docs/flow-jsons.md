@@ -427,12 +427,71 @@ SET_SENT:
 
 ## 3. DEX_CreateOutlookEvent
 
-**Trigger:** ???
-**Zweck:** Initialen Outlook-Termin erstellen???
-**Letztes Update:** BITTE JSON EINFÜGEN
+**Trigger:** Neuer Eintrag in DEX_Events
+**Zweck:** Outlook-Kalendereintrag für neues Event erstellen und iCalUId zurückschreiben
+**Letztes Update:** 2026-04-06
+
+Ablauf: Trigger (neues Event) → Outlook-Termin erstellen → CalendarLink in DEX_Events speichern
 
 ```json
--- BITTE AKTUELLEN FLOW JSON HIER EINFÜGEN --
+TRIGGER (Neues Item in DEX_Events):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetOnNewItems"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+
+CREATE_EVENT_V4 (Outlook-Termin erstellen):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
+      "item/subject": "@triggerBody()?['Title']",
+      "item/start": "@formatDateTime(triggerBody()?['StartDate'], 'yyyy-MM-ddTHH:mm:ss')",
+      "item/end": "@formatDateTime(triggerBody()?['EndDate'], 'yyyy-MM-ddTHH:mm:ss')",
+      "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+      "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "V4CalendarPostItem"
+    }
+  },
+  "runAfter": {}
+}
+
+UPDATE_EVENT (CalendarLink zurückschreiben):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/CalendarLink": "@outputs('Create_event_(V4)')?['body/iCalUId']"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "PatchItem"
+    }
+  },
+  "runAfter": { "Create_event_(V4)": ["Succeeded"] }
+}
 ```
 
 ---
