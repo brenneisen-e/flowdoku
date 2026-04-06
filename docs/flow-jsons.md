@@ -428,10 +428,12 @@ SET_SENT:
 ## 3. DEX_CreateOutlookEvent
 
 **Trigger:** Neuer Eintrag in DEX_Events
-**Zweck:** Outlook-Kalendereintrag für neues Event erstellen und iCalUId zurückschreiben
+**Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-06
 
-Ablauf: Trigger (neues Event) → Outlook-Termin erstellen → CalendarLink in DEX_Events speichern
+Ablauf: Trigger (neues Event) → Config laden (Logo + Default-Bild) → Compose_Logo → Compose_Image → Platzhalter in OutlookBody ersetzen → Outlook-Termin mit HTML-Body erstellen → CalendarLink in DEX_Events speichern
+
+**Hinweis:** Der OutlookBody wird bereits in der SPFx-App im Deloitte-HTML-Template gewrappt (mit `{{LOGO_URL}}` und `{{ORB_URL}}` Platzhaltern). Der Flow ersetzt diese Platzhalter durch Base64-Bilder.
 
 ```json
 TRIGGER (Neues Item in DEX_Events):
@@ -452,7 +454,39 @@ TRIGGER (Neues Item in DEX_Events):
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
-CREATE_EVENT_V4 (Outlook-Termin erstellen):
+GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "HttpRequest"
+    }
+  },
+  "runAfter": {}
+}
+
+COMPOSE_LOGO (Logo Base64 aus Config):
+{
+  "type": "Compose",
+  "inputs": "@first(body('Get_Config')?['value'])?['LogoBase64']",
+  "runAfter": { "Get_Config": ["Succeeded"] }
+}
+
+COMPOSE_IMAGE (Event-Bild oder Default-Bild):
+{
+  "type": "Compose",
+  "inputs": "@if(empty(triggerBody()?['EmailImageBase64']), first(body('Get_Config')?['value'])?['DefaultImageBase64'], triggerBody()?['EmailImageBase64'])",
+  "runAfter": { "Compose_Logo": ["Succeeded"] }
+}
+
+CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -462,7 +496,9 @@ CREATE_EVENT_V4 (Outlook-Termin erstellen):
       "item/start": "@formatDateTime(triggerBody()?['StartDate'], 'yyyy-MM-ddTHH:mm:ss')",
       "item/end": "@formatDateTime(triggerBody()?['EndDate'], 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
-      "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']"
+      "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
+      "item/body": "@replace(replace(triggerBody()?['OutlookBody'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))",
+      "item/isHtml": true
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -470,7 +506,7 @@ CREATE_EVENT_V4 (Outlook-Termin erstellen):
       "operationId": "V4CalendarPostItem"
     }
   },
-  "runAfter": {}
+  "runAfter": { "Compose_Image": ["Succeeded"] }
 }
 
 UPDATE_EVENT (CalendarLink zurückschreiben):

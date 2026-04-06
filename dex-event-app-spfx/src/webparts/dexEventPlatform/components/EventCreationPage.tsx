@@ -12,7 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
-import { eventCreatedEmail } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
@@ -268,7 +268,7 @@ export default function EventCreationPage(): React.ReactElement {
         'WaitlistEnabled': waitlistEnabled,
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
-        'OutlookBody': outlookBody,
+        'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),

@@ -19,6 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
+import { buildOutlookBody } from './EmailTemplates';
 
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
@@ -1176,7 +1177,7 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
-        'OutlookBody': event.outlookBody || '',
+        'OutlookBody': event.outlookBody ? buildOutlookBody(event.title, event.outlookBody) : '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),

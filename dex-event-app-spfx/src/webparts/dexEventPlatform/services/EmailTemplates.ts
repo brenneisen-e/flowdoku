@@ -15,7 +15,7 @@ function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -268,4 +268,16 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
+}
+
+/**
+ * Outlook-Termin-Body im Deloitte-Design generieren.
+ * Erzeugt HTML mit {{LOGO_URL}} und {{ORB_URL}} Platzhaltern,
+ * die der Power Automate Flow durch Base64-Bilder ersetzt.
+ */
+export function buildOutlookBody(eventTitle: string, bodyText: string): string {
+  const bodyHtml = bodyText
+    ? bodyText.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  ')
+    : '';
+  return wrapTemplate(GREEN, eventTitle, 'Event Details', bodyHtml);
 }
