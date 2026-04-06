@@ -421,6 +421,26 @@ SET_SENT:
   },
   "runAfter": { "Send_an_email_from_a_shared_mailbox_(V2)": ["Succeeded"] }
 }
+
+SET_FAILED (Email-Versand fehlgeschlagen):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/Status/Value": "Failed"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline-1",
+      "operationId": "PatchItem"
+    }
+  },
+  "runAfter": { "Send_an_email_from_a_shared_mailbox_(V2)": ["Failed"] }
+}
 ```
 
 ---
@@ -526,6 +546,26 @@ UPDATE_EVENT (CalendarLink zurückschreiben):
     }
   },
   "runAfter": { "Create_event_(V4)": ["Succeeded"] }
+}
+
+SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/OutlookEventId": "FAILED"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "PatchItem"
+    }
+  },
+  "runAfter": { "Create_event_(V4)": ["Failed"] }
 }
 ```
 
@@ -757,7 +797,7 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
           "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
           "table": "d794655b-c950-416c-a478-5dbae285e46d",
           "id": "@triggerBody()?['ID']",
-          "item/Title": "@outputs('Set_Failed_1_1')?['body/Title']",
+          "item/Title": "@triggerBody()?['Title']",
           "item/Status/Value": "Sent"
         },
         "host": {

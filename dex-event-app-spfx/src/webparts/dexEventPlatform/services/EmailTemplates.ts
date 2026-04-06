@@ -10,6 +10,7 @@
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
 const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
+const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -33,7 +34,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="${logoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -47,7 +48,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="${orbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -230,9 +231,6 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
   };
 }
 
-/**
- * Allgemeine Info-Mail
- */
 /**
  * QR-Code E-Mail fuer Check-in
  */

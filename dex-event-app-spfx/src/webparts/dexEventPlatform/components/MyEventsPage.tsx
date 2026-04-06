@@ -55,6 +55,7 @@ export default function MyEventsPage(): React.ReactElement {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = React.useState(false);
+  const [loadError, setLoadError] = React.useState('');
 
   React.useEffect(() => {
     loadMyRegistrations();
@@ -62,6 +63,7 @@ export default function MyEventsPage(): React.ReactElement {
 
   async function loadMyRegistrations(): Promise<void> {
     setIsLoading(true);
+    setLoadError('');
     const entries: MyEventEntry[] = [];
 
     // Schneller Pfad: DEX_Participants abfragen
@@ -91,6 +93,9 @@ export default function MyEventsPage(): React.ReactElement {
       }
     }
 
+    if (entries.length === 0 && allMyNumbers.length > 0) {
+      setLoadError('Registrierungen konnten nicht geladen werden.');
+    }
     setMyEvents(entries);
     setIsLoading(false);
   }
@@ -126,7 +131,13 @@ export default function MyEventsPage(): React.ReactElement {
     <div className="page-container">
       <h2 className="mb-16">{t('myevents.title')}</h2>
 
-      {activeEntries.length === 0 && cancelledEntries.length === 0 && (
+      {loadError && (
+        <div className="card" style={{ padding: 16, marginBottom: 16, color: 'var(--dex-red)' }}>
+          {loadError}
+        </div>
+      )}
+
+      {activeEntries.length === 0 && cancelledEntries.length === 0 && !loadError && (
         <div className="card text-center" style={{ padding: 48 }}>
           <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.empty')}</p>
           <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>{t('myevents.browse')}</button>

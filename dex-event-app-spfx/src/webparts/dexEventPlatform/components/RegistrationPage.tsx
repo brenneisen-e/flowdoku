@@ -103,6 +103,11 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError(t('reg.invalidemail') || 'Ungültige E-Mail-Adresse');
+      return;
+    }
+
     // Pflicht-Custom-Fields validieren
     const missingRequired = event.eventSpecificFields
       .filter(f => f.required && !eventSpecific[f.id]?.trim());
@@ -339,17 +344,17 @@ export default function RegistrationPage(): React.ReactElement {
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.firstname')} disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.surname')} disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (!registerForOther) return; }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (!registerForOther) return; }} placeholder="email@deloitte.de" disabled={true} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (!registerForOther) return; }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
           </div>
         </div>

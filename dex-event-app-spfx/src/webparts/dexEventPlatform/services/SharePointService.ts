@@ -219,8 +219,6 @@ export class SharePointService {
    */
   public async grantReadOnRolesList(userEmail: string): Promise<void> {
     try {
-      console.log('[DEX] grantReadOnRolesList:', userEmail);
-
       // User-ID per E-Mail ermitteln
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) {
@@ -239,7 +237,6 @@ export class SharePointService {
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${readRoleId})`,
         {}
       );
-      console.log('[DEX] grantReadOnRolesList Ergebnis:', response.ok, response.status);
     } catch (e) {
       console.error('[DEX] grantReadOnRolesList Error:', e);
     }
@@ -250,7 +247,6 @@ export class SharePointService {
    */
   public async grantFullControlOnRolesList(userEmail: string): Promise<void> {
     try {
-      console.log('[DEX] grantFullControlOnRolesList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) {
         console.error('[DEX] grantFullControlOnRolesList: Keine User-ID für', userEmail);
@@ -265,8 +261,6 @@ export class SharePointService {
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
-      console.log('[DEX] grantFullControlOnRolesList Ergebnis:', response.ok, response.status);
-
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'no body');
         console.error('[DEX] grantFullControlOnRolesList Fehler-Response:', response.status, errorText);
@@ -282,7 +276,6 @@ export class SharePointService {
    */
   public async grantFullControlOnEventsList(userEmail: string): Promise<void> {
     try {
-      console.log('[DEX] grantFullControlOnEventsList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) {
         console.error('[DEX] grantFullControlOnEventsList: Keine User-ID für', userEmail);
@@ -297,8 +290,6 @@ export class SharePointService {
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
         {}
       );
-      console.log('[DEX] grantFullControlOnEventsList Ergebnis:', response.ok, response.status);
-
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'no body');
         console.error('[DEX] grantFullControlOnEventsList Fehler-Response:', response.status, errorText);
@@ -331,7 +322,6 @@ export class SharePointService {
    */
   public async revokeAccessOnEventsList(userEmail: string): Promise<void> {
     try {
-      console.log('[DEX] revokeAccessOnEventsList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) return;
 
@@ -345,7 +335,6 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
         { headers }
       );
-      console.log('[DEX] revokeAccessOnEventsList OK:', userEmail);
     } catch (e) {
       console.warn('[DEX] revokeAccessOnEventsList Error:', e);
     }
@@ -356,7 +345,6 @@ export class SharePointService {
    */
   public async revokeAccessOnRolesList(userEmail: string): Promise<void> {
     try {
-      console.log('[DEX] revokeAccessOnRolesList:', userEmail);
       const userId = await this.getUserIdByEmail(userEmail);
       if (!userId) return;
 
@@ -370,7 +358,6 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
         { headers }
       );
-      console.log('[DEX] revokeAccessOnRolesList OK:', userEmail);
     } catch (e) {
       console.warn('[DEX] revokeAccessOnRolesList Error:', e);
     }
@@ -391,7 +378,6 @@ export class SharePointService {
         const ensureData = await ensureResponse.json();
         const id = ensureData.d?.Id || ensureData.Id;
         if (id) {
-          console.log('[DEX] ensureuser OK:', email, 'ID:', id);
           return id;
         }
       } else {
@@ -411,7 +397,6 @@ export class SharePointService {
         const ensureData2 = await ensureResponse2.json();
         const id2 = ensureData2.d?.Id || ensureData2.Id;
         if (id2) {
-          console.log('[DEX] ensureuser (claims) OK:', email, 'ID:', id2);
           return id2;
         }
       }
@@ -426,7 +411,6 @@ export class SharePointService {
       if (response.ok) {
         const data = await response.json();
         const id3 = data.Id || null;
-        console.log('[DEX] siteusers/getbyemail OK:', email, 'ID:', id3);
         return id3;
       }
     } catch { /* User nicht gefunden */ }
@@ -449,15 +433,13 @@ export class SharePointService {
       if (response.ok) {
         const data = await response.json();
         if (!data.HasUniqueRoleAssignments) {
-          console.log('[DEX] Liste', listName, 'erbt noch Berechtigungen - breche Vererbung auf...');
           // copyRoleAssignments=true: bestehende Berechtigungen beibehalten
           await this._post(
             `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
             {}
           );
-          console.log('[DEX] Vererbung fuer', listName, 'aufgehoben');
         } else {
-          console.log('[DEX] Liste', listName, 'hat bereits eigene Berechtigungen');
+          // Liste hat bereits eigene Berechtigungen
         }
       }
     } catch (e) {

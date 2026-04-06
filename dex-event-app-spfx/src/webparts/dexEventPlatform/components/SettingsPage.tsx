@@ -32,6 +32,11 @@ export default function SettingsPage(): React.ReactElement {
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Timer cleanup bei Unmount
+  React.useEffect(() => {
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, []);
+
   // Email-Eingabe: User-Autocomplete mit Debounce
   const handleEmailChange = (query: string): void => {
     setNewEmail(query);

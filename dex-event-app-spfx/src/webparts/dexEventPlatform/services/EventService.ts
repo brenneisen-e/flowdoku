@@ -560,7 +560,7 @@ export class EventService {
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType}' and Language eq '${language}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
@@ -937,7 +937,7 @@ export class EventService {
 
       for (const f of requiredFields) {
         if (!existingFields.has(f.title)) {
-          console.log('[DEX] Fehlende Spalte nachtraeglich hinzufuegen:', f.title);
+          // Fehlende Spalte nachtraeglich hinzufuegen
           const payload: Record<string, unknown> = {
             '__metadata': { 'type': f.metaType || 'SP.Field' },
             'Title': f.title,
@@ -1050,7 +1050,7 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields('${field.Id}')`,
         { CustomFormatter: JSON.stringify(formatJson) }
       );
-      console.log(`[DEX] Column Formatting gesetzt fuer ${fieldName}`);
+      // Column Formatting gesetzt
     } catch {
       // Column Formatting ist optional
     }
@@ -1280,14 +1280,16 @@ export class EventService {
       if (event.EventNumber) {
         try {
           const allParticipants = await this.getAllParticipants();
-          const en = event.EventNumber.toString();
-          for (const p of allParticipants) {
-            const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
-            const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
-            if (hasRegistered || hasWaitlist) {
-              await this.removeParticipantEvent(p.Email, event.EventNumber);
-            }
-          }
+          // Parallelize participant cleanup for better performance
+          const updatePromises = allParticipants
+            .filter(p => {
+              const en = String(event.EventNumber);
+              const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
+              const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
+              return hasRegistered || hasWaitlist;
+            })
+            .map(p => this.removeParticipantEvent(p.Email, event.EventNumber));
+          await Promise.all(updatePromises);
         } catch {
           console.warn('[DEX] DEX_Participants konnte nicht aufgeraeumt werden');
         }
@@ -1351,7 +1353,7 @@ export class EventService {
         if (response.ok) {
           const result = await response.json();
           const subsiteAbsoluteUrl = result.d?.Url || result.Url;
-          console.log(`[DEX] Subsite erstellt mit Template ${template}:`, subsiteAbsoluteUrl);
+          // Subsite erfolgreich erstellt
           return subsiteAbsoluteUrl || `${this.siteUrl}/${urlSuffix}`;
         }
 
@@ -1643,8 +1645,17 @@ export class EventService {
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
-        const counts = await this.getRegistrationCount(subsiteUrl);
-        nextId = counts.registered + counts.waitlist + 1;
+        const maxResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (maxResp.ok) {
+          const maxData = await maxResp.json();
+          const items = maxData.value || maxData.d?.results || [];
+          if (items.length > 0 && items[0].TeilnehmerID) {
+            nextId = items[0].TeilnehmerID + 1;
+          }
+        }
       } catch { /* Fallback: 1 */ }
 
       // Profildaten laden
@@ -1707,8 +1718,17 @@ export class EventService {
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
-        const counts = await this.getRegistrationCount(subsiteUrl);
-        nextId = counts.registered + counts.waitlist + 1;
+        const maxResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (maxResp.ok) {
+          const maxData = await maxResp.json();
+          const items = maxData.value || maxData.d?.results || [];
+          if (items.length > 0 && items[0].TeilnehmerID) {
+            nextId = items[0].TeilnehmerID + 1;
+          }
+        }
       } catch { /* Fallback: 1 */ }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2000,13 +2020,6 @@ export class EventService {
   // ==================== Bild-Upload ====================
 
   /**
-   * Event-Bild in die SiteAssets-Bibliothek hochladen.
-   * Gibt die absolute URL des hochgeladenen Bildes zurueck.
-   */
-  /**
-   * Sicherstellen dass der DEX_EventImages Ordner in SiteAssets existiert.
-   */
-  /**
    * SiteAssets-Unterordner sicherstellen:
    * - DEX_EventImages (Event-Bilder)
    * - DEX_Logos (Deloitte-Logo fuer E-Mail-Templates, manuell hochgeladen)
@@ -2030,7 +2043,7 @@ export class EventService {
           '__metadata': { 'type': 'SP.Folder' },
           'ServerRelativeUrl': folderUrl,
         });
-        console.log(`[DEX] Ordner erstellt: SiteAssets/${folder}`);
+        // Ordner erstellt
       } catch {
         console.warn(`[DEX] Konnte ${folder} Ordner nicht erstellen`);
       }

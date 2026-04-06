@@ -44,7 +44,6 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
             return;
           }
           const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
-          console.log(`[DEX] Bild komprimiert: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
           resolve(compressed);
         },
         'image/jpeg',
@@ -110,7 +109,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [registrationDeadline, setRegistrationDeadline] = React.useState(
     editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
   );
-  const [lastDeregisterDate, setLastDeregisterDate] = React.useState('');
+  const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
@@ -124,7 +123,7 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? f.options.join(', ') : '', visible: true,
     })) : []
   );
-  const [outlookBody, setOutlookBody] = React.useState('');
+  const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
@@ -132,7 +131,10 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
   );
   const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
-  const [emailLogoPreview, setEmailLogoPreview] = React.useState('');
+  const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
+    if (!editEvent?.emailTemplateOverrides) return '';
+    try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
+  });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -239,7 +241,6 @@ export default function EventCreationPage(): React.ReactElement {
           const svc = new EventService(ctx);
           const compressed = await compressImage(imageFile);
           const uploadedUrl = await svc.uploadEventImage(compressed, title);
-          console.log('[DEX] Bild-Upload Ergebnis:', uploadedUrl);
           if (uploadedUrl) imageUrl = uploadedUrl;
         }
       } catch (err) {
@@ -507,6 +508,9 @@ export default function EventCreationPage(): React.ReactElement {
       case 1:
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
+        if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
+        if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
+        if (lastDeregisterDate && registrationDeadline && new Date(lastDeregisterDate) > new Date(registrationDeadline)) errors.push('deregAfterDeadline');
         break;
     }
     return errors;
@@ -867,20 +871,6 @@ export default function EventCreationPage(): React.ReactElement {
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
 
-              <div className="form-group">
-                <label className="form-label">
-                  {t('create.outlookbody')}
-                  <span className="info-icon" title="Optionaler Beschreibungstext für den Outlook-Kalendereintrag der Teilnehmer. Power Automate nutzt diesen Text als Body des Termins." style={{ marginLeft: 8 }}>i</span>
-                </label>
-                <textarea
-                  className="form-input form-textarea"
-                  value={outlookBody}
-                  onChange={e => setOutlookBody(e.target.value)}
-                  placeholder="z.B. Treffpunkt, Dresscode, Ablauf, Links..."
-                  rows={4}
-                />
-              </div>
-
               </div>
 
               {/* ===== Step 2: Kapazität & Fristen ===== */}
@@ -1125,7 +1115,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Änderungen gelten nur für dieses Event.
                 </p>
 
-                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachrücken'].map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
                   const isEditing = editingTemplate === tType;
@@ -1137,7 +1127,7 @@ export default function EventCreationPage(): React.ReactElement {
                     Anmeldung: 'Anmeldebestätigung',
                     Warteliste: 'Warteliste-Bestätigung',
                     Abmeldung: 'Abmeldebestätigung',
-                    Nachruecken: 'Nachrücken',
+                    Nachrücken: 'Nachrücken',
                   };
 
                   return (

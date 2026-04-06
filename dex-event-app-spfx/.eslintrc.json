@@ -1,0 +1,10 @@
+{
+  "extends": [
+    "@microsoft/eslint-config-spfx/lib/profiles/react"
+  ],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+  }
+}
