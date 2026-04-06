@@ -327,9 +327,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookEventId: '',
         outlookBody,
         emailLanguage,
-        emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
-          ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
-          : '',
+        emailTemplateOverrides: Object.keys(emailTemplateOverrides).length > 0 ? JSON.stringify(emailTemplateOverrides) : '',
+        emailImageBase64: emailLogoPreview || '',
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),

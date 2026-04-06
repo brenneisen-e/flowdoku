@@ -33,7 +33,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="${logoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -47,7 +47,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="${orbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -111,9 +111,8 @@ export function replacePlaceholders(text: string, vars: Record<string, string>):
   for (const [key, value] of Object.entries(vars)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value));
   }
-  // Logo-URLs ersetzen
-  result = result.replace(/\{\{LOGO_URL\}\}/g, `${LOGOS_URL}/deloitte-logo-white.png`);
-  result = result.replace(/\{\{ORB_URL\}\}/g, `${LOGOS_URL}/dex-orb.png`);
+  // Logo-Platzhalter {{LOGO_URL}} und {{ORB_URL}} bleiben im HTML.
+  // Der DEX_SEND_MAIL Flow ersetzt sie mit Base64 aus SharePoint.
   return result;
 }
 

@@ -49,6 +49,7 @@ export interface SPEvent {
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   EmailLanguage: string; // DE oder EN
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
+  EmailImageBase64: string; // Event-spezifisches Bild als Base64
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
@@ -487,6 +488,8 @@ export class EventService {
       { title: 'HeadingColor', type: 2 },
       { title: 'Heading', type: 2 },
       { title: 'BodyHtml', type: 3 },
+      { title: 'LogoBase64', type: 3 },          // Deloitte Logo als Base64 (global, einmalig)
+      { title: 'DefaultImageBase64', type: 3 },   // DEX Orb als Base64 (Default-Bild)
     ];
 
     for (const f of fields) {
@@ -550,6 +553,53 @@ export class EventService {
     }
 
     await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
+
+    // Logos von SiteAssets laden und als Base64 in einen _Config Eintrag speichern
+    try {
+      let logoB64 = '';
+      let orbB64 = '';
+      try {
+        const logoResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('/sites/DOL-c-DE-EventExperiencePlatform/SiteAssets/DEX_Logos/Deloitte_Logo.png')/$value`,
+          SPHttpClient.configurations.v1
+        );
+        if (logoResp.ok) {
+          const blob = await (logoResp as unknown as Response).blob();
+          logoB64 = await new Promise<string>(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch { /* Logo nicht verfuegbar */ }
+      try {
+        const orbResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('/sites/DOL-c-DE-EventExperiencePlatform/SiteAssets/DEX_Logos/dex-orb.png')/$value`,
+          SPHttpClient.configurations.v1
+        );
+        if (orbResp.ok) {
+          const blob = await (orbResp as unknown as Response).blob();
+          orbB64 = await new Promise<string>(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch { /* Orb nicht verfuegbar */ }
+
+      if (logoB64 || orbB64) {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+          '__metadata': { 'type': listItemType },
+          'Title': '_Config',
+          'TemplateType': '_Config',
+          'Language': '',
+          'LogoBase64': logoB64,
+          'DefaultImageBase64': orbB64,
+        });
+      }
+    } catch { /* Logo-Speicherung optional */ }
   }
 
   /**
@@ -910,6 +960,7 @@ export class EventService {
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
+      { title: 'EmailImageBase64', type: 3 },       // Event-spezifisches Bild als Base64 fuer Emails
       { title: 'CustomFields', type: 3 },
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
@@ -1057,7 +1108,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,EmailImageBase64,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -1117,6 +1168,7 @@ export class EventService {
     outlookBody: string;
     emailLanguage?: string;
     emailTemplateOverrides?: string;
+    emailImageBase64?: string;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -1179,6 +1231,7 @@ export class EventService {
         'OutlookBody': event.outlookBody || '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
+        'EmailImageBase64': event.emailImageBase64 || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
