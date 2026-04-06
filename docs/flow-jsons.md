@@ -1,21 +1,18 @@
-# Power Automate Flow Definitionen
+# Power Automate Flow JSONs
 
-## Übersicht
-
-| Flow | Trigger | Zweck |
-|------|---------|-------|
-| DEX_IDReorder_TeilnehmerIDs | Neuer Eintrag in DEX_IDReorder | TeilnehmerIDs neu vergeben + Nachrücken |
-| DEX_Outlook_Einladungen | Neuer Eintrag in DEX_Outlook | Outlook-Kalender Einladen/Ausladen |
-| DEX_Emails_Senden | Neuer Eintrag in DEX_Emails | E-Mails versenden |
+Dieses Dokument enthält die vollständigen Flow-Definitionen aller 4 DEX-Flows.
+Wird aktualisiert wenn Flows geändert werden.
 
 ---
 
-## Flow 1: DEX_IDReorder_TeilnehmerIDs
+## 1. DEX_IDReorder_TeilnehmerIDs
 
-### Aktueller Stand (2026-04-06)
+**Trigger:** Neuer Eintrag in DEX_IDReorder
+**Zweck:** TeilnehmerIDs neu vergeben + Nachrücken von Warteliste
+**Letztes Update:** 2026-04-06
 
-#### Trigger
 ```json
+TRIGGER:
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -33,10 +30,8 @@
   "runtimeConfiguration": { "concurrency": { "runs": 1, "maximumWaitingRuns": 100 } },
   "splitOn": "@triggerOutputs()?['body/value']"
 }
-```
 
-#### Update_item (Status → Processing)
-```json
+UPDATE_ITEM:
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -47,14 +42,12 @@
       "item/Title": "@triggerBody()?['Title']",
       "item/Status/Value": "Processing"
     },
-    "host": { "operationId": "PatchItem" }
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
   },
   "runAfter": {}
 }
-```
 
-#### Settings
-```json
+SETTINGS:
 {
   "type": "Compose",
   "inputs": {
@@ -64,10 +57,8 @@
   },
   "runAfter": { "Update_item": ["Succeeded"] }
 }
-```
 
-#### Get_ListItemType
-```json
+GET_LISTITEMTYPE:
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -76,14 +67,12 @@
       "parameters/method": "GET",
       "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')?$select=ListItemEntityTypeFullName"
     },
-    "host": { "operationId": "HttpRequest" }
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
   },
   "runAfter": { "Settings": ["Succeeded"] }
 }
-```
 
-#### Get_Active_Participants
-```json
+GET_ACTIVE_PARTICIPANTS:
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -93,23 +82,19 @@
       "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$orderby=RegistrationDate asc&$top=5000",
       "parameters/headers": { "Accept": "application/json;odata=nometadata" }
     },
-    "host": { "operationId": "HttpRequest" }
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
   },
   "runAfter": { "Get_ListItemType": ["Succeeded"] }
 }
-```
 
-#### Generate_Indices
-```json
+GENERATE_INDICES:
 {
   "type": "Compose",
   "inputs": "@range(0, length(body('Get_Active_Participants')?['value']))",
   "runAfter": { "Get_Active_Participants": ["Succeeded"] }
 }
-```
 
-#### GenerateSPData
-```json
+GENERATESPDATA:
 {
   "type": "Select",
   "inputs": {
@@ -121,28 +106,22 @@
   },
   "runAfter": { "Generate_Indices": ["Succeeded"] }
 }
-```
 
-#### BatchGuids
-```json
+BATCHGUIDS:
 {
   "type": "Compose",
   "inputs": { "batchGUID": "@{guid()}", "changeSetGUID": "@{guid()}" },
   "runAfter": { "GenerateSPData": ["Succeeded"] }
 }
-```
 
-#### batchTemplate
-```json
+BATCHTEMPLATE:
 {
   "type": "Compose",
   "inputs": "--changeset_@{outputs('BatchGuids')?['changeSetGUID']}\nContent-Type: application/http\nContent-Transfer-Encoding: binary\n\nPATCH @{outputs('Settings')?['siteAddress']}/_api/web/lists/getByTitle('@{outputs('Settings')?['listName']}')/items(|ID|) HTTP/1.1\nContent-Type: application/json;odata=verbose\nAccept: application/json;odata=verbose\nIf-Match: *\n\n{\"__metadata\":{\"type\":\"@{body('Get_ListItemType')?['d']?['ListItemEntityTypeFullName']}\"},\"TeilnehmerID\":|TID|}\n",
   "runAfter": { "BatchGuids": ["Succeeded"] }
 }
-```
 
-#### Process_Batch Scope
-```json
+PROCESS_BATCH_SCOPE:
 {
   "type": "Scope",
   "actions": {
@@ -169,12 +148,10 @@
               "dataset": "@outputs('Settings')?['siteAddress']",
               "parameters/method": "POST",
               "parameters/uri": "_api/$batch",
-              "parameters/headers": {
-                "Content-Type": "multipart/mixed;boundary=batch_@{outputs('BatchGuids')?['batchGUID']}"
-              },
+              "parameters/headers": { "Content-Type": "multipart/mixed;boundary=batch_@{outputs('BatchGuids')?['batchGUID']}" },
               "parameters/body": "--batch_@{outputs('BatchGuids')?['batchGUID']}\nContent-Type: multipart/mixed; boundary=\"changeset_@{outputs('BatchGuids')?['changeSetGUID']}\"\nContent-Length: @{length(outputs('batchData'))}\nContent-Transfer-Encoding: binary\n\n@{outputs('batchData')}\n--changeset_@{outputs('BatchGuids')?['changeSetGUID']}--\n\n--batch_@{outputs('BatchGuids')?['batchGUID']}--\n"
             },
-            "host": { "operationId": "HttpRequest" }
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
           },
           "runAfter": { "batchData": ["Succeeded"] }
         }
@@ -190,7 +167,7 @@
           "$filter": "ID eq '@{triggerOutputs()?['body/EventId']}'",
           "$top": 1
         },
-        "host": { "operationId": "GetItems" }
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
       },
       "runAfter": { "Loop_Batches": ["Succeeded"] }
     },
@@ -211,7 +188,7 @@
               "parameters/method": "GET",
               "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail&$filter=Status eq 'Warteliste'&$orderby=RegistrationDate asc&$top=1"
             },
-            "host": { "operationId": "HttpRequest" }
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
           }
         },
         "Condition_1": {
@@ -225,15 +202,10 @@
                   "dataset": "@outputs('Settings')?['siteAddress']",
                   "parameters/method": "POST",
                   "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})",
-                  "parameters/headers": {
-                    "Content-Type": "application/json;odata=verbose",
-                    "IF-MATCH": "*",
-                    "X-HTTP-Method": "MERGE",
-                    "Accept": "application/json;odata=verbose"
-                  },
+                  "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
                   "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\",\"TeilnehmerID\":@{add(length(body('GenerateSPData')), 1)}}"
                 },
-                "host": { "operationId": "HttpRequest" }
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
               }
             },
             "Get_Email_Template": {
@@ -244,7 +216,7 @@
                   "parameters/method": "GET",
                   "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''Nachruecken'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')"
                 },
-                "host": { "operationId": "HttpRequest" }
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
               },
               "runAfter": { "Promote_Waitlist": ["Succeeded"] }
             },
@@ -263,7 +235,7 @@
                   "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['BodyHtml'], concat('Hallo ', first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName'], ', du bist nachgerückt!')), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName']), '{{EventTitle}}', triggerOutputs()?['body/Title'])",
                   "item/EventId": "@triggerOutputs()?['body/EventId']"
                 },
-                "host": { "operationId": "PostItem" }
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
               },
               "runAfter": { "Get_Email_Template": ["SUCCEEDED"] }
             },
@@ -279,7 +251,7 @@
                   "item/ActionType/Value": "Einladen",
                   "item/Status/Value": "Pending"
                 },
-                "host": { "operationId": "PostItem" }
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
               },
               "runAfter": { "Queue_Email": ["Succeeded"] }
             }
@@ -301,7 +273,7 @@
           "item/Title": "@triggerBody()?['Title']",
           "item/Status/Value": "Done"
         },
-        "host": { "operationId": "PatchItem" }
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
       },
       "runAfter": { "Check_Nachrücken": ["Succeeded"] }
     },
@@ -318,7 +290,7 @@
               "item/Title": "@triggerBody()?['Title']",
               "item/Status/Value": "Failed"
             },
-            "host": { "operationId": "PatchItem" }
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
           }
         }
       },
@@ -329,106 +301,148 @@
 }
 ```
 
-### Listen-GUIDs (aktuell)
+---
+
+## 2. DEX_SEND_MAIL
+
+**Trigger:** Neuer Eintrag in DEX_Emails
+**Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
+**Letztes Update:** 2026-04-06
+
+Ablauf: Trigger → Deloitte Logo laden → Base64 → DEX Orb laden → Base64 → Logo-Platzhalter ersetzen → Email senden → Status=Sent
+
+```json
+TRIGGER:
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline-1",
+      "operationId": "GetOnNewItems"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+
+GET_FILE_CONTENT (Deloitte Logo):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "id": "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png",
+      "inferContentType": true
+    },
+    "host": { "operationId": "GetFileContent" }
+  },
+  "runAfter": {},
+  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fDeloitte_Logo.png": "/SiteAssets/DEX_Logos/Deloitte_Logo.png" }
+}
+
+COMPOSE (Logo → Base64 DataUri):
+{
+  "type": "Compose",
+  "inputs": "@dataUri(body('Get_file_content'))",
+  "runAfter": { "Get_file_content": ["Succeeded"] }
+}
+
+GET_FILE_CONTENT_1 (DEX Orb):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "id": "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png",
+      "inferContentType": true
+    },
+    "host": { "operationId": "GetFileContent" }
+  },
+  "runAfter": { "Compose": ["Succeeded"] },
+  "metadata": { "%252fSiteAssets%252fDEX_Logos%252fdex-orb.png": "/SiteAssets/DEX_Logos/dex-orb.png" }
+}
+
+COMPOSE_1 (Orb → Base64 DataUri):
+{
+  "type": "Compose",
+  "inputs": "@dataUri(body('Get_file_content_1'))",
+  "runAfter": { "Get_file_content_1": ["Succeeded"] }
+}
+
+SEND_EMAIL (Shared Mailbox):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "emailMessage/MailboxAddress": "no_reply.events@deloitte.de",
+      "emailMessage/To": "@triggerBody()?['Recipient']",
+      "emailMessage/Subject": "@triggerBody()?['Title']",
+      "emailMessage/Body": "@replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose')), '{{ORB_URL}}', outputs('Compose_1'))",
+      "emailMessage/Importance": "Normal"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "SharedMailboxSendEmailV2"
+    }
+  },
+  "runAfter": { "Compose_1": ["Succeeded"] }
+}
+
+SET_SENT:
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/Status/Value": "Sent",
+      "item/SentDate": "@utcNow()"
+    },
+    "host": { "operationId": "PatchItem" }
+  },
+  "runAfter": { "Send_an_email_from_a_shared_mailbox_(V2)": ["Succeeded"] }
+}
+```
+
+---
+
+## 3. DEX_CreateOutlookEvent
+
+**Trigger:** ???
+**Zweck:** Initialen Outlook-Termin erstellen???
+**Letztes Update:** BITTE JSON EINFÜGEN
+
+```json
+-- BITTE AKTUELLEN FLOW JSON HIER EINFÜGEN --
+```
+
+---
+
+## 4. DEX_Outlook_Einladungen
+
+**Trigger:** Neuer Eintrag in DEX_Outlook
+**Zweck:** Teilnehmer zu bestehendem Outlook-Termin einladen/ausladen
+**Letztes Update:** BITTE JSON EINFÜGEN
+
+```json
+-- BITTE AKTUELLEN FLOW JSON HIER EINFÜGEN --
+```
+
+---
+
+## Listen-GUIDs (aktuell, Stand 2026-04-06)
+
 | Liste | GUID |
 |-------|------|
 | DEX_IDReorder | 9d46ff77-5fe2-4e1d-9b93-14b9dca1a360 |
 | DEX_Events | 28457815-1163-4e92-8b08-3ae43f477d9e |
 | DEX_Emails | 57aa0840-df98-41ae-a39b-323c0b80ae3b |
 | DEX_Outlook | d794655b-c950-416c-a478-5dbae285e46d |
-
----
-
-## Flow 2: DEX_Outlook_Einladungen
-
-**Bitte den aktuellen Flow-JSON hier einfügen.**
-
-Letzte bekannte Struktur:
-
-```
-Trigger: When item created in DEX_Outlook (Concurrency: 1)
-→ Get_Event_Details (DEX_Events by EventId)
-→ Init_RealEventId (empty string)
-→ Init_Attendees (empty array)
-→ Has_OutlookEventId? (length CalendarLink > 0)
-  → Yes:
-    → Find_Outlook_Event (Graph API: GET events?$filter=iCalUId)
-    → Set varRealEventId (first result id)
-    → Check_EventFound (length varRealEventId > 0?)
-      → Yes:
-        → Get_Existing_Event (Graph API: GET event details)
-        → Set var_Attendees (attendees array)
-        → Check_ActionType (Einladen?)
-          → Yes (Einladen):
-            → Add_Attendee (append to array)
-            → Update_Event_Einladen (Graph API: PATCH attendees)
-          → No (Ausladen):
-            → Filter_Attendees (remove by email)
-            → Update_Event_Ausladen (Graph API: PATCH filtered)
-        → Set_Sent (DEX_Outlook Status=Sent)
-        → Set_Failed_1_1 (Run After: Failed)
-      → No:
-        → Set_Failed_1
-  → No:
-    → Set_Failed
-```
-
-### Offene Änderungen:
-- CalendarLink statt OutlookEventId verwenden (iCalUId dort gespeichert)
-- Graph API via Office 365 Outlook Connector (nicht SharePoint)
-- Concurrency: 1 (verhindert Race Conditions)
-
----
-
-## Flow 3: DEX_Emails_Senden
-
-**Bitte den aktuellen Flow-JSON hier einfügen.**
-
-Erwartete Struktur:
-
-```
-Trigger: When item created in DEX_Emails
-→ Update Status to Processing
-→ Send Email from shared mailbox (no_reply.events@deloitte.de)
-  - To: Recipient
-  - Subject: Title
-  - Body: Body (HTML)
-→ Set Status to Sent
-→ Error: Set Status to Failed
-```
-
-### Wichtig:
-- Shared Mailbox: no_reply.events@deloitte.de
-- Body ist bereits fertig formatiertes HTML (aus App oder Template)
-- Concurrency: 1 empfohlen
-
----
-
-## SharePoint Listen-Referenz
-
-| Liste | Zweck | Wichtige Spalten |
-|-------|-------|-----------------|
-| DEX_Events | Event-Stammdaten | Title, EventType, Location, StartDate, EndDate, MaxParticipants, Organizer, EmailLanguage, EmailTemplateOverrides, CalendarLink, SubsiteUrl |
-| DEX_Roles | Rollenverwaltung | Title (Email), UserName, Role, UserLocation |
-| DEX_Emails | Email-Queue | Title (Subject), Recipient, RecipientName, Body, EmailType, EventTitle, EventId, Status |
-| DEX_Outlook | Outlook-Queue | Title, Attendee, EventId, ActionType (Einladen/Ausladen), Status |
-| DEX_IDReorder | ID-Neuvergabe Queue | Title, EventId, EventNumber, SubsiteUrl, Status |
-| DEX_Participants | Zentrale Teilnehmerliste | Title (Email), Vorname, Nachname, Email, EventRegistered, EventOnWaitlist |
-| DEX_EmailTemplates | Email-Vorlagen (DE+EN) | Title, TemplateType, Language, Subject, HeadingColor, Heading, BodyHtml |
-| Teilnehmer (pro Subsite) | Registrierungen pro Event | Title (Email), TeilnehmerID, Vorname, Nachname, ParticipantEmail, Status, RegistrationDate, CancellationDate, CustomData |
-
----
-
-## Berechtigungen (Visitors = DEALL)
-
-| Liste | Visitors (DEALL) | Owners (Admins) | Organizer |
-|-------|-----------------|-----------------|-----------|
-| DEX_Events | Read | Full Control | Contribute (individuell) |
-| DEX_Roles | - | Full Control | Read |
-| DEX_Emails | Contribute + ILS | Full Control | - |
-| DEX_Outlook | Contribute + ILS | Full Control | - |
-| DEX_IDReorder | Contribute + ILS | Full Control | - |
-| DEX_Participants | Contribute + ILS | Full Control | - |
-| DEX_EmailTemplates | Read | Full Control | - |
-| Event Subsite | Read | Full Control | Full Control |
-| Teilnehmer-Liste | Contribute + ILS | Full Control | Full Control |
