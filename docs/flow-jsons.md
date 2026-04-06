@@ -534,11 +534,264 @@ UPDATE_EVENT (CalendarLink zurückschreiben):
 ## 4. DEX_Outlook_Einladungen
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
-**Zweck:** Teilnehmer zu bestehendem Outlook-Termin einladen/ausladen
-**Letztes Update:** BITTE JSON EINFÜGEN
+**Zweck:** Teilnehmer zu bestehendem Outlook-Termin einladen oder ausladen (via Graph API)
+**Letztes Update:** 2026-04-06
+
+Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Einladen/Ausladen → Status=Sent (oder Failed bei Fehler)
+
+**Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
 
 ```json
--- BITTE AKTUELLEN FLOW JSON HIER EINFÜGEN --
+TRIGGER (Neues Item in DEX_Outlook):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "d794655b-c950-416c-a478-5dbae285e46d"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetOnNewItems"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "runtimeConfiguration": { "concurrency": { "runs": 1, "maximumWaitingRuns": 100 } },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+
+GET_EVENT_DETAILS (Event-Daten für EventId):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+      "$filter": "@concat('ID eq ', triggerBody()?['EventId'])",
+      "$top": 1
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItems"
+    }
+  },
+  "runAfter": {}
+}
+
+INIT_REALEVENTID (Variable für Outlook Event-ID):
+{
+  "type": "InitializeVariable",
+  "inputs": { "variables": [{ "name": "varRealEventId", "type": "string" }] },
+  "runAfter": { "Get_Event_Details": ["Succeeded"] }
+}
+
+INIT_ATTENDEES (Variable für Teilnehmer-Array):
+{
+  "type": "InitializeVariable",
+  "inputs": { "variables": [{ "name": "var_Attendees", "type": "array" }] },
+  "runAfter": { "Init_RealEventId": ["Succeeded"] }
+}
+
+CHECK_CALENDARLINK (CalendarLink vorhanden?):
+{
+  "type": "If",
+  "expression": {
+    "and": [{ "greater": ["@length(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['CalendarLink'], ''))", 0] }]
+  },
+  "actions": {
+    "Find_Outlook_Event": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events?$filter=iCalUId eq ''', first(outputs('Get_Event_Details')?['body/value'])?['CalendarLink'], '''')",
+          "Method": "GET",
+          "ContentType": "application/json"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "connection": "shared_office365",
+          "operationId": "HttpRequest"
+        }
+      }
+    },
+    "Set_variable (varRealEventId)": {
+      "type": "SetVariable",
+      "inputs": { "name": "varRealEventId", "value": "@first(body('Find_Outlook_Event')?['value'])?['id']" },
+      "runAfter": { "Find_Outlook_Event": ["Succeeded"] }
+    },
+    "Check_EventFound": {
+      "type": "If",
+      "expression": {
+        "and": [{ "greater": ["@length(coalesce(variables('varRealEventId'), ''))", 0] }]
+      },
+      "actions": {
+        "Get_Existing_Event": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+              "Method": "GET",
+              "ContentType": "application/json"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connection": "shared_office365",
+              "operationId": "HttpRequest"
+            }
+          }
+        },
+        "Set_variable_1 (var_Attendees)": {
+          "type": "SetVariable",
+          "inputs": { "name": "var_Attendees", "value": "@body('Get_Existing_Event')?['attendees']" },
+          "runAfter": { "Get_Existing_Event": ["Succeeded"] }
+        },
+        "Check_ActionType (Einladen oder Ausladen)": {
+          "type": "If",
+          "expression": {
+            "and": [{ "equals": ["@triggerBody()?['ActionType']?['Value']", "Einladen"] }]
+          },
+          "actions": {
+            "Add_Attendee": {
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "var_Attendees",
+                "value": "@json(concat('{\"type\":\"required\",\"status\":{\"response\":\"none\",\"time\":\"0001-01-01T00:00:00Z\"},\"emailAddress\":{\"name\":\"', triggerBody()?['Attendee'], '\",\"address\":\"', triggerBody()?['Attendee'], '\"}}'))"
+              }
+            },
+            "Update_Event_Einladen": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+                  "Method": "PATCH",
+                  "Body": "@json(concat('{\"attendees\":', string(variables('var_Attendees')), '}'))",
+                  "ContentType": "application/json"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connection": "shared_office365",
+                  "operationId": "HttpRequest"
+                }
+              },
+              "runAfter": { "Add_Attendee": ["Succeeded"] }
+            }
+          },
+          "else": {
+            "actions": {
+              "Filter_Attendees": {
+                "type": "Query",
+                "inputs": {
+                  "from": "@variables('var_Attendees')",
+                  "where": "@not(equals(toLower(item()?['emailAddress']?['address']),toLower(triggerBody()?['Attendee'])))"
+                }
+              },
+              "Update_Event_Ausladen": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+                    "Method": "PATCH",
+                    "Body": "@json(concat('{\"attendees\":', string(body('Filter_Attendees')), '}'))",
+                    "ContentType": "application/json"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connection": "shared_office365",
+                    "operationId": "HttpRequest"
+                  }
+                },
+                "runAfter": { "Filter_Attendees": ["Succeeded"] }
+              }
+            }
+          },
+          "runAfter": { "Set_variable_1": ["Succeeded"] }
+        },
+        "Set_Failed_1_1 (ActionType fehlgeschlagen)": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+              "table": "d794655b-c950-416c-a478-5dbae285e46d",
+              "id": "@triggerBody()?['ID']",
+              "item/Title": "@triggerBody()?['Title']",
+              "item/Status/Value": "Failed"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connection": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            }
+          },
+          "runAfter": { "Check_ActionType": ["Failed"] }
+        }
+      },
+      "else": {
+        "actions": {
+          "Set_Failed_1 (Event nicht in Outlook gefunden)": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                "table": "d794655b-c950-416c-a478-5dbae285e46d",
+                "id": "@triggerBody()?['ID']",
+                "item/Title": "@triggerBody()?['Title']",
+                "item/Status/Value": "Failed"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connection": "shared_sharepointonline",
+                "operationId": "PatchItem"
+              }
+            }
+          }
+        }
+      },
+      "runAfter": { "Set_variable": ["Succeeded"] }
+    },
+    "Set_Sent": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "d794655b-c950-416c-a478-5dbae285e46d",
+          "id": "@triggerBody()?['ID']",
+          "item/Title": "@outputs('Set_Failed_1_1')?['body/Title']",
+          "item/Status/Value": "Sent"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "PatchItem"
+        }
+      },
+      "runAfter": { "Check_EventFound": ["Succeeded"] }
+    }
+  },
+  "else": {
+    "actions": {
+      "Set_Failed (Kein CalendarLink)": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+            "table": "d794655b-c950-416c-a478-5dbae285e46d",
+            "id": "@triggerBody()?['ID']",
+            "item/Title": "@triggerBody()?['Title']",
+            "item/Status/Value": "Failed"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connection": "shared_sharepointonline",
+            "operationId": "PatchItem"
+          }
+        }
+      }
+    }
+  },
+  "runAfter": { "Init_Attendees": ["Succeeded"] }
+}
 ```
 
 ---
