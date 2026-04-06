@@ -476,14 +476,14 @@ COMPOSE_LOGO (Logo Base64 aus Config):
 {
   "type": "Compose",
   "inputs": "@first(body('Get_Config')?['value'])?['LogoBase64']",
-  "runAfter": { "Get_Config": ["Succeeded"] }
+  "runAfter": { "Get_Config": ["SUCCEEDED"] }
 }
 
 COMPOSE_IMAGE (Event-Bild oder Default-Bild):
 {
   "type": "Compose",
   "inputs": "@if(empty(triggerBody()?['EmailImageBase64']), first(body('Get_Config')?['value'])?['DefaultImageBase64'], triggerBody()?['EmailImageBase64'])",
-  "runAfter": { "Compose_Logo": ["Succeeded"] }
+  "runAfter": { "Compose_Logo": ["SUCCEEDED"] }
 }
 
 CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
@@ -497,7 +497,7 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "item/end": "@formatDateTime(triggerBody()?['EndDate'], 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
       "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
-      "item/body": "@replace(replace(triggerBody()?['OutlookBody'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))"
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['OutlookBody'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -505,7 +505,7 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "operationId": "V4CalendarPostItem"
     }
   },
-  "runAfter": { "Compose_Image": ["Succeeded"] }
+  "runAfter": { "Compose_Image": ["SUCCEEDED"] }
 }
 
 UPDATE_EVENT (CalendarLink zurückschreiben):
