@@ -43,6 +43,7 @@ export interface SPEvent {
   MaxParticipants: number;
   WaitlistEnabled: boolean;
   EventImageUrl: string;
+  EmailImageBase64: string; // Base64 Event-Bild fuer E-Mails/Outlook
   Organizer: string;
   OrganizerEmail: string;
   OutlookEventId: string;
@@ -903,6 +904,7 @@ export class EventService {
       { title: 'MaxParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'EventImageUrl', type: 2 },
+      { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild fuer E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
       { title: 'Organizer', type: 2 },
       { title: 'OrganizerEmail', type: 2 },
       { title: 'EventNumber', type: 9 },
@@ -1058,7 +1060,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
