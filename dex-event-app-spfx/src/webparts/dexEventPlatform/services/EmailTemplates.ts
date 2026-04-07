@@ -279,3 +279,13 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
     : '';
   return wrapTemplate(GREEN, eventTitle, 'Event Details', bodyHtml);
 }
+
+/**
+ * Logos als Base64 vorladen (Placeholder fuer zukuenftige Implementierung).
+ * Wird in EventContext aufgerufen, Fehler werden dort abgefangen.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+export async function loadLogosAsBase64(_spHttpClient: any, _siteUrl: string): Promise<void> {
+  // Logos werden aktuell ueber den Power Automate Flow als Base64 eingefuegt.
+  // Diese Funktion ist ein Placeholder fuer clientseitiges Logo-Caching.
+}
