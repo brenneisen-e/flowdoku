@@ -8,7 +8,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { UserRole } from '../types';
-import { Plus, FileText, Users, Trash2 } from './Icons';
+import { Plus, FileText, Trash2 } from './Icons';
 import CsvImport from './CsvImport';
 
 export default function SettingsPage(): React.ReactElement {
@@ -31,6 +31,11 @@ export default function SettingsPage(): React.ReactElement {
   const [suggestions, setSuggestions] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Timer cleanup bei Unmount
+  React.useEffect(() => {
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, []);
 
   // Email-Eingabe: User-Autocomplete mit Debounce
   const handleEmailChange = (query: string): void => {
@@ -170,7 +175,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="card">
             <h3 className="mb-16">Role Management</h3>
             <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 16 }}>
-              Manage who can create events. Roles are stored in the SharePoint list "DEX_Roles".
+              Manage who can create events. Roles are stored in the SharePoint list &ldquo;DEX_Roles&rdquo;.
               {' '}
               <a
                 href={`${siteUrl}/Lists/DEX_Roles/AllItems.aspx`}
@@ -204,7 +209,7 @@ export default function SettingsPage(): React.ReactElement {
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Role</th>
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Location</th>
-                      <th style={{ textAlign: 'right', padding: '8px 0 8px 8px', color: 'var(--dex-gray-500)' }}></th>
+                      <th style={{ textAlign: 'right', padding: '8px 0 8px 8px', color: 'var(--dex-gray-500)' }} />
                     </tr>
                   </thead>
                   <tbody>

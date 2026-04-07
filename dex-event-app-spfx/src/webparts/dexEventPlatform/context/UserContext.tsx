@@ -75,6 +75,14 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     loadUserPhoto(props.context).then(url => {
       if (url) setPhotoUrl(url);
     }).catch(() => { /* Foto nicht verfuegbar */ });
+
+    // Cleanup: Object URLs freigeben um Memory Leaks zu vermeiden
+    return () => {
+      setPhotoUrl(prev => {
+        if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+        return '';
+      });
+    };
   }, []);
 
   return React.createElement(

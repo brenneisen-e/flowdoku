@@ -20,12 +20,14 @@ export interface DeloitteEvent {
   startDate: string;
   endDate: string;
   registrationDeadline: string;
+  lastDeregisterDate: string;
   description: string;
   maxParticipants: number;
   currentParticipants: number;
   waitlistCount: number;
   imageUrl?: string;
   subsiteUrl?: string;
+  outlookBody: string;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   eventSpecificFields: EventSpecificField[];

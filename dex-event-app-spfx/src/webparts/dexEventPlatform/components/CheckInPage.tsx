@@ -10,7 +10,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
-import { EventService, SPRegistration } from '../services/EventService';
+import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 import QrScanner from 'qr-scanner';
 
@@ -46,7 +46,8 @@ export default function CheckInPage(): React.ReactElement {
     return /SharePoint/i.test(ua) && /Mobile|Android|iPhone|iPad/i.test(ua);
   }, []);
 
-  // URL fuer den Browser-Link generieren
+  // URL fuer den Browser-Link generieren (fuer zukuenftige Nutzung)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getBrowserUrl = (): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ctx = (window as any).__dexSpfxContext;
@@ -57,7 +58,8 @@ export default function CheckInPage(): React.ReactElement {
     return window.location.href;
   };
 
-  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets)
+  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets, fuer zukuenftige Nutzung)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openExternalScanner = (): void => {
     const checkinUrl = `${siteUrl}/SiteAssets/checkin.aspx`;
     const params = new URLSearchParams();
@@ -96,7 +98,6 @@ export default function CheckInPage(): React.ReactElement {
           processingRef.current = true;
           // Vibration bei Erkennung
           try { navigator.vibrate(200); } catch { /* */ }
-          console.log('[DEX Scanner] QR erkannt:', code);
           await processCode(code);
           processingRef.current = false;
           setTimeout(() => { lastScannedRef.current = ''; }, 3000);
@@ -150,9 +151,6 @@ export default function CheckInPage(): React.ReactElement {
     setIsProcessing(true);
     setResultMessage('');
     setResultType('');
-
-    // Debug: Zeige gescannten Code kurz an
-    console.log('[DEX CheckIn] Scanned code:', code);
 
     const parts = code.split('|');
     if (parts.length !== 3 || parts[0] !== 'DEX') {
@@ -287,7 +285,7 @@ export default function CheckInPage(): React.ReactElement {
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container" role="main">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>
           {t('checkin.title')} {selectedEvent ? `— ${selectedEvent.title}` : ''}
@@ -349,7 +347,7 @@ export default function CheckInPage(): React.ReactElement {
 
       {/* Bestätigungs-Dialog nach Scan */}
       {pendingCheckIn && (
-        <div ref={confirmCardRef} className="card" style={{
+        <div ref={confirmCardRef} className="card" role="dialog" aria-modal="true" aria-label="Check-in bestätigen" style={{
           padding: 24, marginBottom: 16, border: '2px solid var(--dex-green)',
           borderRadius: 16, background: '#fff',
         }}>

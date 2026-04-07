@@ -48,6 +48,7 @@ export default function AdminPage(): React.ReactElement {
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
+  const [regLoadError, setRegLoadError] = React.useState('');
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [copiedEmails, setCopiedEmails] = React.useState(false);
@@ -69,17 +70,20 @@ export default function AdminPage(): React.ReactElement {
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
     setIsLoadingRegs(true);
+    setRegLoadError('');
     try {
       const regs = await getAllRegistrations(event.id);
       setRegistrations(regs);
     } catch {
       setRegistrations([]);
+      setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
     setIsLoadingRegs(false);
   };
 
   // Teilnehmerlisten-URL aus regListMap ableiten
-  const getRegListUrl = (event: DeloitteEvent): string => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const getRegListUrl = (_event: DeloitteEvent): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ctx = (window as any).__dexSpfxContext;
     const base = ctx ? ctx.pageContext.web.absoluteUrl : siteUrl;
@@ -91,7 +95,7 @@ export default function AdminPage(): React.ReactElement {
   if (!selectedEvent) {
     // Event-Auswahl
     return (
-      <div className="page-container">
+      <div className="page-container" role="main">
         <h2 className="mb-16">{t('admin.title')}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {isAdmin && (
@@ -217,7 +221,7 @@ export default function AdminPage(): React.ReactElement {
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
 
   return (
-    <div className="page-container">
+    <div className="page-container" role="main">
       <div className="flex-between mb-16">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -429,7 +433,9 @@ export default function AdminPage(): React.ReactElement {
           </h3>
         </div>
 
-        {isLoadingRegs ? (
+        {regLoadError ? (
+          <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
+        ) : isLoadingRegs ? (
           <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Teilnehmer...</p>
         ) : activeRegs.length === 0 ? (
           <p style={{ color: 'var(--dex-gray-400)' }}>Noch keine Teilnehmer registriert.</p>

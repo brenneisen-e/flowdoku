@@ -25,8 +25,8 @@
       "es2015.core",
       "es2015.iterable"
     ],
-    "strict": false,
-    "noImplicitAny": false,
+    "strict": false, // TODO: Enable strict mode incrementally (breaks ~30+ files currently)
+    "noImplicitAny": false, // TODO: Enable after fixing implicit any usage
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": false
   },

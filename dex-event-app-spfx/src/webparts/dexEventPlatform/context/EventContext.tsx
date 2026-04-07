@@ -27,6 +27,7 @@ interface EventContextType {
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
+  refreshParticipantCounts: (eventId?: string) => Promise<void>;
 }
 
 export interface CreateEventInput {
@@ -87,7 +88,44 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function loadEvents(): Promise<void> {
     const spEvents = await eventService.getEvents();
     const mapped = await Promise.all(spEvents.map(e => mapSPEventToDeloitteEvent(e)));
-    setEvents(mapped);
+    // Teilnehmerzahlen fuer alle Events mit Subsite laden
+    const withCounts = await loadParticipantCountsForEvents(mapped);
+    setEvents(withCounts);
+  }
+
+  async function loadParticipantCountsForEvents(evts: DeloitteEvent[]): Promise<DeloitteEvent[]> {
+    const results = await Promise.all(
+      evts.map(async (evt) => {
+        if (!evt.subsiteUrl) return evt;
+        try {
+          const counts = await eventService.getRegistrationCount(evt.subsiteUrl);
+          return { ...evt, currentParticipants: counts.registered, waitlistCount: counts.waitlist };
+        } catch {
+          return evt;
+        }
+      })
+    );
+    return results;
+  }
+
+  async function refreshParticipantCounts(eventId?: string): Promise<void> {
+    if (eventId) {
+      const subsiteUrl = subsiteMap.current[eventId];
+      if (!subsiteUrl) return;
+      try {
+        const counts = await eventService.getRegistrationCount(subsiteUrl);
+        setEvents(current =>
+          current.map(e =>
+            e.id === eventId ? { ...e, currentParticipants: counts.registered, waitlistCount: counts.waitlist } : e
+          )
+        );
+      } catch { /* default bleibt */ }
+    } else {
+      setEvents(current => {
+        loadParticipantCountsForEvents(current).then(updated => setEvents(updated)).catch(() => { /* ignore */ });
+        return current;
+      });
+    }
   }
 
   async function mapSPEventToDeloitteEvent(e: SPEvent): Promise<DeloitteEvent> {
@@ -120,12 +158,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       startDate: e.StartDate || '',
       endDate: e.EndDate || '',
       registrationDeadline: e.RegistrationDeadline || '',
+      lastDeregisterDate: e.LastDeregisterDate || '',
       description: e.Description || '',
       maxParticipants: e.MaxParticipants || 0,
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
+      outlookBody: e.OutlookBody || '',
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       eventSpecificFields: customFields.map(cf => ({
@@ -374,7 +414,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts,
       },
     },
     props.children

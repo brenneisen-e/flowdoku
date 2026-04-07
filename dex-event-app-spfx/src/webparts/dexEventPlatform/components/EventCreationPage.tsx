@@ -12,9 +12,9 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
-import { eventCreatedEmail } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
 import { EventType } from '../types';
-import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
+import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 
 /**
@@ -44,7 +44,6 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
             return;
           }
           const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
-          console.log(`[DEX] Bild komprimiert: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
           resolve(compressed);
         },
         'image/jpeg',
@@ -70,7 +69,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
@@ -89,7 +88,6 @@ export default function EventCreationPage(): React.ReactElement {
   const [organizer, setOrganizer] = React.useState(
     editEvent ? editEvent.organizers.join(', ') : `${currentUser.firstName} ${currentUser.surname}`
   );
-  const [organizerQuery, setOrganizerQuery] = React.useState('');
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,7 +108,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [registrationDeadline, setRegistrationDeadline] = React.useState(
     editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
   );
-  const [lastDeregisterDate, setLastDeregisterDate] = React.useState('');
+  const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
@@ -124,7 +122,7 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? f.options.join(', ') : '', visible: true,
     })) : []
   );
-  const [outlookBody, setOutlookBody] = React.useState('');
+  const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
@@ -132,7 +130,10 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
   );
   const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
-  const [emailLogoPreview, setEmailLogoPreview] = React.useState('');
+  const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
+    if (!editEvent?.emailTemplateOverrides) return '';
+    try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
+  });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -239,7 +240,6 @@ export default function EventCreationPage(): React.ReactElement {
           const svc = new EventService(ctx);
           const compressed = await compressImage(imageFile);
           const uploadedUrl = await svc.uploadEventImage(compressed, title);
-          console.log('[DEX] Bild-Upload Ergebnis:', uploadedUrl);
           if (uploadedUrl) imageUrl = uploadedUrl;
         }
       } catch (err) {
@@ -268,7 +268,7 @@ export default function EventCreationPage(): React.ReactElement {
         'WaitlistEnabled': waitlistEnabled,
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
-        'OutlookBody': outlookBody,
+        'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -376,7 +376,7 @@ export default function EventCreationPage(): React.ReactElement {
         <div className="card" style={{ padding: '64px 32px' }}>
           <h2>{isEditMode ? 'Event erfolgreich aktualisiert!' : 'Event erfolgreich erstellt!'}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            "{title}" wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
+            &bdquo;{title}&ldquo; wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('register')}>Events anzeigen</button>
@@ -507,6 +507,9 @@ export default function EventCreationPage(): React.ReactElement {
       case 1:
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
+        if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
+        if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
+        if (lastDeregisterDate && registrationDeadline && new Date(lastDeregisterDate) > new Date(registrationDeadline)) errors.push('deregAfterDeadline');
         break;
     }
     return errors;
@@ -675,7 +678,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   Standardmäßig können <strong>alle Mitarbeiter</strong> dieses Event sehen. Wenn du hier Standorte auswählst, wird das Event <strong>nur für Mitarbeiter dieser Standorte</strong> sichtbar.<br />
-                  <em>Beispiel: Du wählst "Köln" und "Düsseldorf" → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
+                  <em>Beispiel: Du wählst &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {locationOptions.map(loc => (
@@ -716,7 +719,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   Hier kannst du <strong>zusätzliche Personen oder Gruppen</strong> einladen, die das Event sehen sollen — unabhängig vom Standort.<br />
-                  <em>Beispiel: Du trägst "SAPALL" ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
+                  <em>Beispiel: Du trägst &bdquo;SAPALL&ldquo; ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
                 </p>
                 <input
                   className="form-input"
@@ -866,20 +869,6 @@ export default function EventCreationPage(): React.ReactElement {
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
-
-              <div className="form-group">
-                <label className="form-label">
-                  {t('create.outlookbody')}
-                  <span className="info-icon" title="Optionaler Beschreibungstext für den Outlook-Kalendereintrag der Teilnehmer. Power Automate nutzt diesen Text als Body des Termins." style={{ marginLeft: 8 }}>i</span>
-                </label>
-                <textarea
-                  className="form-input form-textarea"
-                  value={outlookBody}
-                  onChange={e => setOutlookBody(e.target.value)}
-                  placeholder="z.B. Treffpunkt, Dresscode, Ablauf, Links..."
-                  rows={4}
-                />
-              </div>
 
               </div>
 
@@ -1125,7 +1114,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Änderungen gelten nur für dieses Event.
                 </p>
 
-                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachrücken'].map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
                   const isEditing = editingTemplate === tType;
@@ -1137,7 +1126,7 @@ export default function EventCreationPage(): React.ReactElement {
                     Anmeldung: 'Anmeldebestätigung',
                     Warteliste: 'Warteliste-Bestätigung',
                     Abmeldung: 'Abmeldebestätigung',
-                    Nachruecken: 'Nachrücken',
+                    Nachrücken: 'Nachrücken',
                   };
 
                   return (

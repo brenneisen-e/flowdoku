@@ -19,6 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
+import { buildOutlookBody } from './EmailTemplates';
 
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
@@ -42,6 +43,7 @@ export interface SPEvent {
   MaxParticipants: number;
   WaitlistEnabled: boolean;
   EventImageUrl: string;
+  EmailImageBase64: string; // Base64 Event-Bild fuer E-Mails/Outlook
   Organizer: string;
   OrganizerEmail: string;
   OutlookEventId: string;
@@ -487,6 +489,8 @@ export class EventService {
       { title: 'HeadingColor', type: 2 },
       { title: 'Heading', type: 2 },
       { title: 'BodyHtml', type: 3 },
+      { title: 'LogoBase64', type: 3 },           // Base64 Deloitte Logo (Deloitte_Logo.png)
+      { title: 'DefaultImageBase64', type: 3 },    // Base64 Default-Bild (dex-orb.png)
     ];
 
     for (const f of fields) {
@@ -549,6 +553,20 @@ export class EventService {
       });
     }
 
+    // _Config Eintrag fuer Logos erstellen (Base64 muss manuell in SharePoint eingetragen werden)
+    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+      '__metadata': { 'type': listItemType },
+      'Title': '_Config',
+      'TemplateType': '_Config',
+      'Language': '',
+      'Subject': '',
+      'HeadingColor': '',
+      'Heading': '',
+      'BodyHtml': '',
+      'LogoBase64': '',           // Manuell: Base64 Data-URI von Deloitte_Logo.png eintragen
+      'DefaultImageBase64': '',   // Manuell: Base64 Data-URI von dex-orb.png eintragen
+    });
+
     await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
   }
 
@@ -559,7 +577,7 @@ export class EventService {
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType}' and Language eq '${language}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
@@ -902,6 +920,7 @@ export class EventService {
       { title: 'MaxParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'EventImageUrl', type: 2 },
+      { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild fuer E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
       { title: 'Organizer', type: 2 },
       { title: 'OrganizerEmail', type: 2 },
       { title: 'EventNumber', type: 9 },
@@ -936,7 +955,7 @@ export class EventService {
 
       for (const f of requiredFields) {
         if (!existingFields.has(f.title)) {
-          console.log('[DEX] Fehlende Spalte nachtraeglich hinzufuegen:', f.title);
+          // Fehlende Spalte nachtraeglich hinzufuegen
           const payload: Record<string, unknown> = {
             '__metadata': { 'type': f.metaType || 'SP.Field' },
             'Title': f.title,
@@ -1049,7 +1068,7 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields('${field.Id}')`,
         { CustomFormatter: JSON.stringify(formatJson) }
       );
-      console.log(`[DEX] Column Formatting gesetzt fuer ${fieldName}`);
+      // Column Formatting gesetzt
     } catch {
       // Column Formatting ist optional
     }
@@ -1057,7 +1076,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -1173,10 +1192,11 @@ export class EventService {
         'MaxParticipants': event.maxParticipants,
         'WaitlistEnabled': event.waitlistEnabled,
         'EventImageUrl': event.eventImageUrl,
+        'EmailImageBase64': '', // Wird ggf. separat gesetzt, Flow nutzt Default aus Config
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
-        'OutlookBody': event.outlookBody || '',
+        'OutlookBody': event.outlookBody ? buildOutlookBody(event.title, event.outlookBody) : '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
@@ -1279,14 +1299,18 @@ export class EventService {
       if (event.EventNumber) {
         try {
           const allParticipants = await this.getAllParticipants();
-          const en = event.EventNumber.toString();
-          for (const p of allParticipants) {
-            const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
-            const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
-            if (hasRegistered || hasWaitlist) {
-              await this.removeParticipantEvent(p.Email, event.EventNumber);
-            }
-          }
+          // Parallelize participant cleanup for better performance
+          const updatePromises = allParticipants
+            .filter(p => {
+              const en = String(event.EventNumber);
+              const hasRegistered = p.EventRegistered?.split(',').map(s => s.trim()).includes(en);
+              const hasWaitlist = p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en);
+              return hasRegistered || hasWaitlist;
+            })
+            .map(p => this.removeParticipantEvent(p.Email, event.EventNumber));
+          // Promise.all mit individueller Fehlerbehandlung (Promise.allSettled nicht verfuegbar in ES2017)
+          const safePromises = updatePromises.map(p => p.catch(() => null));
+          await Promise.all(safePromises);
         } catch {
           console.warn('[DEX] DEX_Participants konnte nicht aufgeraeumt werden');
         }
@@ -1350,7 +1374,7 @@ export class EventService {
         if (response.ok) {
           const result = await response.json();
           const subsiteAbsoluteUrl = result.d?.Url || result.Url;
-          console.log(`[DEX] Subsite erstellt mit Template ${template}:`, subsiteAbsoluteUrl);
+          // Subsite erfolgreich erstellt
           return subsiteAbsoluteUrl || `${this.siteUrl}/${urlSuffix}`;
         }
 
@@ -1642,8 +1666,17 @@ export class EventService {
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
-        const counts = await this.getRegistrationCount(subsiteUrl);
-        nextId = counts.registered + counts.waitlist + 1;
+        const maxResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (maxResp.ok) {
+          const maxData = await maxResp.json();
+          const items = maxData.value || maxData.d?.results || [];
+          if (items.length > 0 && items[0].TeilnehmerID != null) {
+            nextId = items[0].TeilnehmerID + 1;
+          }
+        }
       } catch { /* Fallback: 1 */ }
 
       // Profildaten laden
@@ -1706,8 +1739,17 @@ export class EventService {
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
-        const counts = await this.getRegistrationCount(subsiteUrl);
-        nextId = counts.registered + counts.waitlist + 1;
+        const maxResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (maxResp.ok) {
+          const maxData = await maxResp.json();
+          const items = maxData.value || maxData.d?.results || [];
+          if (items.length > 0 && items[0].TeilnehmerID != null) {
+            nextId = items[0].TeilnehmerID + 1;
+          }
+        }
       } catch { /* Fallback: 1 */ }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1999,13 +2041,6 @@ export class EventService {
   // ==================== Bild-Upload ====================
 
   /**
-   * Event-Bild in die SiteAssets-Bibliothek hochladen.
-   * Gibt die absolute URL des hochgeladenen Bildes zurueck.
-   */
-  /**
-   * Sicherstellen dass der DEX_EventImages Ordner in SiteAssets existiert.
-   */
-  /**
    * SiteAssets-Unterordner sicherstellen:
    * - DEX_EventImages (Event-Bilder)
    * - DEX_Logos (Deloitte-Logo fuer E-Mail-Templates, manuell hochgeladen)
@@ -2029,7 +2064,7 @@ export class EventService {
           '__metadata': { 'type': 'SP.Folder' },
           'ServerRelativeUrl': folderUrl,
         });
-        console.log(`[DEX] Ordner erstellt: SiteAssets/${folder}`);
+        // Ordner erstellt
       } catch {
         console.warn(`[DEX] Konnte ${folder} Ordner nicht erstellen`);
       }

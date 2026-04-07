@@ -7,15 +7,20 @@
  * Generiert den kompletten HTML-Body fuer Power Automate.
  */
 
+import { SPHttpClient } from '@microsoft/sp-http';
+
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
 const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
+// Gecachtes Logo Base64 aus DEX_EmailTemplates (_Config)
+// ORB/Event-Bild wird NICHT gecacht - der Flow setzt das event-spezifische Bild ein
+let cachedLogoBase64 = '';
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -33,7 +38,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="${logoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="${cachedLogoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -47,7 +52,7 @@ function wrapTemplate(headingColor: string, heading: string, subheading: string,
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="${orbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -111,9 +116,9 @@ export function replacePlaceholders(text: string, vars: Record<string, string>):
   for (const [key, value] of Object.entries(vars)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value));
   }
-  // Logo-URLs ersetzen
-  result = result.replace(/\{\{LOGO_URL\}\}/g, `${LOGOS_URL}/deloitte-logo-white.png`);
-  result = result.replace(/\{\{ORB_URL\}\}/g, `${LOGOS_URL}/dex-orb.png`);
+  // Logo Base64 aus DEX_EmailTemplates Cache ersetzen
+  // ORB_URL bleibt als Platzhalter - der Flow ersetzt ihn mit dem event-spezifischen Bild
+  if (cachedLogoBase64) result = result.replace(/\{\{LOGO_URL\}\}/g, cachedLogoBase64);
   return result;
 }
 
@@ -231,9 +236,6 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
 }
 
 /**
- * Allgemeine Info-Mail
- */
-/**
  * QR-Code E-Mail fuer Check-in
  */
 export function qrCodeEmail(recipientName: string, eventTitle: string, qrImageHtml: string): { subject: string; body: string } {
@@ -268,4 +270,110 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
+}
+
+/**
+ * Outlook-Termin-Body im Deloitte-Design generieren.
+ * Erzeugt HTML mit {{LOGO_URL}} und {{ORB_URL}} Platzhaltern,
+ * die der Power Automate Flow durch Base64-Bilder ersetzt.
+ */
+export function buildOutlookBody(eventTitle: string, bodyText: string): string {
+  const bodyHtml = bodyText
+    ? bodyText.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  ')
+    : '';
+  return wrapTemplate(GREEN, eventTitle, 'Event Details', bodyHtml);
+}
+
+/**
+ * Logo als Base64 laden und cachen.
+ *
+ * 1. Versucht LogoBase64 aus DEX_EmailTemplates (_Config Zeile) zu lesen
+ * 2. Falls leer: laedt Deloitte_Logo.png aus /SiteAssets/DEX_Logos/,
+ *    konvertiert zu Base64 Data-URI und schreibt es in die _Config Zeile zurueck
+ *
+ * So ist die _Config Zeile nach dem ersten App-Start automatisch befuellt.
+ */
+export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
+  if (cachedLogoBase64) return; // bereits geladen
+
+  // 1. Aus _Config Zeile lesen
+  const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=Id,LogoBase64,DefaultImageBase64&$top=1`;
+  const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
+  if (!response.ok) return;
+
+  const data = await response.json();
+  const items = data.value || data.d?.results || [];
+  const configItem = items[0];
+  if (!configItem) return;
+
+  // Falls bereits befuellt: direkt nutzen
+  if (configItem.LogoBase64) {
+    cachedLogoBase64 = configItem.LogoBase64;
+    return;
+  }
+
+  // 2. Bilder aus SiteAssets laden und zu Base64 konvertieren
+  const logoBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
+  const orbBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/dex-orb.png');
+
+  if (!logoBase64 && !orbBase64) return;
+
+  // 3. In _Config Zeile zurueckschreiben (auto-provisioning)
+  const configId = configItem.Id || configItem.d?.Id;
+  if (configId) {
+    try {
+      let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+      try {
+        const typeResp = await spHttpClient.get(
+          `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      await spHttpClient.post(
+        `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': listItemType },
+            'LogoBase64': logoBase64 || '',
+            'DefaultImageBase64': orbBase64 || '',
+          }),
+        }
+      );
+    } catch { /* Schreiben fehlgeschlagen - Logos funktionieren trotzdem ueber Platzhalter */ }
+  }
+
+  if (logoBase64) cachedLogoBase64 = logoBase64;
+}
+
+/**
+ * Bild aus SiteAssets laden und als Base64 Data-URI zurueckgeben.
+ */
+async function loadImageAsBase64(spHttpClient: SPHttpClient, siteUrl: string, path: string): Promise<string> {
+  try {
+    const fileUrl = `${siteUrl}/_api/web/GetFileByServerRelativeUrl('${siteUrl.replace(/^https?:\/\/[^/]+/, '')}/SiteAssets/${path}')/$value`;
+    const resp = await spHttpClient.get(fileUrl, SPHttpClient.configurations.v1);
+    if (!resp.ok) return '';
+
+    const blob = await resp.blob();
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return '';
+  }
 }
