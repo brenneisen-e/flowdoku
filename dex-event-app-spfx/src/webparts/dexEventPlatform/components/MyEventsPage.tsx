@@ -23,6 +23,21 @@ function formatDate(iso: string): string {
   });
 }
 
+function formatDateRange(start: string, end: string): string {
+  if (!start) return '-';
+  const s = new Date(start);
+  const e = end ? new Date(end) : null;
+  const sDate = s.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const sTime = s.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (!e) return `${sDate}, ${sTime}`;
+  const eDate = e.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const eTime = e.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  // Gleicher Tag: "14.04.2026, 14:00 – 18:00"
+  if (sDate === eDate) return `${sDate}, ${sTime} – ${eTime}`;
+  // Verschiedene Tage
+  return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
+}
+
 function getStatusBadgeClass(status: string): string {
   switch (status) {
     case 'Angemeldet': return 'badge-green';
@@ -168,125 +183,85 @@ export default function MyEventsPage(): React.ReactElement {
               }));
 
             return (
-              <div key={event.id} className="card my-event-card">
+              <div key={event.id} className="card my-event-card" style={{ overflow: 'hidden' }}>
                 {event.imageUrl && (
                   <div style={{
-                    height: 120, borderRadius: 'var(--dex-radius) var(--dex-radius) 0 0',
-                    background: `url(${event.imageUrl}) center/cover no-repeat`,
-                    marginBottom: 0,
+                    height: 100, background: `url(${event.imageUrl}) center/cover no-repeat`,
+                    margin: '-16px -16px 0 -16px',
                   }} />
                 )}
-                <div className="my-event-card__header">
-                  <h3>{event.title}</h3>
-                  <span className={`badge ${getStatusBadgeClass(registration.Status)}`}>
+
+                {/* Header: Titel + Status Badge */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: event.imageUrl ? 16 : 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
+                  <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
                     {getStatusLabel(registration.Status, t)}
                   </span>
                 </div>
 
-                <div className="my-event-card__details">
-                  <p><strong>{t('myevents.location')}:</strong> {event.location || '-'}</p>
-                  <p><strong>{t('myevents.date')}:</strong> {formatDate(event.startDate)} - {formatDate(event.endDate)}</p>
-                  <p><strong>{t('myevents.registeredon')}:</strong> {formatDate(registration.RegistrationDate)}</p>
-                  {registration.Title && (
-                    <p><strong>E-Mail-Adresse:</strong> {registration.Title}</p>
-                  )}
+                {/* Kompakte Info-Zeilen */}
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                  <div>📍 {event.location || '-'}</div>
+                  <div>📅 {formatDateRange(event.startDate, event.endDate)}</div>
                 </div>
 
-                {/* Anzeige oder Bearbeitung der Custom Data */}
-                {editingId === event.id ? (
-                  <div className="my-event-card__specific" style={{ padding: '12px 0' }}>
+                {/* Custom Fields als kompakte Tags */}
+                {!editingId || editingId !== event.id ? (
+                  displayData.length > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {displayData.map(({ label, value }) => (
+                        <span key={label} style={{
+                          fontSize: '0.78rem', padding: '3px 10px', borderRadius: 12,
+                          background: 'var(--dex-gray-100)', color: 'var(--dex-gray-700)',
+                        }}>
+                          {label}: <strong>{value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div style={{ marginTop: 12 }}>
                     {event.eventSpecificFields.map((field: EventSpecificField) => (
-                      <div className="form-group" key={field.id} style={{ marginBottom: 12 }}>
-                        <label className="form-label" style={{ fontSize: '0.85rem' }}>
+                      <div className="form-group" key={field.id} style={{ marginBottom: 10 }}>
+                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 2 }}>
                           {field.required && <span className="required">*</span>}
                           {field.label}
                         </label>
                         {field.type === 'select' ? (
-                          <select
-                            className="form-select"
-                            value={editData[field.id] || ''}
-                            onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}
-                          >
-                            <option value="">Bitte wählen</option>
+                          <select className="form-select" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}>
+                            <option value="">—</option>
                             {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
                         ) : (
-                          <input
-                            className="form-input"
-                            value={editData[field.id] || ''}
-                            onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}
-                            placeholder={field.label}
-                            type={field.type === 'number' ? 'number' : 'text'}
-                          />
+                          <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
                         )}
                       </div>
                     ))}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ fontSize: '0.85rem' }}
-                        disabled={isSaving}
-                        onClick={async () => {
-                          setIsSaving(true);
-                          await updateMyRegistration(event.id, editData);
-                          await loadMyRegistrations();
-                          setEditingId(null);
-                          setIsSaving(false);
-                        }}
-                      >
+                      <button className="btn btn-primary" style={{ fontSize: '0.82rem' }} disabled={isSaving} onClick={async () => { setIsSaving(true); await updateMyRegistration(event.id, editData); await loadMyRegistrations(); setEditingId(null); setIsSaving(false); }}>
                         {isSaving ? t('myevents.saving') : t('myevents.save')}
                       </button>
-                      <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => setEditingId(null)}>
-                        {t('general.cancel')}
-                      </button>
+                      <button className="btn btn-secondary" style={{ fontSize: '0.82rem' }} onClick={() => setEditingId(null)}>{t('general.cancel')}</button>
                     </div>
                   </div>
-                ) : displayData.length > 0 ? (
-                  <div className="my-event-card__specific" style={{ marginBottom: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: '0.9rem' }}>
-                      {displayData.map(({ label, value }) => (
-                        <React.Fragment key={label}>
-                          <span style={{ fontWeight: 600, color: 'var(--dex-gray-700)' }}>{label}:</span>
-                          <span style={{ color: 'var(--dex-gray-600)' }}>{value}</span>
-                        </React.Fragment>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                )}
 
-                <div className="my-event-card__actions">
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.85rem' }}
-                    onClick={() => {
-                      if (editingId === event.id) {
-                        setEditingId(null);
-                      } else {
-                        setEditData(customData);
-                        setEditingId(event.id);
-                      }
-                    }}
-                  >
-                    {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => handleCancel(event.id)}
-                    disabled={isCancelling}
-                    style={{
-                      fontSize: '0.85rem',
-                      background: 'var(--dex-orange)', color: '#fff',
-                    }}
-                  >
-                    {cancellingId === event.id
-                      ? (isCancelling ? t('myevents.confirming') : t('myevents.confirmcancel'))
-                      : t('myevents.cancel')}
-                  </button>
-                  {cancellingId === event.id && !isCancelling && (
-                    <button className="btn btn-primary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem' }}>
-                      {t('myevents.keepreg')}
+                {/* Registriert am + Aktionen */}
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                    {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
+                      {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                     </button>
-                  )}
+                    <button className="btn" onClick={() => handleCancel(event.id)} disabled={isCancelling} style={{ fontSize: '0.78rem', padding: '4px 12px', background: cancellingId === event.id ? 'var(--dex-red)' : 'var(--dex-gray-200)', color: cancellingId === event.id ? '#fff' : 'var(--dex-gray-700)' }}>
+                      {cancellingId === event.id ? (isCancelling ? '...' : t('myevents.confirmcancel')) : t('myevents.cancel')}
+                    </button>
+                    {cancellingId === event.id && !isCancelling && (
+                      <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.78rem', padding: '4px 12px' }}>{t('myevents.keepreg')}</button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
