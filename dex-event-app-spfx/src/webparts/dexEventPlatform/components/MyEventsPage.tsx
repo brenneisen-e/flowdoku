@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+import { SPHttpClient } from '@microsoft/sp-http';
 import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -75,6 +76,48 @@ function getDocIconName(name: string): string {
 
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
   const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = React.useState<string>('');
+  const [loading, setLoading] = React.useState(false);
+
+  const toggleDoc = async (doc: { url: string; name: string }): Promise<void> => {
+    if (expandedDoc === doc.url) {
+      setExpandedDoc(null);
+      if (blobUrl) { URL.revokeObjectURL(blobUrl); setBlobUrl(''); }
+      return;
+    }
+    setExpandedDoc(doc.url);
+    setLoading(true);
+    setBlobUrl('');
+
+    try {
+      // Datei per SPHttpClient laden (authentifiziert)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const origin = doc.url.match(/^https?:\/\/[^/]+/)?.[0] || '';
+        const serverRelPath = doc.url.replace(origin, '');
+        const resp = await ctx.spHttpClient.get(
+          `${ctx.pageContext.web.absoluteUrl}/_api/web/GetFileByServerRelativeUrl('${encodeURIComponent(serverRelPath)}')/$value`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': '*/*' } }
+        );
+        if (resp.ok) {
+          const blob = await resp.blob();
+          // MIME-Type korrigieren
+          const ext = doc.name.split('.').pop()?.toLowerCase() || '';
+          const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+          const correctBlob = mimeMap[ext] ? new Blob([blob], { type: mimeMap[ext] }) : blob;
+          setBlobUrl(URL.createObjectURL(correctBlob));
+        }
+      }
+    } catch { /* Blob-Laden fehlgeschlagen */ }
+    setLoading(false);
+  };
+
+  // Cleanup blob URLs bei Unmount
+  React.useEffect(() => {
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, []);
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -92,7 +135,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               borderRadius: isExpanded ? '8px 8px 0 0' : 8,
               cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
               transition: 'background 0.15s',
-            }} onClick={() => setExpandedDoc(isExpanded ? null : doc.url)}>
+            }} onClick={() => toggleDoc(doc)}>
               <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
               </span>
@@ -107,14 +150,25 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               <div style={{
                 border: '1px solid var(--dex-gray-200)', borderTop: 'none',
                 borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
-                maxHeight: 600,
               }}>
-                <DocViewer
-                  documents={[{ uri: doc.url, fileName: doc.name }]}
-                  pluginRenderers={DocViewerRenderers}
-                  config={{ header: { disableHeader: true, disableFileName: true } }}
-                  style={{ height: 500 }}
-                />
+                {loading ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
+                    {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
+                  </div>
+                ) : blobUrl ? (
+                  <DocViewer
+                    documents={[{ uri: blobUrl, fileName: doc.name }]}
+                    pluginRenderers={DocViewerRenderers}
+                    config={{ header: { disableHeader: true, disableFileName: true } }}
+                    style={{ height: 500 }}
+                  />
+                ) : (
+                  <div style={{ padding: 24, textAlign: 'center' }}>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark)' }}>
+                      {t('myevents.agenda') === 'Programm' ? 'Im Browser öffnen' : 'Open in browser'}
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>
