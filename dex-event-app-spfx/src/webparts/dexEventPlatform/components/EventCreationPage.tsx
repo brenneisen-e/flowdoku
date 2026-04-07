@@ -178,31 +178,36 @@ export default function EventCreationPage(): React.ReactElement {
 
   const fillDemo = (): void => {
     const now = new Date();
-    const nextWeek = new Date(now);
-    nextWeek.setDate(now.getDate() + 7);
-    const nextWeekEnd = new Date(nextWeek);
-    nextWeekEnd.setHours(nextWeek.getHours() + 4);
-    const deadline = new Date(nextWeek);
-    deadline.setDate(nextWeek.getDate() - 2);
-    const lastDereg = new Date(nextWeek);
-    lastDereg.setDate(nextWeek.getDate() - 1);
+    const eventStart = new Date(now);
+    eventStart.setDate(now.getDate() + 7);
+    eventStart.setHours(14, 0, 0, 0); // 14:00 Uhr
+    const eventEnd = new Date(eventStart);
+    eventEnd.setHours(18, 0, 0, 0); // 18:00 Uhr
+    const deadline = new Date(eventStart);
+    deadline.setDate(eventStart.getDate() - 2);
+    const lastDereg = new Date(eventStart);
+    lastDereg.setDate(eventStart.getDate() - 1);
 
-    const toLocal = (d: Date): string => {
+    const toDatetime = (d: Date): string => {
+      const pad = (n: number): string => (n < 10 ? '0' : '') + n;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const toDate = (d: Date): string => {
       const pad = (n: number): string => (n < 10 ? '0' : '') + n;
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     };
 
-    const dateStr = toLocal(nextWeek).replace(/[-T:]/g, '').substring(0, 8);
+    const dateStr = toDate(eventStart).replace(/-/g, '');
     setTitle(`Test_${dateStr}`);
     setEventType('Other');
     setDescription('Testbeschreibung für ein Demo-Event.');
     setLocation('Köln, Testort');
     setLocationFilter('');
     setAudience('All');
-    setStartDate(toLocal(nextWeek));
-    setEndDate(toLocal(nextWeekEnd));
-    setRegistrationDeadline(toLocal(deadline));
-    setLastDeregisterDate(toLocal(lastDereg));
+    setStartDate(toDatetime(eventStart));
+    setEndDate(toDatetime(eventEnd));
+    setRegistrationDeadline(toDate(deadline));
+    setLastDeregisterDate(toDate(lastDereg));
     setMaxParticipants('50');
     setWaitlistEnabled(true);
     setEventImageUrl('');
