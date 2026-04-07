@@ -472,7 +472,11 @@ export class EventService {
   public async ensureEmailTemplatesList(): Promise<void> {
     const listName = 'DEX_EmailTemplates';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // Liste existiert - pruefen ob _Config Zeile und Logo-Spalten vorhanden
+      await this.ensureEmailTemplatesConfig(listName);
+      return;
+    }
 
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -568,6 +572,66 @@ export class EventService {
     });
 
     await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
+  }
+
+  /**
+   * Sicherstellen dass LogoBase64/DefaultImageBase64 Spalten und _Config Zeile existieren.
+   * Wird aufgerufen wenn die Liste bereits existiert (nachtraegliches Upgrade).
+   */
+  private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
+    try {
+      // 1. Logo-Spalten nachtraeglich anlegen falls fehlend
+      const logoFields = [
+        { title: 'LogoBase64', type: 3 },
+        { title: 'DefaultImageBase64', type: 3 },
+      ];
+      for (const f of logoFields) {
+        try {
+          const check = await this.context.spHttpClient.get(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')`,
+            SPHttpClient.configurations.v1
+          );
+          if (!check.ok) {
+            await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+              '__metadata': { 'type': 'SP.Field' },
+              'Title': f.title,
+              'FieldTypeKind': f.type,
+              'Required': false,
+            });
+          }
+        } catch { /* Spalte existiert oder Fehler - ignorieren */ }
+      }
+
+      // 2. _Config Zeile pruefen und ggf. anlegen
+      const configResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (configResp.ok) {
+        const configData = await configResp.json();
+        const items = configData.value || configData.d?.results || [];
+        if (items.length === 0) {
+          // _Config Zeile fehlt - anlegen
+          let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+          try {
+            const typeResp = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+              SPHttpClient.configurations.v1
+            );
+            if (typeResp.ok) {
+              const typeData = await typeResp.json();
+              listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+            }
+          } catch { /* Fallback */ }
+
+          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+            '__metadata': { 'type': listItemType },
+            'Title': '_Config',
+            'TemplateType': '_Config',
+          });
+        }
+      }
+    } catch { /* Config-Setup fehlgeschlagen - nicht kritisch */ }
   }
 
   /**
