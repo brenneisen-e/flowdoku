@@ -16,6 +16,7 @@ import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates'
 import { EventType } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
+import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -1062,7 +1063,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
                 <div className="form-group">
-                  <label className="form-label">E-Mail Sprache</label>
+                  <label className="form-label">{t('create.emaillanguage')}</label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {(['DE', 'EN'] as const).map(lang => (
                       <button
@@ -1076,47 +1077,56 @@ export default function EventCreationPage(): React.ReactElement {
                     ))}
                   </div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
-                    Alle automatischen E-Mails (Anmeldung, Abmeldung, Nachrücken) werden in dieser Sprache versendet.
+                    {t('create.emaillanguage.hint')}
                   </p>
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">Event-Logo für E-Mails (optional)</label>
+                  <label className="form-label">{t('create.eventlogo')}</label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
-                    Ersetzt das DEX-Logo im E-Mail Header. Deloitte-Logo bleibt immer. Max. 200px breit, wird automatisch komprimiert.
+                    {t('create.eventlogo.hint')}
                   </p>
                   {emailLogoPreview && (
                     <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                       <img src={emailLogoPreview} alt="Event-Logo" style={{ maxWidth: 180, maxHeight: 80, borderRadius: 4 }} />
                       <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => setEmailLogoPreview('')}>Entfernen</button>
+                        onClick={() => setEmailLogoPreview('')}>{t('create.eventlogo.remove')}</button>
                     </div>
                   )}
-                  <input type="file" accept="image/*" onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const compressed = await compressImage(file, 200, 0.85);
-                    const reader = new FileReader();
-                    reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
-                    reader.readAsDataURL(compressed);
-                  }} />
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                    transition: 'border-color 0.2s, background 0.2s',
+                  }}>
+                    <Plus size={16} />
+                    {t('create.eventlogo.select')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const compressed = await compressImage(file, 200, 0.85);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
+                      reader.readAsDataURL(compressed);
+                    }} />
+                  </label>
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">Outlook-Termin Beschreibung</label>
+                  <label className="form-label">{t('create.outlookdesc')}</label>
                   <textarea
                     className="form-input"
                     rows={4}
                     value={outlookBody}
                     onChange={e => setOutlookBody(e.target.value)}
-                    placeholder="Text für den Outlook-Kalendereintrag (optional)..."
+                    placeholder={t('create.outlookdesc.placeholder')}
                   />
                 </div>
 
-                <h4 style={{ marginTop: 24, marginBottom: 12 }}>E-Mail Vorlagen ({emailLanguage})</h4>
+                <h4 style={{ marginTop: 24, marginBottom: 12 }}>{t('create.templates.title')} ({emailLanguage})</h4>
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
-                  Platzhalter: <code>{'{{Name}}'}</code> = Teilnehmername, <code>{'{{EventTitle}}'}</code> = Event-Titel.
-                  Änderungen gelten nur für dieses Event.
+                  {t('create.templates.hint')}
                 </p>
 
                 {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachrücken'].map(tType => {
@@ -1127,13 +1137,6 @@ export default function EventCreationPage(): React.ReactElement {
                   const currentBody = override?.bodyHtml || defaultTpl?.bodyHtml || '';
                   const currentHeading = override?.heading || defaultTpl?.heading || '';
 
-                  const typeLabels: Record<string, string> = {
-                    Anmeldung: 'Anmeldebestätigung',
-                    Warteliste: 'Warteliste-Bestätigung',
-                    Abmeldung: 'Abmeldebestätigung',
-                    Nachrücken: 'Nachrücken',
-                  };
-
                   return (
                     <div key={tType} style={{
                       border: '1px solid var(--dex-gray-200)', borderRadius: 8,
@@ -1141,8 +1144,8 @@ export default function EventCreationPage(): React.ReactElement {
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <strong style={{ fontSize: '0.85rem' }}>{typeLabels[tType] || tType}</strong>
-                          {override && <span style={{ fontSize: '0.7rem', color: 'var(--dex-green)', marginLeft: 8 }}>angepasst</span>}
+                          <strong style={{ fontSize: '0.85rem' }}>{t(`create.tpl.${tType}`)}</strong>
+                          {override && <span style={{ fontSize: '0.7rem', color: 'var(--dex-green)', marginLeft: 8 }}>{t('create.templates.modified')}</span>}
                         </div>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button
@@ -1150,7 +1153,7 @@ export default function EventCreationPage(): React.ReactElement {
                             style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                             onClick={() => setEditingTemplate(isEditing ? null : tType)}
                           >
-                            {isEditing ? 'Schließen' : 'Bearbeiten'}
+                            {isEditing ? t('create.templates.close') : t('create.templates.edit')}
                           </button>
                           {override && (
                             <button
@@ -1162,19 +1165,19 @@ export default function EventCreationPage(): React.ReactElement {
                                 setEmailTemplateOverrides(copy);
                               }}
                             >
-                              Zurücksetzen
+                              {t('create.templates.reset')}
                             </button>
                           )}
                         </div>
                       </div>
                       {!isEditing && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                          Betreff: {currentSubject}
+                          {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
                         </div>
                       )}
                       {isEditing && (
                         <div style={{ marginTop: 8 }}>
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Betreff</label>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.subject')}</label>
                           <input
                             className="form-input"
                             value={currentSubject}
@@ -1184,7 +1187,7 @@ export default function EventCreationPage(): React.ReactElement {
                             })}
                             style={{ fontSize: '0.8rem', marginBottom: 8 }}
                           />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Überschrift</label>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.heading')}</label>
                           <input
                             className="form-input"
                             value={currentHeading}
@@ -1194,17 +1197,19 @@ export default function EventCreationPage(): React.ReactElement {
                             })}
                             style={{ fontSize: '0.8rem', marginBottom: 8 }}
                           />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Inhalt (HTML)</label>
-                          <textarea
-                            className="form-input"
-                            rows={6}
-                            value={currentBody}
-                            onChange={e => setEmailTemplateOverrides({
-                              ...emailTemplateOverrides,
-                              [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: e.target.value },
-                            })}
-                            style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}
-                          />
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>{t('create.templates.content')}</label>
+                          <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, minHeight: 150, padding: '0 4px' }}>
+                            <RichText
+                              value={currentBody}
+                              onChange={(text: string) => {
+                                setEmailTemplateOverrides({
+                                  ...emailTemplateOverrides,
+                                  [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: text },
+                                });
+                                return text;
+                              }}
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
