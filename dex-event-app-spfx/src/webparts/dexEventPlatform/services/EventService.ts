@@ -489,6 +489,8 @@ export class EventService {
       { title: 'HeadingColor', type: 2 },
       { title: 'Heading', type: 2 },
       { title: 'BodyHtml', type: 3 },
+      { title: 'LogoBase64', type: 3 },           // Base64 Deloitte Logo (Deloitte_Logo.png)
+      { title: 'DefaultImageBase64', type: 3 },    // Base64 Default-Bild (dex-orb.png)
     ];
 
     for (const f of fields) {
@@ -550,6 +552,20 @@ export class EventService {
         'BodyHtml': t.BodyHtml,
       });
     }
+
+    // _Config Eintrag fuer Logos erstellen (Base64 muss manuell in SharePoint eingetragen werden)
+    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+      '__metadata': { 'type': listItemType },
+      'Title': '_Config',
+      'TemplateType': '_Config',
+      'Language': '',
+      'Subject': '',
+      'HeadingColor': '',
+      'Heading': '',
+      'BodyHtml': '',
+      'LogoBase64': '',           // Manuell: Base64 Data-URI von Deloitte_Logo.png eintragen
+      'DefaultImageBase64': '',   // Manuell: Base64 Data-URI von dex-orb.png eintragen
+    });
 
     await this.configureDefaultView(listName, ['TemplateType', 'Language', 'Subject', 'Heading', 'HeadingColor']);
   }
