@@ -17,6 +17,7 @@ import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
+import { IconPicker } from '@pnp/spfx-controls-react/lib/controls/iconPicker';
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -238,25 +239,13 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   // ===== Agenda helpers =====
-  const agendaIcons = [
-    { emoji: '🎤', label: 'Vortrag' },
-    { emoji: '🍽️', label: 'Essen' },
-    { emoji: '☕', label: 'Pause' },
-    { emoji: '🏃', label: 'Aktivität' },
-    { emoji: '📝', label: 'Workshop' },
-    { emoji: '🎉', label: 'Networking' },
-    { emoji: '🚌', label: 'Transfer' },
-    { emoji: '🏨', label: 'Hotel' },
-    { emoji: '📋', label: 'Sonstiges' },
-  ];
-
   const addAgendaItem = (): void => {
     setAgenda([...agenda, {
       id: `ag-${Date.now()}`,
       date: startDate ? startDate.slice(0, 10) : '',
       time: '',
       endTime: '',
-      icon: '📋',
+      icon: 'Calendar',
       title: '',
       description: '',
     }]);
@@ -987,17 +976,16 @@ export default function EventCreationPage(): React.ReactElement {
                     border: '1px solid var(--dex-gray-200)',
                   }}>
                     {/* Icon Picker */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 48 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
-                      <select
-                        value={item.icon}
-                        onChange={e => updateAgendaItem(item.id, { icon: e.target.value })}
-                        style={{ fontSize: '1.1rem', padding: '4px', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', background: '#fff', width: 52 }}
-                      >
-                        {agendaIcons.map(ic => (
-                          <option key={ic.emoji} value={ic.emoji}>{ic.emoji} {ic.label}</option>
-                        ))}
-                      </select>
+                      <IconPicker
+                        buttonLabel=""
+                        currentIcon={item.icon || 'Calendar'}
+                        onSave={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
+                        onChange={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
+                        buttonClassName=""
+                        renderOption="panel"
+                      />
                     </div>
 
                     {/* Date */}

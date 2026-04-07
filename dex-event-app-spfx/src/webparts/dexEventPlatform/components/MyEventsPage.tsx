@@ -5,6 +5,7 @@
  */
 
 import * as React from 'react';
+import { Icon } from '@fluentui/react/lib/Icon';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
@@ -59,15 +60,15 @@ function getStatusLabel(status: string, t: (key: string) => string): string {
   }
 }
 
-function getDocIcon(name: string): string {
+function getDocIconName(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() || '';
   switch (ext) {
-    case 'pdf': return '📕';
-    case 'doc': case 'docx': return '📘';
-    case 'xls': case 'xlsx': return '📗';
-    case 'ppt': case 'pptx': return '📙';
-    case 'jpg': case 'jpeg': case 'png': case 'gif': return '🖼️';
-    default: return '📄';
+    case 'pdf': return 'PDF';
+    case 'doc': case 'docx': return 'WordDocument';
+    case 'xls': case 'xlsx': return 'ExcelDocument';
+    case 'ppt': case 'pptx': return 'PowerPointDocument';
+    case 'jpg': case 'jpeg': case 'png': case 'gif': return 'FileImage';
+    default: return 'Page';
   }
 }
 
@@ -106,7 +107,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               cursor: 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)',
               transition: 'background 0.15s',
             }} onClick={() => canPreview ? setExpandedDoc(isExpanded ? null : doc.url) : window.open(doc.url, '_blank')}>
-              <span>{getDocIcon(doc.name)}</span>
+              <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: 'var(--dex-gray-600)' }} />
               <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
               {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
               <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green)', fontSize: '0.72rem', textDecoration: 'none' }}>↓</a>
@@ -273,8 +274,8 @@ export default function MyEventsPage(): React.ReactElement {
 
                 {/* Kompakte Info-Zeilen */}
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                  <div>📍 {event.location || '-'}</div>
-                  <div>📅 {formatDateRange(event.startDate, event.endDate)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {event.location || '-'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                 </div>
 
                 {/* Custom Fields als kompakte Tags */}
@@ -341,7 +342,7 @@ export default function MyEventsPage(): React.ReactElement {
                             display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0',
                             borderLeft: '2px solid var(--dex-green)', marginLeft: 8, paddingLeft: 12,
                           }}>
-                            <span style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon || '📋'}</span>
+                            <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 16, color: 'var(--dex-green)', flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.82rem' }}>
                                 <strong>{item.time}{item.endTime ? ` – ${item.endTime}` : ''}</strong>
@@ -366,7 +367,7 @@ export default function MyEventsPage(): React.ReactElement {
                     </div>
                     {event.transferTimes.sort((a: TransferTime, b: TransferTime) => (a.date + a.departureTime).localeCompare(b.date + b.departureTime)).map((tr: TransferTime) => (
                       <div key={tr.id} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: '0.82rem', borderLeft: '2px solid var(--dex-orange)', marginLeft: 8, paddingLeft: 12 }}>
-                        <span>🚌</span>
+                        <Icon iconName="Bus" style={{ fontSize: 14, color: 'var(--dex-orange)' }} />
                         <div>
                           <strong>{tr.location}</strong> – {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit'})}, {tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''}
                           {tr.description && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8 }}>{tr.description}</span>}
