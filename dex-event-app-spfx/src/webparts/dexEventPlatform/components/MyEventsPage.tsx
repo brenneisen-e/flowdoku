@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
@@ -72,13 +73,6 @@ function getDocIconName(name: string): string {
   }
 }
 
-function getWopiPreviewUrl(docUrl: string): string {
-  // WopiFrame Preview - funktioniert mit Document Libraries
-  const origin = docUrl.match(/^https?:\/\/[^/]+/)?.[0] || '';
-  const path = docUrl.replace(origin, '');
-  return `${origin}/_layouts/15/WopiFrame.aspx?sourcedoc=${encodeURIComponent(path)}&action=interactivepreview`;
-}
-
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
   const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
 
@@ -98,7 +92,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               borderRadius: isExpanded ? '8px 8px 0 0' : 8,
               cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
               transition: 'background 0.15s',
-            }} onClick={() => setExpandedDoc(expandedDoc === doc.url ? null : doc.url)}>
+            }} onClick={() => setExpandedDoc(isExpanded ? null : doc.url)}>
               <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
               </span>
@@ -113,11 +107,13 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               <div style={{
                 border: '1px solid var(--dex-gray-200)', borderTop: 'none',
                 borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
+                maxHeight: 600,
               }}>
-                <iframe
-                  src={getWopiPreviewUrl(doc.url)}
-                  style={{ width: '100%', height: 500, border: 'none' }}
-                  title={doc.name}
+                <DocViewer
+                  documents={[{ uri: doc.url, fileName: doc.name }]}
+                  pluginRenderers={DocViewerRenderers}
+                  config={{ header: { disableHeader: true, disableFileName: true } }}
+                  style={{ height: 500 }}
                 />
               </div>
             )}
