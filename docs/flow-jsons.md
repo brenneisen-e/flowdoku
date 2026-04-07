@@ -307,9 +307,9 @@ PROCESS_BATCH_SCOPE:
 
 **Trigger:** Neuer Eintrag in DEX_Emails
 **Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
-**Letztes Update:** 2026-04-06
+**Letztes Update:** 2026-04-07
 
-Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden → Status=Sent
+Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden → Status=Sent
 
 ```json
 TRIGGER:
@@ -330,19 +330,20 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
-GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates):
+GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates via GetItems):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-      "parameters/method": "GET",
-      "parameters/uri": "_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1"
+      "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+      "$filter": "TemplateType eq '_Config'",
+      "$top": 1
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
       "connection": "shared_sharepointonline",
-      "operationId": "HttpRequest"
+      "operationId": "GetItems"
     }
   },
   "runAfter": {}
@@ -836,7 +837,7 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
 
 ---
 
-## Listen-GUIDs (aktuell, Stand 2026-04-06)
+## Listen-GUIDs (aktuell, Stand 2026-04-07)
 
 | Liste | GUID |
 |-------|------|
@@ -844,3 +845,4 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
 | DEX_Events | 28457815-1163-4e92-8b08-3ae43f477d9e |
 | DEX_Emails | 57aa0840-df98-41ae-a39b-323c0b80ae3b |
 | DEX_Outlook | d794655b-c950-416c-a478-5dbae285e46d |
+| DEX_EmailTemplates | 2c428d35-e6fb-42f9-8a20-580acd6d05f4 |
