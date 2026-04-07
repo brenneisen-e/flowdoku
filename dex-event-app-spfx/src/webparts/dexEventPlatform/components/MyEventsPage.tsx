@@ -73,25 +73,110 @@ function getDocIconName(name: string): string {
 }
 
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
+  const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string>('');
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  const loadPreview = async (docUrl: string): Promise<void> => {
+    if (expandedDoc === docUrl) {
+      setExpandedDoc(null);
+      setPreviewUrl('');
+      return;
+    }
+    setExpandedDoc(docUrl);
+    setPreviewLoading(true);
+    setPreviewUrl('');
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (!ctx) { setPreviewLoading(false); return; }
+
+      const graphClient = await ctx.msGraphClientFactory.getClient('3');
+      const siteUrl = ctx.pageContext.web.absoluteUrl;
+      const serverRelPath = docUrl.replace(/^https?:\/\/[^/]+/, '');
+
+      // 1. SiteId holen
+      const siteHostname = new URL(siteUrl).hostname;
+      const sitePath = new URL(siteUrl).pathname;
+      const siteResp = await graphClient.api(`/sites/${siteHostname}:${sitePath}`).get();
+      const siteId = siteResp.id;
+
+      // 2. DriveItem per Pfad finden
+      const drivePath = serverRelPath.replace(sitePath, '');
+      const itemResp = await graphClient.api(`/sites/${siteId}/drive/root:${drivePath}`).get();
+      const itemId = itemResp.id;
+
+      // 3. Preview URL generieren
+      const preview = await graphClient.api(`/sites/${siteId}/drive/items/${itemId}/preview`).post({});
+      if (preview.getUrl) {
+        setPreviewUrl(preview.getUrl);
+      }
+    } catch {
+      // Fallback: direkt öffnen
+      window.open(docUrl, '_blank');
+      setExpandedDoc(null);
+    }
+    setPreviewLoading(false);
+  };
+
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
         {t('myevents.documents')}
       </div>
-      {documents.map((doc, i) => (
-        <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 6,
-          background: 'var(--dex-gray-100)', borderRadius: 8, textDecoration: 'none',
-          color: 'var(--dex-gray-700)', fontSize: '0.85rem', transition: 'background 0.15s',
-        }}>
-          <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
-          </span>
-          <span style={{ flex: 1, fontWeight: 500 }}>{doc.name}</span>
-          {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
-          <Icon iconName="OpenInNewWindow" style={{ fontSize: 14, color: 'var(--dex-green-dark, #6b9a1e)' }} />
-        </a>
-      ))}
+      {documents.map((doc, i) => {
+        const isExpanded = expandedDoc === doc.url;
+
+        return (
+          <div key={i} style={{ marginBottom: 6 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+              background: isExpanded ? 'var(--dex-green-light, #f0fdf4)' : 'var(--dex-gray-100)',
+              borderRadius: isExpanded ? '8px 8px 0 0' : 8,
+              cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+              transition: 'background 0.15s',
+            }} onClick={() => loadPreview(doc.url)}>
+              <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
+              </span>
+              <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
+              {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
+              <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green-dark)', fontSize: '0.72rem', textDecoration: 'none' }}>
+                <Icon iconName="Download" style={{ fontSize: 14 }} />
+              </a>
+              <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)' }}>{isExpanded ? '▲' : '▼'}</span>
+            </div>
+            {isExpanded && (
+              <div style={{
+                border: '1px solid var(--dex-gray-200)', borderTop: 'none',
+                borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
+              }}>
+                {previewLoading ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
+                    {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
+                  </div>
+                ) : previewUrl ? (
+                  <iframe
+                    src={previewUrl}
+                    style={{ width: '100%', height: 500, border: 'none' }}
+                    title={doc.name}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  />
+                ) : (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
+                    {t('myevents.agenda') === 'Programm' ? 'Vorschau nicht verfügbar' : 'Preview not available'}
+                    <br />
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark)', marginTop: 8, display: 'inline-block' }}>
+                      {t('myevents.agenda') === 'Programm' ? 'Im Browser öffnen' : 'Open in browser'}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
