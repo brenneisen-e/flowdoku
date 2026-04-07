@@ -635,6 +635,78 @@ export class EventService {
   }
 
   /**
+   * Logos als Base64 in die _Config Zeile schreiben (fuer Power Automate Flows).
+   * Laedt Deloitte_Logo.png und dex-orb.png aus SiteAssets/DEX_Logos,
+   * konvertiert zu Base64 Data-URI und speichert in LogoBase64/DefaultImageBase64.
+   */
+  public async ensureLogosInConfig(): Promise<void> {
+    try {
+      // 1. _Config Zeile lesen
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      const configItem = items[0];
+      if (!configItem) return;
+
+      // 2. Wenn LogoBase64 schon befuellt ist, nichts tun
+      if (configItem.LogoBase64) return;
+
+      // 3. Bilder aus SiteAssets laden
+      const logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png');
+      const orbBase64 = await this.loadFileAsBase64('DEX_Logos/dex-orb.png');
+      if (!logoBase64 && !orbBase64) return;
+
+      // 4. In _Config Zeile schreiben (ueber die getestete _post/_merge Methode)
+      const configId = configItem.Id || configItem.d?.Id;
+      if (!configId) return;
+
+      const updatePayload: Record<string, unknown> = {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
+      };
+      if (logoBase64) updatePayload['LogoBase64'] = logoBase64;
+      if (orbBase64) updatePayload['DefaultImageBase64'] = orbBase64;
+
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+            'odata-version': '',
+          },
+          body: JSON.stringify(updatePayload),
+        }
+      );
+    } catch { /* Logo-Provisioning fehlgeschlagen - nicht kritisch */ }
+  }
+
+  /**
+   * Datei aus SiteAssets als Base64 Data-URI laden.
+   */
+  private async loadFileAsBase64(path: string): Promise<string> {
+    try {
+      const serverRelativeUrl = this.context.pageContext.web.serverRelativeUrl;
+      const fileUrl = `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelativeUrl}/SiteAssets/${path}')/$value`;
+      const resp = await this.context.spHttpClient.get(fileUrl, SPHttpClient.configurations.v1);
+      if (!resp.ok) return '';
+      const blob = await resp.blob();
+      return await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
+    } catch { return ''; }
+  }
+
+  /**
    * Email-Template aus DEX_EmailTemplates laden.
    * Fallback auf eingebautes Template wenn nicht gefunden.
    */
