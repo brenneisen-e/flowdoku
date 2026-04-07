@@ -336,7 +336,9 @@ export default function MyEventsPage(): React.ReactElement {
                             display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0',
                             borderLeft: '2px solid var(--dex-green)', marginLeft: 8, paddingLeft: 12,
                           }}>
-                            <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 16, color: 'var(--dex-green)', flexShrink: 0 }} />
+                            <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 14, color: '#fff' }} />
+                            </span>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.82rem' }}>
                                 <strong>{item.time}{item.endTime ? ` – ${item.endTime}` : ''}</strong>
