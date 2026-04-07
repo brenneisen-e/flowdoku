@@ -1176,6 +1176,7 @@ export class EventService {
         'MaxParticipants': event.maxParticipants,
         'WaitlistEnabled': event.waitlistEnabled,
         'EventImageUrl': event.eventImageUrl,
+        'EmailImageBase64': '', // Wird ggf. separat gesetzt, Flow nutzt Default aus Config
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
