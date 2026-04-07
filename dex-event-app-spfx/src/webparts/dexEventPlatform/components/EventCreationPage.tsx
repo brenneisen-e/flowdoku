@@ -17,8 +17,49 @@ import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
-import { IconPicker } from '@pnp/spfx-controls-react/lib/controls/iconPicker';
 import { Icon } from '@fluentui/react/lib/Icon';
+
+// Curated Fluent UI Icons fuer Agenda-Programmpunkte
+const AGENDA_ICONS: Array<{ name: string; label: string; category: string }> = [
+  // Vorträge & Meetings
+  { name: 'Microphone', label: 'Vortrag', category: 'meeting' },
+  { name: 'People', label: 'Meeting', category: 'meeting' },
+  { name: 'PeopleTeam', label: 'Team', category: 'meeting' },
+  { name: 'Presentation', label: 'Präsentation', category: 'meeting' },
+  { name: 'Chat', label: 'Diskussion', category: 'meeting' },
+  // Pausen & Essen
+  { name: 'CoffeeScript', label: 'Kaffeepause', category: 'break' },
+  { name: 'EatDrink', label: 'Essen', category: 'break' },
+  { name: 'Breakfast', label: 'Frühstück', category: 'break' },
+  { name: 'DrinkBeer', label: 'Getränke', category: 'break' },
+  // Aktivitäten
+  { name: 'Running', label: 'Sport/Lauf', category: 'activity' },
+  { name: 'Cycling', label: 'Radfahren', category: 'activity' },
+  { name: 'Trophy', label: 'Award', category: 'activity' },
+  { name: 'Balloons', label: 'Feier', category: 'activity' },
+  { name: 'MusicNote', label: 'Musik', category: 'activity' },
+  // Organisation
+  { name: 'Calendar', label: 'Termin', category: 'org' },
+  { name: 'Clock', label: 'Uhrzeit', category: 'org' },
+  { name: 'CheckMark', label: 'Check-in', category: 'org' },
+  { name: 'MapPin', label: 'Ort', category: 'org' },
+  { name: 'Car', label: 'Anfahrt', category: 'org' },
+  { name: 'Bus', label: 'Bus/Transfer', category: 'org' },
+  { name: 'Airplane', label: 'Flug', category: 'org' },
+  { name: 'Hotel', label: 'Hotel', category: 'org' },
+  // Workshops & Arbeit
+  { name: 'Edit', label: 'Workshop', category: 'work' },
+  { name: 'Lightbulb', label: 'Ideen', category: 'work' },
+  { name: 'Code', label: 'Tech', category: 'work' },
+  { name: 'BookOpen', label: 'Schulung', category: 'work' },
+  { name: 'Document', label: 'Dokument', category: 'work' },
+  // Allgemein
+  { name: 'Info', label: 'Info', category: 'general' },
+  { name: 'Star', label: 'Highlight', category: 'general' },
+  { name: 'Heart', label: 'Social', category: 'general' },
+  { name: 'Camera', label: 'Foto', category: 'general' },
+  { name: 'Flag', label: 'Flagge', category: 'general' },
+];
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -169,6 +210,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [submitted, setSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
   const [imageUploadError, setImageUploadError] = React.useState('');
+  const [iconPickerOpen, setIconPickerOpen] = React.useState<string | null>(null);
+  const [iconSearch, setIconSearch] = React.useState('');
 
   const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
 
@@ -977,16 +1020,57 @@ export default function EventCreationPage(): React.ReactElement {
                     border: '1px solid var(--dex-gray-200)',
                   }}>
                     {/* Icon Picker */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
                       <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
-                      <IconPicker
-                        buttonLabel=""
-                        currentIcon={item.icon || 'Calendar'}
-                        onSave={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
-                        onChange={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
-                        buttonClassName=""
-                        renderOption="panel"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); }}
+                        style={{
+                          width: 40, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: '1px solid var(--dex-gray-300)', borderRadius: 'var(--dex-radius)',
+                          background: iconPickerOpen === item.id ? 'var(--dex-gray-100)' : '#fff', cursor: 'pointer',
+                        }}
+                        title={item.icon || 'Calendar'}
+                      >
+                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: 'var(--dex-gray-700)' }} />
+                      </button>
+                      {iconPickerOpen === item.id && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 8,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 8, width: 280,
+                        }}>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder={t('create.agenda.icon') + '...'}
+                            value={iconSearch}
+                            onChange={e => setIconSearch(e.target.value)}
+                            style={{ fontSize: '0.8rem', padding: '4px 8px', marginBottom: 6 }}
+                            autoFocus
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
+                            {AGENDA_ICONS
+                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
+                              .map(ic => (
+                                <button
+                                  key={ic.name}
+                                  type="button"
+                                  title={ic.label}
+                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 40, height: 36, border: item.icon === ic.name ? '2px solid var(--dex-green)' : '1px solid transparent',
+                                    borderRadius: 6, cursor: 'pointer', background: item.icon === ic.name ? 'var(--dex-green-light, #f0fdf4)' : 'transparent',
+                                  }}
+                                >
+                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: 'var(--dex-gray-700)' }} />
+                                </button>
+                              ))
+                            }
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Date */}
