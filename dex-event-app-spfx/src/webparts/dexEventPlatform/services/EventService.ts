@@ -53,6 +53,8 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
+  Transfers: string; // JSON-Array mit Transferzeiten
+  Documents: string; // JSON-Array mit Dokumenten
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
@@ -1085,6 +1087,8 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
+      { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
+      { title: 'Documents', type: 3 }, // JSON-Array mit Dokumenten
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
       { title: 'SubsiteUrl', type: 2 },
@@ -1231,7 +1235,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -1290,6 +1294,8 @@ export class EventService {
     outlookEventId: string;
     outlookBody: string;
     agenda?: string; // JSON-Array mit Agenda-Eintraegen
+    transfers?: string; // JSON-Array mit Transferzeiten
+    documents?: string; // JSON-Array mit Dokumenten
     emailLanguage?: string;
     emailTemplateOverrides?: string;
     customFields: CustomField[];
@@ -1357,6 +1363,8 @@ export class EventService {
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
+        'Transfers': event.transfers || '[]',
+        'Documents': event.documents || '[]',
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
@@ -2274,6 +2282,27 @@ export class EventService {
       console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
       return null;
     }
+  }
+
+  /**
+   * Dokument in die Shared Documents Bibliothek einer Event-Subsite hochladen.
+   */
+  public async uploadEventDocument(subsiteUrl: string, file: File): Promise<string> {
+    try {
+      const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
+      const buffer = await file.arrayBuffer();
+      const serverRelUrl = subsiteUrl.replace(/^https?:\/\/[^/]+/, '');
+      const response = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/Shared Documents')/Files/add(url='${fileName}',overwrite=true)`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/octet-stream' }, body: buffer }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+      }
+    } catch { /* */ }
+    return '';
   }
 
   // ==================== Profil-Daten ====================

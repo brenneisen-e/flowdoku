@@ -51,6 +51,8 @@ export interface CreateEventInput {
   outlookEventId: string;
   outlookBody: string;
   agenda?: string; // JSON-Array mit Agenda-Eintraegen
+  transfers?: string; // JSON-Array mit Transferzeiten
+  documents?: string; // JSON-Array mit Dokumenten
   emailLanguage?: string;
   emailTemplateOverrides?: string;
   customFields: CustomField[];
