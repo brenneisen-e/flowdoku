@@ -73,16 +73,10 @@ function getDocIconName(name: string): string {
 }
 
 function getPreviewUrl(url: string): string {
-  // SharePoint Office Online Preview fuer Office-Dokumente
-  const ext = url.split('.').pop()?.toLowerCase().split('?')[0] || '';
-  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) {
-    // WopiFrame fuer Office-Dokumente
-    const origin = url.match(/^https?:\/\/[^/]+/)?.[0] || '';
-    const path = url.replace(origin, '');
-    return `${origin}/_layouts/15/WopiFrame.aspx?sourcedoc=${encodeURIComponent(path)}&action=view`;
-  }
-  // PDFs und Bilder direkt im iframe
-  return url;
+  // SharePoint WopiFrame fuer alle Dokumente (PDF, Office)
+  const origin = url.match(/^https?:\/\/[^/]+/)?.[0] || '';
+  const path = url.replace(origin, '');
+  return `${origin}/_layouts/15/WopiFrame.aspx?sourcedoc=${encodeURIComponent(path)}&action=embedview`;
 }
 
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
