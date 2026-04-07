@@ -30,7 +30,18 @@ export interface DeloitteEvent {
   outlookBody: string;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
+  agenda: AgendaItem[];
   eventSpecificFields: EventSpecificField[];
+}
+
+export interface AgendaItem {
+  id: string;
+  date: string;        // YYYY-MM-DD
+  time: string;         // HH:mm
+  endTime?: string;     // HH:mm
+  icon: string;         // Emoji
+  title: string;
+  description?: string;
 }
 
 export interface EventSpecificField {

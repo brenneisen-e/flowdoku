@@ -112,6 +112,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'myevents.location': 'Ort',
     'myevents.date': 'Datum',
     'myevents.registeredon': 'Angemeldet am',
+    'myevents.agenda': 'Programm',
 
     // Admin Page
     'admin.title': 'Admin / Organizer',
@@ -198,6 +199,14 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Warteliste': 'Warteliste-Bestätigung',
     'create.tpl.Abmeldung': 'Abmeldebestätigung',
     'create.tpl.Nachrücken': 'Nachrücken',
+    'create.agenda': 'Agenda',
+    'create.agenda.add': 'Programmpunkt hinzufügen',
+    'create.agenda.icon': 'Icon',
+    'create.agenda.date': 'Datum',
+    'create.agenda.time': 'Uhrzeit',
+    'create.agenda.endtime': 'Ende',
+    'create.agenda.title': 'Titel',
+    'create.agenda.desc': 'Beschreibung (optional)',
 
     // Check-in
     'checkin.title': 'Check-in',

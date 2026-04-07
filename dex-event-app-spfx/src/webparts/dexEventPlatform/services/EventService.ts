@@ -52,6 +52,7 @@ export interface SPEvent {
   EmailLanguage: string; // DE oder EN
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
+  Agenda: string; // JSON-Array mit Agenda-Eintraegen
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
@@ -1083,6 +1084,7 @@ export class EventService {
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'CustomFields', type: 3 },
+      { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
       { title: 'SubsiteUrl', type: 2 },
@@ -1229,7 +1231,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,RegistrationListName,SubsiteUrl';
 
   /**
    * Alle Events laden
@@ -1287,6 +1289,7 @@ export class EventService {
     organizerEmail: string;
     outlookEventId: string;
     outlookBody: string;
+    agenda?: string; // JSON-Array mit Agenda-Eintraegen
     emailLanguage?: string;
     emailTemplateOverrides?: string;
     customFields: CustomField[];
@@ -1353,6 +1356,7 @@ export class EventService {
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
+        'Agenda': event.agenda || '[]',
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,

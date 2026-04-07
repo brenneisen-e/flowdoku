@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
-import { EventType } from '../types';
+import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -137,6 +137,9 @@ export default function EventCreationPage(): React.ReactElement {
   });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  const [agenda, setAgenda] = React.useState<AgendaItem[]>(
+    editEvent && editEvent.agenda ? [...editEvent.agenda] : []
+  );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
@@ -228,6 +231,39 @@ export default function EventCreationPage(): React.ReactElement {
     setCustomFields(updated);
   };
 
+  // ===== Agenda helpers =====
+  const agendaIcons = [
+    { emoji: '🎤', label: 'Vortrag' },
+    { emoji: '🍽️', label: 'Essen' },
+    { emoji: '☕', label: 'Pause' },
+    { emoji: '🏃', label: 'Aktivität' },
+    { emoji: '📝', label: 'Workshop' },
+    { emoji: '🎉', label: 'Networking' },
+    { emoji: '🚌', label: 'Transfer' },
+    { emoji: '🏨', label: 'Hotel' },
+    { emoji: '📋', label: 'Sonstiges' },
+  ];
+
+  const addAgendaItem = (): void => {
+    setAgenda([...agenda, {
+      id: `ag-${Date.now()}`,
+      date: startDate ? startDate.slice(0, 10) : '',
+      time: '',
+      endTime: '',
+      icon: '📋',
+      title: '',
+      description: '',
+    }]);
+  };
+
+  const removeAgendaItem = (id: string): void => {
+    setAgenda(agenda.filter(a => a.id !== id));
+  };
+
+  const updateAgendaItem = (id: string, updates: Partial<AgendaItem>): void => {
+    setAgenda(agenda.map(a => a.id === id ? { ...a, ...updates } : a));
+  };
+
   const handleSubmit = async (): Promise<void> => {
     if (!title || !description) return;
     setIsSubmitting(true);
@@ -275,6 +311,7 @@ export default function EventCreationPage(): React.ReactElement {
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
         'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
+        'Agenda': JSON.stringify(agenda),
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -332,6 +369,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: currentUser.email,
         outlookEventId: '',
         outlookBody,
+        agenda: JSON.stringify(agenda),
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
           ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
@@ -880,6 +918,82 @@ export default function EventCreationPage(): React.ReactElement {
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
+
+              {/* ===== Agenda Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.agenda')}
+                  <span className="info-icon" title="Programmablauf / Timeline des Events" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                {agenda
+                  .slice()
+                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+                  .map((item) => (
+                  <div key={item.id} style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                    padding: '10px 12px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Icon Picker */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 48 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
+                      <select
+                        value={item.icon}
+                        onChange={e => updateAgendaItem(item.id, { icon: e.target.value })}
+                        style={{ fontSize: '1.1rem', padding: '4px', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', background: '#fff', width: 52 }}
+                      >
+                        {agendaIcons.map(ic => (
+                          <option key={ic.emoji} value={ic.emoji}>{ic.emoji} {ic.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
+                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Start Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
+                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* End Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
+                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
+                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
+                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                      }} title={t('general.delete')}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.agenda.add')}
+                </button>
+              </div>
 
               </div>
 

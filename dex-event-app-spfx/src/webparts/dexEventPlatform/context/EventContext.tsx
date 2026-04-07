@@ -50,6 +50,7 @@ export interface CreateEventInput {
   organizerEmail: string;
   outlookEventId: string;
   outlookBody: string;
+  agenda?: string; // JSON-Array mit Agenda-Eintraegen
   emailLanguage?: string;
   emailTemplateOverrides?: string;
   customFields: CustomField[];
@@ -169,6 +170,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       outlookBody: e.OutlookBody || '',
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
+      agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,
