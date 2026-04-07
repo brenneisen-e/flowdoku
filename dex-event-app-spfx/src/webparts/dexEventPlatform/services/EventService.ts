@@ -652,8 +652,8 @@ export class EventService {
       const configItem = items[0];
       if (!configItem) return;
 
-      // 2. Wenn LogoBase64 schon befuellt ist, nichts tun
-      if (configItem.LogoBase64) return;
+      // 2. Wenn LogoBase64 schon korrekt befuellt ist (mit image/ MIME-Type), nichts tun
+      if (configItem.LogoBase64 && configItem.LogoBase64.startsWith('data:image/')) return;
 
       // 3. Bilder aus SiteAssets laden
       const logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png');
@@ -707,11 +707,15 @@ export class EventService {
       }
       const blob = await resp.blob();
       if (!blob || blob.size === 0) return '';
+      // MIME-Type aus Dateiendung ableiten (SPHttpClient gibt oft application/octet-stream)
+      const ext = path.split('.').pop()?.toLowerCase();
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : blob.type;
+      const correctBlob = (blob.type !== mimeType) ? new Blob([blob], { type: mimeType }) : blob;
       return await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string || '');
         reader.onerror = () => resolve('');
-        reader.readAsDataURL(blob);
+        reader.readAsDataURL(correctBlob);
       });
     } catch (err) {
       console.warn('[DEX] loadFileAsBase64 Error:', path, err);
