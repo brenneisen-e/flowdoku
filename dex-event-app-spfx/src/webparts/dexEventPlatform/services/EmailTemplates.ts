@@ -299,7 +299,7 @@ export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: str
     if (response.ok) {
       const data = await response.json();
       const items = data.value || data.d?.results || [];
-      if (items[0]?.LogoBase64) {
+      if (items[0]?.LogoBase64 && items[0].LogoBase64.startsWith('data:image/')) {
         cachedLogoBase64 = items[0].LogoBase64;
         return;
       }
