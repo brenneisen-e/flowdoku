@@ -7,7 +7,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { DeloitteEvent, EventSpecificField } from '../types';
+import { DeloitteEvent, EventSpecificField, AgendaItem } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -243,6 +243,46 @@ export default function MyEventsPage(): React.ReactElement {
                       </button>
                       <button className="btn btn-secondary" style={{ fontSize: '0.82rem' }} onClick={() => setEditingId(null)}>{t('general.cancel')}</button>
                     </div>
+                  </div>
+                )}
+
+                {/* Agenda / Timeline */}
+                {event.agenda && event.agenda.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+                      {t('myevents.agenda')}
+                    </div>
+                    {Object.entries(
+                      event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
+                        const key = item.date || 'TBD';
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(item);
+                        return groups;
+                      }, {} as Record<string, AgendaItem[]>)
+                    ).sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => (
+                      <div key={date} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--dex-green)', marginBottom: 4 }}>
+                          {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
+                        </div>
+                        {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
+                          <div key={item.id} style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0',
+                            borderLeft: '2px solid var(--dex-green)', marginLeft: 8, paddingLeft: 12,
+                          }}>
+                            <span style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon || '📋'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.82rem' }}>
+                                <strong>{item.time}{item.endTime ? ` – ${item.endTime}` : ''}</strong>
+                                <span style={{ marginLeft: 8 }}>{item.title}</span>
+                              </div>
+                              {item.description && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 )}
 

@@ -357,6 +357,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'myevents.location': 'Location',
     'myevents.date': 'Date',
     'myevents.registeredon': 'Registered on',
+    'myevents.agenda': 'Schedule',
 
     // Admin Page
     'admin.title': 'Admin / Organizer',
@@ -443,6 +444,14 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Warteliste': 'Waitlist Confirmation',
     'create.tpl.Abmeldung': 'Cancellation Confirmation',
     'create.tpl.Nachrücken': 'Waitlist Promotion',
+    'create.agenda': 'Agenda',
+    'create.agenda.add': 'Add agenda item',
+    'create.agenda.icon': 'Icon',
+    'create.agenda.date': 'Date',
+    'create.agenda.time': 'Time',
+    'create.agenda.endtime': 'End',
+    'create.agenda.title': 'Title',
+    'create.agenda.desc': 'Description (optional)',
 
     // Check-in
     'checkin.title': 'Check-in',
