@@ -83,7 +83,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureEmailTemplatesList(); } catch { /* */ }
     try { await eventService.ensureIDReorderList(); } catch { /* */ }
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
-    try { await eventService.ensureEventDocsLibrary(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
     await loadEvents();
