@@ -1064,7 +1064,7 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{
                           width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
                           border: 'none', borderRadius: '50%',
-                          background: 'var(--dex-green, #86bc25)', cursor: 'pointer',
+                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
                         }}
                         title={item.icon || 'Calendar'}
                       >
@@ -1097,7 +1097,7 @@ export default function EventCreationPage(): React.ReactElement {
                                   style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
-                                    background: item.icon === ic.name ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-100, #f3f3f3)',
+                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
                                     transition: 'background 0.15s, transform 0.1s',
                                   }}
                                 >
