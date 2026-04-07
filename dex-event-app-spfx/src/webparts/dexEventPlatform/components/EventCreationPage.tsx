@@ -14,7 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
 import { EventType } from '../types';
-import { Trash2, Send, Plus, X, ChevronUp, ChevronDown, Users, Mail } from './Icons';
+import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 
 /**
@@ -69,7 +69,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { events, createEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
@@ -88,7 +88,6 @@ export default function EventCreationPage(): React.ReactElement {
   const [organizer, setOrganizer] = React.useState(
     editEvent ? editEvent.organizers.join(', ') : `${currentUser.firstName} ${currentUser.surname}`
   );
-  const [organizerQuery, setOrganizerQuery] = React.useState('');
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -377,7 +376,7 @@ export default function EventCreationPage(): React.ReactElement {
         <div className="card" style={{ padding: '64px 32px' }}>
           <h2>{isEditMode ? 'Event erfolgreich aktualisiert!' : 'Event erfolgreich erstellt!'}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            "{title}" wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
+            &bdquo;{title}&ldquo; wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('register')}>Events anzeigen</button>
@@ -679,7 +678,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   Standardmäßig können <strong>alle Mitarbeiter</strong> dieses Event sehen. Wenn du hier Standorte auswählst, wird das Event <strong>nur für Mitarbeiter dieser Standorte</strong> sichtbar.<br />
-                  <em>Beispiel: Du wählst "Köln" und "Düsseldorf" → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
+                  <em>Beispiel: Du wählst &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {locationOptions.map(loc => (
@@ -720,7 +719,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   Hier kannst du <strong>zusätzliche Personen oder Gruppen</strong> einladen, die das Event sehen sollen — unabhängig vom Standort.<br />
-                  <em>Beispiel: Du trägst "SAPALL" ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
+                  <em>Beispiel: Du trägst &bdquo;SAPALL&ldquo; ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
                 </p>
                 <input
                   className="form-input"

@@ -233,7 +233,7 @@ export class SharePointService {
       const readRoleId = 1073741826;
 
       // Leseberechtigung setzen
-      const response = await this._post(
+      await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/roleassignments/addroleassignment(principalid=${userId}, roledefid=${readRoleId})`,
         {}
       );

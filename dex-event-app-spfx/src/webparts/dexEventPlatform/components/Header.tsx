@@ -14,7 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Mail } from './Icons';
 
 export default function Header(): React.ReactElement {
-  const { currentPage, navigate, goBack } = useNavigation();
+  const { currentPage, navigate } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, isAdmin } = useRoles();
   const { t } = useLanguage();

@@ -12,11 +12,9 @@ import { SPHttpClient } from '@microsoft/sp-http';
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
 const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
-const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
-
-// Gecachte Base64-Bilder aus DEX_EmailTemplates (_Config)
+// Gecachtes Logo Base64 aus DEX_EmailTemplates (_Config)
+// ORB/Event-Bild wird NICHT gecacht - der Flow setzt das event-spezifische Bild ein
 let cachedLogoBase64 = '';
-let cachedOrbBase64 = '';
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -54,7 +52,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="${cachedOrbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -118,9 +116,9 @@ export function replacePlaceholders(text: string, vars: Record<string, string>):
   for (const [key, value] of Object.entries(vars)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value));
   }
-  // Logo-URLs ersetzen
-  result = result.replace(/\{\{LOGO_URL\}\}/g, `${LOGOS_URL}/deloitte-logo-white.png`);
-  result = result.replace(/\{\{ORB_URL\}\}/g, `${LOGOS_URL}/dex-orb.png`);
+  // Logo Base64 aus DEX_EmailTemplates Cache ersetzen
+  // ORB_URL bleibt als Platzhalter - der Flow ersetzt ihn mit dem event-spezifischen Bild
+  if (cachedLogoBase64) result = result.replace(/\{\{LOGO_URL\}\}/g, cachedLogoBase64);
   return result;
 }
 
@@ -293,7 +291,7 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
  * die Bilder eingebettet haben statt nur Platzhalter.
  */
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
-  if (cachedLogoBase64 && cachedOrbBase64) return; // bereits geladen
+  if (cachedLogoBase64) return; // bereits geladen
 
   const url = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1`;
   const response = await spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -303,7 +301,6 @@ export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: str
     const item = items[0];
     if (item) {
       cachedLogoBase64 = item.LogoBase64 || '';
-      cachedOrbBase64 = item.DefaultImageBase64 || '';
     }
   }
 }

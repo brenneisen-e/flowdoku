@@ -82,7 +82,8 @@ export default function AdminPage(): React.ReactElement {
   };
 
   // Teilnehmerlisten-URL aus regListMap ableiten
-  const getRegListUrl = (event: DeloitteEvent): string => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const getRegListUrl = (_event: DeloitteEvent): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ctx = (window as any).__dexSpfxContext;
     const base = ctx ? ctx.pageContext.web.absoluteUrl : siteUrl;

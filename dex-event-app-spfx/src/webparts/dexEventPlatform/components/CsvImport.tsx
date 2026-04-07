@@ -178,7 +178,7 @@ interface Props {
   siteUrl: string;
 }
 
-export default function CsvImport({ siteUrl }: Props): React.ReactElement {
+export default function CsvImport({ siteUrl: _siteUrl }: Props): React.ReactElement {
   const [isOpen, setIsOpen] = React.useState(false);
   const [csvEvents, setCsvEvents] = React.useState<CsvEvent[]>([]);
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -296,7 +296,7 @@ export default function CsvImport({ siteUrl }: Props): React.ReactElement {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', position: 'sticky', top: 0, background: '#fff' }}>
-                      <th style={{ padding: 6, width: 30 }}></th>
+                      <th style={{ padding: 6, width: 30 }} />
                       <th style={{ textAlign: 'left', padding: 6 }}>Titel</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>Typ</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>Status</th>

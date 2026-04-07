@@ -10,7 +10,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
-import { EventService, SPRegistration } from '../services/EventService';
+import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 import QrScanner from 'qr-scanner';
 
@@ -46,7 +46,8 @@ export default function CheckInPage(): React.ReactElement {
     return /SharePoint/i.test(ua) && /Mobile|Android|iPhone|iPad/i.test(ua);
   }, []);
 
-  // URL fuer den Browser-Link generieren
+  // URL fuer den Browser-Link generieren (fuer zukuenftige Nutzung)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getBrowserUrl = (): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ctx = (window as any).__dexSpfxContext;
@@ -57,7 +58,8 @@ export default function CheckInPage(): React.ReactElement {
     return window.location.href;
   };
 
-  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets)
+  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets, fuer zukuenftige Nutzung)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openExternalScanner = (): void => {
     const checkinUrl = `${siteUrl}/SiteAssets/checkin.aspx`;
     const params = new URLSearchParams();
