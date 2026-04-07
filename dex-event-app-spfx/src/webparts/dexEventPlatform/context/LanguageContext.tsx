@@ -173,6 +173,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.step.capacity': 'Kapazität',
     'create.step.fields': 'Felder',
     'create.step.communication': 'Kommunikation',
+    'create.error.required': 'Pflichtfeld',
+    'create.error.endBeforeStart': 'Das Enddatum muss nach dem Startdatum liegen.',
+    'create.error.deadlineAfterStart': 'Die Anmelde-Deadline muss vor dem Startdatum liegen.',
+    'create.error.deregAfterStart': 'Die Abmeldefrist muss vor dem Startdatum liegen.',
 
     // Check-in
     'checkin.title': 'Check-in',
@@ -384,6 +388,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.step.capacity': 'Capacity',
     'create.step.fields': 'Fields',
     'create.step.communication': 'Communication',
+    'create.error.required': 'Required',
+    'create.error.endBeforeStart': 'End date must be after start date.',
+    'create.error.deadlineAfterStart': 'Registration deadline must be before start date.',
+    'create.error.deregAfterStart': 'Cancellation deadline must be before start date.',
 
     // Check-in
     'checkin.title': 'Check-in',
