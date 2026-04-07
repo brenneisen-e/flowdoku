@@ -173,6 +173,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
+      transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
+      documents: (() => { try { return e.Documents ? JSON.parse(e.Documents) : []; } catch { return []; } })(),
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,

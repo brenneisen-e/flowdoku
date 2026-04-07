@@ -7,7 +7,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { DeloitteEvent, EventSpecificField, AgendaItem } from '../types';
+import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -57,6 +57,78 @@ function getStatusLabel(status: string, t: (key: string) => string): string {
     case 'Eingecheckt': return t('status.checkedin');
     default: return status;
   }
+}
+
+function getDocIcon(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  switch (ext) {
+    case 'pdf': return '📕';
+    case 'doc': case 'docx': return '📘';
+    case 'xls': case 'xlsx': return '📗';
+    case 'ppt': case 'pptx': return '📙';
+    case 'jpg': case 'jpeg': case 'png': case 'gif': return '🖼️';
+    default: return '📄';
+  }
+}
+
+function getPreviewUrl(url: string): string {
+  // SharePoint Office Online Preview fuer Office-Dokumente
+  const ext = url.split('.').pop()?.toLowerCase().split('?')[0] || '';
+  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) {
+    // WopiFrame fuer Office-Dokumente
+    const origin = url.match(/^https?:\/\/[^/]+/)?.[0] || '';
+    const path = url.replace(origin, '');
+    return `${origin}/_layouts/15/WopiFrame.aspx?sourcedoc=${encodeURIComponent(path)}&action=view`;
+  }
+  // PDFs und Bilder direkt im iframe
+  return url;
+}
+
+function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
+  const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+        {t('myevents.documents')}
+      </div>
+      {documents.map((doc, i) => {
+        const isExpanded = expandedDoc === doc.url;
+        const ext = doc.name.split('.').pop()?.toLowerCase() || '';
+        const canPreview = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif'].includes(ext);
+
+        return (
+          <div key={i} style={{ marginBottom: 6 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+              background: isExpanded ? 'var(--dex-green-light, #f0fdf4)' : 'var(--dex-gray-100)',
+              borderRadius: isExpanded ? '8px 8px 0 0' : 8,
+              cursor: 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+              transition: 'background 0.15s',
+            }} onClick={() => canPreview ? setExpandedDoc(isExpanded ? null : doc.url) : window.open(doc.url, '_blank')}>
+              <span>{getDocIcon(doc.name)}</span>
+              <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
+              {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
+              <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green)', fontSize: '0.72rem', textDecoration: 'none' }}>↓</a>
+              {canPreview && <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)' }}>{isExpanded ? '▲' : '▼'}</span>}
+            </div>
+            {isExpanded && (
+              <div style={{
+                border: '1px solid var(--dex-gray-200)', borderTop: 'none',
+                borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
+              }}>
+                <iframe
+                  src={getPreviewUrl(doc.url)}
+                  style={{ width: '100%', height: 500, border: 'none' }}
+                  title={doc.name}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function MyEventsPage(): React.ReactElement {
@@ -284,6 +356,29 @@ export default function MyEventsPage(): React.ReactElement {
                       </div>
                     ))}
                   </div>
+                )}
+
+                {/* Transferzeiten */}
+                {event.transferTimes && event.transferTimes.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+                      {t('myevents.transfers')}
+                    </div>
+                    {event.transferTimes.sort((a: TransferTime, b: TransferTime) => (a.date + a.departureTime).localeCompare(b.date + b.departureTime)).map((tr: TransferTime) => (
+                      <div key={tr.id} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: '0.82rem', borderLeft: '2px solid var(--dex-orange)', marginLeft: 8, paddingLeft: 12 }}>
+                        <span>🚌</span>
+                        <div>
+                          <strong>{tr.location}</strong> – {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit'})}, {tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''}
+                          {tr.description && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8 }}>{tr.description}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Dokumente mit Viewer */}
+                {event.documents && event.documents.length > 0 && (
+                  <DocumentsViewer documents={event.documents} t={t} />
                 )}
 
                 {/* Registriert am + Aktionen */}

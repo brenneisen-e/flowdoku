@@ -2285,23 +2285,48 @@ export class EventService {
   }
 
   /**
-   * Dokument in die Shared Documents Bibliothek einer Event-Subsite hochladen.
+   * Dokument in SiteAssets/DEX_EventDocs/Event_{eventNumber}/ hochladen.
+   * Erstellt den Ordner automatisch falls nicht vorhanden.
    */
-  public async uploadEventDocument(subsiteUrl: string, file: File): Promise<string> {
+  public async uploadEventDocument(eventNumber: number, file: File): Promise<string> {
     try {
+      const folderName = `DEX_EventDocs/Event_${eventNumber}`;
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      const folderPath = `${serverRelUrl}/SiteAssets/${folderName}`;
+
+      // Ordner erstellen falls nicht vorhanden
+      try {
+        const check = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`,
+          SPHttpClient.configurations.v1
+        );
+        if (!check.ok) {
+          try {
+            await this._post(`${this.siteUrl}/_api/web/folders`, {
+              '__metadata': { 'type': 'SP.Folder' },
+              'ServerRelativeUrl': `${serverRelUrl}/SiteAssets/DEX_EventDocs`,
+            });
+          } catch { /* existiert bereits */ }
+          await this._post(`${this.siteUrl}/_api/web/folders`, {
+            '__metadata': { 'type': 'SP.Folder' },
+            'ServerRelativeUrl': folderPath,
+          });
+        }
+      } catch { /* Ordner existiert bereits */ }
+
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
       const buffer = await file.arrayBuffer();
-      const serverRelUrl = subsiteUrl.replace(/^https?:\/\/[^/]+/, '');
       const response = await this.context.spHttpClient.post(
-        `${subsiteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/Shared Documents')/Files/add(url='${fileName}',overwrite=true)`,
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${fileName}',overwrite=true)`,
         SPHttpClient.configurations.v1,
         { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/octet-stream' }, body: buffer }
       );
       if (response.ok) {
         const data = await response.json();
-        return data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        return relUrl ? `${window.location.origin}${relUrl}` : '';
       }
-    } catch { /* */ }
+    } catch { /* Upload fehlgeschlagen */ }
     return '';
   }
 
