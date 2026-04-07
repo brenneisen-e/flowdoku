@@ -1291,7 +1291,9 @@ export class EventService {
               return hasRegistered || hasWaitlist;
             })
             .map(p => this.removeParticipantEvent(p.Email, event.EventNumber));
-          await Promise.all(updatePromises);
+          // Promise.all mit individueller Fehlerbehandlung (Promise.allSettled nicht verfuegbar in ES2017)
+          const safePromises = updatePromises.map(p => p.catch(() => null));
+          await Promise.all(safePromises);
         } catch {
           console.warn('[DEX] DEX_Participants konnte nicht aufgeraeumt werden');
         }
@@ -1654,7 +1656,7 @@ export class EventService {
         if (maxResp.ok) {
           const maxData = await maxResp.json();
           const items = maxData.value || maxData.d?.results || [];
-          if (items.length > 0 && items[0].TeilnehmerID) {
+          if (items.length > 0 && items[0].TeilnehmerID != null) {
             nextId = items[0].TeilnehmerID + 1;
           }
         }
@@ -1727,7 +1729,7 @@ export class EventService {
         if (maxResp.ok) {
           const maxData = await maxResp.json();
           const items = maxData.value || maxData.d?.results || [];
-          if (items.length > 0 && items[0].TeilnehmerID) {
+          if (items.length > 0 && items[0].TeilnehmerID != null) {
             nextId = items[0].TeilnehmerID + 1;
           }
         }

@@ -80,7 +80,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     return () => {
       setPhotoUrl(prev => {
         if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
-        return prev;
+        return '';
       });
     };
   }, []);
