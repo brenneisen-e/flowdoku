@@ -376,6 +376,20 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
+  // Templates laden wenn Step 4 (Kommunikation) erreicht wird
+  // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
+  // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
+  React.useEffect(() => {
+    if (currentStep === 4 && emailTemplates.length === 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const svc = new EventService(ctx);
+        svc.getAllEmailTemplates().then(setEmailTemplates).catch(() => { /* Templates nicht verfuegbar */ });
+      }
+    }
+  }, [currentStep]);
+
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -489,18 +503,6 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.fields'), icon: '4' },
     { label: t('create.step.communication'), icon: '✉' },
   ];
-
-  // Templates laden wenn Step 4 (Kommunikation) erreicht wird
-  React.useEffect(() => {
-    if (currentStep === 4 && emailTemplates.length === 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ctx = (window as any).__dexSpfxContext;
-      if (ctx) {
-        const svc = new EventService(ctx);
-        svc.getAllEmailTemplates().then(setEmailTemplates).catch(err => console.warn('[DEX]', err));
-      }
-    }
-  }, [currentStep]);
 
   const getStepErrors = (): string[] => {
     const errors: string[] = [];
