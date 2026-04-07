@@ -1481,11 +1481,11 @@ export class EventService {
         }
       }
 
-      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}/)
+      // 4. Event-Dokumente loeschen (DEX_EventDocs/Event_{number}/)
       if (event.EventNumber) {
         try {
           const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-          const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}`;
+          const folderPath = `${serverRelUrl}/DEX_EventDocs/Event_${event.EventNumber}`;
           await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`);
         } catch {
           // Ordner existiert nicht oder konnte nicht geloescht werden - nicht kritisch
@@ -2296,28 +2296,40 @@ export class EventService {
   }
 
   /**
-   * Dokument in SiteAssets/DEX_EventDocs/Event_{eventNumber}/ hochladen.
-   * Erstellt den Ordner automatisch falls nicht vorhanden.
+   * DEX_EventDocs Document Library erstellen falls nicht vorhanden.
+   */
+  public async ensureEventDocsLibrary(): Promise<void> {
+    const libName = 'DEX_EventDocs';
+    const exists = await this.listExists(libName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': libName,
+      'Description': 'Dokumente für DEX Events (Agendas, Anfahrt, etc.)',
+      'BaseTemplate': 101, // Document Library
+      'AllowContentTypes': false,
+    });
+  }
+
+  /**
+   * Dokument in DEX_EventDocs/Event_{eventNumber}/ hochladen.
+   * Nutzt eine Document Library (nicht SiteAssets) fuer WopiFrame Preview.
    */
   public async uploadEventDocument(eventNumber: number, file: File): Promise<string> {
     try {
-      const folderName = `DEX_EventDocs/Event_${eventNumber}`;
-      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      const folderPath = `${serverRelUrl}/SiteAssets/${folderName}`;
+      await this.ensureEventDocsLibrary();
 
-      // Ordner erstellen falls nicht vorhanden
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      const folderPath = `${serverRelUrl}/DEX_EventDocs/Event_${eventNumber}`;
+
+      // Event-Ordner erstellen falls nicht vorhanden
       try {
         const check = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`,
           SPHttpClient.configurations.v1
         );
         if (!check.ok) {
-          try {
-            await this._post(`${this.siteUrl}/_api/web/folders`, {
-              '__metadata': { 'type': 'SP.Folder' },
-              'ServerRelativeUrl': `${serverRelUrl}/SiteAssets/DEX_EventDocs`,
-            });
-          } catch { /* existiert bereits */ }
           await this._post(`${this.siteUrl}/_api/web/folders`, {
             '__metadata': { 'type': 'SP.Folder' },
             'ServerRelativeUrl': folderPath,
