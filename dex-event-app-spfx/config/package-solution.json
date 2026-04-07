@@ -29,6 +29,14 @@
       {
         "resource": "Microsoft Graph",
         "scope": "User.Read"
+      },
+      {
+        "resource": "Microsoft Graph",
+        "scope": "Sites.Read.All"
+      },
+      {
+        "resource": "Microsoft Graph",
+        "scope": "Files.Read.All"
       }
     ],
     "features": [
