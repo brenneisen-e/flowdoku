@@ -631,7 +631,7 @@ export class EventService {
           });
         }
       }
-    } catch { /* Config-Setup fehlgeschlagen - nicht kritisch */ }
+    } catch (err) { console.warn('[DEX] ensureEmailTemplatesConfig fehlgeschlagen:', err); }
   }
 
   /**
@@ -684,7 +684,9 @@ export class EventService {
           body: JSON.stringify(updatePayload),
         }
       );
-    } catch { /* Logo-Provisioning fehlgeschlagen - nicht kritisch */ }
+    } catch (err) {
+      console.warn('[DEX] ensureLogosInConfig fehlgeschlagen:', err);
+    }
   }
 
   /**
@@ -694,16 +696,27 @@ export class EventService {
     try {
       const serverRelativeUrl = this.context.pageContext.web.serverRelativeUrl;
       const fileUrl = `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelativeUrl}/SiteAssets/${path}')/$value`;
-      const resp = await this.context.spHttpClient.get(fileUrl, SPHttpClient.configurations.v1);
-      if (!resp.ok) return '';
+
+      // SPHttpClient mit binaryStringResponseBody fuer Binary-Downloads
+      const resp = await this.context.spHttpClient.get(fileUrl, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': '*/*' },
+      } as ISPHttpClientOptions);
+      if (!resp.ok) {
+        console.warn('[DEX] loadFileAsBase64 fehlgeschlagen:', path, resp.status);
+        return '';
+      }
       const blob = await resp.blob();
+      if (!blob || blob.size === 0) return '';
       return await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string || '');
         reader.onerror = () => resolve('');
         reader.readAsDataURL(blob);
       });
-    } catch { return ''; }
+    } catch (err) {
+      console.warn('[DEX] loadFileAsBase64 Error:', path, err);
+      return '';
+    }
   }
 
   /**
