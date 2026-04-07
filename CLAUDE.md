@@ -67,6 +67,20 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 | DEX_Emails: Schreiben (Queue) | Nur eigene | Nur eigene | ✅ |
 | Event-Subsites: Full Control | ❌ | Eigene Events | ✅ |
 
+### Icons / Design
+
+**IMPORTANT:** KEINE Emojis im UI verwenden. Stattdessen ausschließlich **Fluent UI Icons** (modern, einfarbig, SVG):
+
+```tsx
+import { Icon } from '@fluentui/react/lib/Icon';
+<Icon iconName="Calendar" style={{ fontSize: 16, color: 'var(--dex-gray-500)' }} />
+```
+
+- Nutze `@fluentui/react/lib/Icon` mit `iconName` (z.B. `Calendar`, `MapPin`, `People`, `Document`)
+- Für Icon-Auswahl in der UI: `IconPicker` aus `@pnp/spfx-controls-react`
+- Alle Icons einfarbig, skalierbar, einheitliches Design
+- Keine Emoji-Symbole (❌ 📍📅🚌📄), stattdessen Fluent UI Icons (✅ MapPin, Calendar, Bus, Page)
+
 ### German Text / Sonderzeichen
 
 **IMPORTANT:** All user-facing text in components MUST use proper German characters (ä, ö, ü, ß). Never use ASCII substitutions (ae, oe, ue, ss) in visible UI text. Code comments may use ASCII substitutions if needed.

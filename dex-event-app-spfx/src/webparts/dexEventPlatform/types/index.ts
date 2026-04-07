@@ -30,7 +30,35 @@ export interface DeloitteEvent {
   outlookBody: string;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
+  agenda: AgendaItem[];
+  transferTimes: TransferTime[];
+  documents: EventDocument[];
   eventSpecificFields: EventSpecificField[];
+}
+
+export interface AgendaItem {
+  id: string;
+  date: string;        // YYYY-MM-DD
+  time: string;         // HH:mm
+  endTime?: string;     // HH:mm
+  icon: string;         // FluentUI icon name (z.B. 'Calendar', 'People', 'Food')
+  title: string;
+  description?: string;
+}
+
+export interface TransferTime {
+  id: string;
+  location: string;    // Office/Standort name (e.g. "Düsseldorf", "München")
+  date: string;        // YYYY-MM-DD
+  departureTime: string; // HH:mm
+  arrivalTime?: string;  // HH:mm
+  description?: string;  // e.g. "Treffpunkt Haupteingang"
+}
+
+export interface EventDocument {
+  name: string;
+  url: string;
+  size?: number;
 }
 
 export interface EventSpecificField {

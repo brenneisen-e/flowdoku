@@ -13,10 +13,12 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
-import { EventType } from '../types';
+import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
+import { IconPicker } from '@pnp/spfx-controls-react/lib/controls/iconPicker';
+import { Icon } from '@fluentui/react/lib/Icon';
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -137,6 +139,15 @@ export default function EventCreationPage(): React.ReactElement {
   });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  const [agenda, setAgenda] = React.useState<AgendaItem[]>(
+    editEvent && editEvent.agenda ? [...editEvent.agenda] : []
+  );
+  const [transferTimes, setTransferTimes] = React.useState<Array<{id: string; location: string; date: string; departureTime: string; arrivalTime: string; description: string}>>(
+    editEvent?.transferTimes?.map(t => ({...t, arrivalTime: t.arrivalTime || '', description: t.description || ''})) || []
+  );
+  const [documents, setDocuments] = React.useState<Array<{name: string; file?: File; url: string; size: number}>>(
+    editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
+  );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
@@ -228,6 +239,27 @@ export default function EventCreationPage(): React.ReactElement {
     setCustomFields(updated);
   };
 
+  // ===== Agenda helpers =====
+  const addAgendaItem = (): void => {
+    setAgenda([...agenda, {
+      id: `ag-${Date.now()}`,
+      date: startDate ? startDate.slice(0, 10) : '',
+      time: '',
+      endTime: '',
+      icon: 'Calendar',
+      title: '',
+      description: '',
+    }]);
+  };
+
+  const removeAgendaItem = (id: string): void => {
+    setAgenda(agenda.filter(a => a.id !== id));
+  };
+
+  const updateAgendaItem = (id: string, updates: Partial<AgendaItem>): void => {
+    setAgenda(agenda.map(a => a.id === id ? { ...a, ...updates } : a));
+  };
+
   const handleSubmit = async (): Promise<void> => {
     if (!title || !description) return;
     setIsSubmitting(true);
@@ -275,6 +307,9 @@ export default function EventCreationPage(): React.ReactElement {
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
         'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
+        'Agenda': JSON.stringify(agenda),
+        'Transfers': JSON.stringify(transferTimes),
+        'Documents': JSON.stringify(documents.map(d => ({ name: d.name, url: d.url, size: d.size }))),
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -282,6 +317,28 @@ export default function EventCreationPage(): React.ReactElement {
       };
 
       setProgress(50);
+
+      // Neue Dokumente hochladen falls vorhanden
+      if (editEvent?.eventNumber && documents.some(d => d.file)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ctx = (window as any).__dexSpfxContext;
+        if (ctx) {
+          const svc = new EventService(ctx);
+          const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
+          for (const doc of documents) {
+            if (doc.file) {
+              const docUrl = await svc.uploadEventDocument(editEvent.eventNumber, doc.file);
+              if (docUrl) {
+                uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
+              }
+            } else if (doc.url) {
+              uploadedDocs.push({ name: doc.name, url: doc.url, size: doc.size });
+            }
+          }
+          updates['Documents'] = JSON.stringify(uploadedDocs);
+        }
+      }
+
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
         setProgress(100);
@@ -332,6 +389,9 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: currentUser.email,
         outlookEventId: '',
         outlookBody,
+        agenda: JSON.stringify(agenda),
+        transfers: JSON.stringify(transferTimes),
+        documents: JSON.stringify(documents.map(d => ({ name: d.name, url: d.url, size: d.size }))),
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
           ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
@@ -356,6 +416,24 @@ export default function EventCreationPage(): React.ReactElement {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
+            // Dokumente hochladen und URLs speichern
+            const eventNumber = created?.EventNumber || 0;
+            if (eventNumber && documents.length > 0) {
+              const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
+              for (const doc of documents) {
+                if (doc.file) {
+                  const docUrl = await svc.uploadEventDocument(eventNumber, doc.file);
+                  if (docUrl) {
+                    uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
+                  }
+                } else if (doc.url) {
+                  uploadedDocs.push({ name: doc.name, url: doc.url, size: doc.size });
+                }
+              }
+              if (uploadedDocs.length > 0) {
+                await svc.updateEvent(Number(eventId), { 'Documents': JSON.stringify(uploadedDocs) });
+              }
+            }
             const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
             svc.queueEmail(
               emailData.subject, currentUser.email, organizer, emailData.body,
@@ -501,7 +579,8 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.datetime'), icon: '2' },
     { label: t('create.step.capacity'), icon: '3' },
     { label: t('create.step.fields'), icon: '4' },
-    { label: t('create.step.communication'), icon: '✉' },
+    { label: t('create.step.communication'), icon: '5' },
+    { label: t('create.step.documents'), icon: '6' },
   ];
 
   const getStepErrors = (): string[] => {
@@ -881,6 +960,140 @@ export default function EventCreationPage(): React.ReactElement {
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
 
+              {/* ===== Agenda Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.agenda')}
+                  <span className="info-icon" title="Programmablauf / Timeline des Events" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                {agenda
+                  .slice()
+                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+                  .map((item) => (
+                  <div key={item.id} style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                    padding: '10px 12px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Icon Picker */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
+                      <IconPicker
+                        buttonLabel=""
+                        currentIcon={item.icon || 'Calendar'}
+                        onSave={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
+                        onChange={(iconName: string) => updateAgendaItem(item.id, { icon: iconName })}
+                        buttonClassName=""
+                        renderOption="panel"
+                      />
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
+                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Start Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
+                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* End Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
+                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
+                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
+                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                      }} title={t('general.delete')}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.agenda.add')}
+                </button>
+              </div>
+
+              {/* ===== Transferzeiten Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.transfers')}
+                  <span className="info-icon" title="Abfahrtszeiten pro Standort" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                {transferTimes.map((tt) => (
+                  <div key={tt.id} style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                    padding: '10px 12px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Location */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 140 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
+                      <select className="form-select" value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }}>
+                        <option value="">—</option>
+                        {locationOptions.filter(o => o !== 'All').map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {/* Date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
+                      <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+                    {/* Departure */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
+                      <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+                    {/* Arrival */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
+                      <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
+                      <input type="text" className="form-input" value={tt.description} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+                    {/* Delete */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                      <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                      }} title={t('general.delete')}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.transfers.add')}
+                </button>
+              </div>
+
               </div>
 
               {/* ===== Step 2: Kapazität & Fristen ===== */}
@@ -1079,7 +1292,7 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ minWidth: 80 }}
                         onClick={() => setEmailLanguage(lang)}
                       >
-                        {lang === 'DE' ? '🇩🇪 Deutsch' : '🇬🇧 English'}
+                        {lang === 'DE' ? 'DE – Deutsch' : 'EN – English'}
                       </button>
                     ))}
                   </div>
@@ -1223,6 +1436,47 @@ export default function EventCreationPage(): React.ReactElement {
                   );
                 })}
               </div>{/* close Step 4 */}
+
+              {/* ===== Step 5: Dokumente ===== */}
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
+                  {t('create.documents.hint')}
+                </p>
+
+                {documents.map((doc, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 6,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    <Icon iconName="Page" style={{ fontSize: 16, color: 'var(--dex-gray-600)' }} />
+                    <span style={{ flex: 1, fontSize: '0.85rem' }}>{doc.name}</span>
+                    {doc.size > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>{(doc.size / 1024).toFixed(0)} KB</span>}
+                    <button type="button" onClick={() => setDocuments(documents.filter((_, i) => i !== idx))} style={{
+                      background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                      fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                    }} title={t('general.delete')}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+
+                <label className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Plus size={14} /> {t('create.documents.upload')}
+                  <input
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (!files) return;
+                      const newDocs = Array.from(files).map(f => ({ name: f.name, file: f, url: '', size: f.size }));
+                      setDocuments([...documents, ...newDocs]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>{/* close Step 5 */}
 
             </div>{/* close creation-form */}
           </div>{/* close card */}
