@@ -296,6 +296,7 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
   if (cachedLogoBase64) return; // bereits geladen
 
+  try {
   // 1. Aus _Config Zeile lesen
   const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=Id,LogoBase64,DefaultImageBase64&$top=1`;
   const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
@@ -355,6 +356,8 @@ export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: str
   }
 
   if (logoBase64) cachedLogoBase64 = logoBase64;
+
+  } catch { /* Logo-Laden komplett fehlgeschlagen - Flow ersetzt Platzhalter als Fallback */ }
 }
 
 /**

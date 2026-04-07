@@ -184,7 +184,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function createEvent(input: CreateEventInput): Promise<number | null> {
     const eventId = await eventService.createEvent(input);
     if (eventId) {
-      await loadEvents();
+      // Events neu laden OHNE Participant Counts (neue Subsite ist noch nicht bereit)
+      try {
+        const spEvents = await eventService.getEvents();
+        const mapped = await Promise.all(spEvents.map(e => mapSPEventToDeloitteEvent(e)));
+        setEvents(mapped);
+      } catch { /* Events-Refresh fehlgeschlagen, nicht kritisch */ }
     }
     return eventId;
   }
