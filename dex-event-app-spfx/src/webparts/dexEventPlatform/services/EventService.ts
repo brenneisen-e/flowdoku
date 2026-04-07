@@ -1481,7 +1481,18 @@ export class EventService {
         }
       }
 
-      // 4. Event-Eintrag aus DEX_Events loeschen
+      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}/)
+      if (event.EventNumber) {
+        try {
+          const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+          const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}`;
+          await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`);
+        } catch {
+          // Ordner existiert nicht oder konnte nicht geloescht werden - nicht kritisch
+        }
+      }
+
+      // 5. Event-Eintrag aus DEX_Events loeschen
       const response = await this._delete(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`
       );
