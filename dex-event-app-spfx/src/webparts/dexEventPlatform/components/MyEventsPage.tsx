@@ -72,56 +72,26 @@ function getDocIconName(name: string): string {
   }
 }
 
-function getPreviewUrl(url: string): string {
-  // SharePoint WopiFrame fuer alle Dokumente (PDF, Office)
-  const origin = url.match(/^https?:\/\/[^/]+/)?.[0] || '';
-  const path = url.replace(origin, '');
-  return `${origin}/_layouts/15/WopiFrame.aspx?sourcedoc=${encodeURIComponent(path)}&action=embedview`;
-}
-
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
-  const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
-
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
         {t('myevents.documents')}
       </div>
-      {documents.map((doc, i) => {
-        const isExpanded = expandedDoc === doc.url;
-        const ext = doc.name.split('.').pop()?.toLowerCase() || '';
-        const canPreview = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif'].includes(ext);
-
-        return (
-          <div key={i} style={{ marginBottom: 6 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-              background: isExpanded ? 'var(--dex-green-light, #f0fdf4)' : 'var(--dex-gray-100)',
-              borderRadius: isExpanded ? '8px 8px 0 0' : 8,
-              cursor: 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-              transition: 'background 0.15s',
-            }} onClick={() => canPreview ? setExpandedDoc(isExpanded ? null : doc.url) : window.open(doc.url, '_blank')}>
-              <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: 'var(--dex-gray-600)' }} />
-              <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
-              {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
-              <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green)', fontSize: '0.72rem', textDecoration: 'none' }}>↓</a>
-              {canPreview && <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)' }}>{isExpanded ? '▲' : '▼'}</span>}
-            </div>
-            {isExpanded && (
-              <div style={{
-                border: '1px solid var(--dex-gray-200)', borderTop: 'none',
-                borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
-              }}>
-                <iframe
-                  src={getPreviewUrl(doc.url)}
-                  style={{ width: '100%', height: 500, border: 'none' }}
-                  title={doc.name}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {documents.map((doc, i) => (
+        <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 6,
+          background: 'var(--dex-gray-100)', borderRadius: 8, textDecoration: 'none',
+          color: 'var(--dex-gray-700)', fontSize: '0.85rem', transition: 'background 0.15s',
+        }}>
+          <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
+          </span>
+          <span style={{ flex: 1, fontWeight: 500 }}>{doc.name}</span>
+          {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
+          <Icon iconName="OpenInNewWindow" style={{ fontSize: 14, color: 'var(--dex-green-dark, #6b9a1e)' }} />
+        </a>
+      ))}
     </div>
   );
 }
