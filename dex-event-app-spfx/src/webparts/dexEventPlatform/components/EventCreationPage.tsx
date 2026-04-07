@@ -19,25 +19,24 @@ import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-contro
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { Icon } from '@fluentui/react/lib/Icon';
 
-// Curated Fluent UI Icons fuer Agenda-Programmpunkte
+// Curated Fluent UI Icons fuer Agenda-Programmpunkte (nur bestaetigt vorhandene MDL2 Icons)
 const AGENDA_ICONS: Array<{ name: string; label: string; category: string }> = [
   // Vorträge & Meetings
   { name: 'Microphone', label: 'Vortrag', category: 'meeting' },
   { name: 'People', label: 'Meeting', category: 'meeting' },
-  { name: 'PeopleTeam', label: 'Team', category: 'meeting' },
+  { name: 'Group', label: 'Team', category: 'meeting' },
   { name: 'Presentation', label: 'Präsentation', category: 'meeting' },
   { name: 'Chat', label: 'Diskussion', category: 'meeting' },
   // Pausen & Essen
-  { name: 'CoffeeScript', label: 'Kaffeepause', category: 'break' },
+  { name: 'Cafe', label: 'Kaffeepause', category: 'break' },
   { name: 'EatDrink', label: 'Essen', category: 'break' },
-  { name: 'Breakfast', label: 'Frühstück', category: 'break' },
-  { name: 'DrinkBeer', label: 'Getränke', category: 'break' },
+  { name: 'Brunch', label: 'Brunch', category: 'break' },
   // Aktivitäten
   { name: 'Running', label: 'Sport/Lauf', category: 'activity' },
-  { name: 'Cycling', label: 'Radfahren', category: 'activity' },
   { name: 'Trophy', label: 'Award', category: 'activity' },
   { name: 'Balloons', label: 'Feier', category: 'activity' },
-  { name: 'MusicNote', label: 'Musik', category: 'activity' },
+  { name: 'MusicInCollection', label: 'Musik', category: 'activity' },
+  { name: 'PartyLeader', label: 'Networking', category: 'activity' },
   // Organisation
   { name: 'Calendar', label: 'Termin', category: 'org' },
   { name: 'Clock', label: 'Uhrzeit', category: 'org' },
@@ -51,14 +50,50 @@ const AGENDA_ICONS: Array<{ name: string; label: string; category: string }> = [
   { name: 'Edit', label: 'Workshop', category: 'work' },
   { name: 'Lightbulb', label: 'Ideen', category: 'work' },
   { name: 'Code', label: 'Tech', category: 'work' },
-  { name: 'BookOpen', label: 'Schulung', category: 'work' },
-  { name: 'Document', label: 'Dokument', category: 'work' },
+  { name: 'ReadingMode', label: 'Schulung', category: 'work' },
+  { name: 'Page', label: 'Dokument', category: 'work' },
   // Allgemein
   { name: 'Info', label: 'Info', category: 'general' },
-  { name: 'Star', label: 'Highlight', category: 'general' },
+  { name: 'FavoriteStar', label: 'Highlight', category: 'general' },
   { name: 'Heart', label: 'Social', category: 'general' },
   { name: 'Camera', label: 'Foto', category: 'general' },
   { name: 'Flag', label: 'Flagge', category: 'general' },
+];
+
+// Erweiterte Icon-Liste fuer "Show All"
+const EXTENDED_ICONS: Array<{ name: string; label: string; category: string }> = [
+  { name: 'Home', label: 'Home', category: 'general' },
+  { name: 'Mail', label: 'Mail', category: 'general' },
+  { name: 'Phone', label: 'Telefon', category: 'general' },
+  { name: 'Send', label: 'Senden', category: 'general' },
+  { name: 'Attach', label: 'Anhang', category: 'general' },
+  { name: 'Link', label: 'Link', category: 'general' },
+  { name: 'Globe', label: 'Web', category: 'general' },
+  { name: 'Lock', label: 'Sicherheit', category: 'org' },
+  { name: 'Sunny', label: 'Wetter', category: 'activity' },
+  { name: 'Ringer', label: 'Glocke', category: 'general' },
+  { name: 'Contact', label: 'Kontakt', category: 'meeting' },
+  { name: 'AddFriend', label: 'Person hinzufügen', category: 'meeting' },
+  { name: 'TeamFavorite', label: 'Team-Favorit', category: 'meeting' },
+  { name: 'Handshake', label: 'Handshake', category: 'meeting' },
+  { name: 'Medical', label: 'Medizin', category: 'org' },
+  { name: 'Shield', label: 'Schutz', category: 'org' },
+  { name: 'Settings', label: 'Einstellungen', category: 'org' },
+  { name: 'Toolbox', label: 'Werkzeug', category: 'work' },
+  { name: 'Chart', label: 'Diagramm', category: 'work' },
+  { name: 'BarChart4', label: 'Statistik', category: 'work' },
+  { name: 'TaskList', label: 'Aufgaben', category: 'work' },
+  { name: 'ClipboardList', label: 'Checkliste', category: 'work' },
+  { name: 'Video', label: 'Video', category: 'activity' },
+  { name: 'Photo2', label: 'Foto', category: 'activity' },
+  { name: 'Game', label: 'Spiel', category: 'activity' },
+  { name: 'Rocket', label: 'Rakete', category: 'activity' },
+  { name: 'Emoji2', label: 'Spaß', category: 'activity' },
+  { name: 'Gift', label: 'Geschenk', category: 'activity' },
+  { name: 'Ferry', label: 'Schiff', category: 'org' },
+  { name: 'Train', label: 'Zug', category: 'org' },
+  { name: 'Walk', label: 'Fußweg', category: 'org' },
+  { name: 'Weights', label: 'Fitness', category: 'activity' },
 ];
 
 /**
@@ -212,6 +247,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [imageUploadError, setImageUploadError] = React.useState('');
   const [iconPickerOpen, setIconPickerOpen] = React.useState<string | null>(null);
   const [iconSearch, setIconSearch] = React.useState('');
+  const [showAllIcons, setShowAllIcons] = React.useState(false);
 
   const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
 
@@ -1019,38 +1055,38 @@ export default function EventCreationPage(): React.ReactElement {
                     background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                     border: '1px solid var(--dex-gray-200)',
                   }}>
-                    {/* Icon Picker */}
+                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
                       <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
                       <button
                         type="button"
-                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); }}
+                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
                         style={{
-                          width: 40, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          border: '1px solid var(--dex-gray-300)', borderRadius: 'var(--dex-radius)',
-                          background: iconPickerOpen === item.id ? 'var(--dex-gray-100)' : '#fff', cursor: 'pointer',
+                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: 'none', borderRadius: '50%',
+                          background: 'var(--dex-green, #86bc25)', cursor: 'pointer',
                         }}
                         title={item.icon || 'Calendar'}
                       >
-                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: 'var(--dex-gray-700)' }} />
+                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
                       </button>
                       {iconPickerOpen === item.id && (
                         <div style={{
                           position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 8,
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 8, width: 280,
+                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
+                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
                         }}>
                           <input
                             type="text"
                             className="form-input"
-                            placeholder={t('create.agenda.icon') + '...'}
+                            placeholder="Icon suchen..."
                             value={iconSearch}
                             onChange={e => setIconSearch(e.target.value)}
-                            style={{ fontSize: '0.8rem', padding: '4px 8px', marginBottom: 6 }}
+                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
                             autoFocus
                           />
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
-                            {AGENDA_ICONS
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
+                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
                               .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
                               .map(ic => (
                                 <button
@@ -1060,15 +1096,29 @@ export default function EventCreationPage(): React.ReactElement {
                                   onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
                                   style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: 40, height: 36, border: item.icon === ic.name ? '2px solid var(--dex-green)' : '1px solid transparent',
-                                    borderRadius: 6, cursor: 'pointer', background: item.icon === ic.name ? 'var(--dex-green-light, #f0fdf4)' : 'transparent',
+                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
+                                    background: item.icon === ic.name ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-100, #f3f3f3)',
+                                    transition: 'background 0.15s, transform 0.1s',
                                   }}
                                 >
-                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: 'var(--dex-gray-700)' }} />
+                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
                                 </button>
                               ))
                             }
                           </div>
+                          {!showAllIcons && !iconSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllIcons(true)}
+                              style={{
+                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
+                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
+                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
+                              }}
+                            >
+                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
