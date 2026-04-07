@@ -168,6 +168,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.next': 'Weiter',
     'create.submit': 'Event erstellen',
     'create.save': 'Änderungen speichern',
+    'create.step.basics': 'Grundlagen',
+    'create.step.datetime': 'Zeit & Ort',
+    'create.step.capacity': 'Kapazität',
+    'create.step.fields': 'Felder',
+    'create.step.communication': 'Kommunikation',
 
     // Check-in
     'checkin.title': 'Check-in',
@@ -374,6 +379,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.next': 'Next',
     'create.submit': 'Create event',
     'create.save': 'Save changes',
+    'create.step.basics': 'Basics',
+    'create.step.datetime': 'Date & Location',
+    'create.step.capacity': 'Capacity',
+    'create.step.fields': 'Fields',
+    'create.step.communication': 'Communication',
 
     // Check-in
     'checkin.title': 'Check-in',
