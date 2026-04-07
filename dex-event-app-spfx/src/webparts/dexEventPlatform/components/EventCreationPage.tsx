@@ -511,7 +511,7 @@ export default function EventCreationPage(): React.ReactElement {
         break;
       case 2:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
-        if (lastDeregisterDate && registrationDeadline && new Date(lastDeregisterDate) > new Date(registrationDeadline)) errors.push('deregAfterDeadline');
+        if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
         break;
     }
     return errors;
@@ -894,7 +894,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Die Anmelde-Deadline muss vor dem Startdatum liegen.</p>}
-              {fieldHasError('deregAfterDeadline') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Die Abmeldefrist muss vor der Anmelde-Deadline liegen.</p>}
+              {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Die Abmeldefrist muss vor dem Startdatum liegen.</p>}
 
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
