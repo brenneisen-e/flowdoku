@@ -285,79 +285,30 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
 }
 
 /**
- * Logo als Base64 laden und cachen.
- *
- * 1. Versucht LogoBase64 aus DEX_EmailTemplates (_Config Zeile) zu lesen
- * 2. Falls leer: laedt Deloitte_Logo.png aus /SiteAssets/DEX_Logos/,
- *    konvertiert zu Base64 Data-URI und schreibt es in die _Config Zeile zurueck
- *
- * So ist die _Config Zeile nach dem ersten App-Start automatisch befuellt.
+ * Logo als Base64 in den Memory-Cache laden.
+ * Liest zuerst aus DEX_EmailTemplates (_Config), dann Fallback auf SiteAssets.
+ * Schreibt NICHT zurueck - das macht EventService.ensureLogosInConfig().
  */
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
-  if (cachedLogoBase64) return; // bereits geladen
+  if (cachedLogoBase64) return;
 
   try {
-  // 1. Aus _Config Zeile lesen
-  const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=Id,LogoBase64,DefaultImageBase64&$top=1`;
-  const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
-  if (!response.ok) return;
+    // 1. Aus _Config Zeile lesen (falls bereits befuellt)
+    const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1`;
+    const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
+    if (response.ok) {
+      const data = await response.json();
+      const items = data.value || data.d?.results || [];
+      if (items[0]?.LogoBase64) {
+        cachedLogoBase64 = items[0].LogoBase64;
+        return;
+      }
+    }
 
-  const data = await response.json();
-  const items = data.value || data.d?.results || [];
-  const configItem = items[0];
-  if (!configItem) return;
-
-  // Falls bereits befuellt: direkt nutzen
-  if (configItem.LogoBase64) {
-    cachedLogoBase64 = configItem.LogoBase64;
-    return;
-  }
-
-  // 2. Bilder aus SiteAssets laden und zu Base64 konvertieren
-  const logoBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
-  const orbBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/dex-orb.png');
-
-  if (!logoBase64 && !orbBase64) return;
-
-  // 3. In _Config Zeile zurueckschreiben (auto-provisioning)
-  const configId = configItem.Id || configItem.d?.Id;
-  if (configId) {
-    try {
-      let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
-      try {
-        const typeResp = await spHttpClient.get(
-          `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')?$select=ListItemEntityTypeFullName`,
-          SPHttpClient.configurations.v1
-        );
-        if (typeResp.ok) {
-          const typeData = await typeResp.json();
-          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
-        }
-      } catch { /* Fallback */ }
-
-      await spHttpClient.post(
-        `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            '__metadata': { 'type': listItemType },
-            'LogoBase64': logoBase64 || '',
-            'DefaultImageBase64': orbBase64 || '',
-          }),
-        }
-      );
-    } catch { /* Schreiben fehlgeschlagen - Logos funktionieren trotzdem ueber Platzhalter */ }
-  }
-
-  if (logoBase64) cachedLogoBase64 = logoBase64;
-
-  } catch { /* Logo-Laden komplett fehlgeschlagen - Flow ersetzt Platzhalter als Fallback */ }
+    // 2. Fallback: direkt aus SiteAssets laden (nur Memory-Cache)
+    const logo = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
+    if (logo) cachedLogoBase64 = logo;
+  } catch { /* Logo nicht verfuegbar - Flow ersetzt Platzhalter als Fallback */ }
 }
 
 /**
