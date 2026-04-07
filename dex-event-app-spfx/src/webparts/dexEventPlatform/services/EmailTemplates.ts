@@ -7,10 +7,16 @@
  * Generiert den kompletten HTML-Body fuer Power Automate.
  */
 
+import { SPHttpClient } from '@microsoft/sp-http';
+
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
 const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
 const LOGOS_URL = `${SITE_URL}/SiteAssets/DEX_Logos`;
+
+// Gecachte Base64-Bilder aus DEX_EmailTemplates (_Config)
+let cachedLogoBase64 = '';
+let cachedOrbBase64 = '';
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -34,7 +40,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
 <td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
-  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+  <img src="${cachedLogoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -48,7 +54,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
 <td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
-  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+  <img src="${cachedOrbBase64 || '{{ORB_URL}}'}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
@@ -281,11 +287,23 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
 }
 
 /**
- * Logos als Base64 vorladen (Placeholder fuer zukuenftige Implementierung).
- * Wird in EventContext aufgerufen, Fehler werden dort abgefangen.
+ * Logo und Default-Bild als Base64 aus DEX_EmailTemplates (_Config Zeile) laden.
+ * Wird beim App-Start in EventContext aufgerufen und cached die Werte
+ * fuer wrapTemplate(), damit E-Mails und Outlook-Termine direkt
+ * die Bilder eingebettet haben statt nur Platzhalter.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
-export async function loadLogosAsBase64(_spHttpClient: any, _siteUrl: string): Promise<void> {
-  // Logos werden aktuell ueber den Power Automate Flow als Base64 eingefuegt.
-  // Diese Funktion ist ein Placeholder fuer clientseitiges Logo-Caching.
+export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
+  if (cachedLogoBase64 && cachedOrbBase64) return; // bereits geladen
+
+  const url = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1`;
+  const response = await spHttpClient.get(url, SPHttpClient.configurations.v1);
+  if (response.ok) {
+    const data = await response.json();
+    const items = data.value || data.d?.results || [];
+    const item = items[0];
+    if (item) {
+      cachedLogoBase64 = item.LogoBase64 || '';
+      cachedOrbBase64 = item.DefaultImageBase64 || '';
+    }
+  }
 }
