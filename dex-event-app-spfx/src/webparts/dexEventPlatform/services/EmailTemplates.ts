@@ -285,22 +285,95 @@ export function buildOutlookBody(eventTitle: string, bodyText: string): string {
 }
 
 /**
- * Logo und Default-Bild als Base64 aus DEX_EmailTemplates (_Config Zeile) laden.
- * Wird beim App-Start in EventContext aufgerufen und cached die Werte
- * fuer wrapTemplate(), damit E-Mails und Outlook-Termine direkt
- * die Bilder eingebettet haben statt nur Platzhalter.
+ * Logo als Base64 laden und cachen.
+ *
+ * 1. Versucht LogoBase64 aus DEX_EmailTemplates (_Config Zeile) zu lesen
+ * 2. Falls leer: laedt Deloitte_Logo.png aus /SiteAssets/DEX_Logos/,
+ *    konvertiert zu Base64 Data-URI und schreibt es in die _Config Zeile zurueck
+ *
+ * So ist die _Config Zeile nach dem ersten App-Start automatisch befuellt.
  */
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
   if (cachedLogoBase64) return; // bereits geladen
 
-  const url = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=LogoBase64,DefaultImageBase64&$top=1`;
-  const response = await spHttpClient.get(url, SPHttpClient.configurations.v1);
-  if (response.ok) {
-    const data = await response.json();
-    const items = data.value || data.d?.results || [];
-    const item = items[0];
-    if (item) {
-      cachedLogoBase64 = item.LogoBase64 || '';
-    }
+  // 1. Aus _Config Zeile lesen
+  const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$select=Id,LogoBase64,DefaultImageBase64&$top=1`;
+  const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
+  if (!response.ok) return;
+
+  const data = await response.json();
+  const items = data.value || data.d?.results || [];
+  const configItem = items[0];
+  if (!configItem) return;
+
+  // Falls bereits befuellt: direkt nutzen
+  if (configItem.LogoBase64) {
+    cachedLogoBase64 = configItem.LogoBase64;
+    return;
+  }
+
+  // 2. Bilder aus SiteAssets laden und zu Base64 konvertieren
+  const logoBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
+  const orbBase64 = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/dex-orb.png');
+
+  if (!logoBase64 && !orbBase64) return;
+
+  // 3. In _Config Zeile zurueckschreiben (auto-provisioning)
+  const configId = configItem.Id || configItem.d?.Id;
+  if (configId) {
+    try {
+      let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+      try {
+        const typeResp = await spHttpClient.get(
+          `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      await spHttpClient.post(
+        `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${configId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': listItemType },
+            'LogoBase64': logoBase64 || '',
+            'DefaultImageBase64': orbBase64 || '',
+          }),
+        }
+      );
+    } catch { /* Schreiben fehlgeschlagen - Logos funktionieren trotzdem ueber Platzhalter */ }
+  }
+
+  if (logoBase64) cachedLogoBase64 = logoBase64;
+}
+
+/**
+ * Bild aus SiteAssets laden und als Base64 Data-URI zurueckgeben.
+ */
+async function loadImageAsBase64(spHttpClient: SPHttpClient, siteUrl: string, path: string): Promise<string> {
+  try {
+    const fileUrl = `${siteUrl}/_api/web/GetFileByServerRelativeUrl('${siteUrl.replace(/^https?:\/\/[^/]+/, '')}/SiteAssets/${path}')/$value`;
+    const resp = await spHttpClient.get(fileUrl, SPHttpClient.configurations.v1);
+    if (!resp.ok) return '';
+
+    const blob = await resp.blob();
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return '';
   }
 }
