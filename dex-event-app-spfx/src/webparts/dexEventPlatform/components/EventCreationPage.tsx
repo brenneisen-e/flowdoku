@@ -18,6 +18,7 @@ import { Trash2, Send, Plus, X, Users } from './Icons';
 import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { IconPicker } from '@pnp/spfx-controls-react/lib/controls/iconPicker';
+import { Icon } from '@fluentui/react/lib/Icon';
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -578,8 +579,8 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.datetime'), icon: '2' },
     { label: t('create.step.capacity'), icon: '3' },
     { label: t('create.step.fields'), icon: '4' },
-    { label: t('create.step.communication'), icon: '✉' },
-    { label: t('create.step.documents'), icon: '📄' },
+    { label: t('create.step.communication'), icon: '5' },
+    { label: t('create.step.documents'), icon: '6' },
   ];
 
   const getStepErrors = (): string[] => {
@@ -1291,7 +1292,7 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ minWidth: 80 }}
                         onClick={() => setEmailLanguage(lang)}
                       >
-                        {lang === 'DE' ? '🇩🇪 Deutsch' : '🇬🇧 English'}
+                        {lang === 'DE' ? 'DE – Deutsch' : 'EN – English'}
                       </button>
                     ))}
                   </div>
@@ -1448,7 +1449,7 @@ export default function EventCreationPage(): React.ReactElement {
                     background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                     border: '1px solid var(--dex-gray-200)',
                   }}>
-                    <span>📄</span>
+                    <Icon iconName="Page" style={{ fontSize: 16, color: 'var(--dex-gray-600)' }} />
                     <span style={{ flex: 1, fontSize: '0.85rem' }}>{doc.name}</span>
                     {doc.size > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>{(doc.size / 1024).toFixed(0)} KB</span>}
                     <button type="button" onClick={() => setDocuments(documents.filter((_, i) => i !== idx))} style={{

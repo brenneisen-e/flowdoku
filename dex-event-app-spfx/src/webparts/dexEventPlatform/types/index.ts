@@ -41,7 +41,7 @@ export interface AgendaItem {
   date: string;        // YYYY-MM-DD
   time: string;         // HH:mm
   endTime?: string;     // HH:mm
-  icon: string;         // Emoji
+  icon: string;         // FluentUI icon name (z.B. 'Calendar', 'People', 'Food')
   title: string;
   description?: string;
 }
