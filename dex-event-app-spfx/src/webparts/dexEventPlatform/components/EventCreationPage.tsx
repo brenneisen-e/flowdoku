@@ -477,11 +477,11 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const steps = [
-    { label: 'Grundlagen', icon: '1' },
-    { label: 'Zeit & Ort', icon: '2' },
-    { label: 'Kapazität', icon: '3' },
-    { label: 'Felder', icon: '4' },
-    { label: 'Kommunikation', icon: '✉' },
+    { label: t('create.step.basics'), icon: '1' },
+    { label: t('create.step.datetime'), icon: '2' },
+    { label: t('create.step.capacity'), icon: '3' },
+    { label: t('create.step.fields'), icon: '4' },
+    { label: t('create.step.communication'), icon: '✉' },
   ];
 
   // Templates laden wenn Step 4 (Kommunikation) erreicht wird
@@ -508,6 +508,8 @@ export default function EventCreationPage(): React.ReactElement {
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
         if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
+        break;
+      case 2:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
         if (lastDeregisterDate && registrationDeadline && new Date(lastDeregisterDate) > new Date(registrationDeadline)) errors.push('deregAfterDeadline');
         break;
@@ -866,6 +868,7 @@ export default function EventCreationPage(): React.ReactElement {
                   {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>Pflichtfeld</span>}
                 </div>
               </div>
+              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Das Enddatum muss nach dem Startdatum liegen.</p>}
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
@@ -890,6 +893,8 @@ export default function EventCreationPage(): React.ReactElement {
                   <input className="form-input" type="date" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
                 </div>
               </div>
+              {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Die Anmelde-Deadline muss vor dem Startdatum liegen.</p>}
+              {fieldHasError('deregAfterDeadline') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>Die Abmeldefrist muss vor der Anmelde-Deadline liegen.</p>}
 
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
@@ -1054,7 +1059,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 4: Kommunikation ===== */}
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
-                <h3 className="mb-16">Kommunikation</h3>
+                <h3 className="mb-16">{t('create.step.communication')}</h3>
 
                 <div className="form-group">
                   <label className="form-label">E-Mail Sprache</label>
