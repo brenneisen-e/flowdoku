@@ -1404,10 +1404,15 @@ export class EventService {
             'Content-Type': 'application/json;odata=verbose',
             'IF-MATCH': '*',
             'X-HTTP-Method': 'MERGE',
+            'odata-version': '',
           },
           body: JSON.stringify(payload),
         }
       );
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.warn('[DEX] updateEvent failed:', response.status, errText.substring(0, 200));
+      }
       return response.ok;
     } catch {
       return false;
