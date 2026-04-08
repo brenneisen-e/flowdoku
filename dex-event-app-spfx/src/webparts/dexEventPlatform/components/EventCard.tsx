@@ -59,7 +59,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
         }}>
           <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
-            {isWaitlisted ? 'Auf der Warteliste' : 'Bereits angemeldet'}
+            {isWaitlisted ? t('status.waitlist') : t('status.registered')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 16 }}>
             {event.title}
@@ -69,7 +69,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
             style={{ fontSize: '0.85rem', padding: '8px 20px' }}
             onClick={(e: React.MouseEvent) => { e.stopPropagation(); navigate('my-events'); }}
           >
-            Zu Meine Events
+            {t('myevents.title')}
           </button>
         </div>
       )}

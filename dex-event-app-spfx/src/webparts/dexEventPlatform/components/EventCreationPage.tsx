@@ -394,11 +394,11 @@ export default function EventCreationPage(): React.ReactElement {
         }))),
       };
 
-      // Optionale Felder nur senden wenn sie Werte haben (Spalten koennten fehlen)
-      if (lastDeregisterDate) updates['LastDeregisterDate'] = new Date(lastDeregisterDate).toISOString();
-      if (outlookBody) updates['OutlookBody'] = buildOutlookBody(title, outlookBody);
-      if (agenda.length > 0) updates['Agenda'] = JSON.stringify(agenda);
-      if (transferTimes.length > 0) updates['Transfers'] = JSON.stringify(transferTimes);
+      // Optionale Felder - immer senden damit Loeschungen wirken
+      updates['LastDeregisterDate'] = lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : null;
+      updates['OutlookBody'] = outlookBody ? buildOutlookBody(title, outlookBody) : '';
+      updates['Agenda'] = JSON.stringify(agenda);
+      updates['Transfers'] = JSON.stringify(transferTimes);
 
       setProgress(50);
 
