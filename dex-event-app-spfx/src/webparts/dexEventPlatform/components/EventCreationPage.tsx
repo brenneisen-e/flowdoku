@@ -190,7 +190,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
-  const [waitlistEnabled, setWaitlistEnabled] = React.useState(editEvent ? editEvent.waitlistEnabled : true);
+  const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
@@ -992,15 +992,12 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <DateTimePicker
-                    dateConvention={DateConvention.DateTime}
-                    timeConvention={TimeConvention.Hours24}
-                    value={startDate ? new Date(startDate) : undefined}
-                    onChange={(date: Date) => setStartDate(date ? date.toISOString().slice(0, 16) : '')}
-                    showLabels={false}
-                    formatDate={(date?: Date) => date ? date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
-                    strings={datePickerStrings}
-                    firstDayOfWeek={1}
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    style={errorBorderStyle('startDate')}
                   />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
@@ -1009,15 +1006,12 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <DateTimePicker
-                    dateConvention={DateConvention.DateTime}
-                    timeConvention={TimeConvention.Hours24}
-                    value={endDate ? new Date(endDate) : undefined}
-                    onChange={(date: Date) => setEndDate(date ? date.toISOString().slice(0, 16) : '')}
-                    showLabels={false}
-                    formatDate={(date?: Date) => date ? date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
-                    strings={datePickerStrings}
-                    firstDayOfWeek={1}
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    style={errorBorderStyle('endDate')}
                   />
                   {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
