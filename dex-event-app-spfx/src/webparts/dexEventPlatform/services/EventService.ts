@@ -1238,6 +1238,57 @@ export class EventService {
   private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,RegistrationListName,SubsiteUrl';
 
   /**
+   * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
+   */
+  public async seedEvents(): Promise<void> {
+    try {
+      // Pruefen ob "Assistenz Meeting 2026" schon existiert
+      const check = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'Assistenz Meeting 2026'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (check.ok) {
+        const data = await check.json();
+        const items = data.value || data.d?.results || [];
+        if (items.length > 0) return; // Existiert bereits
+      }
+
+      // Event anlegen
+      await this.createEvent({
+        title: 'Assistenz Meeting 2026',
+        type: 'Other',
+        status: 'Active',
+        description: 'Assistenz Meeting Mai 2026 - Frankfurt am Main',
+        location: 'Frankfurt am Main',
+        locationFilter: '',
+        audience: 'All',
+        filterMode: 'OR',
+        startDate: '2026-05-07T11:00:00.000Z',
+        endDate: '2026-05-08T15:00:00.000Z',
+        registrationDeadline: '2026-04-09T00:00:00.000Z',
+        lastDeregisterDate: '',
+        maxParticipants: 130,
+        waitlistEnabled: true,
+        eventImageUrl: '',
+        organizer: 'Maerzluft, Petra; Schwartz, Eva',
+        organizerEmail: 'pmaerzluft@deloitte.de',
+        outlookEventId: '',
+        outlookBody: '',
+        emailLanguage: 'EN',
+        emailTemplateOverrides: '',
+        customFields: [
+          { id: 'travel', label: 'You will travel with?', type: 'select', required: false, options: ['Train', 'Car', 'Public Transport'] },
+          { id: 'deutschlandticket', label: 'Do you own a Deutschlandticket?', type: 'select', required: false, options: ['Yes', 'No'] },
+          { id: 'expenses', label: 'Please insert the total amount of your travel expenses!', type: 'text', required: false },
+        ],
+        agenda: '[]',
+        transfers: '[]',
+        documents: '[]',
+      });
+    } catch { /* Seed fehlgeschlagen - nicht kritisch */ }
+  }
+
+  /**
    * Alle Events laden
    */
   public async getEvents(): Promise<SPEvent[]> {

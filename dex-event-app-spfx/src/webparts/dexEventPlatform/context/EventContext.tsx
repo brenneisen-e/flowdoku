@@ -85,6 +85,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
+    try { await eventService.seedEvents(); } catch { /* */ }
     await loadEvents();
     setIsEventsLoading(false);
   }
