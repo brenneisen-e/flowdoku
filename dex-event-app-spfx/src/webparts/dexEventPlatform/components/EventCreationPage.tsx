@@ -1277,9 +1277,17 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.maxparticipants')}
-                    <span className="info-icon" title="Maximale Anzahl Teilnehmer. 0 = unbegrenzt. Bei Erreichen werden weitere auf die Warteliste gesetzt." style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="number" min={0} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="0 = unbegrenzt" />
+                  <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
+                    <label className="toggle">
+                      <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => setMaxParticipants(e.target.checked ? '0' : '50')} />
+                      <span className="toggle-slider" />
+                    </label>
+                    <span style={{ fontSize: '0.9rem' }}>{!maxParticipants || maxParticipants === '0' ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : maxParticipants + ' Plätze'}</span>
+                  </div>
+                  {maxParticipants && maxParticipants !== '0' && (
+                    <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="Anzahl" />
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">

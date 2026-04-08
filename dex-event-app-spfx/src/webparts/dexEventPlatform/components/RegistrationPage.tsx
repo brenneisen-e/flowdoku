@@ -125,7 +125,7 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
-  const isFull = event.currentParticipants >= event.maxParticipants;
+  const isFull = event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants;
   const errorBorder = { border: '2px solid var(--dex-red)' };
 
   const handleSubmit = async (): Promise<void> => {
