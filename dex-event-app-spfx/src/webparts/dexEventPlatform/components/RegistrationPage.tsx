@@ -249,9 +249,16 @@ export default function RegistrationPage(): React.ReactElement {
                   {formatDate(event.startDate)} {t('reg.until')}<br />
                   {formatDate(event.endDate)}
                 </p>
-                <p style={{ fontSize: '0.78rem', opacity: 0.8, marginTop: 4 }}>
-                  Organizer: {event.organizers.join(', ')}
-                </p>
+                <div style={{ fontSize: '0.78rem', opacity: 0.8, marginTop: 4 }}>
+                  Organizer:
+                  <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
+                    {event.organizers.map((o, i) => {
+                      const parts = o.trim().split(',').map(s => s.trim());
+                      const name = parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
+                      return <li key={i}>{name}</li>;
+                    })}
+                  </ul>
+                </div>
               </div>
             </div>
             {showDescription && event.description && (
