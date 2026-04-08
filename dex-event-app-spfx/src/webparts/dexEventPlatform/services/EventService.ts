@@ -1358,51 +1358,62 @@ export class EventService {
         }
       } catch { /* Fallback */ }
 
+      // Debug: Verfuegbare Felder loggen
+      console.warn('[DEX SEED] Felder auf Teilnehmer-Liste:', JSON.stringify(fieldMap));
+      console.warn('[DEX SEED] ListItemEntityType:', listItemType);
+
+      let successCount = 0;
+      let errorCount = 0;
       for (const p of ASSISTENZ_MEETING_PARTICIPANTS) {
         try {
-          // Custom Data JSON
+          // Custom Data JSON (Anrede + travel etc.)
           const customData: Record<string, string> = {};
+          if (p.sal) customData['salutation'] = p.sal;
           if (p.tr) customData['travel'] = p.tr;
           if (p.tk) customData['deutschlandticket'] = p.tk;
           if (p.ex) customData['expenses'] = p.ex;
 
-          const payload: Record<string, unknown> = {
+          // Payload analog zu registerForEvent - nur bekannte Felder
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const payload: Record<string, any> = {
             '__metadata': { 'type': listItemType },
             'Title': p.em,
-            'ParticipantName': `${p.fn} ${p.ln}`,
-            'ParticipantEmail': p.em,
+            'TeilnehmerID': p.nr || 1,
             'Vorname': p.fn,
             'Nachname': p.ln,
-            'Anrede': p.sal,
+            'ParticipantName': `${p.fn} ${p.ln}`,
+            'ParticipantEmail': p.em,
             'Status': 'Angemeldet',
-            'TeilnehmerID': p.nr || null,
             'RegistrationDate': new Date().toISOString(),
             'CustomData': JSON.stringify(customData),
           };
 
-          // Custom Field SP-InternalNames zuordnen
+          // Custom Field SP-InternalNames zuordnen (nur wenn Feld existiert)
           if (p.tr && fieldMap['travel']) payload[fieldMap['travel']] = p.tr;
           if (p.tk && fieldMap['deutschlandticket']) payload[fieldMap['deutschlandticket']] = p.tk;
           if (p.ex && fieldMap['expenses']) payload[fieldMap['expenses']] = p.ex;
+          if (p.sal && fieldMap['Anrede']) payload[fieldMap['Anrede']] = p.sal;
 
-          await this.context.spHttpClient.post(
+          const resp = await this._post(
             `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                'Accept': 'application/json;odata=verbose',
-                'Content-Type': 'application/json;odata=verbose',
-                'odata-version': '',
-              },
-              body: JSON.stringify(payload),
-            }
+            payload
           );
+
+          if (!resp.ok) {
+            const errText = await resp.text();
+            if (errorCount < 3) {
+              console.warn(`[DEX SEED] Fehler ${resp.status} fuer ${p.em}:`, errText.substring(0, 300));
+            }
+            errorCount++;
+          } else {
+            successCount++;
+          }
 
           // DEX_Participants aktualisieren (Dual-Write)
           this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
-        } catch (err) { console.warn('[DEX] seedParticipants: Teilnehmer-Fehler:', err); }
+        } catch (err) { console.warn('[DEX SEED] Teilnehmer-Fehler:', p.em, err); }
       }
-      console.warn('[DEX] seedParticipants: Migration abgeschlossen');
+      console.warn(`[DEX SEED] Migration abgeschlossen: ${successCount} OK, ${errorCount} Fehler`);
     } catch (err) { console.warn('[DEX] seedParticipants: FEHLER:', err); }
   }
 
