@@ -82,7 +82,7 @@ function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => str
   const [showQuiz, setShowQuiz] = React.useState(false);
 
   const question = quiz[currentQ];
-  // Backwards compatibility: support old correctIndex and new correctIndices
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const correctIndices = question.correctIndices || [(question as any).correctIndex || 0];
 
   const handleAnswer = (index: number): void => {

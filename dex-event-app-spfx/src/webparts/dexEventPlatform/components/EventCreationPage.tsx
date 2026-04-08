@@ -231,6 +231,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
   );
   const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndices: number[]}>>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
   );
   const [currentStep, setCurrentStep] = React.useState(0);
