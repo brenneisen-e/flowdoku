@@ -7,6 +7,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Info } from './Icons';
 import { DeloitteEvent } from '../types';
 
@@ -43,6 +44,7 @@ interface Props {
 
 export default function EventCard({ event, index, isRegistered, isWaitlisted }: Props): React.ReactElement {
   const { navigate } = useNavigation();
+  const { t } = useLanguage();
   const isUnlimited = !event.maxParticipants || event.maxParticipants === 0;
   const freePlaces = isUnlimited ? Infinity : event.maxParticipants - event.currentParticipants;
   const isFull = !isUnlimited && freePlaces <= 0;
@@ -104,7 +106,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
             background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
             color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
           }}>
-            {isFull ? 'Warteliste' : (isUnlimited ? 'Unbegrenzt' : `${freePlaces} frei`)}
+            {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
           </span>
         </div>
         <div className="event-card__dates">
