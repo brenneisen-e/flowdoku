@@ -1277,9 +1277,9 @@ export class EventService {
         emailLanguage: 'EN',
         emailTemplateOverrides: '',
         customFields: [
-          { id: 'travel', label: 'You will travel with?', type: 'select', required: false, options: ['Train', 'Car', 'Public Transport'] },
-          { id: 'deutschlandticket', label: 'Do you own a Deutschlandticket?', type: 'select', required: false, options: ['Yes', 'No'] },
-          { id: 'expenses', label: 'Please insert the total amount of your travel expenses!', type: 'text', required: false },
+          { id: 'travel', label: 'You will travel with?', type: 'select', required: false, visible: true, options: ['Train', 'Car', 'Public Transport'] },
+          { id: 'deutschlandticket', label: 'Do you own a Deutschlandticket?', type: 'select', required: false, visible: true, options: ['Yes', 'No'] },
+          { id: 'expenses', label: 'Please insert the total amount of your travel expenses!', type: 'text', required: false, visible: true },
         ],
         agenda: '[]',
         transfers: '[]',
