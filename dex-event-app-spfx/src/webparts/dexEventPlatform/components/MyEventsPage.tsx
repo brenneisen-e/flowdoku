@@ -7,7 +7,6 @@
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 
-import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
@@ -147,11 +146,10 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
                     {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
                   </div>
                 ) : blobUrl ? (
-                  <DocViewer
-                    documents={[{ uri: blobUrl, fileName: doc.name }]}
-                    pluginRenderers={DocViewerRenderers}
-                    config={{ header: { disableHeader: true, disableFileName: true } }}
-                    style={{ height: 500 }}
+                  <iframe
+                    src={blobUrl}
+                    style={{ width: '100%', height: 500, border: 'none' }}
+                    title={doc.name}
                   />
                 ) : (
                   <div style={{ padding: 24, textAlign: 'center' }}>
