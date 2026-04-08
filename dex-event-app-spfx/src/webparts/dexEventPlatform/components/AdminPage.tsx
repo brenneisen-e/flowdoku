@@ -162,6 +162,9 @@ export default function AdminPage(): React.ReactElement {
                       {formatDate(event.startDate)} - {formatDate(event.endDate)}
                       {event.location ? ` · ${event.location}` : ''}
                     </p>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
+                      Organizer: {event.organizers.join(', ')}
+                    </p>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -258,6 +261,10 @@ export default function AdminPage(): React.ReactElement {
             <div className="settings-info__row">
               <span className="settings-info__label">Zeitraum</span>
               <span>{formatDate(selectedEvent.startDate)} - {formatDate(selectedEvent.endDate)}</span>
+            </div>
+            <div className="settings-info__row">
+              <span className="settings-info__label">Organizer</span>
+              <span>{selectedEvent.organizers.join(', ')}</span>
             </div>
             <div className="settings-info__row">
               <span className="settings-info__label">Ort</span>

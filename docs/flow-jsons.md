@@ -518,7 +518,7 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "item/end": "@formatDateTime(triggerBody()?['EndDate'], 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
       "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
-      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['OutlookBody'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
