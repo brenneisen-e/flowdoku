@@ -418,6 +418,15 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // Outlook-Termin Update triggern (wenn CalendarLink vorhanden)
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctx = (window as any).__dexSpfxContext;
+          if (ctx && editEvent?.subsiteUrl) {
+            const svc = new EventService(ctx);
+            await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+          }
+        } catch { /* Outlook-Update optional */ }
         setProgress(100);
         setProgressLabel('Änderungen gespeichert!');
         setTimeout(() => { setIsSubmitting(false); setSubmitted(true); }, 500);

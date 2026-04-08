@@ -350,7 +350,7 @@ export class EventService {
     attendee: string,
     eventId: string,
     eventTitle: string,
-    actionType: 'Einladen' | 'Ausladen'
+    actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
   ): Promise<boolean> {
     try {
       const response = await this._post(
