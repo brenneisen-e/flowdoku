@@ -2301,51 +2301,36 @@ export class EventService {
   }
 
   /**
-   * Dokument in SiteAssets/DEX_EventDocs/Event_{number}_{title}/ hochladen.
+   * Dokument als Attachment an ein DEX_Events-Item anfuegen.
+   * Nutzt native SharePoint List Item Attachments - keine Ordner noetig.
    */
-  public async uploadEventDocument(eventNumber: number, file: File, eventTitle?: string): Promise<string> {
+  public async uploadEventDocument(eventId: number, file: File): Promise<string> {
     try {
-      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      const safeName = (eventTitle || '').replace(/[#%&*:<>?/\\|"']/g, '').replace(/\s+/g, '_').substring(0, 50);
-      const folderName = safeName ? `Event_${eventNumber}_${safeName}` : `Event_${eventNumber}`;
-      const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/${folderName}`;
-
-      // Ordner erstellen falls nicht vorhanden
-      try {
-        const check = await this.context.spHttpClient.get(
-          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`,
-          SPHttpClient.configurations.v1
-        );
-        if (!check.ok) {
-          // Erst DEX_EventDocs, dann Event_X
-          try {
-            await this._post(`${this.siteUrl}/_api/web/folders`, {
-              '__metadata': { 'type': 'SP.Folder' },
-              'ServerRelativeUrl': `${serverRelUrl}/SiteAssets/DEX_EventDocs`,
-            });
-          } catch { /* existiert bereits */ }
-          await this._post(`${this.siteUrl}/_api/web/folders`, {
-            '__metadata': { 'type': 'SP.Folder' },
-            'ServerRelativeUrl': folderPath,
-          });
-        }
-      } catch { /* existiert bereits */ }
-
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
-      const buffer = await file.arrayBuffer();
 
-      // Upload - Datei wird hochgeladen, Response-Status egal (oft 406 wegen Header)
-      try {
-        await this.context.spHttpClient.post(
-          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${encodeURIComponent(fileName)}',overwrite=true)`,
-          SPHttpClient.configurations.v1,
-          { body: buffer }
-        );
-      } catch { /* Upload-Response irrelevant - Datei wird trotzdem hochgeladen */ }
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: file,
+        } as ISPHttpClientOptions
+      );
 
-      // URL direkt aus bekanntem Pfad konstruieren
-      return `${this.siteUrl}${folderPath}/${fileName}`;
-    } catch (err) { console.warn('[DEX] uploadEventDocument error:', err); }
+      if (response.ok) {
+        const data = await response.json();
+        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        if (relUrl) return `${window.location.origin}${relUrl}`;
+      } else {
+        console.warn('[DEX] Attachment upload status:', response.status);
+      }
+
+      // Fallback: URL aus bekanntem Pfad
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${fileName}`;
+    } catch (err) {
+      console.warn('[DEX] uploadEventDocument error:', err);
+    }
     return '';
   }
 
