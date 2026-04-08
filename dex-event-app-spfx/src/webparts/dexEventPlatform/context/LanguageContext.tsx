@@ -54,6 +54,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'event.freeplaces': 'freie Plätze',
     'event.full': 'Ausgebucht',
     'event.waitlist': 'Warteliste',
+    'events.until': 'bis',
+    'events.regopen': 'Anmeldung bis:',
 
     // Registration Page
     'reg.selectedevent': 'Ausgewähltes Event',
@@ -319,6 +321,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'event.freeplaces': 'free places',
     'event.full': 'Fully booked',
     'event.waitlist': 'Waitlist',
+    'events.until': 'until',
+    'events.regopen': 'Registration open until:',
 
     // Registration Page
     'reg.selectedevent': 'Selected Event',

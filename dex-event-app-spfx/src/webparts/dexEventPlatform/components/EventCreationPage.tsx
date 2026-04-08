@@ -1593,6 +1593,32 @@ export default function EventCreationPage(): React.ReactElement {
                             style={{ fontSize: '0.8rem', marginBottom: 8 }}
                           />
                           <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>{t('create.templates.content')}</label>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', marginRight: 4, lineHeight: '24px' }}>
+                              {t('create.templates.content') === 'Content' ? 'Insert variable:' : 'Variable einfügen:'}
+                            </span>
+                            {[
+                              { key: '{{Name}}', label: 'Name' },
+                              { key: '{{EventTitle}}', label: 'Event' },
+                              { key: '{{Organizer}}', label: 'Organizer' },
+                              { key: '{{AppUrl}}', label: 'App Link' },
+                              { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
+                            ].map(v => (
+                              <button
+                                key={v.key}
+                                type="button"
+                                onClick={() => { navigator.clipboard.writeText(v.key); }}
+                                style={{
+                                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10,
+                                  border: '1px solid var(--dex-green)', background: 'rgba(134,188,37,0.08)',
+                                  color: 'var(--dex-green-dark)', cursor: 'pointer', fontFamily: 'monospace',
+                                }}
+                                title={t('create.templates.content') === 'Content' ? `Click to copy ${v.key}` : `Klicken um ${v.key} zu kopieren`}
+                              >
+                                {v.label}
+                              </button>
+                            ))}
+                          </div>
                           <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, minHeight: 150, padding: '0 4px' }}>
                             <RichText
                               value={currentBody}
@@ -1604,6 +1630,9 @@ export default function EventCreationPage(): React.ReactElement {
                                 return text;
                               }}
                             />
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+                            {'{{Name}}'} → {t('create.templates.content') === 'Content' ? 'Participant name' : 'Teilnehmername'} · {'{{EventTitle}}'} → {title || '...'} · {'{{Organizer}}'} → {organizer || '...'} · {'{{WaitlistPosition}}'} → #1, #2, ...
                           </div>
                         </div>
                       )}
