@@ -1291,6 +1291,115 @@ export class EventService {
   }
 
   /**
+   * Seed-Migration: Teilnehmer fuer Assistenz Meeting 2026 eintragen.
+   * Laeuft einmalig beim ersten Start. KEINE E-Mails, KEINE Outlook-Einladungen.
+   */
+  public async seedParticipants(): Promise<void> {
+    try {
+      // 1. Assistenz Meeting Event finden
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'Assistenz Meeting 2026'&$top=1&$select=Id,SubsiteUrl,EventNumber`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return;
+
+      const event = items[0];
+      const subsiteUrl = event.SubsiteUrl;
+      const eventNumber = event.EventNumber;
+      if (!subsiteUrl) return;
+
+      // 2. Pruefen ob schon Teilnehmer existieren (Migration schon gelaufen?)
+      const checkResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (checkResp.ok) {
+        const checkData = await checkResp.json();
+        const existing = checkData.value || checkData.d?.results || [];
+        if (existing.length > 0) return; // Schon migriert
+      }
+
+      // 3. Teilnehmer importieren
+      const { ASSISTENZ_MEETING_PARTICIPANTS } = await import('../data/seedParticipants');
+
+      // FieldMap fuer Custom Fields ermitteln (spInternalName)
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/fields?$filter=Hidden eq false&$top=100&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      const fieldMap: Record<string, string> = {};
+      if (fieldsResp.ok) {
+        const fieldsData = await fieldsResp.json();
+        const fields = fieldsData.value || fieldsData.d?.results || [];
+        for (const f of fields) {
+          fieldMap[f.Title] = f.InternalName;
+        }
+      }
+
+      // ListItemEntityTypeFullName ermitteln
+      let listItemType = 'SP.Data.TeilnehmerListItem';
+      try {
+        const typeResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      for (const p of ASSISTENZ_MEETING_PARTICIPANTS) {
+        try {
+          // Custom Data JSON
+          const customData: Record<string, string> = {};
+          if (p.tr) customData['travel'] = p.tr;
+          if (p.tk) customData['deutschlandticket'] = p.tk;
+          if (p.ex) customData['expenses'] = p.ex;
+
+          const payload: Record<string, unknown> = {
+            '__metadata': { 'type': listItemType },
+            'Title': p.em,
+            'ParticipantName': `${p.fn} ${p.ln}`,
+            'ParticipantEmail': p.em,
+            'Vorname': p.fn,
+            'Nachname': p.ln,
+            'Anrede': p.sal,
+            'Status': 'Angemeldet',
+            'TeilnehmerID': p.nr || null,
+            'RegistrationDate': new Date().toISOString(),
+            'CustomData': JSON.stringify(customData),
+          };
+
+          // Custom Field SP-InternalNames zuordnen
+          if (p.tr && fieldMap['travel']) payload[fieldMap['travel']] = p.tr;
+          if (p.tk && fieldMap['deutschlandticket']) payload[fieldMap['deutschlandticket']] = p.tk;
+          if (p.ex && fieldMap['expenses']) payload[fieldMap['expenses']] = p.ex;
+
+          await this.context.spHttpClient.post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=verbose',
+                'Content-Type': 'application/json;odata=verbose',
+                'odata-version': '',
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+
+          // DEX_Participants aktualisieren (Dual-Write)
+          this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
+        } catch { /* Einzelnen Teilnehmer ueberspringen */ }
+      }
+    } catch { /* Seed fehlgeschlagen - nicht kritisch */ }
+  }
+
+  /**
    * Alle Events laden
    */
   public async getEvents(): Promise<SPEvent[]> {
