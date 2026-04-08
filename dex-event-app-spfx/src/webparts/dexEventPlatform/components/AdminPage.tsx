@@ -137,7 +137,7 @@ export default function AdminPage(): React.ReactElement {
           <div className="card text-center" style={{ padding: 48 }}>
             <p style={{ color: 'var(--dex-gray-400)' }}>{t('admin.noevents')}</p>
             <button className="btn btn-primary mt-24" onClick={() => navigate('create-event')}>
-              Erstes Event erstellen
+              {t('create.submit')}
             </button>
           </div>
         ) : (
