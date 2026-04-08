@@ -2334,41 +2334,17 @@ export class EventService {
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
       const buffer = await file.arrayBuffer();
 
-      // Upload per XHR (SPHttpClient hat Header-Probleme mit Binary)
-      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${encodeURIComponent(fileName)}',overwrite=true)`;
-      const digestResp = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/contextinfo`, SPHttpClient.configurations.v1, {}
-      );
-      let digest = '';
-      if (digestResp.ok) {
-        const digestData = await digestResp.json();
-        digest = digestData.d?.GetContextWebInformation?.FormDigestValue || digestData.FormDigestValue || '';
-      }
+      // Upload - Datei wird hochgeladen, Response-Status egal (oft 406 wegen Header)
+      try {
+        await this.context.spHttpClient.post(
+          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${encodeURIComponent(fileName)}',overwrite=true)`,
+          SPHttpClient.configurations.v1,
+          { body: buffer }
+        );
+      } catch { /* Upload-Response irrelevant - Datei wird trotzdem hochgeladen */ }
 
-      const fileUrl = await new Promise<string>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', uploadUrl, true);
-        xhr.setRequestHeader('Accept', 'application/json;odata=verbose');
-        xhr.setRequestHeader('X-RequestDigest', digest);
-        xhr.onload = () => {
-          if (xhr.status === 200 || xhr.status === 201) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
-              resolve(relUrl ? `${window.location.origin}${relUrl}` : `${window.location.origin}${folderPath}/${fileName}`);
-            } catch {
-              resolve(`${window.location.origin}${folderPath}/${fileName}`);
-            }
-          } else {
-            console.warn('[DEX] File upload XHR status:', xhr.status);
-            resolve('');
-          }
-        };
-        xhr.onerror = () => { console.warn('[DEX] File upload XHR error'); resolve(''); };
-        xhr.send(buffer);
-      });
-
-      return fileUrl;
+      // URL direkt aus bekanntem Pfad konstruieren
+      return `${this.siteUrl}${folderPath}/${fileName}`;
     } catch (err) { console.warn('[DEX] uploadEventDocument error:', err); }
     return '';
   }

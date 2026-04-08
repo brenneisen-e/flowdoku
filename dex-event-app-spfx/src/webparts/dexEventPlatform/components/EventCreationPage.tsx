@@ -475,7 +475,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookBody,
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
-        documents: JSON.stringify(documents.map(d => ({ name: d.name, url: d.url, size: d.size }))),
+        documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
           ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
