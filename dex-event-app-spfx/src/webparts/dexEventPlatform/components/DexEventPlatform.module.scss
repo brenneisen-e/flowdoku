@@ -262,6 +262,7 @@
     .event-card {
       background: var(--dex-white); border: 1px solid var(--dex-gray-200);
       border-radius: var(--dex-radius-lg); overflow: hidden; cursor: pointer;
+      display: flex; flex-direction: column;
       transition: box-shadow var(--dex-transition), transform var(--dex-transition);
     }
     .event-card:hover { box-shadow: var(--dex-shadow-hover); transform: translateY(-2px); }

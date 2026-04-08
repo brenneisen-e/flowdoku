@@ -275,7 +275,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
       const lang = event.emailLanguage || 'EN';
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
-      const vars = { Name: nameToUse, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`, WaitlistPosition: posText };
+      const vars = { Name: nameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       if (spTemplate) {
