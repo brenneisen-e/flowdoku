@@ -162,7 +162,8 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
 /**
  * Warteliste-Bestätigung
  */
-export function waitlistEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+export function waitlistEmail(recipientName: string, eventTitle: string, position?: number): { subject: string; body: string } {
+  const posInfo = position ? `<p>Your current position on the waitlist: <strong>#${position}</strong>.</p>` : '';
   return {
     subject: `Warteliste: ${eventTitle}`,
     body: wrapTemplate(
@@ -171,7 +172,8 @@ export function waitlistEmail(recipientName: string, eventTitle: string): { subj
       `Event ${eventTitle}`,
       `<p><strong>Dear ${recipientName},</strong></p>
       <p>you have been placed on the <strong>waitlist</strong> for the event <strong>${eventTitle}</strong>.</p>
-      <p>We will notify you as soon as a spot becomes available. You do not need to take any further action.</p>
+      ${posInfo}
+      <p>We will notify you as soon as a spot becomes available. You can always check your current waitlist position in the <a href="${APP_URL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> under &bdquo;My Events&ldquo;.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
