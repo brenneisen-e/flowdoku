@@ -93,6 +93,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'reg.yourlocation': 'Dein Standort',
     'reg.unknown': 'unbekannt',
     'reg.until': 'bis',
+    'reg.deadlinepassed.title': 'Anmeldefrist abgelaufen',
+    'reg.deadlinepassed.text': 'Die Anmeldefrist für dieses Event ist leider abgelaufen. Du kannst dich nicht mehr registrieren.',
+    'reg.deadlinepassed.date': 'Anmeldeschluss war',
     'reg.privacy': 'Im Rahmen des Events {title} werden von Deloitte Audio-, Bild- und Videoaufnahmen erstellt. Durch die eindeutige bestätigende Handlung, z.B. Posieren oder Lächeln in die Kamera, willigst du in die Erstellung von Audio-, Bild- und Videoaufnahmen ein. Die Aufnahmen können für Deloitte-interne Veröffentlichungszwecke (z.B. DeloitteNet) verwendet werden. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft und ohne negative Konsequenzen per E-Mail an privacy@deloitte.de widerrufen werden.',
 
     // My Events
@@ -113,6 +116,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'myevents.date': 'Datum',
     'myevents.registeredon': 'Angemeldet am',
     'myevents.agenda': 'Programm',
+    'myevents.latecancel': 'Achtung: Die Abmeldefrist ist abgelaufen. Der Organizer wird über deine Abmeldung informiert.',
 
     // Admin Page
     'admin.title': 'Admin / Organizer',
@@ -350,6 +354,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'reg.yourlocation': 'Your location',
     'reg.unknown': 'unknown',
     'reg.until': 'until',
+    'reg.deadlinepassed.title': 'Registration closed',
+    'reg.deadlinepassed.text': 'The registration period for this event has ended. You can no longer register.',
+    'reg.deadlinepassed.date': 'Registration deadline was',
     'reg.privacy': 'As part of the event {title}, audio, image, and video recordings will be made for Deloitte. By the clear confirming action, e.g., posing or smiling at the camera, you consent to the creation of audio, image, and video recordings. The recordings may be used for Deloitte internal publication purposes (e.g., DeloitteNet). The consent can be revoked at any time with future effect and without any negative consequences by sending an email to privacy@deloitte.de.',
 
     // My Events
@@ -370,6 +377,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'myevents.date': 'Date',
     'myevents.registeredon': 'Registered on',
     'myevents.agenda': 'Schedule',
+    'myevents.latecancel': 'Warning: The cancellation deadline has passed. The organizer will be notified of your cancellation.',
 
     // Admin Page
     'admin.title': 'Admin / Organizer',

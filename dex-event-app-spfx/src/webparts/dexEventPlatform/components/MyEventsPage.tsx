@@ -236,11 +236,35 @@ export default function MyEventsPage(): React.ReactElement {
 
   const handleCancel = async (eventId: string): Promise<void> => {
     if (cancellingId === eventId) {
-      // Zweiter Klick = Bestaetigung
       setIsCancelling(true);
+
+      // Check if this is a late cancellation
+      const entry = myEvents.find(e => e.event.id === eventId);
+      const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
+
       const success = await cancelRegistration(eventId);
       if (success) {
-        // Registrierung neu laden
+        // If late cancellation, send notification to organizer
+        if (isLateCancellation && entry) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx) {
+              const { EventService } = await import('../services/EventService');
+              const svc = new EventService(ctx);
+              const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
+              await svc.queueEmail(
+                `[DEX] Late cancellation: ${entry.event.title}`,
+                entry.event.organizers[0] || '',
+                entry.event.organizers[0] || '',
+                `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${new Date(entry.event.lastDeregisterDate).toLocaleDateString('de-DE')}).</p><p>E-Mail: ${entry.registration.ParticipantEmail || entry.registration.Title}</p>`,
+                'LateCancel',
+                entry.event.title,
+                eventId
+              );
+            }
+          } catch { /* Email-Fehler ignorieren */ }
+        }
         await loadMyRegistrations();
       }
       setCancellingId(null);
@@ -435,7 +459,12 @@ export default function MyEventsPage(): React.ReactElement {
                   <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                     {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
                   </span>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', display: 'block', marginBottom: 4, width: '100%' }}>
+                        {t('myevents.latecancel')}
+                      </span>
+                    )}
                     <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
                       {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                     </button>
