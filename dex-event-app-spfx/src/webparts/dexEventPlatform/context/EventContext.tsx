@@ -86,8 +86,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // seedEvents entfernt - Assistenz Meeting 2026 wurde erfolgreich angelegt
-    try { await eventService.seedParticipants(); } catch { /* */ }
+    // seedEvents + seedParticipants entfernt - Migration erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
   }
