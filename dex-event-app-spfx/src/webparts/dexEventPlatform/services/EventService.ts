@@ -2126,7 +2126,7 @@ export class EventService {
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,TeilnehmerID,Anrede,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=Id asc&$top=500`;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=500`;
 
     while (url) {
       try {
