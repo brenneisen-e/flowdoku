@@ -229,6 +229,16 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.documents.hint': 'Organisatorische Informationen, Agendas, Anfahrtsbeschreibungen etc. Teilnehmer können diese unter "Meine Events" herunterladen.',
     'myevents.transfers': 'Transferzeiten',
     'myevents.documents': 'Dokumente',
+    'create.step.funzone': 'Fun-Zone',
+    'create.funzone.hint': 'Erstelle ein Quiz für die Teilnehmer. Sie können es unter "Meine Events" spielen.',
+    'create.funzone.question': 'Frage',
+    'create.funzone.questionplaceholder': 'Deine Frage eingeben...',
+    'create.funzone.options': 'Antwortmöglichkeiten (richtige Antwort markieren)',
+    'create.funzone.option': 'Option',
+    'create.funzone.correct': 'Richtige Antwort',
+    'create.funzone.correcthint': 'Markiere die richtige Antwort mit dem Radio-Button links.',
+    'create.funzone.addoption': 'Option hinzufügen',
+    'create.funzone.addquestion': 'Frage hinzufügen',
 
     // Check-in
     'checkin.title': 'Check-in',
@@ -496,6 +506,16 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.documents.hint': 'Organizational information, agendas, travel directions etc. Participants can download these from "My Events".',
     'myevents.transfers': 'Transfer Times',
     'myevents.documents': 'Documents',
+    'create.step.funzone': 'Fun-Zone',
+    'create.funzone.hint': 'Create a quiz for participants. They can play it under "My Events".',
+    'create.funzone.question': 'Question',
+    'create.funzone.questionplaceholder': 'Enter your question...',
+    'create.funzone.options': 'Answer options (mark the correct answer)',
+    'create.funzone.option': 'Option',
+    'create.funzone.correct': 'Correct answer',
+    'create.funzone.correcthint': 'Mark the correct answer with the radio button on the left.',
+    'create.funzone.addoption': 'Add option',
+    'create.funzone.addquestion': 'Add question',
 
     // Check-in
     'checkin.title': 'Check-in',

@@ -213,8 +213,23 @@ export default function SettingsPage(): React.ReactElement {
                     </tr>
                   </thead>
                   <tbody>
-                    {roles.map(r => (
-                      <tr key={r.id} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+                    {[...roles]
+                      .sort((a, b) => {
+                        // Admins zuerst, dann Organizer, dann User - jeweils alphabetisch
+                        const order: Record<string, number> = { Admin: 0, Organizer: 1, User: 2 };
+                        const diff = (order[a.role] ?? 3) - (order[b.role] ?? 3);
+                        return diff !== 0 ? diff : a.userName.localeCompare(b.userName);
+                      })
+                      .map((r, i, arr) => {
+                        // Trennlinie zwischen Rollen-Gruppen
+                        const prevRole = i > 0 ? arr[i - 1].role : null;
+                        const showSeparator = prevRole && prevRole !== r.role;
+                        return (
+                          <React.Fragment key={r.id}>
+                            {showSeparator && (
+                              <tr><td colSpan={5} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
+                            )}
+                            <tr style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
                         <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>{r.userName}</td>
                         <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
                         <td style={{ padding: 10 }}>
@@ -264,7 +279,9 @@ export default function SettingsPage(): React.ReactElement {
                           )}
                         </td>
                       </tr>
-                    ))}
+                          </React.Fragment>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>

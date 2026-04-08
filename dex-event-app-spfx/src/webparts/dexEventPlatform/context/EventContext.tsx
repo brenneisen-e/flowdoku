@@ -53,6 +53,7 @@ export interface CreateEventInput {
   agenda?: string; // JSON-Array mit Agenda-Eintraegen
   transfers?: string; // JSON-Array mit Transferzeiten
   documents?: string; // JSON-Array mit Dokumenten
+  funZone?: string; // JSON-Array mit Quiz-Fragen
   emailLanguage?: string;
   emailTemplateOverrides?: string;
   customFields: CustomField[];
@@ -85,7 +86,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    try { await eventService.seedEvents(); } catch { /* */ }
+    // seedEvents entfernt - Assistenz Meeting 2026 wurde erfolgreich angelegt
     await loadEvents();
     setIsEventsLoading(false);
   }
@@ -182,6 +183,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
+      quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
       documents: [], // Wird per loadAttachments nachgeladen
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,

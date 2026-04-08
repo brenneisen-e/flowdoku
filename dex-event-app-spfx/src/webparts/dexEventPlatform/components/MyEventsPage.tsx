@@ -9,7 +9,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
-import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../types';
+import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -71,6 +71,128 @@ function getDocIconName(name: string): string {
     case 'jpg': case 'jpeg': case 'png': case 'gif': return 'FileImage';
     default: return 'Page';
   }
+}
+
+function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => string }): React.ReactElement {
+  const [currentQ, setCurrentQ] = React.useState(0);
+  const [selectedAnswer, setSelectedAnswer] = React.useState<number | null>(null);
+  const [score, setScore] = React.useState(0);
+  const [finished, setFinished] = React.useState(false);
+  const [showQuiz, setShowQuiz] = React.useState(false);
+
+  const question = quiz[currentQ];
+
+  const handleAnswer = (index: number): void => {
+    if (selectedAnswer !== null) return; // Already answered
+    setSelectedAnswer(index);
+    if (index === question.correctIndex) setScore(s => s + 1);
+  };
+
+  const nextQuestion = (): void => {
+    if (currentQ < quiz.length - 1) {
+      setCurrentQ(currentQ + 1);
+      setSelectedAnswer(null);
+    } else {
+      setFinished(true);
+    }
+  };
+
+  const restart = (): void => {
+    setCurrentQ(0);
+    setSelectedAnswer(null);
+    setScore(0);
+    setFinished(false);
+  };
+
+  if (!showQuiz) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <button
+          onClick={() => setShowQuiz(true)}
+          style={{
+            width: '100%', padding: '14px 20px', borderRadius: 12,
+            border: '2px solid var(--dex-green)', background: 'rgba(134,188,37,0.06)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-green-dark)',
+          }}
+        >
+          <Icon iconName="Game" style={{ fontSize: 20 }} />
+          Fun-Zone: Quiz ({quiz.length} {quiz.length === 1 ? 'Frage' : 'Fragen'})
+        </button>
+      </div>
+    );
+  }
+
+  if (finished) {
+    return (
+      <div style={{ marginTop: 12, padding: 20, background: 'var(--dex-gray-50)', borderRadius: 12, textAlign: 'center' }}>
+        <div style={{ fontSize: '2rem', marginBottom: 8 }}>{score === quiz.length ? '🎉' : score >= quiz.length / 2 ? '👏' : '💪'}</div>
+        <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>
+          {score} / {quiz.length} {t('myevents.agenda') === 'Programm' ? 'richtig' : 'correct'}
+        </div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 12 }}>
+          {score === quiz.length
+            ? (t('myevents.agenda') === 'Programm' ? 'Perfekt! Alle richtig!' : 'Perfect! All correct!')
+            : (t('myevents.agenda') === 'Programm' ? 'Gut gemacht!' : 'Well done!')}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button className="btn btn-primary" onClick={restart} style={{ fontSize: '0.82rem' }}>
+            {t('myevents.agenda') === 'Programm' ? 'Nochmal spielen' : 'Play again'}
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowQuiz(false)} style={{ fontSize: '0.82rem' }}>
+            {t('create.templates.close')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 16, background: 'var(--dex-gray-50)', borderRadius: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+          {t('myevents.agenda') === 'Programm' ? 'Frage' : 'Question'} {currentQ + 1} / {quiz.length}
+        </span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--dex-green-dark)', fontWeight: 600 }}>
+          {score} {t('myevents.agenda') === 'Programm' ? 'Punkte' : 'Points'}
+        </span>
+      </div>
+      <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 12 }}>{question.question}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {question.options.map((opt, i) => {
+          let bg = 'var(--dex-white)';
+          let border = '1px solid var(--dex-gray-200)';
+          let color = 'var(--dex-gray-800)';
+          if (selectedAnswer !== null) {
+            if (i === question.correctIndex) { bg = 'rgba(134,188,37,0.15)'; border = '2px solid var(--dex-green)'; color = 'var(--dex-green-dark)'; }
+            else if (i === selectedAnswer) { bg = 'rgba(218,41,28,0.1)'; border = '2px solid var(--dex-red)'; color = 'var(--dex-red)'; }
+          }
+          return (
+            <button
+              key={i}
+              onClick={() => handleAnswer(i)}
+              disabled={selectedAnswer !== null}
+              style={{
+                padding: '10px 14px', borderRadius: 10, border, background: bg, color,
+                cursor: selectedAnswer !== null ? 'default' : 'pointer', textAlign: 'left',
+                fontSize: '0.88rem', fontWeight: selectedAnswer !== null && i === question.correctIndex ? 700 : 400,
+                transition: 'all 0.2s',
+              }}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {selectedAnswer !== null && (
+        <button className="btn btn-primary" onClick={nextQuestion} style={{ marginTop: 12, fontSize: '0.82rem' }}>
+          {currentQ < quiz.length - 1
+            ? (t('myevents.agenda') === 'Programm' ? 'Nächste Frage' : 'Next question')
+            : (t('myevents.agenda') === 'Programm' ? 'Ergebnis anzeigen' : 'Show result')}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
@@ -509,6 +631,11 @@ export default function MyEventsPage(): React.ReactElement {
                 {/* Dokumente mit Viewer */}
                 {event.documents && event.documents.length > 0 && (
                   <DocumentsViewer documents={event.documents} t={t} />
+                )}
+
+                {/* Fun-Zone Quiz */}
+                {event.quiz && event.quiz.length > 0 && (
+                  <QuizPlayer quiz={event.quiz} t={t} />
                 )}
 
                 {/* Registriert am + Aktionen */}

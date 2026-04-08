@@ -33,6 +33,7 @@ export interface DeloitteEvent {
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];
+  quiz: QuizQuestion[];
   eventSpecificFields: EventSpecificField[];
 }
 
@@ -55,6 +56,13 @@ export interface TransferTime {
   departureTime: string; // HH:mm
   arrivalTime?: string;  // HH:mm
   description?: string;  // Zusatzinfo
+}
+
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number; // Index der richtigen Antwort (0-basiert)
 }
 
 export interface EventDocument {

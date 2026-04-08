@@ -11,6 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 import EventCard from './EventCard';
 
 /**
@@ -94,6 +95,7 @@ export default function EventListPage(): React.ReactElement {
   const { events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, currentUserRole } = useRoles();
+  const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   const [showDebug, setShowDebug] = React.useState(false);
   const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
@@ -112,6 +114,20 @@ export default function EventListPage(): React.ReactElement {
     : statusFiltered.filter((e: DeloitteEvent) =>
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
       );
+
+  if (isEventsLoading) {
+    return (
+      <div className="page-container text-center">
+        <div style={{ padding: 48 }}>
+          <div style={{
+            width: 48, height: 48, margin: '0 auto 16px', borderRadius: '50%',
+            borderTop: '4px solid var(--dex-green)', animation: 'dexOrbSpin 1s linear infinite',
+          }} />
+          <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.loading')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
