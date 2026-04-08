@@ -55,8 +55,12 @@ export default function AdminPage(): React.ReactElement {
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [sortColumn, setSortColumn] = React.useState<'id' | 'name' | 'email' | 'status' | 'date'>('id');
+  const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
+  const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
+  const [reorderResult, setReorderResult] = React.useState<string | null>(null);
+  const [isFixingColumns, setIsFixingColumns] = React.useState(false);
+  const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -234,6 +238,7 @@ export default function AdminPage(): React.ReactElement {
     let cmp = 0;
     switch (sortColumn) {
       case 'id': cmp = (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0); break;
+      case 'anrede': cmp = (a.Anrede || '').localeCompare(b.Anrede || '', 'de'); break;
       case 'name': {
         const na = (a.Vorname && a.Nachname) ? `${a.Nachname} ${a.Vorname}` : (a.ParticipantName || '');
         const nb = (b.Vorname && b.Nachname) ? `${b.Nachname} ${b.Vorname}` : (b.ParticipantName || '');
@@ -247,7 +252,7 @@ export default function AdminPage(): React.ReactElement {
     return sortAsc ? cmp : -cmp;
   };
 
-  const handleSort = (col: 'id' | 'name' | 'email' | 'status' | 'date'): void => {
+  const handleSort = (col: 'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'): void => {
     if (sortColumn === col) { setSortAsc(!sortAsc); }
     else { setSortColumn(col); setSortAsc(true); }
   };
@@ -477,14 +482,69 @@ export default function AdminPage(): React.ReactElement {
           <h3 style={{ margin: 0 }}>
             <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Teilnehmer suchen..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Teilnehmer suchen..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
+            />
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isReorderingIDs || !selectedEvent?.subsiteUrl}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, ...)? Sortierung nach Erstellungsreihenfolge.')) return;
+                  setIsReorderingIDs(true);
+                  setReorderResult(null);
+                  try {
+                    const result = await eventServiceRef.reorderParticipantIDs(selectedEvent.subsiteUrl);
+                    setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  } catch {
+                    setReorderResult('Fehler beim Neuvergeben der IDs');
+                  }
+                  setIsReorderingIDs(false);
+                }}
+              >
+                {isReorderingIDs ? 'IDs werden vergeben...' : 'IDs neu vergeben'}
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isFixingColumns || !selectedEvent?.subsiteUrl}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  setIsFixingColumns(true);
+                  setFixColumnsResult(null);
+                  try {
+                    const result = await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl);
+                    const msgs: string[] = [];
+                    if (result.added.length > 0) msgs.push(`Spalten hinzugefuegt: ${result.added.join(', ')}`);
+                    if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
+                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Aenderungen noetig');
+                  } catch {
+                    setFixColumnsResult('Fehler beim Fixen der Spalten');
+                  }
+                  setIsFixingColumns(false);
+                }}
+              >
+                {isFixingColumns ? 'Spalten werden gefixt...' : 'Spalten fixen'}
+              </button>
+            )}
+            {(reorderResult || fixColumnsResult) && (
+              <span style={{ fontSize: '0.75rem', color: (reorderResult || fixColumnsResult || '').includes('Fehler') ? 'var(--dex-red)' : 'var(--dex-green)' }}>
+                {reorderResult || fixColumnsResult}
+              </span>
+            )}
+          </div>
         </div>
 
         {regLoadError ? (
@@ -498,7 +558,7 @@ export default function AdminPage(): React.ReactElement {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                  {([['id', '#'], ['name', 'Name'], ['email', 'Email'], ['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
+                  {([['id', '#'], ['anrede', 'Anrede'], ['name', 'Name'], ['email', 'Email'], ['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
                     <th
                       key={col}
                       style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
@@ -514,6 +574,7 @@ export default function AdminPage(): React.ReactElement {
                 {activeRegs.map((reg, i) => (
                   <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>
                     <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
                     <td style={{ padding: 8 }}>

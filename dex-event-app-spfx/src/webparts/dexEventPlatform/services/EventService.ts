@@ -73,6 +73,7 @@ export interface SPRegistration {
   Id: number;
   Title: string; // Email
   TeilnehmerID?: number;
+  Anrede?: string;
   Vorname?: string;
   Nachname?: string;
   ParticipantName: string;
@@ -1659,6 +1660,7 @@ export class EventService {
     // Basis-Spalten
     const baseFields = [
       { title: 'TeilnehmerID', type: 9 }, // Number - fortlaufende ID
+      { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
       { title: 'Vorname', type: 2 },
       { title: 'Nachname', type: 2 },
       { title: 'ParticipantName', type: 2 }, // Backward compat
@@ -1746,7 +1748,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -1929,6 +1931,7 @@ export class EventService {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
         'TeilnehmerID': nextId,
+        'Anrede': customData.salutation || '',
         'Vorname': firstName,
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
@@ -2123,7 +2126,7 @@ export class EventService {
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,TeilnehmerID,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=RegistrationDate&$top=500`;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Title,TeilnehmerID,Anrede,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData&$orderby=Id asc&$top=500`;
 
     while (url) {
       try {
@@ -2137,6 +2140,130 @@ export class EventService {
       }
     }
     return allItems;
+  }
+
+  /**
+   * TeilnehmerIDs sequentiell neu vergeben (1, 2, 3, ...).
+   * Nur angemeldete Teilnehmer bekommen IDs, sortiert nach SP-ListItem-ID (Erstellungsreihenfolge).
+   * Abgemeldete Teilnehmer bekommen TeilnehmerID = null.
+   */
+  public async reorderParticipantIDs(subsiteUrl: string): Promise<{ success: number; errors: number }> {
+    // Alle Items laden, sortiert nach SP Id (Erstellungsreihenfolge)
+    const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=500`;
+
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        allItems.push(...(data.value || data.d?.results || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch { break; }
+    }
+
+    let nextId = 1;
+    let success = 0;
+    let errors = 0;
+
+    for (const item of allItems) {
+      const isActive = item.Status === 'Angemeldet' || item.Status === 'QR versendet' || item.Status === 'Eingecheckt' || item.Status === 'Warteliste';
+      const newId = isActive ? nextId++ : null;
+
+      // Nur updaten wenn sich die ID aendert
+      if (newId === item.TeilnehmerID) { success++; continue; }
+
+      try {
+        const resp = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${item.Id})`,
+          { 'TeilnehmerID': newId }
+        );
+        if (resp.ok || resp.status === 406) { success++; } else { errors++; }
+      } catch { errors++; }
+    }
+
+    return { success, errors };
+  }
+
+  /**
+   * Spalten der Teilnehmerliste fixen: fehlende Spalten anlegen, View-Reihenfolge korrigieren.
+   * Kann auf bestehenden Events ausgefuehrt werden um die Liste nachtraeglich zu aktualisieren.
+   */
+  public async fixRegistrationListColumns(subsiteUrl: string): Promise<{ added: string[]; viewFixed: boolean }> {
+    const added: string[] = [];
+
+    // Bestehende Felder laden
+    const fieldsResp = await this.context.spHttpClient.get(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
+      SPHttpClient.configurations.v1
+    );
+    const existingFieldsList: string[] = [];
+    if (fieldsResp.ok) {
+      const fieldsData = await fieldsResp.json();
+      const fields = fieldsData.value || fieldsData.d?.results || [];
+      for (const f of fields) { existingFieldsList.push(f.InternalName); }
+    }
+
+    // Fehlende Basis-Spalten anlegen
+    const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
+    ];
+
+    for (const f of requiredFields) {
+      if (existingFieldsList.indexOf(f.title) < 0) {
+        const payload: Record<string, unknown> = {
+          '__metadata': { 'type': f.metaType || 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+          'Required': false,
+        };
+        if (f.choices) {
+          payload['Choices'] = { 'results': f.choices };
+        }
+        const resp = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, payload
+        );
+        if (resp.ok) added.push(f.title);
+      }
+    }
+
+    // Default View komplett neu aufbauen (Reihenfolge: TeilnehmerID, Anrede, Vorname, Nachname, ...)
+    let viewFixed = false;
+    try {
+      // Alle bestehenden Felder aus der View entfernen
+      await this._post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/defaultview/viewfields/removeallviewfields`,
+        {}
+      );
+
+      // Felder in gewuenschter Reihenfolge hinzufuegen
+      const viewFields = [
+        'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
+        'Department', 'Location', 'JobTitle', 'Phone',
+        'Status', 'RegistrationDate', 'CancellationDate',
+      ];
+
+      // Auch Custom Fields die auf der Liste existieren
+      const knownBase = viewFields.concat(['Title', 'ParticipantName', 'CustomData', 'LastModifiedDate', 'ChangeLog']);
+      for (let fi = 0; fi < existingFieldsList.length; fi++) {
+        const fn = existingFieldsList[fi];
+        if (knownBase.indexOf(fn) < 0 && fn.charAt(0) !== '_' && fn !== 'ContentType' && fn !== 'Attachments') {
+          viewFields.push(fn);
+        }
+      }
+
+      for (const fn of viewFields) {
+        await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/defaultview/viewfields/addviewfield('${fn}')`,
+          {}
+        );
+      }
+      viewFixed = true;
+    } catch {
+      console.warn('[DEX] View-Reihenfolge konnte nicht gesetzt werden');
+    }
+
+    return { added, viewFixed };
   }
 
   /**

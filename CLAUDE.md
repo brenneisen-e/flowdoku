@@ -67,6 +67,16 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 | DEX_Emails: Schreiben (Queue) | Nur eigene | Nur eigene | ✅ |
 | Event-Subsites: Full Control | ❌ | Eigene Events | ✅ |
 
+### Teilnehmerlisten-Schema (Subsites)
+
+Spaltenreihenfolge in der Default View: **TeilnehmerID > Anrede > Vorname > Nachname > ParticipantEmail > Department > Location > JobTitle > Phone > Status > RegistrationDate > CancellationDate > [Custom Fields]**
+
+Wenn Aenderungen am Teilnehmerlisten-Schema noetig sind (neue Spalten, Reihenfolge aendern):
+1. `createRegistrationList()` in EventService.ts anpassen (fuer neue Events)
+2. `fixRegistrationListColumns()` in EventService.ts anpassen (fuer bestehende Events)
+3. Der Admin kann im Admin Center per Button **"Spalten fixen"** bestehende Events nachtraeglich aktualisieren
+4. Dieser Button legt fehlende Spalten an und setzt die View-Reihenfolge korrekt
+
 ### Icons / Design
 
 **IMPORTANT:** KEINE Emojis im UI verwenden. Stattdessen ausschließlich **Fluent UI Icons** (modern, einfarbig, SVG):
