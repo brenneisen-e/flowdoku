@@ -236,7 +236,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.funzone.options': 'Antwortmöglichkeiten (richtige Antwort markieren)',
     'create.funzone.option': 'Option',
     'create.funzone.correct': 'Richtige Antwort',
-    'create.funzone.correcthint': 'Markiere die richtige Antwort mit dem Radio-Button links.',
+    'create.funzone.correcthint': 'Markiere die richtigen Antworten mit den Checkboxen links. Mehrfachauswahl möglich.',
     'create.funzone.addoption': 'Option hinzufügen',
     'create.funzone.addquestion': 'Frage hinzufügen',
 
@@ -513,7 +513,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.funzone.options': 'Answer options (mark the correct answer)',
     'create.funzone.option': 'Option',
     'create.funzone.correct': 'Correct answer',
-    'create.funzone.correcthint': 'Mark the correct answer with the radio button on the left.',
+    'create.funzone.correcthint': 'Mark the correct answers with the checkboxes on the left. Multiple selections possible.',
     'create.funzone.addoption': 'Add option',
     'create.funzone.addquestion': 'Add question',
 

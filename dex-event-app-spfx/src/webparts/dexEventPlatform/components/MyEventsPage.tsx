@@ -75,23 +75,32 @@ function getDocIconName(name: string): string {
 
 function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => string }): React.ReactElement {
   const [currentQ, setCurrentQ] = React.useState(0);
-  const [selectedAnswer, setSelectedAnswer] = React.useState<number | null>(null);
+  const [selectedAnswers, setSelectedAnswers] = React.useState<number[]>([]);
+  const [submitted, setSubmitted] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [finished, setFinished] = React.useState(false);
   const [showQuiz, setShowQuiz] = React.useState(false);
 
   const question = quiz[currentQ];
+  // Backwards compatibility: support old correctIndex and new correctIndices
+  const correctIndices = question.correctIndices || [(question as any).correctIndex || 0];
 
   const handleAnswer = (index: number): void => {
-    if (selectedAnswer !== null) return; // Already answered
-    setSelectedAnswer(index);
-    if (index === question.correctIndex) setScore(s => s + 1);
+    if (submitted) return;
+    setSelectedAnswers(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]);
+  };
+
+  const checkAnswer = (): void => {
+    setSubmitted(true);
+    const isCorrect = correctIndices.length === selectedAnswers.length && correctIndices.every(c => selectedAnswers.includes(c));
+    if (isCorrect) setScore(s => s + 1);
   };
 
   const nextQuestion = (): void => {
     if (currentQ < quiz.length - 1) {
       setCurrentQ(currentQ + 1);
-      setSelectedAnswer(null);
+      setSelectedAnswers([]);
+      setSubmitted(false);
     } else {
       setFinished(true);
     }
@@ -99,7 +108,8 @@ function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => str
 
   const restart = (): void => {
     setCurrentQ(0);
-    setSelectedAnswer(null);
+    setSelectedAnswers([]);
+    setSubmitted(false);
     setScore(0);
     setFinished(false);
   };
@@ -163,28 +173,38 @@ function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => str
           let bg = 'var(--dex-white)';
           let border = '1px solid var(--dex-gray-200)';
           let color = 'var(--dex-gray-800)';
-          if (selectedAnswer !== null) {
-            if (i === question.correctIndex) { bg = 'rgba(134,188,37,0.15)'; border = '2px solid var(--dex-green)'; color = 'var(--dex-green-dark)'; }
-            else if (i === selectedAnswer) { bg = 'rgba(218,41,28,0.1)'; border = '2px solid var(--dex-red)'; color = 'var(--dex-red)'; }
+          const isSelected = selectedAnswers.includes(i);
+          const isCorrect = correctIndices.includes(i);
+          if (submitted) {
+            if (isCorrect) { bg = 'rgba(134,188,37,0.15)'; border = '2px solid var(--dex-green)'; color = 'var(--dex-green-dark)'; }
+            else if (isSelected) { bg = 'rgba(218,41,28,0.1)'; border = '2px solid var(--dex-red)'; color = 'var(--dex-red)'; }
+          } else if (isSelected) {
+            bg = 'rgba(134,188,37,0.08)'; border = '2px solid var(--dex-green)';
           }
           return (
             <button
               key={i}
               onClick={() => handleAnswer(i)}
-              disabled={selectedAnswer !== null}
+              disabled={submitted}
               style={{
                 padding: '10px 14px', borderRadius: 10, border, background: bg, color,
-                cursor: selectedAnswer !== null ? 'default' : 'pointer', textAlign: 'left',
-                fontSize: '0.88rem', fontWeight: selectedAnswer !== null && i === question.correctIndex ? 700 : 400,
-                transition: 'all 0.2s',
+                cursor: submitted ? 'default' : 'pointer', textAlign: 'left',
+                fontSize: '0.88rem', fontWeight: submitted && isCorrect ? 700 : 400,
+                transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10,
               }}
             >
+              <Icon iconName={isSelected || (submitted && isCorrect) ? 'CheckboxComposite' : 'Checkbox'} style={{ fontSize: 16, flexShrink: 0 }} />
               {opt}
             </button>
           );
         })}
       </div>
-      {selectedAnswer !== null && (
+      {selectedAnswers.length > 0 && !submitted && (
+        <button className="btn btn-primary" onClick={checkAnswer} style={{ marginTop: 12, fontSize: '0.82rem' }}>
+          {t('myevents.agenda') === 'Programm' ? 'Antwort prüfen' : 'Check answer'}
+        </button>
+      )}
+      {submitted && (
         <button className="btn btn-primary" onClick={nextQuestion} style={{ marginTop: 12, fontSize: '0.82rem' }}>
           {currentQ < quiz.length - 1
             ? (t('myevents.agenda') === 'Programm' ? 'Nächste Frage' : 'Next question')

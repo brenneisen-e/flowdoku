@@ -230,8 +230,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [documents, setDocuments] = React.useState<Array<{name: string; file?: File; url: string; size: number}>>(
     editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
   );
-  const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndex: number}>>(
-    editEvent?.quiz?.map(q => ({...q})) || []
+  const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndices: number[]}>>(
+    editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
   );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
@@ -329,12 +329,12 @@ export default function EventCreationPage(): React.ReactElement {
 
   // ===== Quiz helpers =====
   const addQuizQuestion = (): void => {
-    setQuiz([...quiz, { id: `q-${Date.now()}`, question: '', options: ['', ''], correctIndex: 0 }]);
+    setQuiz([...quiz, { id: `q-${Date.now()}`, question: '', options: ['', ''], correctIndices: [0] }]);
   };
   const removeQuizQuestion = (id: string): void => {
     setQuiz(quiz.filter(q => q.id !== id));
   };
-  const updateQuizQuestion = (id: string, updates: Partial<{question: string; options: string[]; correctIndex: number}>): void => {
+  const updateQuizQuestion = (id: string, updates: Partial<{question: string; options: string[]; correctIndices: number[]}>): void => {
     setQuiz(quiz.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
@@ -1738,10 +1738,13 @@ export default function EventCreationPage(): React.ReactElement {
                     {q.options.map((opt, oi) => (
                       <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                         <input
-                          type="radio"
-                          name={`correct-${q.id}`}
-                          checked={q.correctIndex === oi}
-                          onChange={() => updateQuizQuestion(q.id, { correctIndex: oi })}
+                          type="checkbox"
+                          checked={q.correctIndices?.includes(oi) || false}
+                          onChange={() => {
+                            const indices = q.correctIndices || [];
+                            const newIndices = indices.includes(oi) ? indices.filter(x => x !== oi) : [...indices, oi];
+                            updateQuizQuestion(q.id, { correctIndices: newIndices.length > 0 ? newIndices : [0] });
+                          }}
                           title={t('create.funzone.correct')}
                           style={{ accentColor: 'var(--dex-green)' }}
                         />
@@ -1759,8 +1762,8 @@ export default function EventCreationPage(): React.ReactElement {
                         {q.options.length > 2 && (
                           <button type="button" onClick={() => {
                             const newOpts = q.options.filter((_, i) => i !== oi);
-                            const newCorrect = q.correctIndex >= newOpts.length ? 0 : q.correctIndex > oi ? q.correctIndex - 1 : q.correctIndex;
-                            updateQuizQuestion(q.id, { options: newOpts, correctIndex: newCorrect });
+                            const newCorrect = (q.correctIndices || []).filter(ci => ci !== oi).map(ci => ci > oi ? ci - 1 : ci);
+                            updateQuizQuestion(q.id, { options: newOpts, correctIndices: newCorrect.length > 0 ? newCorrect : [0] });
                           }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', padding: 2 }}>
                             <X size={14} />
                           </button>
