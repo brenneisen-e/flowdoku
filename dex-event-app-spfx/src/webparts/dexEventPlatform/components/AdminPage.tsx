@@ -16,10 +16,11 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send } from './Icons';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail, wrapTemplate } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
+import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -61,6 +62,14 @@ export default function AdminPage(): React.ReactElement {
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
+  // Email Compose Modal
+  const [showEmailModal, setShowEmailModal] = React.useState(false);
+  const [emailSubject, setEmailSubject] = React.useState('');
+  const [emailHeading, setEmailHeading] = React.useState('');
+  const [emailBody, setEmailBody] = React.useState('');
+  const [emailSending, setEmailSending] = React.useState(false);
+  const [emailSentCount, setEmailSentCount] = React.useState(0);
+  const [emailShowPreview, setEmailShowPreview] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -374,13 +383,19 @@ export default function AdminPage(): React.ReactElement {
             >
               <Copy size={16} /> {copiedEmails ? t('admin.copied') : t('admin.copyemails')}
             </button>
-            <a
-              href={`mailto:${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').map(r => r.ParticipantEmail).join(';')}`}
+            <button
               className="btn btn-secondary btn-block"
-              style={{ textDecoration: 'none', textAlign: 'center' }}
+              onClick={() => {
+                setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
+                setEmailHeading(selectedEvent ? selectedEvent.title : '');
+                setEmailBody('');
+                setEmailSentCount(0);
+                setEmailShowPreview(false);
+                setShowEmailModal(true);
+              }}
             >
               <Mail size={16} /> {t('admin.emailall')}
-            </a>
+            </button>
           </div>
         </div>
       </div>
@@ -735,6 +750,142 @@ export default function AdminPage(): React.ReactElement {
           </>
         )}
       </div>
+
+      {/* ===== EMAIL COMPOSE MODAL ===== */}
+      {showEmailModal && selectedEvent && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.5)', padding: 20,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget && !emailSending) setShowEmailModal(false); }}
+        >
+          <div style={{
+            background: '#fff', borderRadius: 'var(--dex-radius-lg, 16px)', width: '100%', maxWidth: 800, maxHeight: '90vh',
+            overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>
+                <Mail size={20} /> E-Mail an alle Teilnehmer
+              </h3>
+              <button onClick={() => !emailSending && setShowEmailModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--dex-gray-400)' }}>&times;</button>
+            </div>
+
+            {emailShowPreview ? (
+              /* ===== PREVIEW ===== */
+              <div style={{ padding: 24 }}>
+                <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+                  <button className="btn btn-secondary" onClick={() => setEmailShowPreview(false)}>
+                    Bearbeiten
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={emailSending}
+                    onClick={async () => {
+                      if (!eventServiceRef || !selectedEvent) return;
+                      const recipients = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+                      if (recipients.length === 0) return;
+                      if (!confirm(`E-Mail an ${recipients.length} Teilnehmer senden?`)) return;
+                      setEmailSending(true);
+                      let sent = 0;
+                      const fullBody = wrapTemplate('var(--dex-green, #86bc25)', emailHeading, `Event ${selectedEvent.title}`, emailBody);
+                      for (const reg of recipients) {
+                        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                        try {
+                          await eventServiceRef.queueEmail(
+                            emailSubject, reg.ParticipantEmail, name, fullBody,
+                            'Info', selectedEvent.title, selectedEvent.id
+                          );
+                          sent++;
+                          setEmailSentCount(sent);
+                        } catch { /* weiter */ }
+                      }
+                      setEmailSending(false);
+                      if (sent > 0) {
+                        alert(`${sent} E-Mails in die Warteschlange eingetragen.`);
+                        setShowEmailModal(false);
+                      }
+                    }}
+                  >
+                    <Send size={16} /> {emailSending ? `Wird gesendet... (${emailSentCount})` : `An ${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length} Teilnehmer senden`}
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                  Betreff: <strong>{emailSubject}</strong>
+                </div>
+                <div style={{
+                  border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden', maxHeight: 500, overflowY: 'auto',
+                }}>
+                  <iframe
+                    srcDoc={wrapTemplate('var(--dex-green, #86bc25)', emailHeading, `Event ${selectedEvent.title}`, emailBody)}
+                    style={{ width: '100%', height: 500, border: 'none' }}
+                    title="E-Mail Vorschau"
+                  />
+                </div>
+              </div>
+            ) : (
+              /* ===== EDITOR ===== */
+              <div style={{ padding: 24 }}>
+                {/* Betreff */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Betreff</label>
+                  <input
+                    className="form-input"
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    placeholder="E-Mail Betreff..."
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                {/* Heading */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Titel (im E-Mail-Header)</label>
+                  <input
+                    className="form-input"
+                    value={emailHeading}
+                    onChange={e => setEmailHeading(e.target.value)}
+                    placeholder="z.B. Wichtige Information"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                {/* Body - RichText */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Nachricht</label>
+                  <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 'var(--dex-radius, 12px)', minHeight: 200, padding: '0 4px' }}>
+                    <RichText
+                      value={emailBody}
+                      onChange={(text: string) => { setEmailBody(text); return text; }}
+                    />
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
+                  Die E-Mail wird im Deloitte-Design versendet (Logo, grüner Header, Footer) über das Gruppenpostfach <strong>no_reply.events@deloitte.de</strong>.
+                  Empfänger: <strong>{registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}</strong> aktive Teilnehmer.
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={() => setShowEmailModal(false)}>
+                    Abbrechen
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!emailSubject.trim() || !emailBody.trim()}
+                    onClick={() => setEmailShowPreview(true)}
+                  >
+                    Vorschau anzeigen
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
