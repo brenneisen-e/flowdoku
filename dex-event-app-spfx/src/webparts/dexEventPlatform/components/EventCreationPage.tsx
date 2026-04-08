@@ -373,7 +373,7 @@ export default function EventCreationPage(): React.ReactElement {
 
     if (isEditMode && selectedEventId) {
       setProgressLabel('Event wird aktualisiert...');
-      // Event aktualisieren
+      // Event aktualisieren - nur bekannte Felder senden
       const updates: Record<string, unknown> = {
         'Title': title,
         'EventType': eventType,
@@ -385,19 +385,20 @@ export default function EventCreationPage(): React.ReactElement {
         'StartDate': startDate ? new Date(startDate).toISOString() : null,
         'EndDate': endDate ? new Date(endDate).toISOString() : null,
         'RegistrationDeadline': registrationDeadline ? new Date(registrationDeadline).toISOString() : null,
-        'LastDeregisterDate': lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : null,
         'MaxParticipants': Number(maxParticipants) || 0,
-        'WaitlistEnabled': waitlistEnabled,
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
-        'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
-        'Agenda': JSON.stringify(agenda),
-        'Transfers': JSON.stringify(transferTimes),
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
         }))),
       };
+
+      // Optionale Felder nur senden wenn sie Werte haben (Spalten koennten fehlen)
+      if (lastDeregisterDate) updates['LastDeregisterDate'] = new Date(lastDeregisterDate).toISOString();
+      if (outlookBody) updates['OutlookBody'] = buildOutlookBody(title, outlookBody);
+      if (agenda.length > 0) updates['Agenda'] = JSON.stringify(agenda);
+      if (transferTimes.length > 0) updates['Transfers'] = JSON.stringify(transferTimes);
 
       setProgress(50);
 
