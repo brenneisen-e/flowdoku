@@ -95,22 +95,24 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
         const origin = doc.url.match(/^https?:\/\/[^/]+/)?.[0] || '';
-        const serverRelPath = doc.url.replace(origin, '');
+        // Server-relativen Pfad dekodieren (falls bereits encoded) und dann einmal korrekt encoden
+        const serverRelPath = decodeURIComponent(doc.url.replace(origin, ''));
         const resp = await ctx.spHttpClient.get(
-          `${ctx.pageContext.web.absoluteUrl}/_api/web/GetFileByServerRelativeUrl('${encodeURIComponent(serverRelPath)}')/$value`,
+          `${ctx.pageContext.web.absoluteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelPath}')/$value`,
           SPHttpClient.configurations.v1,
           { headers: { 'Accept': '*/*' } }
         );
         if (resp.ok) {
           const blob = await resp.blob();
-          // MIME-Type korrigieren
           const ext = doc.name.split('.').pop()?.toLowerCase() || '';
           const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
           const correctBlob = mimeMap[ext] ? new Blob([blob], { type: mimeMap[ext] }) : blob;
           setBlobUrl(URL.createObjectURL(correctBlob));
+        } else {
+          console.warn('[DEX] Doc blob fetch failed:', resp.status, serverRelPath);
         }
       }
-    } catch { /* Blob-Laden fehlgeschlagen */ }
+    } catch (err) { console.warn('[DEX] Doc viewer error:', err); }
     setLoading(false);
   };
 

@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"
@@ -27,12 +27,14 @@
     "@rushstack/eslint-config": "^2.5.1",
     "@types/webpack-env": "^1.18.8",
     "ajv": "^8.18.0",
+    "date-fns": "^4.1.0",
     "eslint": "^8.57.1",
     "postcss": "^8.5.8",
     "postcss-discard-comments": "^5.1.2",
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",
     "react": "17.0.1",
+    "react-datepicker": "^4.25.0",
     "react-dom": "17.0.1",
     "tslib": "2.3.1"
   },
@@ -41,6 +43,7 @@
     "@microsoft/sp-module-interfaces": "1.22.2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "17.0.45",
+    "@types/react-datepicker": "^4.19.6",
     "@types/react-dom": "17.0.17",
     "eslint-plugin-react-hooks": "^7.0.1",
     "gulp": "4.0.2",
