@@ -389,47 +389,66 @@ export default function MyEventsPage(): React.ReactElement {
                   </div>
                 )}
 
-                {/* Agenda / Timeline */}
-                {event.agenda && event.agenda.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
-                      {t('myevents.agenda')}
-                    </div>
-                    {Object.entries(
-                      event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
-                        const key = item.date || 'TBD';
-                        if (!groups[key]) groups[key] = [];
-                        groups[key].push(item);
-                        return groups;
-                      }, {} as Record<string, AgendaItem[]>)
-                    ).sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => (
-                      <div key={date} style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--dex-green)', marginBottom: 4 }}>
-                          {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
-                        </div>
-                        {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
-                          <div key={item.id} style={{
-                            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0',
-                            borderLeft: '2px solid var(--dex-green)', marginLeft: 8, paddingLeft: 12,
+                {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen */}
+                {event.agenda && event.agenda.length > 0 && (() => {
+                  const grouped = Object.entries(
+                    event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
+                      const key = item.date || 'TBD';
+                      if (!groups[key]) groups[key] = [];
+                      groups[key].push(item);
+                      return groups;
+                    }, {} as Record<string, AgendaItem[]>)
+                  ).sort(([a], [b]) => a.localeCompare(b));
+                  const dayCount = grouped.length;
+                  const cols = dayCount >= 3 ? 3 : dayCount >= 2 ? 2 : 1;
+
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                        {t('myevents.agenda')}
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                        gap: 16,
+                      }}>
+                        {grouped.map(([date, items]) => (
+                          <div key={date} style={{
+                            background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: 12,
+                            border: '1px solid var(--dex-gray-200)',
                           }}>
-                            <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 14, color: '#fff' }} />
-                            </span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.82rem' }}>
-                                <strong>{item.time}{item.endTime ? ` – ${item.endTime}` : ''}</strong>
-                                <span style={{ marginLeft: 8 }}>{item.title}</span>
-                              </div>
-                              {item.description && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
-                              )}
+                            <div style={{
+                              fontSize: '0.78rem', fontWeight: 700, color: '#fff', marginBottom: 8,
+                              background: 'var(--dex-green-dark, #6b9a1e)', borderRadius: 8, padding: '6px 12px',
+                              textAlign: 'center',
+                            }}>
+                              {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
                             </div>
+                            {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
+                              <div key={item.id} style={{
+                                display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0',
+                                borderLeft: '2px solid var(--dex-green)', marginLeft: 4, paddingLeft: 10,
+                              }}>
+                                <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 12, color: '#fff' }} />
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                                    {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem' }}>{item.title}</div>
+                                  {item.description && (
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
 
                 {/* Transferzeiten */}
                 {event.transferTimes && event.transferTimes.length > 0 && (
