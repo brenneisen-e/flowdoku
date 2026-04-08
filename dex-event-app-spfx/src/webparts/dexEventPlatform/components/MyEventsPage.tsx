@@ -89,16 +89,43 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
     setBlobUrl('');
 
     try {
-      // Datei direkt per URL laden (gleicher Origin = Auth-Cookies funktionieren)
-      const resp = await fetch(doc.url, { credentials: 'same-origin' });
-      if (resp.ok) {
-        const blob = await resp.blob();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (!ctx) { setLoading(false); return; }
+
+      // Datei per SPHttpClient REST API als Binary laden
+      const siteUrl = ctx.pageContext.web.absoluteUrl;
+      const origin = doc.url.match(/^https?:\/\/[^/]+/)?.[0] || '';
+      const serverRelPath = decodeURIComponent(doc.url.replace(origin, ''));
+
+      // Pfad-Segmente einzeln encoden (Leerzeichen, Klammern etc.)
+      const encodedPath = serverRelPath.split('/').map(s => encodeURIComponent(s)).join('/');
+      const apiUrl = `${siteUrl}/_api/web/GetFileByServerRelativeUrl('${encodedPath}')/$value`;
+
+      // XHR fuer Binary-Download (zuverlaessiger als fetch fuer SharePoint)
+      const blob = await new Promise<Blob | null>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', apiUrl, true);
+        xhr.responseType = 'blob';
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('Accept', '*/*');
+        xhr.onload = () => {
+          if (xhr.status === 200 && xhr.response) {
+            resolve(xhr.response as Blob);
+          } else {
+            console.warn('[DEX] Doc XHR failed:', xhr.status, apiUrl);
+            resolve(null);
+          }
+        };
+        xhr.onerror = () => { console.warn('[DEX] Doc XHR error'); resolve(null); };
+        xhr.send();
+      });
+
+      if (blob && blob.size > 0) {
         const ext = doc.name.split('.').pop()?.toLowerCase() || '';
-        const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
-        const correctBlob = (blob.type !== mimeMap[ext] && mimeMap[ext]) ? new Blob([blob], { type: mimeMap[ext] }) : blob;
+        const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' };
+        const correctBlob = (mimeMap[ext] && blob.type !== mimeMap[ext]) ? new Blob([blob], { type: mimeMap[ext] }) : blob;
         setBlobUrl(URL.createObjectURL(correctBlob));
-      } else {
-        console.warn('[DEX] Doc fetch failed:', resp.status, doc.url);
       }
     } catch (err) { console.warn('[DEX] Doc viewer error:', err); }
     setLoading(false);
