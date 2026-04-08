@@ -1320,7 +1320,7 @@ export class EventService {
       const subsiteUrl = await this.createEventSubsite(event.title, event.description);
       if (!subsiteUrl) {
         console.error('[DEX] Subsite konnte nicht erstellt werden');
-        return null;
+        throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
       }
 
       // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen
@@ -1378,7 +1378,8 @@ export class EventService {
       if (!response.ok) return null;
       const result = await response.json();
       return result.d?.Id || result.Id;
-    } catch {
+    } catch (err) {
+      if (err instanceof Error) throw err;
       return null;
     }
   }

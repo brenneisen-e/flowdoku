@@ -428,6 +428,7 @@ export default function EventCreationPage(): React.ReactElement {
       }
     } else {
       // Neues Event erstellen – Progress-Animation parallel laufen lassen
+      try {
       setProgressLabel('Subsite wird erstellt...');
       const progressSteps = [
         { at: 20, label: 'Subsite wird erstellt...' },
@@ -517,6 +518,11 @@ export default function EventCreationPage(): React.ReactElement {
         setIsSubmitting(false);
         setProgress(0);
         setError('Event konnte nicht erstellt werden. Bitte versuche es erneut.');
+      }
+      } catch (err) {
+        setIsSubmitting(false);
+        setProgress(0);
+        setError(err instanceof Error ? err.message : 'Event konnte nicht erstellt werden.');
       }
     }
   };
