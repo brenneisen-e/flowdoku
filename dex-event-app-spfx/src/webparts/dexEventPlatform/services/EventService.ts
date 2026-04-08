@@ -55,6 +55,7 @@ export interface SPEvent {
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
   Documents: string; // JSON-Array mit Dokumenten
+  FunZone: string; // JSON-Array mit Quiz-Fragen
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
@@ -1089,6 +1090,7 @@ export class EventService {
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
       { title: 'Documents', type: 3 }, // JSON-Array mit Dokumenten
+      { title: 'FunZone', type: 3 }, // JSON-Array mit Quiz-Fragen
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
       { title: 'SubsiteUrl', type: 2 },
@@ -1235,7 +1237,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1347,6 +1349,7 @@ export class EventService {
     agenda?: string; // JSON-Array mit Agenda-Eintraegen
     transfers?: string; // JSON-Array mit Transferzeiten
     documents?: string; // JSON-Array mit Dokumenten
+    funZone?: string; // JSON-Array mit Quiz-Fragen
     emailLanguage?: string;
     emailTemplateOverrides?: string;
     customFields: CustomField[];
@@ -1416,6 +1419,7 @@ export class EventService {
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
         'Documents': event.documents || '[]',
+        'FunZone': event.funZone || '[]',
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,

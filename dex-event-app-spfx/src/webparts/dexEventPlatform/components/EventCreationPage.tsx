@@ -230,6 +230,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [documents, setDocuments] = React.useState<Array<{name: string; file?: File; url: string; size: number}>>(
     editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
   );
+  const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndex: number}>>(
+    editEvent?.quiz?.map(q => ({...q})) || []
+  );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
@@ -324,6 +327,17 @@ export default function EventCreationPage(): React.ReactElement {
     setCustomFields(updated);
   };
 
+  // ===== Quiz helpers =====
+  const addQuizQuestion = (): void => {
+    setQuiz([...quiz, { id: `q-${Date.now()}`, question: '', options: ['', ''], correctIndex: 0 }]);
+  };
+  const removeQuizQuestion = (id: string): void => {
+    setQuiz(quiz.filter(q => q.id !== id));
+  };
+  const updateQuizQuestion = (id: string, updates: Partial<{question: string; options: string[]; correctIndex: number}>): void => {
+    setQuiz(quiz.map(q => q.id === id ? { ...q, ...updates } : q));
+  };
+
   // ===== Agenda helpers =====
   const addAgendaItem = (): void => {
     setAgenda([...agenda, {
@@ -400,6 +414,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['OutlookBody'] = outlookBody ? buildOutlookBody(title, outlookBody) : '';
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
+      updates['FunZone'] = JSON.stringify(quiz);
 
       setProgress(50);
 
@@ -480,6 +495,7 @@ export default function EventCreationPage(): React.ReactElement {
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
+        funZone: JSON.stringify(quiz),
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
           ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
@@ -657,6 +673,7 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.fields'), icon: '4' },
     { label: t('create.step.communication'), icon: '5' },
     { label: t('create.step.documents'), icon: '6' },
+    { label: t('create.step.funzone'), icon: '7' },
   ];
 
   const getStepErrors = (): string[] => {
@@ -1687,6 +1704,85 @@ export default function EventCreationPage(): React.ReactElement {
                   />
                 </label>
               </div>{/* close Step 5 */}
+
+              {/* ===== Step 6: Fun-Zone ===== */}
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+                <h3 className="mb-16">{t('create.step.funzone')}</h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
+                  {t('create.funzone.hint')}
+                </p>
+
+                {quiz.map((q, qi) => (
+                  <div key={q.id} style={{
+                    padding: 16, marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)',
+                    borderRadius: 12, border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                        {t('create.funzone.question')} {qi + 1}
+                      </label>
+                      <button type="button" onClick={() => removeQuizQuestion(q.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red)', padding: 4 }}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <input
+                      className="form-input"
+                      value={q.question}
+                      onChange={e => updateQuizQuestion(q.id, { question: e.target.value })}
+                      placeholder={t('create.funzone.questionplaceholder')}
+                      style={{ marginBottom: 10 }}
+                    />
+                    <label style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>
+                      {t('create.funzone.options')}
+                    </label>
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                        <input
+                          type="radio"
+                          name={`correct-${q.id}`}
+                          checked={q.correctIndex === oi}
+                          onChange={() => updateQuizQuestion(q.id, { correctIndex: oi })}
+                          title={t('create.funzone.correct')}
+                          style={{ accentColor: 'var(--dex-green)' }}
+                        />
+                        <input
+                          className="form-input"
+                          value={opt}
+                          onChange={e => {
+                            const newOpts = [...q.options];
+                            newOpts[oi] = e.target.value;
+                            updateQuizQuestion(q.id, { options: newOpts });
+                          }}
+                          placeholder={`${t('create.funzone.option')} ${oi + 1}`}
+                          style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
+                        />
+                        {q.options.length > 2 && (
+                          <button type="button" onClick={() => {
+                            const newOpts = q.options.filter((_, i) => i !== oi);
+                            const newCorrect = q.correctIndex >= newOpts.length ? 0 : q.correctIndex > oi ? q.correctIndex - 1 : q.correctIndex;
+                            updateQuizQuestion(q.id, { options: newOpts, correctIndex: newCorrect });
+                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', padding: 2 }}>
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => updateQuizQuestion(q.id, { options: [...q.options, ''] })} style={{
+                      fontSize: '0.78rem', padding: '4px 12px', border: '1px dashed var(--dex-gray-300)',
+                      borderRadius: 8, background: 'none', color: 'var(--dex-green-dark)', cursor: 'pointer', marginTop: 4,
+                    }}>
+                      + {t('create.funzone.addoption')}
+                    </button>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', marginTop: 6 }}>
+                      {t('create.funzone.correcthint')}
+                    </div>
+                  </div>
+                ))}
+
+                <button type="button" className="btn btn-outline" onClick={addQuizQuestion} style={{ fontSize: '0.85rem', padding: '8px 20px' }}>
+                  <Plus size={14} /> {t('create.funzone.addquestion')}
+                </button>
+              </div>{/* close Step 6 */}
 
             </div>{/* close creation-form */}
           </div>{/* close card */}
