@@ -2333,24 +2333,43 @@ export class EventService {
 
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
       const buffer = await file.arrayBuffer();
-      const response = await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${fileName}',overwrite=true)`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/octet-stream',
-            'odata-version': '',
-          },
-          body: buffer,
-        }
+
+      // Upload per XHR (SPHttpClient hat Header-Probleme mit Binary)
+      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${encodeURIComponent(fileName)}',overwrite=true)`;
+      const digestResp = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/contextinfo`, SPHttpClient.configurations.v1, {}
       );
-      if (response.ok) {
-        const data = await response.json();
-        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
-        return relUrl ? `${window.location.origin}${relUrl}` : '';
+      let digest = '';
+      if (digestResp.ok) {
+        const digestData = await digestResp.json();
+        digest = digestData.d?.GetContextWebInformation?.FormDigestValue || digestData.FormDigestValue || '';
       }
-    } catch { /* Upload fehlgeschlagen */ }
+
+      const fileUrl = await new Promise<string>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl, true);
+        xhr.setRequestHeader('Accept', 'application/json;odata=verbose');
+        xhr.setRequestHeader('X-RequestDigest', digest);
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+              resolve(relUrl ? `${window.location.origin}${relUrl}` : `${window.location.origin}${folderPath}/${fileName}`);
+            } catch {
+              resolve(`${window.location.origin}${folderPath}/${fileName}`);
+            }
+          } else {
+            console.warn('[DEX] File upload XHR status:', xhr.status);
+            resolve('');
+          }
+        };
+        xhr.onerror = () => { console.warn('[DEX] File upload XHR error'); resolve(''); };
+        xhr.send(buffer);
+      });
+
+      return fileUrl;
+    } catch (err) { console.warn('[DEX] uploadEventDocument error:', err); }
     return '';
   }
 
