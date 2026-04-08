@@ -15,7 +15,6 @@ import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
-import { DateTimePicker, DateConvention, TimeConvention } from '@pnp/spfx-controls-react/lib/controls/dateTimePicker';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { Icon } from '@fluentui/react/lib/Icon';
 
@@ -154,13 +153,13 @@ export default function EventCreationPage(): React.ReactElement {
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
   const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
 
-  // ISO-Datum zu datetime-local Format konvertieren
+  // ISO-Datum zu datetime-local Format konvertieren (YYYY-MM-DDThh:mm)
   const isoToLocal = (iso: string): string => {
     if (!iso) return '';
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '';
     const pad = (n: number): string => (n < 10 ? '0' : '') + n;
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
@@ -191,7 +190,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
-  const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
+  const [waitlistEnabled, setWaitlistEnabled] = React.useState(editEvent ? editEvent.waitlistEnabled : true);
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
@@ -641,17 +640,6 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  const datePickerStrings = {
-    months: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
-    shortMonths: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
-    days: ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'],
-    shortDays: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
-    goToToday: 'Heute',
-    prevMonthAriaLabel: 'Vorheriger Monat',
-    nextMonthAriaLabel: 'Nächster Monat',
-    prevYearAriaLabel: 'Vorheriges Jahr',
-    nextYearAriaLabel: 'Nächstes Jahr',
-  };
 
   const steps = [
     { label: t('create.step.basics'), icon: '1' },

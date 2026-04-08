@@ -25,8 +25,8 @@
   --dex-red-light: #fce8e6;
   --dex-blue: #3860b2;
   --dex-orange: #ed8b00;
-  --dex-radius: 4px;
-  --dex-radius-lg: 8px;
+  --dex-radius: 12px;
+  --dex-radius-lg: 16px;
   --dex-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   --dex-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
   --dex-transition: 0.2s ease;
@@ -104,9 +104,11 @@
     /* Cards */
     .card {
       background: var(--dex-white); border: 1px solid var(--dex-gray-200);
-      border-radius: var(--dex-radius-lg); padding: 32px; transition: box-shadow var(--dex-transition);
+      border-radius: 16px; padding: 32px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+      transition: box-shadow var(--dex-transition);
     }
-    .card:hover { box-shadow: var(--dex-shadow-hover); }
+    .card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
     .card-clickable { cursor: pointer; }
 
     /* Section headers */
@@ -122,14 +124,24 @@
     .form-label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: var(--dex-gray-800); }
     .form-label .required { color: var(--dex-red); margin-right: 4px; }
     .form-input, .form-select, .form-textarea {
-      width: 100%; padding: 10px 12px; border: 1px solid var(--dex-gray-300);
-      border-radius: var(--dex-radius); font-size: 0.95rem;
-      transition: border-color var(--dex-transition); background: var(--dex-white);
+      width: 100%; padding: 12px 16px; border: 1.5px solid var(--dex-gray-200);
+      border-radius: 12px; font-size: 0.95rem;
+      background: var(--dex-white); color: var(--dex-gray-800);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
     }
     .form-input:focus, .form-select:focus, .form-textarea:focus {
-      outline: none; border-color: var(--dex-green); box-shadow: 0 0 0 3px rgba(134, 188, 37, 0.15);
+      border-color: var(--dex-green);
+      box-shadow: 0 0 0 3px rgba(134, 188, 37, 0.15);
     }
     .form-input::placeholder { color: var(--dex-gray-400); }
+    .form-select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3e%3cpath fill='%23666' d='M6 8L1 3h10z'/%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
     .form-textarea { min-height: 120px; resize: vertical; }
 
     /* Buttons */
