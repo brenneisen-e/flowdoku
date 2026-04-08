@@ -170,7 +170,7 @@ export default function AdminPage(): React.ReactElement {
                       {event.location ? ` · ${event.location}` : ''}
                     </p>
                     <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
-                      Organizer: {event.organizers.join(', ')}
+                      Organizer: {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
                     </p>
                     </div>
                   </div>
@@ -308,7 +308,10 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <div className="settings-info__row">
               <span className="settings-info__label">Organizer</span>
-              <span>{selectedEvent.organizers.join(', ')}</span>
+              <span>{selectedEvent.organizers.map(o => {
+                const parts = o.split(',').map(s => s.trim());
+                return parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
+              }).join(', ')}</span>
             </div>
             <div className="settings-info__row">
               <span className="settings-info__label">Ort</span>

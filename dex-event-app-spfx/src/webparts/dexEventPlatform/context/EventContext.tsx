@@ -163,7 +163,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       title: e.Title || '',
       type: (e.EventType as DeloitteEvent['type']) || 'Other',
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
-      organizers: [e.Organizer || ''],
+      organizers: (e.Organizer || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       location: e.Location || '',
       locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
       audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
