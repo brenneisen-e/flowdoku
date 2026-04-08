@@ -62,7 +62,7 @@ export interface QuizQuestion {
   id: string;
   question: string;
   options: string[];
-  correctIndex: number; // Index der richtigen Antwort (0-basiert)
+  correctIndices: number[]; // Indices der richtigen Antworten (0-basiert, mehrere moeglich)
 }
 
 export interface EventDocument {
