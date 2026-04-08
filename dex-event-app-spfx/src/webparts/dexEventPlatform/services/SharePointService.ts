@@ -300,6 +300,33 @@ export class SharePointService {
   }
 
   /**
+   * Einem Organizer Full Control auf die DEX_Events-Liste + Manage auf Site-Ebene geben.
+   * Manage auf Site-Ebene erlaubt Subsite-Erstellung (webs/add).
+   */
+  public async grantOrganizerPermissions(userEmail: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdByEmail(userEmail);
+      if (!userId) return;
+
+      // 1. Full Control auf DEX_Events (wie Admin)
+      await this.ensureListHasUniquePermissions('DEX_Events');
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+        {}
+      );
+
+      // 2. Full Control auf Site-Ebene (fuer Subsite-Erstellung)
+      // Full Control = 1073741829
+      await this._post(
+        `${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+        {}
+      );
+    } catch (e) {
+      console.error('[DEX] grantOrganizerPermissions Error:', e);
+    }
+  }
+
+  /**
    * Einem User Contribute-Rechte auf die DEX_Events-Liste geben (fuer Organizer).
    */
   public async grantContributeOnEventsList(userEmail: string): Promise<void> {

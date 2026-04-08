@@ -118,9 +118,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         if (role === 'Admin') {
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
+          await spService.grantOrganizerPermissions(userEmail); // Site-Rechte fuer Subsite-Erstellung
         } else if (role === 'Organizer') {
           await spService.grantReadOnRolesList(userEmail);
-          await spService.grantContributeOnEventsList(userEmail);
+          await spService.grantOrganizerPermissions(userEmail);
         }
       } catch (err) { console.warn('[DEX] permission grant for addRole failed (best-effort):', err); }
       await refreshRoles();
@@ -136,9 +137,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         if (newRole === 'Admin') {
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
+          await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'Organizer') {
           await spService.grantReadOnRolesList(oldRole.userEmail);
-          await spService.grantContributeOnEventsList(oldRole.userEmail);
+          await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'User') {
           await spService.revokeAccessOnRolesList(oldRole.userEmail);
           await spService.revokeAccessOnEventsList(oldRole.userEmail);
