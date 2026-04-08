@@ -68,7 +68,6 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
-  const [emailSentCount, setEmailSentCount] = React.useState(0);
   const [emailShowPreview, setEmailShowPreview] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -389,7 +388,6 @@ export default function AdminPage(): React.ReactElement {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
-                setEmailSentCount(0);
                 setEmailShowPreview(false);
                 setShowEmailModal(true);
               }}
@@ -788,27 +786,23 @@ export default function AdminPage(): React.ReactElement {
                       if (recipients.length === 0) return;
                       if (!confirm(`E-Mail an ${recipients.length} Teilnehmer senden?`)) return;
                       setEmailSending(true);
-                      let sent = 0;
-                      const fullBody = wrapTemplate('var(--dex-green, #86bc25)', emailHeading, `Event ${selectedEvent.title}`, emailBody);
-                      for (const reg of recipients) {
-                        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                        try {
-                          await eventServiceRef.queueEmail(
-                            emailSubject, reg.ParticipantEmail, name, fullBody,
-                            'Info', selectedEvent.title, selectedEvent.id
-                          );
-                          sent++;
-                          setEmailSentCount(sent);
-                        } catch { /* weiter */ }
-                      }
-                      setEmailSending(false);
-                      if (sent > 0) {
-                        alert(`${sent} E-Mails in die Warteschlange eingetragen.`);
+                      const fullBody = wrapTemplate('#86bc25', emailHeading, `Event ${selectedEvent.title}`, emailBody);
+                      const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
+                      try {
+                        await eventServiceRef.queueEmail(
+                          emailSubject, allEmails, 'Alle Teilnehmer', fullBody,
+                          'Massenmail', selectedEvent.title, selectedEvent.id
+                        );
+                        setEmailSending(false);
+                        alert(`E-Mail an ${recipients.length} Teilnehmer in die Warteschlange eingetragen.`);
                         setShowEmailModal(false);
+                      } catch {
+                        setEmailSending(false);
+                        alert('Fehler beim Eintragen der E-Mail.');
                       }
                     }}
                   >
-                    <Send size={16} /> {emailSending ? `Wird gesendet... (${emailSentCount})` : `An ${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length} Teilnehmer senden`}
+                    <Send size={16} /> {emailSending ? 'Wird eingetragen...' : `An ${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length} Teilnehmer senden`}
                   </button>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
