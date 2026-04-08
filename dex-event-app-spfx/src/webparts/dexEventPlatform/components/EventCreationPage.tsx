@@ -402,24 +402,17 @@ export default function EventCreationPage(): React.ReactElement {
 
       setProgress(50);
 
-      // Neue Dokumente hochladen falls vorhanden
+      // Neue Dokumente als Attachments hochladen (kein Documents-Feld noetig)
       if (selectedEventId && documents.some(d => d.file)) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ctx = (window as any).__dexSpfxContext;
         if (ctx) {
           const svc = new EventService(ctx);
-          const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
           for (const doc of documents) {
             if (doc.file) {
-              const docUrl = await svc.uploadEventDocument(Number(selectedEventId), doc.file);
-              if (docUrl) {
-                uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
-              }
-            } else if (doc.url) {
-              uploadedDocs.push({ name: doc.name, url: doc.url, size: doc.size });
+              await svc.uploadEventDocument(Number(selectedEventId), doc.file);
             }
           }
-          updates['Documents'] = JSON.stringify(uploadedDocs);
         }
       }
 
@@ -500,21 +493,12 @@ export default function EventCreationPage(): React.ReactElement {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
-            // Dokumente als Attachments an das Event-Item anfuegen
+            // Dokumente als Attachments an das Event-Item anfuegen (kein updateEvent noetig)
             if (eventId && documents.length > 0) {
-              const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
               for (const doc of documents) {
                 if (doc.file) {
-                  const docUrl = await svc.uploadEventDocument(Number(eventId), doc.file);
-                  if (docUrl) {
-                    uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
-                  }
-                } else if (doc.url) {
-                  uploadedDocs.push({ name: doc.name, url: doc.url, size: doc.size });
+                  await svc.uploadEventDocument(Number(eventId), doc.file);
                 }
-              }
-              if (uploadedDocs.length > 0) {
-                await svc.updateEvent(Number(eventId), { 'Documents': JSON.stringify(uploadedDocs) });
               }
             }
             const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
