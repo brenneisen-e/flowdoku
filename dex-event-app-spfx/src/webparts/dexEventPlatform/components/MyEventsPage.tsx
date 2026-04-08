@@ -158,9 +158,11 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               </span>
               <span style={{ flex: 1, fontWeight: isExpanded ? 600 : 400 }}>{doc.name}</span>
               {doc.size ? <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{(doc.size / 1024).toFixed(0)} KB</span> : null}
-              <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green-dark)', fontSize: '0.72rem', textDecoration: 'none' }}>
-                <Icon iconName="Download" style={{ fontSize: 14 }} />
-              </a>
+              {doc.url && doc.url.startsWith('http') && (
+                <a href={doc.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--dex-green-dark)', fontSize: '0.72rem', textDecoration: 'none' }}>
+                  <Icon iconName="Download" style={{ fontSize: 14 }} />
+                </a>
+              )}
               <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)' }}>{isExpanded ? '▲' : '▼'}</span>
             </div>
             {isExpanded && (
