@@ -118,6 +118,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         if (role === 'Admin') {
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
+          await spService.grantOrganizerPermissions(userEmail); // Site-Rechte fuer Subsite-Erstellung
         } else if (role === 'Organizer') {
           await spService.grantReadOnRolesList(userEmail);
           await spService.grantOrganizerPermissions(userEmail);
@@ -136,6 +137,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         if (newRole === 'Admin') {
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
+          await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'Organizer') {
           await spService.grantReadOnRolesList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
