@@ -403,7 +403,7 @@ export default function EventCreationPage(): React.ReactElement {
       setProgress(50);
 
       // Neue Dokumente hochladen falls vorhanden
-      if (editEvent?.eventNumber && documents.some(d => d.file)) {
+      if (selectedEventId && documents.some(d => d.file)) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ctx = (window as any).__dexSpfxContext;
         if (ctx) {
@@ -411,7 +411,7 @@ export default function EventCreationPage(): React.ReactElement {
           const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
           for (const doc of documents) {
             if (doc.file) {
-              const docUrl = await svc.uploadEventDocument(editEvent.eventNumber, doc.file, title);
+              const docUrl = await svc.uploadEventDocument(Number(selectedEventId), doc.file);
               if (docUrl) {
                 uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
               }
@@ -500,13 +500,12 @@ export default function EventCreationPage(): React.ReactElement {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
-            // Dokumente hochladen und URLs speichern
-            const eventNumber = created?.EventNumber || 0;
-            if (eventNumber && documents.length > 0) {
+            // Dokumente als Attachments an das Event-Item anfuegen
+            if (eventId && documents.length > 0) {
               const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
               for (const doc of documents) {
                 if (doc.file) {
-                  const docUrl = await svc.uploadEventDocument(eventNumber, doc.file, title);
+                  const docUrl = await svc.uploadEventDocument(Number(eventId), doc.file);
                   if (docUrl) {
                     uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
                   }
