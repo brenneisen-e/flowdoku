@@ -54,6 +54,9 @@ export default function AdminPage(): React.ReactElement {
   const [copiedEmails, setCopiedEmails] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [sortColumn, setSortColumn] = React.useState<'id' | 'name' | 'email' | 'status' | 'date'>('id');
+  const [sortAsc, setSortAsc] = React.useState(true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -218,10 +221,46 @@ export default function AdminPage(): React.ReactElement {
   }
 
   // Event ausgewählt - Detail-Ansicht
-  const activeRegs = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-  const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste')
+  const query = searchQuery.toLowerCase().trim();
+  const matchesSearch = (reg: SPRegistration): boolean => {
+    if (!query) return true;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || '');
+    return name.toLowerCase().includes(query)
+      || (reg.ParticipantEmail || '').toLowerCase().includes(query)
+      || String(reg.TeilnehmerID || '').includes(query);
+  };
+
+  const sortRegs = (a: SPRegistration, b: SPRegistration): number => {
+    let cmp = 0;
+    switch (sortColumn) {
+      case 'id': cmp = (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0); break;
+      case 'name': {
+        const na = (a.Vorname && a.Nachname) ? `${a.Nachname} ${a.Vorname}` : (a.ParticipantName || '');
+        const nb = (b.Vorname && b.Nachname) ? `${b.Nachname} ${b.Vorname}` : (b.ParticipantName || '');
+        cmp = na.localeCompare(nb, 'de');
+        break;
+      }
+      case 'email': cmp = (a.ParticipantEmail || '').localeCompare(b.ParticipantEmail || ''); break;
+      case 'status': cmp = (a.Status || '').localeCompare(b.Status || ''); break;
+      case 'date': cmp = new Date(a.RegistrationDate || 0).getTime() - new Date(b.RegistrationDate || 0).getTime(); break;
+    }
+    return sortAsc ? cmp : -cmp;
+  };
+
+  const handleSort = (col: 'id' | 'name' | 'email' | 'status' | 'date'): void => {
+    if (sortColumn === col) { setSortAsc(!sortAsc); }
+    else { setSortColumn(col); setSortAsc(true); }
+  };
+
+  const sortIcon = (col: string): string => col === sortColumn ? (sortAsc ? ' \u25B2' : ' \u25BC') : '';
+
+  const activeRegs = registrations
+    .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
+    .filter(matchesSearch)
+    .sort(sortRegs);
+  const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste').filter(matchesSearch)
     .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
-  const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet');
+  const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
 
   return (
     <div className="page-container" role="main">
@@ -434,10 +473,18 @@ export default function AdminPage(): React.ReactElement {
 
       {/* Teilnehmerliste */}
       <div className="card" style={{ padding: 24 }}>
-        <div className="flex-between mb-16">
+        <div className="flex-between mb-16" style={{ flexWrap: 'wrap', gap: 12 }}>
           <h3 style={{ margin: 0 }}>
             <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Teilnehmer suchen..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
+          />
         </div>
 
         {regLoadError ? (
@@ -451,11 +498,15 @@ export default function AdminPage(): React.ReactElement {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                  <th style={{ textAlign: 'left', padding: 8 }}>#</th>
-                  <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                  <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
-                  <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
-                  <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                  {([['id', '#'], ['name', 'Name'], ['email', 'Email'], ['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
+                    <th
+                      key={col}
+                      style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                      onClick={() => handleSort(col)}
+                    >
+                      {label}{sortIcon(col)}
+                    </th>
+                  ))}
                   <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                 </tr>
               </thead>
