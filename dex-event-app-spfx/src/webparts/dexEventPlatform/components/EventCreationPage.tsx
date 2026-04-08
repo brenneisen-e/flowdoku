@@ -217,8 +217,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [agenda, setAgenda] = React.useState<AgendaItem[]>(
     editEvent && editEvent.agenda ? [...editEvent.agenda] : []
   );
-  const [transferTimes, setTransferTimes] = React.useState<Array<{id: string; location: string; date: string; departureTime: string; arrivalTime: string; description: string}>>(
-    editEvent?.transferTimes?.map(t => ({...t, arrivalTime: t.arrivalTime || '', description: t.description || ''})) || []
+  const [transferTimes, setTransferTimes] = React.useState<Array<{id: string; location: string; meetingPoint: string; address: string; date: string; departureTime: string; arrivalTime: string; description: string}>>(
+    editEvent?.transferTimes?.map(t => ({...t, meetingPoint: t.meetingPoint || '', address: t.address || '', arrivalTime: t.arrivalTime || '', description: t.description || ''})) || []
   );
   const [documents, setDocuments] = React.useState<Array<{name: string; file?: File; url: string; size: number}>>(
     editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
@@ -1159,53 +1159,57 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 {transferTimes.map((tt) => (
                   <div key={tt.id} style={{
-                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
-                    padding: '10px 12px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    padding: '12px 14px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
                     border: '1px solid var(--dex-gray-200)',
                   }}>
-                    {/* Location */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 140 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
-                      <select className="form-select" value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }}>
-                        <option value="">—</option>
-                        {locationOptions.filter(o => o !== 'All').map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
+                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
+                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                        <datalist id={`transfer-locations-${tt.id}`}>
+                          {locationOptions.filter(o => o !== 'All').map(opt => (
+                            <option key={opt} value={opt} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
+                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
+                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
+                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
+                          <X size={16} />
+                        </button>
+                      </div>
                     </div>
-                    {/* Date */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
-                      <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-                    {/* Departure */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
-                      <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-                    {/* Arrival */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
-                      <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-                    {/* Description */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
-                      <input type="text" className="form-input" value={tt.description} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-                    {/* Delete */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                      <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                      }} title={t('general.delete')}>
-                        <X size={16} />
-                      </button>
+                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
+                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
+                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
+                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
+                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
                     </div>
                   </div>
                 ))}
-                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
                   <Plus size={14} /> {t('create.transfers.add')}
                 </button>
               </div>

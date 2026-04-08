@@ -457,11 +457,29 @@ export default function MyEventsPage(): React.ReactElement {
                       {t('myevents.transfers')}
                     </div>
                     {event.transferTimes.sort((a: TransferTime, b: TransferTime) => (a.date + a.departureTime).localeCompare(b.date + b.departureTime)).map((tr: TransferTime) => (
-                      <div key={tr.id} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: '0.82rem', borderLeft: '2px solid var(--dex-orange)', marginLeft: 8, paddingLeft: 12 }}>
-                        <Icon iconName="Bus" style={{ fontSize: 14, color: 'var(--dex-orange)' }} />
-                        <div>
-                          <strong>{tr.location}</strong> – {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit'})}, {tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''}
-                          {tr.description && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8 }}>{tr.description}</span>}
+                      <div key={tr.id} style={{
+                        display: 'flex', gap: 10, padding: '8px 12px', marginBottom: 6, fontSize: '0.82rem',
+                        background: 'var(--dex-gray-50, #fafafa)', borderRadius: 10,
+                        borderLeft: '3px solid var(--dex-orange)',
+                      }}>
+                        <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dex-orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon iconName="Bus" style={{ fontSize: 13, color: '#fff' }} />
+                        </span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600 }}>
+                            {tr.location}{tr.meetingPoint ? ` – ${tr.meetingPoint}` : ''}
+                          </div>
+                          {tr.address && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                              <Icon iconName="MapPin" style={{ fontSize: 11, marginRight: 4 }} />{tr.address}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 2 }}>
+                            <Icon iconName="Calendar" style={{ fontSize: 11, color: 'var(--dex-gray-400)', marginRight: 4 }} />
+                            {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'})},
+                            {' '}{tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''} Uhr
+                          </div>
+                          {tr.description && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{tr.description}</div>}
                         </div>
                       </div>
                     ))}

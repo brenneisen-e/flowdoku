@@ -48,11 +48,13 @@ export interface AgendaItem {
 
 export interface TransferTime {
   id: string;
-  location: string;    // Office/Standort name (e.g. "Düsseldorf", "München")
+  location: string;    // Stadt/Standort (z.B. "Düsseldorf", "München")
+  meetingPoint: string; // Treffpunkt (z.B. "Flughafen Terminal 1", "Hauptbahnhof Gleis 5")
+  address?: string;     // Genaue Adresse (z.B. "Terminalstraße 1, 40474 Düsseldorf")
   date: string;        // YYYY-MM-DD
   departureTime: string; // HH:mm
   arrivalTime?: string;  // HH:mm
-  description?: string;  // e.g. "Treffpunkt Haupteingang"
+  description?: string;  // Zusatzinfo
 }
 
 export interface EventDocument {
