@@ -173,6 +173,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.organizers.join(', ') : `${currentUser.firstName} ${currentUser.surname}`
   );
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [organizerEmails, setOrganizerEmails] = React.useState<string[]>([currentUser.email]);
   const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
@@ -473,7 +474,7 @@ export default function EventCreationPage(): React.ReactElement {
         waitlistEnabled,
         eventImageUrl: imageUrl,
         organizer,
-        organizerEmail: currentUser.email,
+        organizerEmail: organizerEmails.join(';'),
         outlookEventId: '',
         outlookBody,
         agenda: JSON.stringify(agenda),
@@ -511,11 +512,15 @@ export default function EventCreationPage(): React.ReactElement {
                 }
               }
             }
-            const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
-            svc.queueEmail(
-              emailData.subject, currentUser.email, organizer, emailData.body,
-              'EventErstellt', title, String(eventId)
-            ).catch(err => console.warn('[DEX]', err));
+            // Event-Created Mail an alle Organizer senden
+            const allOrgEmails = organizerEmails.length > 0 ? organizerEmails : [currentUser.email];
+            for (const orgEmail of allOrgEmails) {
+              const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
+              svc.queueEmail(
+                emailData.subject, orgEmail, organizer, emailData.body,
+                'EventErstellt', title, String(eventId)
+              ).catch(err => console.warn('[DEX]', err));
+            }
           }
         } catch { /* E-Mail-Fehler ignorieren */ }
         // Kurz 100% zeigen, dann zur Erfolgsseite
@@ -818,9 +823,10 @@ export default function EventCreationPage(): React.ReactElement {
                         onMouseDown={() => {
                           // Letzten Teil (Suchbegriff) durch ausgewaehlten Namen ersetzen
                           const parts = organizer.split(',').map(s => s.trim());
-                          parts.pop(); // Suchbegriff entfernen
+                          parts.pop();
                           parts.push(u.displayName);
                           setOrganizer(parts.filter(Boolean).join(', '));
+                          setOrganizerEmails(prev => [...prev.filter(e => e !== u.email), u.email]);
                           setOrganizerResults([]);
                         }}
                       >
