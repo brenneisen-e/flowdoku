@@ -94,7 +94,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const mapped = await Promise.all(spEvents.map(e => mapSPEventToDeloitteEvent(e)));
     // Teilnehmerzahlen fuer alle Events mit Subsite laden
     const withCounts = await loadParticipantCountsForEvents(mapped);
-    setEvents(withCounts);
+    // Attachments (Dokumente) fuer alle Events laden
+    const withDocs = await Promise.all(withCounts.map(async (evt) => {
+      try {
+        const attachments = await eventService.getEventAttachments(Number(evt.id));
+        return { ...evt, documents: attachments };
+      } catch { return evt; }
+    }));
+    setEvents(withDocs);
   }
 
   async function loadParticipantCountsForEvents(evts: DeloitteEvent[]): Promise<DeloitteEvent[]> {
@@ -174,7 +181,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
-      documents: (() => { try { return e.Documents ? JSON.parse(e.Documents) : []; } catch { return []; } })(),
+      documents: [], // Wird per loadAttachments nachgeladen
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
         label: cf.label,

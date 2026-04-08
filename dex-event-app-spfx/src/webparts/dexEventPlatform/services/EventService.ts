@@ -2334,6 +2334,29 @@ export class EventService {
     return '';
   }
 
+  /**
+   * Attachments eines DEX_Events-Items laden.
+   */
+  public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
+        SPHttpClient.configurations.v1
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const files = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return files.map((f: any) => ({
+          name: f.FileName || '',
+          url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
+          size: 0,
+        }));
+      }
+    } catch { /* Attachments nicht verfuegbar */ }
+    return [];
+  }
+
   // ==================== Profil-Daten ====================
 
   /**
