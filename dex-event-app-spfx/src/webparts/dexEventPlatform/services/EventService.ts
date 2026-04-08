@@ -125,6 +125,7 @@ export class EventService {
     const exists = await this.listExists(listName);
     if (exists) {
       // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
@@ -149,7 +150,7 @@ export class EventService {
     });
 
     const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'Recipient', type: 2 },
+      { title: 'Recipient', type: 3 }, // Note (multiline) fuer Massenmail mit vielen Empfaengern
       { title: 'RecipientName', type: 2 },
       { title: 'Body', type: 3 }, // Note (multiline/HTML)
       { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
