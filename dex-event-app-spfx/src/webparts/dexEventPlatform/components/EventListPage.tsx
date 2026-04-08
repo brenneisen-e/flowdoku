@@ -113,6 +113,20 @@ export default function EventListPage(): React.ReactElement {
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
       );
 
+  if (isEventsLoading) {
+    return (
+      <div className="page-container text-center">
+        <div style={{ padding: 48 }}>
+          <div style={{
+            width: 48, height: 48, margin: '0 auto 16px', borderRadius: '50%',
+            borderTop: '4px solid var(--dex-green)', animation: 'dexOrbSpin 1s linear infinite',
+          }} />
+          <p style={{ color: 'var(--dex-gray-400)' }}>Events werden geladen...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-container">
       {/* Debug-Panel fuer mobiles Testen */}
