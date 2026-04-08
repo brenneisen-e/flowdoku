@@ -17,6 +17,12 @@ import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { Icon } from '@fluentui/react/lib/Icon';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import { de } from 'date-fns/locale';
+import 'react-datepicker/dist/react-datepicker.css';
+
+// Deutsche Locale registrieren
+registerLocale('de', de);
 
 // Curated Fluent UI Icons fuer Agenda-Programmpunkte (nur bestaetigt vorhandene MDL2 Icons)
 const AGENDA_ICONS: Array<{ name: string; label: string; category: string }> = [
@@ -405,7 +411,7 @@ export default function EventCreationPage(): React.ReactElement {
           const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
           for (const doc of documents) {
             if (doc.file) {
-              const docUrl = await svc.uploadEventDocument(editEvent.eventNumber, doc.file);
+              const docUrl = await svc.uploadEventDocument(editEvent.eventNumber, doc.file, title);
               if (docUrl) {
                 uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
               }
@@ -500,7 +506,7 @@ export default function EventCreationPage(): React.ReactElement {
               const uploadedDocs: Array<{name: string; url: string; size: number}> = [];
               for (const doc of documents) {
                 if (doc.file) {
-                  const docUrl = await svc.uploadEventDocument(eventNumber, doc.file);
+                  const docUrl = await svc.uploadEventDocument(eventNumber, doc.file, title);
                   if (docUrl) {
                     uploadedDocs.push({ name: doc.name, url: docUrl, size: doc.size });
                   }
@@ -992,12 +998,22 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.startdate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input
-                    type="datetime-local"
+                  <DatePicker
+                    selected={startDate ? new Date(startDate) : null}
+                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
                     className="form-input"
-                    value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
-                    style={errorBorderStyle('startDate')}
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
                   />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
@@ -1006,12 +1022,23 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.enddate')}
                     <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input
-                    type="datetime-local"
+                  <DatePicker
+                    selected={endDate ? new Date(endDate) : null}
+                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
                     className="form-input"
-                    value={endDate}
-                    onChange={e => setEndDate(e.target.value)}
-                    style={errorBorderStyle('endDate')}
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    minDate={startDate ? new Date(startDate) : undefined}
+                    isClearable
+                    autoComplete="off"
                   />
                   {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
@@ -1224,14 +1251,34 @@ export default function EventCreationPage(): React.ReactElement {
                     {t('create.deadline')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="date" value={registrationDeadline} onChange={e => setRegistrationDeadline(e.target.value)} />
+                  <DatePicker
+                    selected={registrationDeadline ? new Date(registrationDeadline) : null}
+                    onChange={(date: Date | null) => setRegistrationDeadline(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '')}
+                    dateFormat="dd.MM.yyyy"
+                    locale="de"
+                    placeholderText="Anmelde-Deadline"
+                    className="form-input"
+                    isClearable
+                    autoComplete="off"
+                    maxDate={startDate ? new Date(startDate) : undefined}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.lastcancel')}
                     <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <input className="form-input" type="date" value={lastDeregisterDate} onChange={e => setLastDeregisterDate(e.target.value)} />
+                  <DatePicker
+                    selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
+                    onChange={(date: Date | null) => setLastDeregisterDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '')}
+                    dateFormat="dd.MM.yyyy"
+                    locale="de"
+                    placeholderText="Abmeldefrist"
+                    className="form-input"
+                    isClearable
+                    autoComplete="off"
+                    maxDate={startDate ? new Date(startDate) : undefined}
+                  />
                 </div>
               </div>
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}

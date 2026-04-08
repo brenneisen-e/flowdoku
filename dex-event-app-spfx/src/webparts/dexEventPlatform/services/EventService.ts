@@ -1481,14 +1481,19 @@ export class EventService {
         }
       }
 
-      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}/)
+      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}_*)
       if (event.EventNumber) {
         try {
           const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-          const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}`;
-          await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`);
+          const safeName = (event.Title || '').replace(/[#%&*:<>?/\\|"']/g, '').replace(/\s+/g, '_').substring(0, 50);
+          const folderName = safeName ? `Event_${event.EventNumber}_${safeName}` : `Event_${event.EventNumber}`;
+          await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/${folderName}')`);
         } catch {
-          // Ordner existiert nicht oder konnte nicht geloescht werden - nicht kritisch
+          // Fallback: alten Ordnernamen ohne Titel probieren
+          try {
+            const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+            await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}')`);
+          } catch { /* Ordner nicht gefunden */ }
         }
       }
 
@@ -2296,13 +2301,14 @@ export class EventService {
   }
 
   /**
-   * Dokument in Shared Documents/DEX_EventDocs/Event_{eventNumber}/ hochladen.
-   * Nutzt die vorhandene "Shared Documents" Library fuer WopiFrame Preview.
+   * Dokument in SiteAssets/DEX_EventDocs/Event_{number}_{title}/ hochladen.
    */
-  public async uploadEventDocument(eventNumber: number, file: File): Promise<string> {
+  public async uploadEventDocument(eventNumber: number, file: File, eventTitle?: string): Promise<string> {
     try {
       const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${eventNumber}`;
+      const safeName = (eventTitle || '').replace(/[#%&*:<>?/\\|"']/g, '').replace(/\s+/g, '_').substring(0, 50);
+      const folderName = safeName ? `Event_${eventNumber}_${safeName}` : `Event_${eventNumber}`;
+      const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/${folderName}`;
 
       // Ordner erstellen falls nicht vorhanden
       try {
