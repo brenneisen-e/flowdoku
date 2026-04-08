@@ -2307,21 +2307,25 @@ export class EventService {
   public async uploadEventDocument(eventId: number, file: File): Promise<string> {
     try {
       const fileName = file.name.replace(/[#%&*:<>?/\\|]/g, '_');
-      const buffer = await file.arrayBuffer();
 
       const response = await this.context.spHttpClient.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
         SPHttpClient.configurations.v1,
-        { body: buffer }
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: file,
+        } as ISPHttpClientOptions
       );
 
       if (response.ok) {
         const data = await response.json();
         const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
         if (relUrl) return `${window.location.origin}${relUrl}`;
+      } else {
+        console.warn('[DEX] Attachment upload status:', response.status);
       }
 
-      // Fallback: URL aus bekanntem Pfad konstruieren
+      // Fallback: URL aus bekanntem Pfad
       const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
       return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${fileName}`;
     } catch (err) {
