@@ -575,10 +575,12 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 ## 4. DEX_Outlook_Einladungen
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
-**Zweck:** Teilnehmer zu bestehendem Outlook-Termin einladen oder ausladen (via Graph API)
-**Letztes Update:** 2026-04-06
+**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen ODER Event-Daten aktualisieren (via Graph API)
+**Letztes Update:** 2026-04-08
 
-Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Einladen/Ausladen → Status=Sent (oder Failed bei Fehler)
+Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende → Nein: Einladen/Ausladen → Status=Sent
+
+**ActionTypes:** `Einladen` (Teilnehmer hinzufügen), `Ausladen` (Teilnehmer entfernen), `UpdateEvent` (Termin-Daten aktualisieren)
 
 **Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
 
@@ -833,6 +835,11 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
   },
   "runAfter": { "Init_Attendees": ["Succeeded"] }
 }
+
+UPDATE 2026-04-08: Is_UpdateEvent Condition hinzugefügt.
+Wenn ActionType = "UpdateEvent": PATCH den Outlook-Termin mit neuen Titel/Start/Ende.
+Wenn ActionType = "Einladen"/"Ausladen": Bestehende Logik (Attendees hinzufügen/entfernen).
+Set_Sent und Set_Failed_1_1 lesen Title jetzt von triggerBody() statt von anderen Actions.
 ```
 
 ---
