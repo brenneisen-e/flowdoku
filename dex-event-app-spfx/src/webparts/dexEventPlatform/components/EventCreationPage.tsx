@@ -393,7 +393,6 @@ export default function EventCreationPage(): React.ReactElement {
         'OutlookBody': outlookBody ? buildOutlookBody(title, outlookBody) : '',
         'Agenda': JSON.stringify(agenda),
         'Transfers': JSON.stringify(transferTimes),
-        'Documents': JSON.stringify(documents.map(d => ({ name: d.name, url: d.url, size: d.size }))),
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
