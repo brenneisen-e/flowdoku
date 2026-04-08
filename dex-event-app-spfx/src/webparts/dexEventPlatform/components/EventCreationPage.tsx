@@ -1280,7 +1280,7 @@ export default function EventCreationPage(): React.ReactElement {
                   </label>
                   <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
                     <label className="toggle">
-                      <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => setMaxParticipants(e.target.checked ? '0' : '50')} />
+                      <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => { setMaxParticipants(e.target.checked ? '0' : '50'); if (e.target.checked) setWaitlistEnabled(false); }} />
                       <span className="toggle-slider" />
                     </label>
                     <span style={{ fontSize: '0.9rem' }}>{!maxParticipants || maxParticipants === '0' ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : maxParticipants + ' Plätze'}</span>
@@ -1289,19 +1289,21 @@ export default function EventCreationPage(): React.ReactElement {
                     <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="Anzahl" />
                   )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">
-                    {t('create.waitlist')}
-                    <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
-                  </label>
-                  <div className="toggle-wrapper" style={{ marginTop: 8 }}>
-                    <label className="toggle">
-                      <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
-                      <span className="toggle-slider" />
+                {maxParticipants && maxParticipants !== '0' && (
+                  <div className="form-group">
+                    <label className="form-label">
+                      {t('create.waitlist')}
+                      <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
                     </label>
-                    <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
+                    <div className="toggle-wrapper" style={{ marginTop: 8 }}>
+                      <label className="toggle">
+                        <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
+                        <span className="toggle-slider" />
+                      </label>
+                      <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               </div>

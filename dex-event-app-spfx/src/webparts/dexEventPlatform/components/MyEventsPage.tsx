@@ -356,7 +356,9 @@ export default function MyEventsPage(): React.ReactElement {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: event.imageUrl ? 16 : 0 }}>
                   <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
                   <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
-                    {getStatusLabel(registration.Status, t)}
+                    {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
+                      ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
+                      : getStatusLabel(registration.Status, t)}
                   </span>
                 </div>
 

@@ -256,6 +256,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success && event) {
+      // Warteliste-Position ermitteln
+      let waitlistPosition = 0;
+      if (status === 'Warteliste') {
+        try {
+          const counts = await eventService.getRegistrationCount(subsiteUrl);
+          waitlistPosition = counts.waitlist;
+        } catch { /* Position nicht ermittelbar */ }
+      }
+
       // Dual-Write: DEX_Participants aktualisieren
       if (event.eventNumber) {
         eventService.upsertParticipant(
@@ -265,14 +274,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
       const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
       const lang = event.emailLanguage || 'EN';
-      const vars = { Name: nameToUse, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
+      const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
+      const vars = { Name: nameToUse, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
         emailData = status === 'Warteliste'
-          ? waitlistEmail(nameToUse, event.title)
+          ? waitlistEmail(nameToUse, event.title, waitlistPosition)
           : registrationEmail(nameToUse, event.title);
       }
       eventService.queueEmail(

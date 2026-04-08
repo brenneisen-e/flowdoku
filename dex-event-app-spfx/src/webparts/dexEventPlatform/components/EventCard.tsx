@@ -43,8 +43,9 @@ interface Props {
 
 export default function EventCard({ event, index, isRegistered, isWaitlisted }: Props): React.ReactElement {
   const { navigate } = useNavigation();
-  const freePlaces = event.maxParticipants - event.currentParticipants;
-  const isFull = freePlaces <= 0;
+  const isUnlimited = !event.maxParticipants || event.maxParticipants === 0;
+  const freePlaces = isUnlimited ? Infinity : event.maxParticipants - event.currentParticipants;
+  const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
 
   return (
@@ -90,21 +91,22 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           <div className="event-card__meta">
             <span>{event.location}</span>
             <span className="event-card__places">
-              {isFull ? (
-                <>
-                  No free places.
-                  {event.waitlistCount > 0 && (
-                    <> Current position on waiting list: {event.waitlistCount}</>
-                  )}
-                </>
-              ) : (
-                <>Free places: {freePlaces}</>
-              )}
+              {isUnlimited ? '' : isFull ? '' : `${freePlaces} free`}
             </span>
           </div>
         </div>
       </div>
-      <div className="event-card__body">
+      <div className="event-card__body" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        {/* Freie Plätze Badge */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <span style={{
+            padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600,
+            background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
+            color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
+          }}>
+            {isFull ? 'Warteliste' : (isUnlimited ? 'Unbegrenzt' : `${freePlaces} frei`)}
+          </span>
+        </div>
         <div className="event-card__dates">
           {formatDate(event.startDate)} until
           <br />
@@ -115,15 +117,17 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
             Registration open until: {formatDate(event.registrationDeadline)}
           </div>
         )}
-        <button
-          className="btn btn-primary event-card__register-btn"
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation();
-            navigate('registration', event.id);
-          }}
-        >
-          Registrate
-        </button>
+        <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+          <button
+            className="btn btn-primary event-card__register-btn"
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              navigate('registration', event.id);
+            }}
+          >
+            Registrate
+          </button>
+        </div>
       </div>
     </div>
   );
