@@ -1301,15 +1301,17 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'Assistenz Meeting 2026'&$top=1&$select=Id,SubsiteUrl,EventNumber`,
         SPHttpClient.configurations.v1
       );
-      if (!resp.ok) return;
+      if (!resp.ok) { console.warn('[DEX] seedParticipants: Event-Abfrage fehlgeschlagen', resp.status); return; }
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
-      if (items.length === 0) return;
+      if (items.length === 0) { console.warn('[DEX] seedParticipants: Event nicht gefunden'); return; }
 
       const event = items[0];
       const subsiteUrl = event.SubsiteUrl;
       const eventNumber = event.EventNumber;
-      if (!subsiteUrl) return;
+      if (!subsiteUrl) { console.warn('[DEX] seedParticipants: Keine SubsiteUrl'); return; }
+
+      console.warn('[DEX] seedParticipants: Event gefunden, SubsiteUrl:', subsiteUrl);
 
       // 2. Pruefen ob schon Teilnehmer existieren (Migration schon gelaufen?)
       const checkResp = await this.context.spHttpClient.get(
@@ -1319,11 +1321,15 @@ export class EventService {
       if (checkResp.ok) {
         const checkData = await checkResp.json();
         const existing = checkData.value || checkData.d?.results || [];
-        if (existing.length > 0) return; // Schon migriert
+        if (existing.length > 0) { console.warn('[DEX] seedParticipants: Bereits migriert (' + existing.length + ' Items)'); return; }
+      } else {
+        console.warn('[DEX] seedParticipants: Teilnehmer-Check fehlgeschlagen', checkResp.status);
       }
 
       // 3. Teilnehmer importieren
+      console.warn('[DEX] seedParticipants: Starte Migration...');
       const { ASSISTENZ_MEETING_PARTICIPANTS } = await import('../data/seedParticipants');
+      console.warn('[DEX] seedParticipants:', ASSISTENZ_MEETING_PARTICIPANTS.length, 'Teilnehmer zu migrieren');
 
       // FieldMap fuer Custom Fields ermitteln (spInternalName)
       const fieldsResp = await this.context.spHttpClient.get(
@@ -1394,9 +1400,10 @@ export class EventService {
 
           // DEX_Participants aktualisieren (Dual-Write)
           this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
-        } catch { /* Einzelnen Teilnehmer ueberspringen */ }
+        } catch (err) { console.warn('[DEX] seedParticipants: Teilnehmer-Fehler:', err); }
       }
-    } catch { /* Seed fehlgeschlagen - nicht kritisch */ }
+      console.warn('[DEX] seedParticipants: Migration abgeschlossen');
+    } catch (err) { console.warn('[DEX] seedParticipants: FEHLER:', err); }
   }
 
   /**
