@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+import { SPHttpClient } from '@microsoft/sp-http';
 import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -75,6 +76,48 @@ function getDocIconName(name: string): string {
 
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
   const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = React.useState<string>('');
+  const [loading, setLoading] = React.useState(false);
+
+  const toggleDoc = async (doc: { url: string; name: string }): Promise<void> => {
+    if (expandedDoc === doc.url) {
+      setExpandedDoc(null);
+      if (blobUrl) { URL.revokeObjectURL(blobUrl); setBlobUrl(''); }
+      return;
+    }
+    setExpandedDoc(doc.url);
+    setLoading(true);
+    setBlobUrl('');
+
+    try {
+      // Datei per SPHttpClient laden (authentifiziert)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const origin = doc.url.match(/^https?:\/\/[^/]+/)?.[0] || '';
+        const serverRelPath = doc.url.replace(origin, '');
+        const resp = await ctx.spHttpClient.get(
+          `${ctx.pageContext.web.absoluteUrl}/_api/web/GetFileByServerRelativeUrl('${encodeURIComponent(serverRelPath)}')/$value`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': '*/*' } }
+        );
+        if (resp.ok) {
+          const blob = await resp.blob();
+          // MIME-Type korrigieren
+          const ext = doc.name.split('.').pop()?.toLowerCase() || '';
+          const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+          const correctBlob = mimeMap[ext] ? new Blob([blob], { type: mimeMap[ext] }) : blob;
+          setBlobUrl(URL.createObjectURL(correctBlob));
+        }
+      }
+    } catch { /* Blob-Laden fehlgeschlagen */ }
+    setLoading(false);
+  };
+
+  // Cleanup blob URLs bei Unmount
+  React.useEffect(() => {
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, []);
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -92,7 +135,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               borderRadius: isExpanded ? '8px 8px 0 0' : 8,
               cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
               transition: 'background 0.15s',
-            }} onClick={() => setExpandedDoc(isExpanded ? null : doc.url)}>
+            }} onClick={() => toggleDoc(doc)}>
               <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Icon iconName={getDocIconName(doc.name)} style={{ fontSize: 16, color: '#fff' }} />
               </span>
@@ -107,14 +150,25 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
               <div style={{
                 border: '1px solid var(--dex-gray-200)', borderTop: 'none',
                 borderRadius: '0 0 8px 8px', overflow: 'hidden', background: '#fff',
-                maxHeight: 600,
               }}>
-                <DocViewer
-                  documents={[{ uri: doc.url, fileName: doc.name }]}
-                  pluginRenderers={DocViewerRenderers}
-                  config={{ header: { disableHeader: true, disableFileName: true } }}
-                  style={{ height: 500 }}
-                />
+                {loading ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
+                    {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
+                  </div>
+                ) : blobUrl ? (
+                  <DocViewer
+                    documents={[{ uri: blobUrl, fileName: doc.name }]}
+                    pluginRenderers={DocViewerRenderers}
+                    config={{ header: { disableHeader: true, disableFileName: true } }}
+                    style={{ height: 500 }}
+                  />
+                ) : (
+                  <div style={{ padding: 24, textAlign: 'center' }}>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark)' }}>
+                      {t('myevents.agenda') === 'Programm' ? 'Im Browser öffnen' : 'Open in browser'}
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -182,11 +236,35 @@ export default function MyEventsPage(): React.ReactElement {
 
   const handleCancel = async (eventId: string): Promise<void> => {
     if (cancellingId === eventId) {
-      // Zweiter Klick = Bestaetigung
       setIsCancelling(true);
+
+      // Check if this is a late cancellation
+      const entry = myEvents.find(e => e.event.id === eventId);
+      const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
+
       const success = await cancelRegistration(eventId);
       if (success) {
-        // Registrierung neu laden
+        // If late cancellation, send notification to organizer
+        if (isLateCancellation && entry) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx) {
+              const { EventService } = await import('../services/EventService');
+              const svc = new EventService(ctx);
+              const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
+              await svc.queueEmail(
+                `[DEX] Late cancellation: ${entry.event.title}`,
+                entry.event.organizers[0] || '',
+                entry.event.organizers[0] || '',
+                `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${new Date(entry.event.lastDeregisterDate).toLocaleDateString('de-DE')}).</p><p>E-Mail: ${entry.registration.ParticipantEmail || entry.registration.Title}</p>`,
+                'LateCancel',
+                entry.event.title,
+                eventId
+              );
+            }
+          } catch { /* Email-Fehler ignorieren */ }
+        }
         await loadMyRegistrations();
       }
       setCancellingId(null);
@@ -311,47 +389,66 @@ export default function MyEventsPage(): React.ReactElement {
                   </div>
                 )}
 
-                {/* Agenda / Timeline */}
-                {event.agenda && event.agenda.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
-                      {t('myevents.agenda')}
-                    </div>
-                    {Object.entries(
-                      event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
-                        const key = item.date || 'TBD';
-                        if (!groups[key]) groups[key] = [];
-                        groups[key].push(item);
-                        return groups;
-                      }, {} as Record<string, AgendaItem[]>)
-                    ).sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => (
-                      <div key={date} style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--dex-green)', marginBottom: 4 }}>
-                          {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
-                        </div>
-                        {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
-                          <div key={item.id} style={{
-                            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0',
-                            borderLeft: '2px solid var(--dex-green)', marginLeft: 8, paddingLeft: 12,
+                {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen */}
+                {event.agenda && event.agenda.length > 0 && (() => {
+                  const grouped = Object.entries(
+                    event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
+                      const key = item.date || 'TBD';
+                      if (!groups[key]) groups[key] = [];
+                      groups[key].push(item);
+                      return groups;
+                    }, {} as Record<string, AgendaItem[]>)
+                  ).sort(([a], [b]) => a.localeCompare(b));
+                  const dayCount = grouped.length;
+                  const cols = dayCount >= 3 ? 3 : dayCount >= 2 ? 2 : 1;
+
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                        {t('myevents.agenda')}
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                        gap: 16,
+                      }}>
+                        {grouped.map(([date, items]) => (
+                          <div key={date} style={{
+                            background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: 12,
+                            border: '1px solid var(--dex-gray-200)',
                           }}>
-                            <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 14, color: '#fff' }} />
-                            </span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.82rem' }}>
-                                <strong>{item.time}{item.endTime ? ` – ${item.endTime}` : ''}</strong>
-                                <span style={{ marginLeft: 8 }}>{item.title}</span>
-                              </div>
-                              {item.description && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
-                              )}
+                            <div style={{
+                              fontSize: '0.78rem', fontWeight: 700, color: '#fff', marginBottom: 8,
+                              background: 'var(--dex-green-dark, #6b9a1e)', borderRadius: 8, padding: '6px 12px',
+                              textAlign: 'center',
+                            }}>
+                              {date !== 'TBD' ? new Date(date + 'T00:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}
                             </div>
+                            {items.sort((a: AgendaItem, b: AgendaItem) => (a.time || '').localeCompare(b.time || '')).map((item: AgendaItem) => (
+                              <div key={item.id} style={{
+                                display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0',
+                                borderLeft: '2px solid var(--dex-green)', marginLeft: 4, paddingLeft: 10,
+                              }}>
+                                <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 12, color: '#fff' }} />
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                                    {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem' }}>{item.title}</div>
+                                  {item.description && (
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
 
                 {/* Transferzeiten */}
                 {event.transferTimes && event.transferTimes.length > 0 && (
@@ -360,11 +457,29 @@ export default function MyEventsPage(): React.ReactElement {
                       {t('myevents.transfers')}
                     </div>
                     {event.transferTimes.sort((a: TransferTime, b: TransferTime) => (a.date + a.departureTime).localeCompare(b.date + b.departureTime)).map((tr: TransferTime) => (
-                      <div key={tr.id} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: '0.82rem', borderLeft: '2px solid var(--dex-orange)', marginLeft: 8, paddingLeft: 12 }}>
-                        <Icon iconName="Bus" style={{ fontSize: 14, color: 'var(--dex-orange)' }} />
-                        <div>
-                          <strong>{tr.location}</strong> – {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit'})}, {tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''}
-                          {tr.description && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8 }}>{tr.description}</span>}
+                      <div key={tr.id} style={{
+                        display: 'flex', gap: 10, padding: '8px 12px', marginBottom: 6, fontSize: '0.82rem',
+                        background: 'var(--dex-gray-50, #fafafa)', borderRadius: 10,
+                        borderLeft: '3px solid var(--dex-orange)',
+                      }}>
+                        <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dex-orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon iconName="Bus" style={{ fontSize: 13, color: '#fff' }} />
+                        </span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600 }}>
+                            {tr.location}{tr.meetingPoint ? ` – ${tr.meetingPoint}` : ''}
+                          </div>
+                          {tr.address && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                              <Icon iconName="MapPin" style={{ fontSize: 11, marginRight: 4 }} />{tr.address}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 2 }}>
+                            <Icon iconName="Calendar" style={{ fontSize: 11, color: 'var(--dex-gray-400)', marginRight: 4 }} />
+                            {new Date(tr.date + 'T00:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'})},
+                            {' '}{tr.departureTime}{tr.arrivalTime ? ` → ${tr.arrivalTime}` : ''} Uhr
+                          </div>
+                          {tr.description && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{tr.description}</div>}
                         </div>
                       </div>
                     ))}
@@ -381,7 +496,12 @@ export default function MyEventsPage(): React.ReactElement {
                   <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                     {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
                   </span>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', display: 'block', marginBottom: 4, width: '100%' }}>
+                        {t('myevents.latecancel')}
+                      </span>
+                    )}
                     <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
                       {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                     </button>

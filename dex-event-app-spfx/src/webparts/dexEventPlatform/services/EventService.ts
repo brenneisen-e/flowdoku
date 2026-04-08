@@ -1481,11 +1481,11 @@ export class EventService {
         }
       }
 
-      // 4. Event-Dokumente loeschen (Shared Documents/DEX_EventDocs/Event_{number}/)
+      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}/)
       if (event.EventNumber) {
         try {
           const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-          const folderPath = `${serverRelUrl}/Shared Documents/DEX_EventDocs/Event_${event.EventNumber}`;
+          const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${event.EventNumber}`;
           await this._delete(`${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`);
         } catch {
           // Ordner existiert nicht oder konnte nicht geloescht werden - nicht kritisch
@@ -2302,30 +2302,22 @@ export class EventService {
   public async uploadEventDocument(eventNumber: number, file: File): Promise<string> {
     try {
       const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      const basePath = `${serverRelUrl}/Shared Documents/DEX_EventDocs`;
-      const folderPath = `${basePath}/Event_${eventNumber}`;
+      const folderPath = `${serverRelUrl}/SiteAssets/DEX_EventDocs/Event_${eventNumber}`;
 
-      // DEX_EventDocs Ordner erstellen falls nicht vorhanden
-      try {
-        const baseCheck = await this.context.spHttpClient.get(
-          `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${basePath}')`,
-          SPHttpClient.configurations.v1
-        );
-        if (!baseCheck.ok) {
-          await this._post(`${this.siteUrl}/_api/web/folders`, {
-            '__metadata': { 'type': 'SP.Folder' },
-            'ServerRelativeUrl': basePath,
-          });
-        }
-      } catch { /* existiert bereits */ }
-
-      // Event-Ordner erstellen falls nicht vorhanden
+      // Ordner erstellen falls nicht vorhanden
       try {
         const check = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')`,
           SPHttpClient.configurations.v1
         );
         if (!check.ok) {
+          // Erst DEX_EventDocs, dann Event_X
+          try {
+            await this._post(`${this.siteUrl}/_api/web/folders`, {
+              '__metadata': { 'type': 'SP.Folder' },
+              'ServerRelativeUrl': `${serverRelUrl}/SiteAssets/DEX_EventDocs`,
+            });
+          } catch { /* existiert bereits */ }
           await this._post(`${this.siteUrl}/_api/web/folders`, {
             '__metadata': { 'type': 'SP.Folder' },
             'ServerRelativeUrl': folderPath,
@@ -2338,7 +2330,14 @@ export class EventService {
       const response = await this.context.spHttpClient.post(
         `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(url='${fileName}',overwrite=true)`,
         SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/octet-stream' }, body: buffer }
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/octet-stream',
+            'odata-version': '',
+          },
+          body: buffer,
+        }
       );
       if (response.ok) {
         const data = await response.json();

@@ -12,6 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Salutation } from '../types';
+import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
 
 function formatDate(iso: string): string {
@@ -27,7 +28,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents, searchUsers } = useRoles();
+  const { canCreateEvents, searchUsers, isOrganizer, isAdmin } = useRoles();
   const { t } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
@@ -88,6 +89,38 @@ export default function RegistrationPage(): React.ReactElement {
         <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
           {t('reg.backtoevents')}
         </button>
+      </div>
+    );
+  }
+
+  // Registrierungs-Deadline pruefen
+  const isDeadlinePassed = event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+
+  if (isDeadlinePassed && !isOrganizer && !isAdmin) {
+    return (
+      <div className="page-container">
+        <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{
+            height: 200,
+            background: event.imageUrl
+              ? `url(${event.imageUrl}) center/cover no-repeat`
+              : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            borderRadius: '16px 16px 0 0',
+          }} />
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <Icon iconName="Clock" style={{ fontSize: 48, color: 'var(--dex-orange)', marginBottom: 16 }} />
+            <h2 style={{ marginBottom: 8 }}>{t('reg.deadlinepassed.title')}</h2>
+            <p style={{ color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+              {t('reg.deadlinepassed.text')}
+            </p>
+            <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem' }}>
+              {t('reg.deadlinepassed.date')}: {new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </p>
+            <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
+              {t('reg.backtoevents')}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
