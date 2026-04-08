@@ -110,13 +110,13 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           </span>
         </div>
         <div className="event-card__dates">
-          {formatDate(event.startDate)} until
+          {formatDate(event.startDate)} {t('events.until')}
           <br />
           {formatDate(event.endDate)}
         </div>
         {event.registrationDeadline && formatDate(event.registrationDeadline) && (
           <div className="event-card__deadline">
-            Registration open until: {formatDate(event.registrationDeadline)}
+            {t('events.regopen')} {formatDate(event.registrationDeadline)}
           </div>
         )}
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>
@@ -127,7 +127,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
               navigate('registration', event.id);
             }}
           >
-            Registrate
+            {t('reg.register')}
           </button>
         </div>
       </div>

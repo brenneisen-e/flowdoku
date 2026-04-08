@@ -575,15 +575,17 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 ## 4. DEX_Outlook_Einladungen
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
-**Zweck:** Teilnehmer zu bestehendem Outlook-Termin einladen oder ausladen (via Graph API)
-**Letztes Update:** 2026-04-06
+**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen ODER Event-Daten aktualisieren (via Graph API)
+**Letztes Update:** 2026-04-08
 
-Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Einladen/Ausladen → Status=Sent (oder Failed bei Fehler)
+Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende → Nein: Einladen/Ausladen → Status=Sent
+
+**ActionTypes:** `Einladen` (Teilnehmer hinzufügen), `Ausladen` (Teilnehmer entfernen), `UpdateEvent` (Termin-Daten aktualisieren)
 
 **Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
 
 ```json
-TRIGGER (Neues Item in DEX_Outlook):
+TRIGGER (Neues Item in DEX_Outlook, Concurrency: 1):
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -635,13 +637,36 @@ INIT_ATTENDEES (Variable für Teilnehmer-Array):
   "runAfter": { "Init_RealEventId": ["Succeeded"] }
 }
 
-CHECK_CALENDARLINK (CalendarLink vorhanden?):
+CHECK_CALENDARLINK (CalendarLink vorhanden? + Einladen/Ausladen/UpdateEvent):
 {
   "type": "If",
   "expression": {
     "and": [{ "greater": ["@length(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['CalendarLink'], ''))", 0] }]
   },
   "actions": {
+    "Set_Sent": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "d794655b-c950-416c-a478-5dbae285e46d",
+          "id": "@triggerBody()?['ID']",
+          "item/Title": "@triggerBody()?['Title']",
+          "item/Status/Value": "Sent"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "PatchItem"
+        }
+      },
+      "runAfter": { "Check_EventFound": ["Succeeded"] }
+    },
+    "Set_variable": {
+      "type": "SetVariable",
+      "inputs": { "name": "varRealEventId", "value": "@first(body('Find_Outlook_Event')?['value'])?['id']" },
+      "runAfter": { "Find_Outlook_Event": ["Succeeded"] }
+    },
     "Find_Outlook_Event": {
       "type": "OpenApiConnection",
       "inputs": {
@@ -656,11 +681,6 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
           "operationId": "HttpRequest"
         }
       }
-    },
-    "Set_variable (varRealEventId)": {
-      "type": "SetVariable",
-      "inputs": { "name": "varRealEventId", "value": "@first(body('Find_Outlook_Event')?['value'])?['id']" },
-      "runAfter": { "Find_Outlook_Event": ["Succeeded"] }
     },
     "Check_EventFound": {
       "type": "If",
@@ -683,73 +703,12 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
             }
           }
         },
-        "Set_variable_1 (var_Attendees)": {
+        "Set_variable_1": {
           "type": "SetVariable",
           "inputs": { "name": "var_Attendees", "value": "@body('Get_Existing_Event')?['attendees']" },
           "runAfter": { "Get_Existing_Event": ["Succeeded"] }
         },
-        "Check_ActionType (Einladen oder Ausladen)": {
-          "type": "If",
-          "expression": {
-            "and": [{ "equals": ["@triggerBody()?['ActionType']?['Value']", "Einladen"] }]
-          },
-          "actions": {
-            "Add_Attendee": {
-              "type": "AppendToArrayVariable",
-              "inputs": {
-                "name": "var_Attendees",
-                "value": "@json(concat('{\"type\":\"required\",\"status\":{\"response\":\"none\",\"time\":\"0001-01-01T00:00:00Z\"},\"emailAddress\":{\"name\":\"', triggerBody()?['Attendee'], '\",\"address\":\"', triggerBody()?['Attendee'], '\"}}'))"
-              }
-            },
-            "Update_Event_Einladen": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
-                  "Method": "PATCH",
-                  "Body": "@json(concat('{\"attendees\":', string(variables('var_Attendees')), '}'))",
-                  "ContentType": "application/json"
-                },
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-                  "connection": "shared_office365",
-                  "operationId": "HttpRequest"
-                }
-              },
-              "runAfter": { "Add_Attendee": ["Succeeded"] }
-            }
-          },
-          "else": {
-            "actions": {
-              "Filter_Attendees": {
-                "type": "Query",
-                "inputs": {
-                  "from": "@variables('var_Attendees')",
-                  "where": "@not(equals(toLower(item()?['emailAddress']?['address']),toLower(triggerBody()?['Attendee'])))"
-                }
-              },
-              "Update_Event_Ausladen": {
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "parameters": {
-                    "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
-                    "Method": "PATCH",
-                    "Body": "@json(concat('{\"attendees\":', string(body('Filter_Attendees')), '}'))",
-                    "ContentType": "application/json"
-                  },
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-                    "connection": "shared_office365",
-                    "operationId": "HttpRequest"
-                  }
-                },
-                "runAfter": { "Filter_Attendees": ["Succeeded"] }
-              }
-            }
-          },
-          "runAfter": { "Set_variable_1": ["Succeeded"] }
-        },
-        "Set_Failed_1_1 (ActionType fehlgeschlagen)": {
+        "Set_Failed_1_1": {
           "type": "OpenApiConnection",
           "inputs": {
             "parameters": {
@@ -765,7 +724,96 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
               "operationId": "PatchItem"
             }
           },
-          "runAfter": { "Check_ActionType": ["Failed"] }
+          "runAfter": { "Is_UpdateEvent": ["Failed"] }
+        },
+        "Is_UpdateEvent": {
+          "type": "If",
+          "expression": {
+            "and": [{ "equals": ["@triggerBody()?['ActionType']?['Value']", "UpdateEvent"] }]
+          },
+          "actions": {
+            "Send_an_HTTP_request (PATCH Event-Daten)": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+                  "Method": "PATCH",
+                  "Body": "@json(concat('{\"subject\":\"', first(outputs('Get_Event_Details')?['body/value'])?['Title'], '\",\"start\":{\"dateTime\":\"', formatDateTime(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"},\"end\":{\"dateTime\":\"', formatDateTime(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"}}'))",
+                  "ContentType": "application/json"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connection": "shared_office365",
+                  "operationId": "HttpRequest"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Check_ActionType (Einladen oder Ausladen)": {
+                "type": "If",
+                "expression": {
+                  "and": [{ "equals": ["@triggerBody()?['ActionType']?['Value']", "Einladen"] }]
+                },
+                "actions": {
+                  "Add_Attendee": {
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "var_Attendees",
+                      "value": "@json(concat('{\"type\":\"required\",\"status\":{\"response\":\"none\",\"time\":\"0001-01-01T00:00:00Z\"},\"emailAddress\":{\"name\":\"', triggerBody()?['Attendee'], '\",\"address\":\"', triggerBody()?['Attendee'], '\"}}'))"
+                    }
+                  },
+                  "Update_Event_Einladen": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+                        "Method": "PATCH",
+                        "Body": "@json(concat('{\"attendees\":', string(variables('var_Attendees')), '}'))",
+                        "ContentType": "application/json"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connection": "shared_office365",
+                        "operationId": "HttpRequest"
+                      }
+                    },
+                    "runAfter": { "Add_Attendee": ["Succeeded"] }
+                  }
+                },
+                "else": {
+                  "actions": {
+                    "Filter_Attendees": {
+                      "type": "Query",
+                      "inputs": {
+                        "from": "@variables('var_Attendees')",
+                        "where": "@not(equals(toLower(item()?['emailAddress']?['address']),toLower(triggerBody()?['Attendee'])))"
+                      }
+                    },
+                    "Update_Event_Ausladen": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
+                          "Method": "PATCH",
+                          "Body": "@json(concat('{\"attendees\":', string(body('Filter_Attendees')), '}'))",
+                          "ContentType": "application/json"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                          "connection": "shared_office365",
+                          "operationId": "HttpRequest"
+                        }
+                      },
+                      "runAfter": { "Filter_Attendees": ["Succeeded"] }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": { "Set_variable_1": ["Succeeded"] }
         }
       },
       "else": {
@@ -790,24 +838,6 @@ CHECK_CALENDARLINK (CalendarLink vorhanden?):
         }
       },
       "runAfter": { "Set_variable": ["Succeeded"] }
-    },
-    "Set_Sent": {
-      "type": "OpenApiConnection",
-      "inputs": {
-        "parameters": {
-          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-          "table": "d794655b-c950-416c-a478-5dbae285e46d",
-          "id": "@triggerBody()?['ID']",
-          "item/Title": "@triggerBody()?['Title']",
-          "item/Status/Value": "Sent"
-        },
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connection": "shared_sharepointonline",
-          "operationId": "PatchItem"
-        }
-      },
-      "runAfter": { "Check_EventFound": ["Succeeded"] }
     }
   },
   "else": {
