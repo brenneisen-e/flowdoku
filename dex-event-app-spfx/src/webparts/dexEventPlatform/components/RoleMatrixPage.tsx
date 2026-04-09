@@ -16,24 +16,39 @@ interface PermissionRow {
 }
 
 const PERMISSIONS: PermissionRow[] = [
-  // Events
-  { category: 'Events', feature: 'Events ansehen (eigener Standort)', user: true, organizer: true, admin: true },
-  { category: 'Events', feature: 'Alle Events ansehen', user: false, organizer: true, admin: true },
-  { category: 'Events', feature: 'Für Events registrieren', user: true, organizer: true, admin: true },
-  { category: 'Events', feature: 'Events erstellen', user: false, organizer: true, admin: true },
-  { category: 'Events', feature: 'Eigene Events bearbeiten', user: false, organizer: true, admin: true },
-  { category: 'Events', feature: 'Alle Events bearbeiten', user: false, organizer: false, admin: true },
-  { category: 'Events', feature: 'Events löschen', user: false, organizer: 'Eigene', admin: true },
+  // Events ansehen
+  { category: 'Events ansehen', feature: 'Events des eigenen Standorts sehen', user: true, organizer: true, admin: true },
+  { category: 'Events ansehen', feature: 'Alle Events sehen', user: false, organizer: true, admin: true },
+  { category: 'Events ansehen', feature: 'Prozess-Übersicht (Flowcharts)', user: false, organizer: true, admin: true },
+
+  // Event-Verwaltung
+  { category: 'Event-Verwaltung', feature: 'Events erstellen', user: false, organizer: true, admin: true },
+  { category: 'Event-Verwaltung', feature: 'Eigene Events bearbeiten', user: false, organizer: true, admin: true },
+  { category: 'Event-Verwaltung', feature: 'Alle Events bearbeiten', user: false, organizer: false, admin: true },
+  { category: 'Event-Verwaltung', feature: 'Events löschen', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'Event-Bild hochladen (Item-Attachment)', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'Event-Dokumente hochladen', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'Agenda / Transferzeiten / Quiz pflegen', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'E-Mail-Templates pro Event anpassen', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'E-Mails pro Event deaktivieren', user: false, organizer: 'Eigene', admin: true },
+  { category: 'Event-Verwaltung', feature: 'Outlook-Einladungen pro Event deaktivieren', user: false, organizer: 'Eigene', admin: true },
 
   // Registrierungen
-  { category: 'Registrierungen', feature: 'Eigene Registrierung sehen', user: true, organizer: true, admin: true },
+  { category: 'Registrierungen', feature: 'Selbst registrieren', user: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Angaben bearbeiten', user: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren', user: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Für andere registrieren', user: false, organizer: true, admin: true },
-  { category: 'Registrierungen', feature: 'Teilnehmerliste eigener Events sehen', user: false, organizer: true, admin: true },
-  { category: 'Registrierungen', feature: 'Alle Teilnehmerlisten sehen', user: false, organizer: false, admin: true },
-  { category: 'Registrierungen', feature: 'Teilnehmer abmelden', user: false, organizer: 'Eigene Events', admin: true },
-  { category: 'Registrierungen', feature: 'E-Mail-Adressen kopieren', user: false, organizer: 'Eigene Events', admin: true },
+
+  // Teilnehmerverwaltung (Admin Center)
+  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmerliste sehen', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer suchen / sortieren', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer ein-/auschecken', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer abmelden', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'QR-Codes versenden', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'E-Mail-Adressen kopieren', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Massenmail an Teilnehmer (RichText + Template)', user: false, organizer: 'Eigene Events', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'IDs neu vergeben (sequentielle Renummerierung)', user: false, organizer: false, admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Spalten fixen (Schema reparieren)', user: false, organizer: false, admin: true },
 
   // Administration
   { category: 'Administration', feature: 'Admin-Bereich öffnen', user: false, organizer: true, admin: true },
@@ -42,15 +57,17 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Administration', feature: 'User suchen', user: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Standort-Filter konfigurieren', user: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Zielgruppen-Filter konfigurieren', user: false, organizer: true, admin: true },
+  { category: 'Administration', feature: 'Globale Email-Templates bearbeiten', user: false, organizer: false, admin: true },
 
   // SharePoint (Visitors = DEALL, Owners = Admins)
   { category: 'SharePoint', feature: 'DEX_Events: Lesen', user: 'Visitors (Read)', organizer: 'Contribute', admin: 'Full Control' },
-  { category: 'SharePoint', feature: 'DEX_Events: Schreiben', user: false, organizer: 'Contribute', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_Events: Schreiben (inkl. Item-Attachments)', user: false, organizer: 'Contribute', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Lesen', user: false, organizer: 'Read', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Schreiben', user: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Emails: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Outlook: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
-  { category: 'SharePoint', feature: 'DEX_IDReorder: Queue (eigene)', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_IDReorder: Queue', user: false, organizer: false, admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_EmailTemplates: Schreiben', user: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Participants: eigene Einträge', user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Event-Subsite', user: 'Visitors (Read)', organizer: 'Full Control', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Teilnehmerliste: eigener Eintrag', user: 'Contribute + ILS', organizer: 'Full Control', admin: 'Full Control' },

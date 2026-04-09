@@ -114,7 +114,7 @@ function RegistrationFlow(): React.ReactElement {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <FlowNode type="start" label="User klickt 'Registrieren'" />
       <Arrow />
-      <FlowNode type="process" label="Vorname, Nachname, E-Mail, Event-spezifische Felder eingeben" />
+      <FlowNode type="process" label="Vorname, Nachname, Anrede, E-Mail, Event-spezifische Felder eingeben" />
       <Arrow />
       <FlowNode type="decision" label="Bereits registriert?" />
       <BranchContainer>
@@ -133,13 +133,29 @@ function RegistrationFlow(): React.ReactElement {
         </Branch>
       </BranchContainer>
       <Arrow />
-      <FlowNode type="subprocess" label="Eintrag in Subsite-Teilnehmerliste (Vorname, Nachname, Status, CustomData)" />
+      <FlowNode type="subprocess" label="Eintrag in Subsite-Teilnehmerliste (TeilnehmerID, Anrede, Vorname, Nachname, Status, CustomData)" />
       <Arrow />
       <FlowNode type="subprocess" label="DEX_Participants aktualisieren (EventNumber in EventRegistered oder EventOnWaitlist)" />
       <Arrow />
-      <FlowNode type="data" label="DEX_Emails: Bestätigungs-E-Mail in Queue" />
+      <FlowNode type="decision" label="Event hat 'E-Mails versenden' aktiv?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="data" label="DEX_Emails: Bestätigungs-E-Mail in Queue" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Mail-Eintrag - geskippt" />
+        </Branch>
+      </BranchContainer>
       <Arrow />
-      <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung in Queue (nur bei Anmeldung, nicht Warteliste)" />
+      <FlowNode type="decision" label="Event hat 'Outlook-Einladung' aktiv UND Status = Angemeldet?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung in Queue ('Einladen')" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Outlook-Eintrag - geskippt" />
+        </Branch>
+      </BranchContainer>
       <Arrow />
       <FlowNode type="end" label="Registrierung abgeschlossen" />
     </div>
@@ -165,9 +181,25 @@ function CancellationFlow(): React.ReactElement {
       <Arrow />
       <FlowNode type="subprocess" label="DEX_Participants: EventNumber aus EventRegistered/EventOnWaitlist entfernen" />
       <Arrow />
-      <FlowNode type="data" label="DEX_Emails: Abmeldungs-E-Mail in Queue" />
+      <FlowNode type="decision" label="Event hat 'E-Mails versenden' aktiv?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="data" label="DEX_Emails: Abmeldungs-E-Mail in Queue" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Mail-Eintrag - geskippt" />
+        </Branch>
+      </BranchContainer>
       <Arrow />
-      <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung zurückziehen" />
+      <FlowNode type="decision" label="Event hat 'Outlook-Einladung' aktiv?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung zurückziehen ('Ausladen')" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Outlook-Eintrag - geskippt" />
+        </Branch>
+      </BranchContainer>
       <Arrow />
       <FlowNode type="data" color="#ffebee" label="DEX_IDReorder: Reorder-Auftrag in Queue (Pending)" />
       <Arrow />
@@ -219,19 +251,111 @@ function IDReorderFlow(): React.ReactElement {
 function EventCreationFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <FlowNode type="start" label="Organizer/Admin erstellt Event" />
+      <FlowNode type="start" label="Organizer/Admin erstellt Event (7 Schritte: Grundlagen → Zeit&Ort → Kapazität → Felder → Kommunikation → Dokumente → Quiz)" />
       <Arrow />
       <FlowNode type="process" label="Nächste EventNumber ermitteln (max + 1)" />
       <Arrow />
       <FlowNode type="subprocess" label="SharePoint Subsite erstellen (URL aus Titel generiert)" />
       <Arrow />
-      <FlowNode type="subprocess" label="Teilnehmerliste 'Teilnehmer' auf Subsite erstellen (Basis- + Custom-Felder)" />
+      <FlowNode type="subprocess" label="Teilnehmerliste 'Teilnehmer' auf Subsite erstellen (TeilnehmerID, Anrede, Vorname, Nachname, Status, ... + Custom Fields)" />
       <Arrow />
-      <FlowNode type="process" label="Item-Level Security + Berechtigungen setzen" />
+      <FlowNode type="process" label="Item-Level Security + Berechtigungen setzen (Owners=FullControl, Visitors=Contribute+ILS)" />
       <Arrow />
-      <FlowNode type="subprocess" label="Event in DEX_Events eintragen (mit EventNumber, SubsiteUrl, CustomFields)" />
+      <FlowNode type="subprocess" label="Event in DEX_Events eintragen (mit EventNumber, SubsiteUrl, DisableEmails, DisableOutlook, CustomFields)" />
+      <Arrow />
+      <FlowNode type="decision" label="Bild oder Dokumente vorhanden?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="subprocess" label="Bild komprimieren + als __eventimage__-Attachment an DEX_Events-Item anhängen" />
+          <Arrow />
+          <FlowNode type="subprocess" label="Dokumente als Attachments an DEX_Events-Item anhängen" />
+          <Arrow />
+          <FlowNode type="process" label="EventImageUrl auf Attachment-URL patchen" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Keine Anhänge" />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="data" label="DEX_Emails: Event-Erstellt Mail an alle Organizer (immer, unabhängig von DisableEmails)" />
+      <Arrow />
+      <FlowNode type="data" color="#fce4ec" label="Power Automate Trigger DEX_CreateOutlookEvent: Erstellt initialen Outlook-Termin im Kalender no_reply.events@deloitte.de + speichert CalendarLink (iCalUId) zurück" />
       <Arrow />
       <FlowNode type="end" label="Event bereit für Registrierungen" />
+    </div>
+  );
+}
+
+function MassEmailFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode type="start" label="Organizer/Admin klickt 'E-Mail an alle Teilnehmer' im Admin Center" />
+      <Arrow />
+      <FlowNode type="process" label="Modal öffnet sich: Betreff, Titel, RichText-Body eingeben" />
+      <Arrow />
+      <FlowNode type="process" label="Vorschau anzeigen (Body wird in Deloitte-Template gewrappt: Logo, grüner Header, Footer)" />
+      <Arrow />
+      <FlowNode type="decision" label="Senden bestätigen?" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="process" label="Empfänger-Liste sammeln: alle aktiven Teilnehmer (Angemeldet, QR versendet, Eingecheckt)" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="end" color="var(--dex-orange)" label="Abbruch" />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="process" label="In Batches á max ~250 Zeichen Recipient-String aufteilen (semicolon-getrennt)" />
+      <Arrow />
+      <FlowNode type="data" label="Pro Batch: Ein DEX_Emails Eintrag mit Recipient='email1;email2;email3...' und EmailType='Massenmail'" />
+      <Arrow />
+      <FlowNode type="subprocess" color="#fce4ec" label="Power Automate Trigger DEX_SEND_MAIL: Lädt Logo + Default-Bild aus Config, ersetzt Platzhalter, sendet via Shared Mailbox no_reply.events@deloitte.de" />
+      <Arrow />
+      <FlowNode type="end" label="Versand abgeschlossen, Status auf 'Sent'" />
+    </div>
+  );
+}
+
+function IDReorderManualFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode type="start" label="Admin klickt 'IDs neu vergeben' im Admin Center" />
+      <Arrow />
+      <FlowNode type="process" label="Bestätigung anzeigen (Sortierung nach SP-Item-ID = Erstellungsreihenfolge)" />
+      <Arrow />
+      <FlowNode type="subprocess" label="Alle Teilnehmer der Subsite-Liste laden ($orderby=Id asc)" />
+      <Arrow />
+      <FlowNode type="process" label="Aktive (Angemeldet, QR versendet, Eingecheckt, Warteliste): TeilnehmerID = 1, 2, 3 ... N" />
+      <Arrow />
+      <FlowNode type="process" label="Inaktive (Abgemeldet): TeilnehmerID = null" />
+      <Arrow />
+      <FlowNode type="subprocess" label="Pro Item ein MERGE-Update auf TeilnehmerID (nur wenn sich die ID ändert)" />
+      <Arrow />
+      <FlowNode type="end" label="Erfolgs-Hinweis: 'X aktualisiert, Y Fehler' + Reload der Liste" />
+    </div>
+  );
+}
+
+function ColumnFixFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode type="start" label="Admin klickt 'Spalten fixen' im Admin Center" />
+      <Arrow />
+      <FlowNode type="subprocess" label="Bestehende Felder der Subsite-Teilnehmerliste laden" />
+      <Arrow />
+      <FlowNode type="decision" label="Pflicht-Spalten fehlen? (z.B. Anrede)" />
+      <BranchContainer>
+        <Branch label="Ja">
+          <FlowNode type="subprocess" label="Fehlende Spalten anlegen (Anrede als Choice Frau/Herr/Divers)" />
+        </Branch>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Keine neuen Spalten nötig" />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="subprocess" label="Default-View: alle View-Felder entfernen, dann in korrekter Reihenfolge wieder hinzufügen (TeilnehmerID > Anrede > Vorname > Nachname > Email > ... > Custom Fields)" />
+      <Arrow />
+      <FlowNode type="end" label="Erfolgs-Hinweis: 'Spalten hinzugefügt: X | View-Reihenfolge korrigiert'" />
     </div>
   );
 }
@@ -246,6 +370,9 @@ export default function FlowchartPage(): React.ReactElement {
     { id: 'cancellation', label: 'Abmeldung', icon: '←' },
     { id: 'reorder', label: 'ID-Korrektur (Power Automate)', icon: '↻' },
     { id: 'creation', label: 'Event-Erstellung', icon: '+' },
+    { id: 'massemail', label: 'Massenmail', icon: '✉' },
+    { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
+    { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
   ];
 
   const renderFlow = (): React.ReactElement => {
@@ -254,6 +381,9 @@ export default function FlowchartPage(): React.ReactElement {
       case 'cancellation': return <CancellationFlow />;
       case 'reorder': return <IDReorderFlow />;
       case 'creation': return <EventCreationFlow />;
+      case 'massemail': return <MassEmailFlow />;
+      case 'idmanual': return <IDReorderManualFlow />;
+      case 'columnfix': return <ColumnFixFlow />;
       default: return <RegistrationFlow />;
     }
   };

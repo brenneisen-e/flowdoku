@@ -51,6 +51,8 @@ export interface SPEvent {
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   EmailLanguage: string; // DE oder EN
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
+  DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
+  DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -125,6 +127,7 @@ export class EventService {
     const exists = await this.listExists(listName);
     if (exists) {
       // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
@@ -149,7 +152,7 @@ export class EventService {
     });
 
     const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'Recipient', type: 2 },
+      { title: 'Recipient', type: 3 }, // Note (multiline) fuer Massenmail mit vielen Empfaengern
       { title: 'RecipientName', type: 2 },
       { title: 'Body', type: 3 }, // Note (multiline/HTML)
       { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
@@ -994,16 +997,25 @@ export class EventService {
     if (exists) {
       await this.ensureMissingFields(listName);
 
+      // Default-View komplett neu aufbauen: ID, Title, EventImageUrl, dann Rest
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/removeallviewfields`,
+          {}
+        );
+      } catch { /* ignore */ }
       await this.configureDefaultView(listName, [
+        'ID', 'LinkTitle', 'EventImageUrl',
         'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
+        'WaitlistEnabled', 'Organizer', 'DisableEmails', 'DisableOutlook',
+        'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
       await this.setColumnFormatting(listName, 'EventImageUrl', {
         '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
         'elmType': 'img',
         'attributes': { 'src': '@currentField' },
-        'style': { 'max-height': '50px', 'max-width': '120px', 'border-radius': '4px' },
+        'style': { 'max-height': '60px', 'max-width': '120px', 'border-radius': '6px', 'box-shadow': '0 1px 3px rgba(0,0,0,0.15)' },
       });
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -1087,6 +1099,8 @@ export class EventService {
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
+      { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
+      { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -1238,7 +1252,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1353,6 +1367,8 @@ export class EventService {
     funZone?: string; // JSON-Array mit Quiz-Fragen
     emailLanguage?: string;
     emailTemplateOverrides?: string;
+    disableEmails?: boolean;
+    disableOutlook?: boolean;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -1416,6 +1432,8 @@ export class EventService {
         'OutlookBody': event.outlookBody ? buildOutlookBody(event.title, event.outlookBody) : '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
+        'DisableEmails': !!event.disableEmails,
+        'DisableOutlook': !!event.disableOutlook,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
@@ -2440,51 +2458,80 @@ export class EventService {
     }
   }
 
-  public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
+  /**
+   * Event-Bild als Attachment an ein DEX_Events-Item anhaengen.
+   * Loescht zuerst alle bestehenden Bild-Attachments (Praefix __eventimage__),
+   * dann wird das neue Bild hochgeladen. Liefert die ServerRelativeUrl als absolute URL.
+   * Vorteil: keine SiteAssets-Berechtigungen noetig - wer das Item editieren darf,
+   * darf auch Attachments hinzufuegen.
+   */
+  public async uploadEventImageAsAttachment(eventId: number, file: File): Promise<string> {
+    const IMAGE_PREFIX = '__eventimage__';
     try {
-      // Ordner sicherstellen
-      await this.ensureAssetsFolders();
+      // 1. Bestehende Bild-Attachments loeschen (nur __eventimage__-Praefixe)
+      try {
+        const listResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
+          SPHttpClient.configurations.v1
+        );
+        if (listResp.ok) {
+          const listData = await listResp.json();
+          const files = listData.value || listData.d?.results || [];
+          for (const f of files) {
+            const fn: string = f.FileName || '';
+            if (fn.indexOf(IMAGE_PREFIX) === 0) {
+              try {
+                await this._delete(
+                  `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
+                );
+              } catch { /* ignore */ }
+            }
+          }
+        }
+      } catch { /* ignore */ }
 
-      const ext = file.name.split('.').pop() || 'jpg';
-      const safeName = eventTitle
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
+      // 2. Neues Bild hochladen mit Praefix
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeName = `${IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
 
-      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets/DEX_EventImages`;
-      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
-
-      // Request Digest holen fuer nativen fetch
-      const digestResp = await fetch(`${this.siteUrl}/_api/contextinfo`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json;odata=verbose' },
-        credentials: 'same-origin',
-      });
-      const digestData = await digestResp.json();
-      const requestDigest = digestData.d?.GetContextWebInformation?.FormDigestValue || '';
-
-      // Nativen fetch nutzen (SPHttpClient ueberschreibt Content-Type)
-      const arrayBuffer = await file.arrayBuffer();
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json;odata=verbose',
-          'X-RequestDigest': requestDigest,
-        },
-        body: arrayBuffer,
-        credentials: 'same-origin',
-      });
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: file,
+        } as ISPHttpClientOptions
+      );
 
       if (response.ok) {
-        const result = await response.json();
-        const serverRelUrl = result.d?.ServerRelativeUrl || result.ServerRelativeUrl;
-        if (serverRelUrl) {
-          return `${window.location.origin}${serverRelUrl}`;
-        }
+        const data = await response.json();
+        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        if (relUrl) return `${window.location.origin}${relUrl}`;
+      } else {
+        console.warn('[DEX] Image attachment upload status:', response.status);
       }
-      return null;
-    } catch (e) {
-      console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
-      return null;
+
+      // Fallback: URL aus bekanntem Pfad
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
+    } catch (err) {
+      console.warn('[DEX] uploadEventImageAsAttachment error:', err);
+    }
+    return '';
+  }
+
+  /**
+   * EventImageUrl-Feld eines DEX_Events-Items setzen (kleines MERGE).
+   */
+  public async updateEventImageUrl(eventId: number, url: string): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        { 'EventImageUrl': url }
+      );
+      return resp.ok || resp.status === 406;
+    } catch {
+      return false;
     }
   }
 
@@ -2524,6 +2571,7 @@ export class EventService {
 
   /**
    * Attachments eines DEX_Events-Items laden.
+   * Bilder mit Praefix __eventimage__ werden ausgefiltert (nur fuer EventImageUrl).
    */
   public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
     try {
@@ -2535,11 +2583,15 @@ export class EventService {
         const data = await response.json();
         const files = data.value || data.d?.results || [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return files.map((f: any) => ({
-          name: f.FileName || '',
-          url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
-          size: 0,
-        }));
+        return files
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((f: any) => (f.FileName || '').indexOf('__eventimage__') !== 0)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((f: any) => ({
+            name: f.FileName || '',
+            url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
+            size: 0,
+          }));
       }
     } catch { /* Attachments nicht verfuegbar */ }
     return [];
