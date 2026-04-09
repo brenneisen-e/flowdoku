@@ -49,23 +49,67 @@ When to bump minor/major (update `package.json` version + `config/package-soluti
 
 ### Roles & Permissions
 
+**Event-Verwaltung:**
+
 | Feature | User | Organizer | Admin |
 |---------|------|-----------|-------|
 | Events ansehen (eigener Standort) | ✅ | ✅ | ✅ |
 | Alle Events ansehen | ❌ | ✅ | ✅ |
-| Events erstellen/bearbeiten | ❌ | ✅ (eigene) | ✅ (alle) |
+| Events erstellen | ❌ | ✅ | ✅ |
+| Events bearbeiten | ❌ | ✅ (eigene) | ✅ (alle) |
 | Events löschen | ❌ | ✅ (eigene) | ✅ (alle) |
-| Registrieren | ✅ | ✅ | ✅ |
+| Event-Bild hochladen (als Item-Attachment) | ❌ | ✅ (eigene) | ✅ (alle) |
+| Event-Dokumente hochladen | ❌ | ✅ (eigene) | ✅ (alle) |
+| Agenda / Transferzeiten / Quiz pflegen | ❌ | ✅ (eigene) | ✅ (alle) |
+| E-Mail-Templates pro Event anpassen | ❌ | ✅ (eigene) | ✅ (alle) |
+| Benachrichtigungen pro Event deaktivieren (E-Mail / Outlook) | ❌ | ✅ (eigene) | ✅ (alle) |
+
+**Registrierung:**
+
+| Feature | User | Organizer | Admin |
+|---------|------|-----------|-------|
+| Selbst registrieren | ✅ | ✅ | ✅ |
 | Für andere registrieren | ❌ | ✅ | ✅ |
 | Eigene Angaben bearbeiten | ✅ | ✅ | ✅ |
+| Eigene Registrierung stornieren | ✅ | ✅ | ✅ |
+
+**Teilnehmerverwaltung (Admin Center):**
+
+| Feature | User | Organizer | Admin |
+|---------|------|-----------|-------|
 | Teilnehmerliste sehen | ❌ | ✅ (eigene Events) | ✅ (alle) |
-| E-Mail-Adressen kopieren | ❌ | ✅ (eigene Events) | ✅ |
+| Teilnehmer suchen / sortieren | ❌ | ✅ | ✅ |
+| Teilnehmer ein- / auschecken | ❌ | ✅ (eigene) | ✅ (alle) |
+| Teilnehmer abmelden | ❌ | ✅ (eigene) | ✅ (alle) |
+| QR-Codes versenden | ❌ | ✅ (eigene) | ✅ (alle) |
+| E-Mail-Adressen kopieren | ❌ | ✅ (eigene) | ✅ |
+| Massenmail an Teilnehmer (RichText-Editor + Deloitte-Template) | ❌ | ✅ (eigene) | ✅ (alle) |
+| **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ❌ | ✅ |
+| **Spalten fixen** (fehlende Felder + View-Reihenfolge) | ❌ | ❌ | ✅ |
+
+**Administration:**
+
+| Feature | User | Organizer | Admin |
+|---------|------|-----------|-------|
 | Rollen verwalten | ❌ | ❌ | ✅ |
 | Rollen-Matrix einsehen | ❌ | ❌ | ✅ |
+| Globale Email-Templates bearbeiten | ❌ | ❌ | ✅ |
+| Logos / Default-Bilder verwalten | ❌ | ❌ | ✅ |
+
+**SharePoint-Listen / Berechtigungs-Ebene:**
+
+| Liste | User | Organizer | Admin |
+|-------|------|-----------|-------|
 | DEX_Events: Schreiben | ❌ | ✅ | ✅ |
+| DEX_Events: Item-Attachments (Bild + Dokumente) | ❌ | ✅ (eigene) | ✅ |
 | DEX_Roles: Schreiben | ❌ | ❌ | ✅ |
 | DEX_Emails: Schreiben (Queue) | Nur eigene | Nur eigene | ✅ |
+| DEX_Outlook: Schreiben (Queue) | Nur eigene | Nur eigene | ✅ |
+| DEX_IDReorder: Schreiben | ❌ | ❌ | ✅ |
+| DEX_EmailTemplates: Schreiben | ❌ | ❌ | ✅ |
 | Event-Subsites: Full Control | ❌ | Eigene Events | ✅ |
+| Teilnehmerliste (Subsite): Lesen | Nur eigener Eintrag | ✅ (eigene Events) | ✅ |
+| Teilnehmerliste (Subsite): Schreiben | Nur eigener Eintrag | ✅ (eigene Events) | ✅ |
 
 ### Teilnehmerlisten-Schema (Subsites)
 
