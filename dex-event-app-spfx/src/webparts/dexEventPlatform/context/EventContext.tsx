@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64 } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, buildEmailFromTemplate, loadLogosAsBase64 } from '../services/EmailTemplates';
 
 interface EventContextType {
   events: DeloitteEvent[];
@@ -352,6 +352,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
     if (!myReg) return false;
 
+    // Typ des Abgemeldeten merken (fuer Nachruecker bei B2Run Split-Capacity)
+    const cancelledStarterType = myReg.StarterType || '';
+
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id);
     if (success) {
       const event = events.find(e => e.id === eventId);
@@ -389,7 +392,49 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             );
           } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
         }
-        // ID-Reorder in Queue eintragen
+        // Nachruecken: Ersten Warteliste-Teilnehmer auf den freigewordenen Platz setzen.
+        // Der Nachruecker erbt den StarterType des Abgemeldeten (bei B2Run-Split).
+        // Wird hier direkt client-seitig gemacht, damit der Power Automate Flow
+        // keinen doppelten Nachrueck-Versuch macht.
+        try {
+          const promoted = await eventService.promoteFirstWaitlistItem(
+            subsiteUrl,
+            cancelledStarterType || undefined
+          );
+          if (promoted && promoted.success && !event.disableEmails) {
+            // Nachrueck-E-Mail an den Nachruecker senden
+            try {
+              const lang = event.emailLanguage || 'EN';
+              const promoteVars = {
+                Name: promoted.name || '',
+                EventTitle: event.title,
+                Organizer: event.organizers.join(', '),
+                AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`,
+                WaitlistPosition: '',
+              };
+              let emailData: { subject: string; body: string };
+              const spTpl = await eventService.getEmailTemplate('Nachrücken', lang).catch(() => null);
+              if (spTpl) {
+                emailData = buildEmailFromTemplate(spTpl, promoteVars);
+              } else {
+                emailData = promotionEmail(promoted.name || '', event.title);
+              }
+              if (promoted.email) {
+                await eventService.queueEmail(
+                  emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                  'Nachrücken', event.title, eventId
+                );
+                // Outlook-Einladung fuer den Nachruecker
+                if (!event.disableOutlook) {
+                  await eventService.queueOutlookEvent(
+                    promoted.email, eventId, event.title, 'Einladen'
+                  );
+                }
+              }
+            } catch (err) { console.warn('[DEX] promote email failed:', err); }
+          }
+        } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
+        // ID-Reorder in Queue eintragen (nur fuer ID-Neuvergabe, nicht fuer Nachruecken)
         if (subsiteUrl) {
           try {
             const reorderOk = await eventService.queueIDReorder(

@@ -82,6 +82,9 @@ export interface SPRegistration {
   Nachname?: string;
   StarterType?: string; // B2Run: 'Durchstarter' | 'Funstarter'
   PreferredStarterType?: string; // B2Run: Wunsch (bei Fallback/Warteliste)
+  QuizScore?: number; // Anzahl richtige Antworten
+  QuizAnswers?: string; // JSON-Array der gegebenen Antworten
+  QuizCompletedAt?: string; // ISO-DateTime
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
@@ -1700,6 +1703,9 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
+      { title: 'QuizScore', type: 9 }, // Number - Anzahl richtiger Antworten
+      { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (fuer Statistik)
+      { title: 'QuizCompletedAt', type: 4 }, // DateTime
       { title: 'RegistrationDate', type: 4 },
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
@@ -2245,6 +2251,9 @@ export class EventService {
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
+      { title: 'QuizScore', type: 9 },
+      { title: 'QuizAnswers', type: 3 },
+      { title: 'QuizCompletedAt', type: 4 },
     ];
 
     for (const f of requiredFields) {
@@ -2303,6 +2312,82 @@ export class EventService {
     }
 
     return { added, viewFixed };
+  }
+
+  /**
+   * Quiz-Ergebnis in die Registrierung eines Teilnehmers schreiben.
+   * answers ist ein Array von ausgewaehlten Antwort-Indices (arrays,
+   * weil Fragen mehrere richtige Antworten haben koennen).
+   */
+  public async saveQuizResult(
+    subsiteUrl: string,
+    itemId: number,
+    score: number,
+    answers: number[][]
+  ): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        {
+          'QuizScore': score,
+          'QuizAnswers': JSON.stringify(answers),
+          'QuizCompletedAt': new Date().toISOString(),
+        }
+      );
+      return resp.ok || resp.status === 406;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ersten Warteliste-Teilnehmer nachruecken: Status -> Angemeldet.
+   * Wenn inheritStarterType uebergeben wird (B2Run Split-Capacity), wird dieser Typ
+   * dem Nachruecker zugewiesen (er erbt den Platz des Abgemeldeten).
+   *
+   * Wird **client-seitig** ausgefuehrt (von der App beim Abmelden), damit der
+   * Power Automate DEX_IDReorder-Flow keinen doppelten Nachrueck-Versuch macht.
+   * Liefert den nachgerueckten Teilnehmer (Email + Name) zurueck fuer die
+   * Nachrueck-E-Mail.
+   */
+  public async promoteFirstWaitlistItem(
+    subsiteUrl: string,
+    inheritStarterType?: string
+  ): Promise<{ success: boolean; email?: string; name?: string }> {
+    try {
+      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst)
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=Status eq 'Warteliste'&$orderby=RegistrationDate asc&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return { success: false };
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return { success: false };
+
+      const firstWaiting = items[0];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mergeBody: Record<string, any> = { 'Status': 'Angemeldet' };
+      if (inheritStarterType) {
+        mergeBody['StarterType'] = inheritStarterType;
+      }
+      const mergeResp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
+        mergeBody
+      );
+      if (!(mergeResp.ok || mergeResp.status === 406)) return { success: false };
+
+      const vorname = firstWaiting.Vorname || '';
+      const nachname = firstWaiting.Nachname || '';
+      const name = (vorname && nachname) ? `${vorname} ${nachname}` : (firstWaiting.ParticipantName || '');
+      return {
+        success: true,
+        email: firstWaiting.ParticipantEmail || firstWaiting.Title || '',
+        name: name,
+      };
+    } catch {
+      return { success: false };
+    }
   }
 
   /**

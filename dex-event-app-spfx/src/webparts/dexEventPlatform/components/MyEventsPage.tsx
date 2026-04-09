@@ -74,9 +74,10 @@ function getDocIconName(name: string): string {
   }
 }
 
-function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => string }): React.ReactElement {
+function QuizPlayer({ quiz, t, onComplete }: { quiz: QuizQuestion[]; t: (key: string) => string; onComplete?: (score: number, answers: number[][]) => void }): React.ReactElement {
   const [currentQ, setCurrentQ] = React.useState(0);
   const [selectedAnswers, setSelectedAnswers] = React.useState<number[]>([]);
+  const [allAnswers, setAllAnswers] = React.useState<number[][]>([]);
   const [submitted, setSubmitted] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [finished, setFinished] = React.useState(false);
@@ -98,18 +99,28 @@ function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => str
   };
 
   const nextQuestion = (): void => {
+    // Antworten der aktuellen Frage zum Array hinzufuegen
+    const updatedAnswers = [...allAnswers, selectedAnswers.slice()];
+    setAllAnswers(updatedAnswers);
     if (currentQ < quiz.length - 1) {
       setCurrentQ(currentQ + 1);
       setSelectedAnswers([]);
       setSubmitted(false);
     } else {
       setFinished(true);
+      // Quiz abgeschlossen - Ergebnis an Parent weitergeben.
+      // score ist bereits final, weil checkAnswer() synchron lief bevor der User
+      // den "Weiter"-Button geklickt hat. React haette ihn sonst nicht gezeigt.
+      if (onComplete) {
+        onComplete(score, updatedAnswers);
+      }
     }
   };
 
   const restart = (): void => {
     setCurrentQ(0);
     setSelectedAnswers([]);
+    setAllAnswers([]);
     setSubmitted(false);
     setScore(0);
     setFinished(false);
@@ -700,7 +711,22 @@ export default function MyEventsPage(): React.ReactElement {
 
                 {/* Fun-Zone Quiz */}
                 {event.quiz && event.quiz.length > 0 && (
-                  <QuizPlayer quiz={event.quiz} t={t} />
+                  <QuizPlayer
+                    quiz={event.quiz}
+                    t={t}
+                    onComplete={async (score: number, answers: number[][]) => {
+                      // Ergebnis in die Subsite-Teilnehmerliste schreiben (fuer Statistik)
+                      if (!event.subsiteUrl) return;
+                      try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const ctx = (window as any).__dexSpfxContext;
+                        if (!ctx) return;
+                        const { EventService } = await import('../services/EventService');
+                        const svc = new EventService(ctx);
+                        await svc.saveQuizResult(event.subsiteUrl, registration.Id, score, answers);
+                      } catch (err) { console.warn('[DEX] saveQuizResult failed:', err); }
+                    }}
+                  />
                 )}
 
                 {/* Registriert am + Aktionen */}

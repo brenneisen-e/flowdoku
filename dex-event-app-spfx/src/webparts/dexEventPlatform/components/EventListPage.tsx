@@ -109,11 +109,17 @@ export default function EventListPage(): React.ReactElement {
     : events;
 
   // Admin/Organizer sehen alle, normale User nur passende
-  const filteredEvents = canCreateEvents
+  const filteredEvents = (canCreateEvents
     ? statusFiltered
     : statusFiltered.filter((e: DeloitteEvent) =>
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
-      );
+      )
+  ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
+    // Chronologisch nach Startdatum (frueheste zuerst). Events ohne Datum ans Ende.
+    const ta = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
+    const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
+    return ta - tb;
+  });
 
   if (isEventsLoading) {
     return (
