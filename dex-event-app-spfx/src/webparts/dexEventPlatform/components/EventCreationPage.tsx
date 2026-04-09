@@ -238,7 +238,8 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
-  const [b2runStartblocks, setB2runStartblocks] = React.useState<string>('');
+  const [b2runStartblocks, setB2runStartblocks] = React.useState<string[]>([]);
+  const [newStartblock, setNewStartblock] = React.useState<string>('');
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
@@ -290,7 +291,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (template === 'blank') {
       setEventType('Other');
       setCustomFields([]);
-      setB2runStartblocks('');
+      setB2runStartblocks([]);
       return;
     }
     if (template === 'b2run') {
@@ -298,7 +299,7 @@ export default function EventCreationPage(): React.ReactElement {
       // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
       // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
       const fields: CustomFieldInput[] = [
-        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks, visible: true },
+        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks.join(', '), visible: true },
         { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: 'offene Klasse, Nordic Walker, Damen, Herren', visible: true },
         { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: 'unter 18, 18-29, 30-39, 40-49, 50-59, 60+', visible: true },
         { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: '', visible: true },
@@ -310,11 +311,12 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen
+  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen (als CSV in options)
   React.useEffect(() => {
     if (selectedTemplate !== 'b2run' && !(isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) return;
+    const asCsv = b2runStartblocks.join(', ');
     setCustomFields(prev => prev.map(f =>
-      f.id === 'b2run_startblock' ? { ...f, options: b2runStartblocks } : f
+      f.id === 'b2run_startblock' ? { ...f, options: asCsv } : f
     ));
   }, [b2runStartblocks]);
 
@@ -322,12 +324,25 @@ export default function EventCreationPage(): React.ReactElement {
   React.useEffect(() => {
     if (!isEditMode) return;
     const sb = customFields.find(f => f.id === 'b2run_startblock');
-    if (sb && !b2runStartblocks) {
-      setB2runStartblocks(sb.options || '');
+    if (sb && b2runStartblocks.length === 0 && sb.options) {
+      const parts = sb.options.split(',').map(s => s.trim()).filter(Boolean);
+      setB2runStartblocks(parts);
       setSelectedTemplate('b2run');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode]);
+
+  const addStartblock = (): void => {
+    const trimmed = newStartblock.trim();
+    if (!trimmed) return;
+    if (b2runStartblocks.indexOf(trimmed) >= 0) { setNewStartblock(''); return; }
+    setB2runStartblocks([...b2runStartblocks, trimmed]);
+    setNewStartblock('');
+  };
+
+  const removeStartblock = (block: string): void => {
+    setB2runStartblocks(b2runStartblocks.filter(b => b !== block));
+  };
 
   const fillDemo = (): void => {
     const now = new Date();
@@ -861,13 +876,13 @@ export default function EventCreationPage(): React.ReactElement {
               {!isEditMode && (
                 <div className="form-group">
                   <label className="form-label">
-                    Template
-                    <span className="info-icon" title="Vorlage fuer das Event. B2Run legt automatisch die fuer die Anmeldung bei b2run.com benoetigten Felder an." style={{ marginLeft: 8 }}>i</span>
+                    {t('create.template')}
+                    <span className="info-icon" title={t('create.template.hint')} style={{ marginLeft: 8 }}>i</span>
                   </label>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {([
-                      { id: 'blank', label: 'Leer', desc: 'Eigene Felder definieren', icon: 'Add' },
-                      { id: 'b2run', label: 'B2Run', desc: 'Alle B2Run-Pflichtfelder', icon: 'Running' },
+                      { id: 'blank', label: t('create.template.blank'), desc: t('create.template.blank.desc'), icon: 'Add' },
+                      { id: 'b2run', label: t('create.template.b2run'), desc: t('create.template.b2run.desc'), icon: 'Running' },
                     ] as const).map(tpl => {
                       const isActive = selectedTemplate === tpl.id;
                       return (
@@ -894,25 +909,6 @@ export default function EventCreationPage(): React.ReactElement {
                       );
                     })}
                   </div>
-                </div>
-              )}
-
-              {/* B2Run Startbloecke - nur anzeigen wenn B2Run Template gewaehlt wurde */}
-              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
-                <div className="form-group" style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
-                  <label className="form-label">
-                    Startbloecke (fuer B2Run)
-                    <span className="info-icon" title="Komma-getrennte Liste der Startbloecke. Wird als Dropdown in der Teilnehmer-Registrierung angezeigt." style={{ marginLeft: 8 }}>i</span>
-                  </label>
-                  <input
-                    className="form-input"
-                    value={b2runStartblocks}
-                    onChange={e => setB2runStartblocks(e.target.value)}
-                    placeholder="z.B. 17:00 Uhr Durchstarter (Orange), 18:00 Uhr Mittelfeld (Gruen), 19:00 Uhr Walker (Blau)"
-                  />
-                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, marginBottom: 0 }}>
-                    Einzelne Bloecke mit Komma trennen. Teilnehmer waehlen dann einen dieser Bloecke bei der Anmeldung.
-                  </p>
                 </div>
               )}
 
@@ -1487,6 +1483,72 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 3: Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              {/* B2Run Startbloecke - moderne Liste mit + Button */}
+              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
+                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>
+                    {t('create.startblocks')}
+                    <span className="info-icon" title={t('create.startblocks.hint')} style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                    {t('create.startblocks.hint')}
+                  </p>
+
+                  {/* Bestehende Startbloecke als Liste */}
+                  {b2runStartblocks.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      {b2runStartblocks.map((block, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 12px', borderRadius: 'var(--dex-radius, 12px)',
+                            background: '#fff', border: '1px solid var(--dex-gray-200)',
+                          }}
+                        >
+                          <Icon iconName="Running" style={{ fontSize: 16, color: 'var(--dex-green-dark, #6b9a1e)', flexShrink: 0 }} />
+                          <span style={{ flex: 1, fontSize: '0.88rem' }}>{block}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeStartblock(block)}
+                            title={t('create.startblocks.remove')}
+                            style={{
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              color: 'var(--dex-red, #c00)', padding: 4, borderRadius: 4,
+                              display: 'inline-flex', alignItems: 'center',
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Neues Startblock hinzufuegen */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={newStartblock}
+                      onChange={e => setNewStartblock(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addStartblock(); } }}
+                      placeholder={t('create.startblocks.placeholder')}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={addStartblock}
+                      disabled={!newStartblock.trim()}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      <Plus size={14} /> {t('create.startblocks.add')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Dynamische Felder */}
               <div>
                 <div className="flex-between mb-16">
