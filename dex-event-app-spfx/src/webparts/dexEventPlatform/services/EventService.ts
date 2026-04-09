@@ -1090,8 +1090,8 @@ export class EventService {
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
-      { title: 'DisableEmails', type: 8 }, // Boolean - keine E-Mails versenden
-      { title: 'DisableOutlook', type: 8 }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
+      { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
