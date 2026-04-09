@@ -30,6 +30,8 @@ export interface DeloitteEvent {
   outlookBody: string;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
+  disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
+  disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

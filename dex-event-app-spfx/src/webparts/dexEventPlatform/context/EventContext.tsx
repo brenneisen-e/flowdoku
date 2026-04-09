@@ -56,6 +56,8 @@ export interface CreateEventInput {
   funZone?: string; // JSON-Array mit Quiz-Fragen
   emailLanguage?: string;
   emailTemplateOverrides?: string;
+  disableEmails?: boolean;
+  disableOutlook?: boolean;
   customFields: CustomField[];
 }
 
@@ -181,6 +183,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       outlookBody: e.OutlookBody || '',
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
+      disableEmails: !!e.DisableEmails,
+      disableOutlook: !!e.DisableOutlook,
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
       quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
@@ -288,12 +292,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           ? waitlistEmail(nameToUse, event.title, waitlistPosition)
           : registrationEmail(nameToUse, event.title);
       }
-      eventService.queueEmail(
-        emailData.subject, emailToUse, nameToUse, emailData.body,
-        templateType, event.title, eventId
-      ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+      if (!event.disableEmails) {
+        eventService.queueEmail(
+          emailData.subject, emailToUse, nameToUse, emailData.body,
+          templateType, event.title, eventId
+        ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+      }
       // Outlook-Termin-Einladung in Queue eintragen
-      if (status !== 'Warteliste') {
+      if (status !== 'Warteliste' && !event.disableOutlook) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
@@ -321,28 +327,32 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
         // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        try {
-          const lang = event.emailLanguage || 'EN';
-          const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
-          let emailData: { subject: string; body: string };
-          const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-          if (spTpl) {
-            emailData = buildEmailFromTemplate(spTpl, cancelVars);
-          } else {
-            emailData = cancellationEmail(currentUserName, event.title);
-          }
-          const emailOk = await eventService.queueEmail(
-            emailData.subject, currentUserEmail, currentUserName, emailData.body,
-            'Abmeldung', event.title, eventId
-          );
-          if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
-        } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
+        if (!event.disableEmails) {
+          try {
+            const lang = event.emailLanguage || 'EN';
+            const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
+            let emailData: { subject: string; body: string };
+            const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+            if (spTpl) {
+              emailData = buildEmailFromTemplate(spTpl, cancelVars);
+            } else {
+              emailData = cancellationEmail(currentUserName, event.title);
+            }
+            const emailOk = await eventService.queueEmail(
+              emailData.subject, currentUserEmail, currentUserName, emailData.body,
+              'Abmeldung', event.title, eventId
+            );
+            if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
+          } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
+        }
         // Outlook-Termin-Einladung zurückziehen
-        try {
-          await eventService.queueOutlookEvent(
-            currentUserEmail, eventId, event.title, 'Ausladen'
-          );
-        } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
+        if (!event.disableOutlook) {
+          try {
+            await eventService.queueOutlookEvent(
+              currentUserEmail, eventId, event.title, 'Ausladen'
+            );
+          } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
+        }
         // ID-Reorder in Queue eintragen
         if (subsiteUrl) {
           try {

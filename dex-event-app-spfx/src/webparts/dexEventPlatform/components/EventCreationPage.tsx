@@ -209,6 +209,8 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
+  const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
+  const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
   const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
@@ -416,6 +418,12 @@ export default function EventCreationPage(): React.ReactElement {
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
+      updates['EmailLanguage'] = emailLanguage;
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
+        ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
+        : '';
+      updates['DisableEmails'] = disableEmails;
+      updates['DisableOutlook'] = disableOutlook;
 
       setProgress(50);
 
@@ -435,15 +443,17 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
-        // Outlook-Termin Update triggern (wenn CalendarLink vorhanden)
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ctx = (window as any).__dexSpfxContext;
-          if (ctx && editEvent?.subsiteUrl) {
-            const svc = new EventService(ctx);
-            await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
-          }
-        } catch { /* Outlook-Update optional */ }
+        // Outlook-Termin Update triggern (wenn CalendarLink vorhanden, nicht wenn Outlook deaktiviert)
+        if (!disableOutlook) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx && editEvent?.subsiteUrl) {
+              const svc = new EventService(ctx);
+              await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+            }
+          } catch { /* Outlook-Update optional */ }
+        }
         setProgress(100);
         setProgressLabel('Änderungen gespeichert!');
         setTimeout(() => { setIsSubmitting(false); setSubmitted(true); }, 500);
@@ -501,6 +511,8 @@ export default function EventCreationPage(): React.ReactElement {
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
           ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
           : '',
+        disableEmails,
+        disableOutlook,
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -1498,6 +1510,42 @@ export default function EventCreationPage(): React.ReactElement {
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
                     {t('create.emaillanguage.hint')}
                   </p>
+                </div>
+
+                {/* Benachrichtigungen abschalten */}
+                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <label className="form-label" style={{ marginBottom: 8 }}>Benachrichtigungen</label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                    Bei deaktivierten Optionen werden bei An- oder Abmeldungen keine Eintraege in die DEX_Emails- bzw. DEX_Outlook-Warteschlange geschrieben.
+                  </p>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={!disableEmails}
+                      onChange={e => setDisableEmails(!e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <strong>E-Mails versenden</strong>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                        Anmelde-, Abmelde-, Warteliste- und Nachrueck-E-Mails
+                      </span>
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!disableOutlook}
+                      onChange={e => setDisableOutlook(!e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <strong>Outlook-Kalendereintrag senden</strong>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                        Einladung bei Anmeldung, Ausladung bei Abmeldung
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>

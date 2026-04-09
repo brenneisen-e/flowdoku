@@ -633,16 +633,20 @@ export default function AdminPage(): React.ReactElement {
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           if (!confirm(`${name} (${reg.ParticipantEmail}) wirklich abmelden?`)) return;
                           await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
-                          // Abmelde-Email und Outlook-Ausladen in Queue eintragen
+                          // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
                           if (reg.ParticipantEmail) {
-                            const emailData = cancellationEmail(name, selectedEvent.title);
-                            eventServiceRef.queueEmail(
-                              emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                              'Abmeldung', selectedEvent.title, selectedEvent.id
-                            ).catch(err => console.warn('[DEX]', err));
-                            eventServiceRef.queueOutlookEvent(
-                              reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
-                            ).catch(err => console.warn('[DEX]', err));
+                            if (!selectedEvent.disableEmails) {
+                              const emailData = cancellationEmail(name, selectedEvent.title);
+                              eventServiceRef.queueEmail(
+                                emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                                'Abmeldung', selectedEvent.title, selectedEvent.id
+                              ).catch(err => console.warn('[DEX]', err));
+                            }
+                            if (!selectedEvent.disableOutlook) {
+                              eventServiceRef.queueOutlookEvent(
+                                reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
+                              ).catch(err => console.warn('[DEX]', err));
+                            }
                           }
                           // DEX_Participants aufraeumen
                           if (reg.ParticipantEmail && selectedEvent.eventNumber) {
@@ -701,7 +705,7 @@ export default function AdminPage(): React.ReactElement {
                             const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                             if (!confirm(`${name} von der Warteliste entfernen?`)) return;
                             await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
-                            if (reg.ParticipantEmail) {
+                            if (reg.ParticipantEmail && !selectedEvent.disableEmails) {
                               const emailData = cancellationEmail(name, selectedEvent.title);
                               eventServiceRef.queueEmail(
                                 emailData.subject, reg.ParticipantEmail, name, emailData.body,

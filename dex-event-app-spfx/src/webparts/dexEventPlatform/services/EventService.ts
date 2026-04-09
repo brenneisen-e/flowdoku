@@ -51,6 +51,8 @@ export interface SPEvent {
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   EmailLanguage: string; // DE oder EN
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
+  DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
+  DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -1088,6 +1090,8 @@ export class EventService {
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
+      { title: 'DisableEmails', type: 8 }, // Boolean - keine E-Mails versenden
+      { title: 'DisableOutlook', type: 8 }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -1239,7 +1243,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1354,6 +1358,8 @@ export class EventService {
     funZone?: string; // JSON-Array mit Quiz-Fragen
     emailLanguage?: string;
     emailTemplateOverrides?: string;
+    disableEmails?: boolean;
+    disableOutlook?: boolean;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -1417,6 +1423,8 @@ export class EventService {
         'OutlookBody': event.outlookBody ? buildOutlookBody(event.title, event.outlookBody) : '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
+        'DisableEmails': !!event.disableEmails,
+        'DisableOutlook': !!event.disableOutlook,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
