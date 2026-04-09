@@ -1899,6 +1899,20 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               )}
 
+              {/* Im Edit-Modus immer einen Speichern-Button anzeigen, damit man nicht
+                  durch alle Steps klicken muss wenn man nur eine Sache aendert */}
+              {isEditMode && currentStep < steps.length - 1 && (
+                <button
+                  className="btn btn-primary"
+                  disabled={!title || !description}
+                  onClick={handleSubmit}
+                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  title="Aenderungen sofort speichern, ohne weitere Schritte"
+                >
+                  <Send size={16} /> {t('create.save')}
+                </button>
+              )}
+
               {currentStep < steps.length - 1 ? (
                 <button
                   className="btn btn-primary"
