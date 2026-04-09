@@ -18,7 +18,7 @@ interface EventContextType {
   events: DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -58,6 +58,8 @@ export interface CreateEventInput {
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
+  durchstarterCapacity?: number;
+  funstarterCapacity?: number;
   customFields: CustomField[];
 }
 
@@ -185,6 +187,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
+      durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
+      funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
       quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
@@ -220,7 +224,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     customData: Record<string, string>,
     participantFirstName?: string,
     participantLastName?: string,
-    participantEmail?: string
+    participantEmail?: string,
+    preferredStarterType?: string // B2Run: 'Durchstarter' | 'Funstarter'
   ): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
@@ -239,7 +244,37 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Pruefen ob Platz frei oder Waitlist
     const event = events.find(e => e.id === eventId);
     let status = 'Angemeldet';
-    if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
+    let effectiveStarterType: string | undefined = preferredStarterType;
+
+    // B2Run Split-Capacity Logik
+    const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+      && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    if (event && isB2runSplit && preferredStarterType) {
+      try {
+        // Aktuelle Auslastung fuer beide Typen zaehlen
+        const allRegs = await eventService.getAllRegistrations(subsiteUrl);
+        const activeRegs = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const durchCount = activeRegs.filter(r => r.StarterType === 'Durchstarter').length;
+        const funCount = activeRegs.filter(r => r.StarterType === 'Funstarter').length;
+        const durchFree = (event.durchstarterCapacity || 0) - durchCount;
+        const funFree = (event.funstarterCapacity || 0) - funCount;
+        if (preferredStarterType === 'Durchstarter' && durchFree > 0) {
+          effectiveStarterType = 'Durchstarter';
+        } else if (preferredStarterType === 'Funstarter' && funFree > 0) {
+          effectiveStarterType = 'Funstarter';
+        } else if (preferredStarterType === 'Durchstarter' && funFree > 0) {
+          // Durchstarter voll, Fallback auf Funstarter
+          effectiveStarterType = 'Funstarter';
+        } else if (preferredStarterType === 'Funstarter' && durchFree > 0) {
+          // Funstarter voll, Fallback auf Durchstarter
+          effectiveStarterType = 'Durchstarter';
+        } else {
+          // Beide voll -> Warteliste
+          status = 'Warteliste';
+          effectiveStarterType = undefined; // wird erst beim Nachruecken gesetzt
+        }
+      } catch { /* Bei Fehler: normale Logik */ }
+    } else if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
       status = 'Warteliste';
     }
 
@@ -258,7 +293,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap);
     } else {
       success = await eventService.registerForEvent(
-        subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap
+        subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
+        effectiveStarterType, preferredStarterType
       );
     }
 

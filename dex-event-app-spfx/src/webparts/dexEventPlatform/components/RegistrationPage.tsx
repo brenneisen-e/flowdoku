@@ -71,11 +71,35 @@ export default function RegistrationPage(): React.ReactElement {
   const [email, setEmail] = React.useState(currentUser.email);
   const [registerForOther, setRegisterForOther] = React.useState(false);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
+  const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
+  const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(false);
+
+  // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
+  const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+    && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+  React.useEffect(() => {
+    if (!isB2runSplit || !event?.subsiteUrl) return;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ctx = (window as any).__dexSpfxContext;
+        if (!ctx) return;
+        const { EventService } = await import('../services/EventService');
+        const svc = new EventService(ctx);
+        const allRegs = await svc.getAllRegistrations(event.subsiteUrl!);
+        const active = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        setStarterCounts({
+          durch: active.filter(r => r.StarterType === 'Durchstarter').length,
+          fun: active.filter(r => r.StarterType === 'Funstarter').length,
+        });
+      } catch { /* ignore */ }
+    })();
+  }, [isB2runSplit, event?.subsiteUrl]);
   // Deloitte-Mitarbeitersuche
   const [userSearch, setUserSearch] = React.useState('');
   const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
@@ -149,6 +173,12 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
+    // B2Run: Starter-Typ Pflichtfeld
+    if (isB2runSplit && !preferredStarterType) {
+      setError(t('reg.starter.required'));
+      return;
+    }
+
     setError('');
     setIsSubmitting(true);
 
@@ -165,7 +195,8 @@ export default function RegistrationPage(): React.ReactElement {
         customData,
         firstName.trim(),
         surname.trim(),
-        participantEmail
+        participantEmail,
+        preferredStarterType || undefined
       );
 
       if (success) {
@@ -402,6 +433,56 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
           </div>
         </div>
+
+        {/* B2Run Split-Capacity: Starter-Typ Auswahl */}
+        {isB2runSplit && (
+          <div className="registration-specific" style={{ marginBottom: 16 }}>
+            <div className="section-header">{t('reg.starter.title')}</div>
+            <div style={{ padding: '20px' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                {t('reg.starter.hint')}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {([
+                  { id: 'Durchstarter', label: t('reg.starter.durch'), desc: t('reg.starter.durch.desc'), cap: event.durchstarterCapacity || 0, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
+                  { id: 'Funstarter', label: t('reg.starter.fun'), desc: t('reg.starter.fun.desc'), cap: event.funstarterCapacity || 0, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
+                ]).map(opt => {
+                  const free = opt.cap - opt.count;
+                  const isFull = free <= 0;
+                  const isActive = preferredStarterType === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPreferredStarterType(opt.id)}
+                      style={{
+                        padding: 16, textAlign: 'left',
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                        background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        position: 'relative',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <strong style={{ color: opt.color, fontSize: '1rem' }}>{opt.label}</strong>
+                        {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>{opt.desc}</div>
+                      <div style={{ fontSize: '0.8rem' }}>
+                        {isFull ? (
+                          <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
+                        ) : (
+                          <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Eventspezifische Felder */}
         <div className="registration-specific">

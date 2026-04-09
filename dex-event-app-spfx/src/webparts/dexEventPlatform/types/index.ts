@@ -32,6 +32,8 @@ export interface DeloitteEvent {
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
+  durchstarterCapacity?: number; // B2Run: getrennte Kapazitaet fuer Durchstarter
+  funstarterCapacity?: number;   // B2Run: getrennte Kapazitaet fuer Funstarter
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

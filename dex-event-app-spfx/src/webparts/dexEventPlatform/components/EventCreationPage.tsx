@@ -238,7 +238,14 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
-  const [b2runStartblocks, setB2runStartblocks] = React.useState<string>('');
+  const [b2runStartblocks, setB2runStartblocks] = React.useState<string[]>([]);
+  const [newStartblock, setNewStartblock] = React.useState<string>('');
+  const [durchstarterCapacity, setDurchstarterCapacity] = React.useState<string>(
+    editEvent && typeof editEvent.durchstarterCapacity === 'number' ? String(editEvent.durchstarterCapacity) : ''
+  );
+  const [funstarterCapacity, setFunstarterCapacity] = React.useState<string>(
+    editEvent && typeof editEvent.funstarterCapacity === 'number' ? String(editEvent.funstarterCapacity) : ''
+  );
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
@@ -290,7 +297,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (template === 'blank') {
       setEventType('Other');
       setCustomFields([]);
-      setB2runStartblocks('');
+      setB2runStartblocks([]);
       return;
     }
     if (template === 'b2run') {
@@ -298,7 +305,7 @@ export default function EventCreationPage(): React.ReactElement {
       // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
       // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
       const fields: CustomFieldInput[] = [
-        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks, visible: true },
+        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks.join(', '), visible: true },
         { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: 'offene Klasse, Nordic Walker, Damen, Herren', visible: true },
         { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: 'unter 18, 18-29, 30-39, 40-49, 50-59, 60+', visible: true },
         { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: '', visible: true },
@@ -310,11 +317,12 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen
+  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen (als CSV in options)
   React.useEffect(() => {
     if (selectedTemplate !== 'b2run' && !(isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) return;
+    const asCsv = b2runStartblocks.join(', ');
     setCustomFields(prev => prev.map(f =>
-      f.id === 'b2run_startblock' ? { ...f, options: b2runStartblocks } : f
+      f.id === 'b2run_startblock' ? { ...f, options: asCsv } : f
     ));
   }, [b2runStartblocks]);
 
@@ -322,12 +330,36 @@ export default function EventCreationPage(): React.ReactElement {
   React.useEffect(() => {
     if (!isEditMode) return;
     const sb = customFields.find(f => f.id === 'b2run_startblock');
-    if (sb && !b2runStartblocks) {
-      setB2runStartblocks(sb.options || '');
+    if (sb && b2runStartblocks.length === 0 && sb.options) {
+      const parts = sb.options.split(',').map(s => s.trim()).filter(Boolean);
+      setB2runStartblocks(parts);
       setSelectedTemplate('b2run');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode]);
+
+  const addStartblock = (): void => {
+    const trimmed = newStartblock.trim();
+    if (!trimmed) return;
+    if (b2runStartblocks.indexOf(trimmed) >= 0) { setNewStartblock(''); return; }
+    setB2runStartblocks([...b2runStartblocks, trimmed]);
+    setNewStartblock('');
+  };
+
+  const removeStartblock = (block: string): void => {
+    setB2runStartblocks(b2runStartblocks.filter(b => b !== block));
+  };
+
+  // Bei B2Run: maxParticipants automatisch aus Summe von Durchstarter + Funstarter berechnen
+  const isB2runTemplate = selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'));
+  React.useEffect(() => {
+    if (!isB2runTemplate) return;
+    const d = parseInt(durchstarterCapacity, 10) || 0;
+    const f = parseInt(funstarterCapacity, 10) || 0;
+    const sum = d + f;
+    if (sum > 0) setMaxParticipants(String(sum));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durchstarterCapacity, funstarterCapacity, isB2runTemplate]);
 
   const fillDemo = (): void => {
     const now = new Date();
@@ -461,6 +493,10 @@ export default function EventCreationPage(): React.ReactElement {
         : '';
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
+      if (isB2runTemplate) {
+        updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
+        updates['FunstarterCapacity'] = parseInt(funstarterCapacity, 10) || 0;
+      }
 
       setProgress(50);
 
@@ -571,6 +607,8 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         disableEmails,
         disableOutlook,
+        durchstarterCapacity: isB2runTemplate ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
+        funstarterCapacity: isB2runTemplate ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
           ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
@@ -861,58 +899,19 @@ export default function EventCreationPage(): React.ReactElement {
               {!isEditMode && (
                 <div className="form-group">
                   <label className="form-label">
-                    Template
-                    <span className="info-icon" title="Vorlage fuer das Event. B2Run legt automatisch die fuer die Anmeldung bei b2run.com benoetigten Felder an." style={{ marginLeft: 8 }}>i</span>
+                    {t('create.template')}
+                    <span className="info-icon" title={t('create.template.hint')} style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    {([
-                      { id: 'blank', label: 'Leer', desc: 'Eigene Felder definieren', icon: 'Add' },
-                      { id: 'b2run', label: 'B2Run', desc: 'Alle B2Run-Pflichtfelder', icon: 'Running' },
-                    ] as const).map(tpl => {
-                      const isActive = selectedTemplate === tpl.id;
-                      return (
-                        <button
-                          key={tpl.id}
-                          type="button"
-                          onClick={() => applyTemplate(tpl.id)}
-                          style={{
-                            flex: '1 1 200px', minWidth: 180, padding: 16,
-                            borderRadius: 'var(--dex-radius, 12px)',
-                            border: isActive ? '2px solid var(--dex-green)' : '2px solid var(--dex-gray-200)',
-                            background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
-                            cursor: 'pointer', textAlign: 'left',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <Icon iconName={tpl.icon} style={{ fontSize: 18, color: isActive ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-500)' }} />
-                            <strong style={{ fontSize: '0.95rem' }}>{tpl.label}</strong>
-                            {isActive && <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontSize: '0.8rem' }}>✓</span>}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{tpl.desc}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* B2Run Startbloecke - nur anzeigen wenn B2Run Template gewaehlt wurde */}
-              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
-                <div className="form-group" style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
-                  <label className="form-label">
-                    Startbloecke (fuer B2Run)
-                    <span className="info-icon" title="Komma-getrennte Liste der Startbloecke. Wird als Dropdown in der Teilnehmer-Registrierung angezeigt." style={{ marginLeft: 8 }}>i</span>
-                  </label>
-                  <input
-                    className="form-input"
-                    value={b2runStartblocks}
-                    onChange={e => setB2runStartblocks(e.target.value)}
-                    placeholder="z.B. 17:00 Uhr Durchstarter (Orange), 18:00 Uhr Mittelfeld (Gruen), 19:00 Uhr Walker (Blau)"
-                  />
-                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, marginBottom: 0 }}>
-                    Einzelne Bloecke mit Komma trennen. Teilnehmer waehlen dann einen dieser Bloecke bei der Anmeldung.
-                  </p>
+                  <select
+                    className="form-select"
+                    value={selectedTemplate}
+                    onChange={e => applyTemplate(e.target.value as 'blank' | 'b2run')}
+                    style={{ maxWidth: 320 }}
+                  >
+                    <option value="blank">{t('create.template.blank')}</option>
+                    <option value="b2run">{t('create.template.b2run')}</option>
+                    {/* Weitere Vorlagen können hier einfach ergänzt werden */}
+                  </select>
                 </div>
               )}
 
@@ -1450,29 +1449,55 @@ export default function EventCreationPage(): React.ReactElement {
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deregAfterStart')}</p>}
 
-              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    {t('create.maxparticipants')}
+              {/* B2Run: Split-Kapazitaeten fuer Durchstarter + Funstarter */}
+              {isB2runTemplate ? (
+                <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>
+                    {t('create.b2runcap')}
+                    <span className="info-icon" title={t('create.b2runcap.hint')} style={{ marginLeft: 8 }}>i</span>
                   </label>
-                  <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
-                    <label className="toggle">
-                      <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => { setMaxParticipants(e.target.checked ? '0' : '50'); if (e.target.checked) setWaitlistEnabled(false); }} />
-                      <span className="toggle-slider" />
-                    </label>
-                    <span style={{ fontSize: '0.9rem' }}>{!maxParticipants || maxParticipants === '0' ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : maxParticipants + ' Plätze'}</span>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                    {t('create.b2runcap.desc')}
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        <Icon iconName="Running" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-green-dark, #6b9a1e)' }} />
+                        {t('create.b2runcap.durchstarter')}
+                      </label>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min={0}
+                        value={durchstarterCapacity}
+                        onChange={e => setDurchstarterCapacity(e.target.value)}
+                        placeholder="z.B. 10"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        <Icon iconName="Running" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-orange, #ff8c00)' }} />
+                        {t('create.b2runcap.funstarter')}
+                      </label>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min={0}
+                        value={funstarterCapacity}
+                        onChange={e => setFunstarterCapacity(e.target.value)}
+                        placeholder="z.B. 90"
+                      />
+                    </div>
                   </div>
-                  {maxParticipants && maxParticipants !== '0' && (
-                    <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="Anzahl" />
-                  )}
-                </div>
-                {maxParticipants && maxParticipants !== '0' && (
-                  <div className="form-group">
-                    <label className="form-label">
+                  <div style={{ marginTop: 12, padding: '8px 12px', background: '#fff', borderRadius: 8, fontSize: '0.85rem' }}>
+                    <strong>{t('create.b2runcap.total')}:</strong> {((parseInt(durchstarterCapacity, 10) || 0) + (parseInt(funstarterCapacity, 10) || 0))} {t('create.b2runcap.seats')}
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label className="form-label" style={{ marginBottom: 4 }}>
                       {t('create.waitlist')}
-                      <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
+                      <span className="info-icon" title={t('create.b2runcap.waitlist.hint')} style={{ marginLeft: 8 }}>i</span>
                     </label>
-                    <div className="toggle-wrapper" style={{ marginTop: 8 }}>
+                    <div className="toggle-wrapper" style={{ marginTop: 4 }}>
                       <label className="toggle">
                         <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
                         <span className="toggle-slider" />
@@ -1480,13 +1505,112 @@ export default function EventCreationPage(): React.ReactElement {
                       <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label">
+                      {t('create.maxparticipants')}
+                    </label>
+                    <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
+                      <label className="toggle">
+                        <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => { setMaxParticipants(e.target.checked ? '0' : '50'); if (e.target.checked) setWaitlistEnabled(false); }} />
+                        <span className="toggle-slider" />
+                      </label>
+                      <span style={{ fontSize: '0.9rem' }}>{!maxParticipants || maxParticipants === '0' ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : maxParticipants + ' Plätze'}</span>
+                    </div>
+                    {maxParticipants && maxParticipants !== '0' && (
+                      <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="Anzahl" />
+                    )}
+                  </div>
+                  {maxParticipants && maxParticipants !== '0' && (
+                    <div className="form-group">
+                      <label className="form-label">
+                        {t('create.waitlist')}
+                        <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
+                      </label>
+                      <div className="toggle-wrapper" style={{ marginTop: 8 }}>
+                        <label className="toggle">
+                          <input type="checkbox" checked={waitlistEnabled} onChange={e => setWaitlistEnabled(e.target.checked)} />
+                          <span className="toggle-slider" />
+                        </label>
+                        <span style={{ fontSize: '0.9rem' }}>{waitlistEnabled ? t('create.enabled') : t('create.disabled')}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               </div>
 
               {/* ===== Step 3: Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              {/* B2Run Startbloecke - moderne Liste mit + Button */}
+              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
+                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>
+                    {t('create.startblocks')}
+                    <span className="info-icon" title={t('create.startblocks.hint')} style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                    {t('create.startblocks.hint')}
+                  </p>
+
+                  {/* Bestehende Startbloecke als Liste */}
+                  {b2runStartblocks.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      {b2runStartblocks.map((block, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 12px', borderRadius: 'var(--dex-radius, 12px)',
+                            background: '#fff', border: '1px solid var(--dex-gray-200)',
+                          }}
+                        >
+                          <Icon iconName="Running" style={{ fontSize: 16, color: 'var(--dex-green-dark, #6b9a1e)', flexShrink: 0 }} />
+                          <span style={{ flex: 1, fontSize: '0.88rem' }}>{block}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeStartblock(block)}
+                            title={t('create.startblocks.remove')}
+                            style={{
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              color: 'var(--dex-red, #c00)', padding: 4, borderRadius: 4,
+                              display: 'inline-flex', alignItems: 'center',
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Neues Startblock hinzufuegen */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={newStartblock}
+                      onChange={e => setNewStartblock(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addStartblock(); } }}
+                      placeholder={t('create.startblocks.placeholder')}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={addStartblock}
+                      disabled={!newStartblock.trim()}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      <Plus size={14} /> {t('create.startblocks.add')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Dynamische Felder */}
               <div>
                 <div className="flex-between mb-16">

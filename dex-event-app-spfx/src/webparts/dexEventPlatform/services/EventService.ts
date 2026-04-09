@@ -53,6 +53,8 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
+  DurchstarterCapacity?: number; // B2Run: getrennte Kapazitaet
+  FunstarterCapacity?: number;   // B2Run: getrennte Kapazitaet
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -78,6 +80,8 @@ export interface SPRegistration {
   Anrede?: string;
   Vorname?: string;
   Nachname?: string;
+  StarterType?: string; // B2Run: 'Durchstarter' | 'Funstarter'
+  PreferredStarterType?: string; // B2Run: Wunsch (bei Fallback/Warteliste)
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
@@ -1101,6 +1105,8 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'DurchstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Durchstarter (Number)
+      { title: 'FunstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Funstarter (Number)
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -1252,7 +1258,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1369,6 +1375,8 @@ export class EventService {
     emailTemplateOverrides?: string;
     disableEmails?: boolean;
     disableOutlook?: boolean;
+    durchstarterCapacity?: number;
+    funstarterCapacity?: number;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -1434,6 +1442,8 @@ export class EventService {
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'DisableEmails': !!event.disableEmails,
         'DisableOutlook': !!event.disableOutlook,
+        'DurchstarterCapacity': typeof event.durchstarterCapacity === 'number' ? event.durchstarterCapacity : null,
+        'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
@@ -1688,6 +1698,8 @@ export class EventService {
       { title: 'JobTitle', type: 2 },
       { title: 'Phone', type: 2 },
       { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
+      { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
+      { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
       { title: 'RegistrationDate', type: 4 },
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
@@ -1766,7 +1778,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -1922,7 +1934,9 @@ export class EventService {
     participantEmail: string,
     customData: Record<string, string>,
     status: string = 'Angemeldet',
-    customFieldMap?: Record<string, string> // cf.id -> SP InternalName
+    customFieldMap?: Record<string, string>, // cf.id -> SP InternalName
+    starterType?: string, // B2Run: effektiver Typ (nach Fallback)
+    preferredStarterType?: string // B2Run: Wunsch-Typ (was der User eigentlich wollte)
   ): Promise<boolean> {
     try {
       // Naechste TeilnehmerID ermitteln
@@ -1962,6 +1976,10 @@ export class EventService {
         'RegistrationDate': new Date().toISOString(),
         'CustomData': JSON.stringify(customData),
       };
+
+      // B2Run: Starter-Typ + Wunsch-Typ schreiben (bei normalen Events null)
+      if (starterType) payload['StarterType'] = starterType;
+      if (preferredStarterType) payload['PreferredStarterType'] = preferredStarterType;
 
       // Custom Field Werte in die echten SP-Spalten schreiben
       if (customFieldMap) {
@@ -2225,6 +2243,8 @@ export class EventService {
     // Fehlende Basis-Spalten anlegen
     const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
+      { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
+      { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
     ];
 
     for (const f of requiredFields) {
@@ -2258,6 +2278,7 @@ export class EventService {
       const viewFields = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
         'Department', 'Location', 'JobTitle', 'Phone',
+        'StarterType', 'PreferredStarterType',
         'Status', 'RegistrationDate', 'CancellationDate',
       ];
 
