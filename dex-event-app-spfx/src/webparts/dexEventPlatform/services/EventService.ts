@@ -2449,51 +2449,80 @@ export class EventService {
     }
   }
 
-  public async uploadEventImage(file: File, eventTitle: string): Promise<string | null> {
+  /**
+   * Event-Bild als Attachment an ein DEX_Events-Item anhaengen.
+   * Loescht zuerst alle bestehenden Bild-Attachments (Praefix __eventimage__),
+   * dann wird das neue Bild hochgeladen. Liefert die ServerRelativeUrl als absolute URL.
+   * Vorteil: keine SiteAssets-Berechtigungen noetig - wer das Item editieren darf,
+   * darf auch Attachments hinzufuegen.
+   */
+  public async uploadEventImageAsAttachment(eventId: number, file: File): Promise<string> {
+    const IMAGE_PREFIX = '__eventimage__';
     try {
-      // Ordner sicherstellen
-      await this.ensureAssetsFolders();
+      // 1. Bestehende Bild-Attachments loeschen (nur __eventimage__-Praefixe)
+      try {
+        const listResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
+          SPHttpClient.configurations.v1
+        );
+        if (listResp.ok) {
+          const listData = await listResp.json();
+          const files = listData.value || listData.d?.results || [];
+          for (const f of files) {
+            const fn: string = f.FileName || '';
+            if (fn.indexOf(IMAGE_PREFIX) === 0) {
+              try {
+                await this._delete(
+                  `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
+                );
+              } catch { /* ignore */ }
+            }
+          }
+        }
+      } catch { /* ignore */ }
 
-      const ext = file.name.split('.').pop() || 'jpg';
-      const safeName = eventTitle
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .substring(0, 30) + '_' + Date.now().toString(36) + '.' + ext;
+      // 2. Neues Bild hochladen mit Praefix
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeName = `${IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
 
-      const folderUrl = `${this.context.pageContext.web.serverRelativeUrl}/SiteAssets/DEX_EventImages`;
-      const uploadUrl = `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderUrl}')/Files/add(url='${safeName}',overwrite=true)`;
-
-      // Request Digest holen fuer nativen fetch
-      const digestResp = await fetch(`${this.siteUrl}/_api/contextinfo`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json;odata=verbose' },
-        credentials: 'same-origin',
-      });
-      const digestData = await digestResp.json();
-      const requestDigest = digestData.d?.GetContextWebInformation?.FormDigestValue || '';
-
-      // Nativen fetch nutzen (SPHttpClient ueberschreibt Content-Type)
-      const arrayBuffer = await file.arrayBuffer();
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json;odata=verbose',
-          'X-RequestDigest': requestDigest,
-        },
-        body: arrayBuffer,
-        credentials: 'same-origin',
-      });
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: file,
+        } as ISPHttpClientOptions
+      );
 
       if (response.ok) {
-        const result = await response.json();
-        const serverRelUrl = result.d?.ServerRelativeUrl || result.ServerRelativeUrl;
-        if (serverRelUrl) {
-          return `${window.location.origin}${serverRelUrl}`;
-        }
+        const data = await response.json();
+        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        if (relUrl) return `${window.location.origin}${relUrl}`;
+      } else {
+        console.warn('[DEX] Image attachment upload status:', response.status);
       }
-      return null;
-    } catch (e) {
-      console.error('[DEX] Bild-Upload fehlgeschlagen:', e);
-      return null;
+
+      // Fallback: URL aus bekanntem Pfad
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
+    } catch (err) {
+      console.warn('[DEX] uploadEventImageAsAttachment error:', err);
+    }
+    return '';
+  }
+
+  /**
+   * EventImageUrl-Feld eines DEX_Events-Items setzen (kleines MERGE).
+   */
+  public async updateEventImageUrl(eventId: number, url: string): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        { 'EventImageUrl': url }
+      );
+      return resp.ok || resp.status === 406;
+    } catch {
+      return false;
     }
   }
 
@@ -2533,6 +2562,7 @@ export class EventService {
 
   /**
    * Attachments eines DEX_Events-Items laden.
+   * Bilder mit Praefix __eventimage__ werden ausgefiltert (nur fuer EventImageUrl).
    */
   public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
     try {
@@ -2544,11 +2574,15 @@ export class EventService {
         const data = await response.json();
         const files = data.value || data.d?.results || [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return files.map((f: any) => ({
-          name: f.FileName || '',
-          url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
-          size: 0,
-        }));
+        return files
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((f: any) => (f.FileName || '').indexOf('__eventimage__') !== 0)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((f: any) => ({
+            name: f.FileName || '',
+            url: `${window.location.origin}${f.ServerRelativeUrl || ''}`,
+            size: 0,
+          }));
       }
     } catch { /* Attachments nicht verfuegbar */ }
     return [];

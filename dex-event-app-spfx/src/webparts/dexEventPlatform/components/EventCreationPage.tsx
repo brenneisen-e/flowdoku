@@ -368,25 +368,11 @@ export default function EventCreationPage(): React.ReactElement {
     setError('');
     setProgress(0);
 
-    // Schritt 1: Bild komprimieren und hochladen
+    // Schritt 1: Bild wird spaeter (nach Event-Erstellung) als Item-Attachment hochgeladen.
+    // Bestehende URL beibehalten (z.B. bei Edit ohne neues Bild).
     setProgress(5);
-    setProgressLabel('Bild wird komprimiert und hochgeladen...');
-    let imageUrl = eventImageUrl;
-    if (imageFile) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ctx = (window as any).__dexSpfxContext;
-        if (ctx) {
-          const svc = new EventService(ctx);
-          const compressed = await compressImage(imageFile);
-          const uploadedUrl = await svc.uploadEventImage(compressed, title);
-          if (uploadedUrl) imageUrl = uploadedUrl;
-        }
-      } catch (err) {
-        console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
-        setImageUploadError('Bild-Upload fehlgeschlagen. Das Event wird ohne Bild erstellt.');
-      }
-    }
+    setProgressLabel('Event wird vorbereitet...');
+    const imageUrl = eventImageUrl;
     setProgress(15);
 
     if (isEditMode && selectedEventId) {
@@ -443,6 +429,27 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // Bild als Attachment hochladen (falls neues Bild gewaehlt wurde)
+        if (imageFile) {
+          try {
+            setProgressLabel('Bild wird hochgeladen...');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx) {
+              const svc = new EventService(ctx);
+              const compressed = await compressImage(imageFile);
+              const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
+              if (uploadedUrl) {
+                await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
+              } else {
+                setImageUploadError('Bild-Upload fehlgeschlagen.');
+              }
+            }
+          } catch (err) {
+            console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+            setImageUploadError('Bild-Upload fehlgeschlagen.');
+          }
+        }
         // Outlook-Termin Update triggern (wenn CalendarLink vorhanden, nicht wenn Outlook deaktiviert)
         if (!disableOutlook) {
           try {
@@ -539,6 +546,22 @@ export default function EventCreationPage(): React.ReactElement {
                 if (doc.file) {
                   await svc.uploadEventDocument(Number(eventId), doc.file);
                 }
+              }
+            }
+            // Event-Bild als Attachment hochladen + URL ins Item schreiben
+            if (eventId && imageFile) {
+              try {
+                setProgressLabel('Bild wird hochgeladen...');
+                const compressed = await compressImage(imageFile);
+                const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(eventId), compressed);
+                if (uploadedUrl) {
+                  await svc.updateEventImageUrl(Number(eventId), uploadedUrl);
+                } else {
+                  setImageUploadError('Bild-Upload fehlgeschlagen.');
+                }
+              } catch (err) {
+                console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+                setImageUploadError('Bild-Upload fehlgeschlagen.');
               }
             }
             // Event-Created Mail an alle Organizer senden
