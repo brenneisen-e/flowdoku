@@ -12,6 +12,7 @@ import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
+import PdfViewer from './PdfViewer';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -218,17 +219,35 @@ function QuizPlayer({ quiz, t }: { quiz: QuizQuestion[]; t: (key: string) => str
 function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url: string; size?: number}>; t: (key: string) => string }): React.ReactElement {
   const [expandedDoc, setExpandedDoc] = React.useState<string | null>(null);
   const [blobUrl, setBlobUrl] = React.useState<string>('');
+  const [pdfBlob, setPdfBlob] = React.useState<Blob | null>(null);
   const [loading, setLoading] = React.useState(false);
+  // Mobile-Erkennung: Nur auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewaehrt)
+  const [isMobile, setIsMobile] = React.useState<boolean>(
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false
+  );
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
 
   const toggleDoc = async (doc: { url: string; name: string }): Promise<void> => {
     if (expandedDoc === doc.url) {
       setExpandedDoc(null);
       if (blobUrl) { URL.revokeObjectURL(blobUrl); setBlobUrl(''); }
+      setPdfBlob(null);
       return;
     }
     setExpandedDoc(doc.url);
     setLoading(true);
     setBlobUrl('');
+    setPdfBlob(null);
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -267,7 +286,13 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
         const ext = doc.name.split('.').pop()?.toLowerCase() || '';
         const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' };
         const correctBlob = (mimeMap[ext] && blob.type !== mimeMap[ext]) ? new Blob([blob], { type: mimeMap[ext] }) : blob;
-        setBlobUrl(URL.createObjectURL(correctBlob));
+        if (ext === 'pdf' && isMobile) {
+          // Mobile: PDF via react-pdf (Canvas) - funktioniert wo iframe versagt
+          setPdfBlob(correctBlob);
+        } else {
+          // Desktop oder Bilder: Blob-URL + iframe (bewaehrt, bleibt unveraendert)
+          setBlobUrl(URL.createObjectURL(correctBlob));
+        }
       }
     } catch (err) { console.warn('[DEX] Doc viewer error:', err); }
     setLoading(false);
@@ -316,7 +341,11 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
                   <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>
                     {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
                   </div>
+                ) : pdfBlob ? (
+                  /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile */
+                  <PdfViewer blob={pdfBlob} height={500} />
                 ) : blobUrl ? (
+                  /* Bilder etc. via iframe */
                   <iframe
                     src={blobUrl}
                     style={{ width: '100%', height: 500, border: 'none' }}
@@ -551,7 +580,7 @@ export default function MyEventsPage(): React.ReactElement {
                   </div>
                 )}
 
-                {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen */}
+                {/* Agenda / Timeline - mehrspaltig bei mehreren Tagen, horizontal scrollbar auf Mobile */}
                 {event.agenda && event.agenda.length > 0 && (() => {
                   const grouped = Object.entries(
                     event.agenda.reduce((groups: Record<string, AgendaItem[]>, item: AgendaItem) => {
@@ -562,22 +591,32 @@ export default function MyEventsPage(): React.ReactElement {
                     }, {} as Record<string, AgendaItem[]>)
                   ).sort(([a], [b]) => a.localeCompare(b));
                   const dayCount = grouped.length;
-                  const cols = dayCount >= 3 ? 3 : dayCount >= 2 ? 2 : 1;
 
                   return (
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-                        {t('myevents.agenda')}
+                        {t('myevents.agenda')} {dayCount > 1 && <span style={{ fontWeight: 400, fontSize: '0.72rem', color: 'var(--dex-gray-400)' }}>· {dayCount} {t('myevents.agenda') === 'Programm' ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
                       </div>
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                        gap: 16,
-                      }}>
+                      {/* Horizontal scrollbarer Container - funktioniert auf Desktop und Mobile */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'nowrap',
+                          gap: 16,
+                          overflowX: 'auto',
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          WebkitOverflowScrolling: 'touch' as any,
+                          scrollSnapType: 'x mandatory',
+                          paddingBottom: 4,
+                        }}
+                      >
                         {grouped.map(([date, items]) => (
                           <div key={date} style={{
+                            flex: `0 0 ${dayCount === 1 ? '100%' : dayCount === 2 ? 'calc(50% - 8px)' : 'min(280px, 85%)'}`,
+                            scrollSnapAlign: 'start',
                             background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: 12,
                             border: '1px solid var(--dex-gray-200)',
+                            minWidth: 0,
                           }}>
                             <div style={{
                               fontSize: '0.78rem', fontWeight: 700, color: '#fff', marginBottom: 8,
@@ -598,9 +637,9 @@ export default function MyEventsPage(): React.ReactElement {
                                   <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                                     {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
                                   </div>
-                                  <div style={{ fontSize: '0.8rem' }}>{item.title}</div>
+                                  <div style={{ fontSize: '0.8rem', wordBreak: 'break-word' }}>{item.title}</div>
                                   {item.description && (
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>{item.description}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1, wordBreak: 'break-word' }}>{item.description}</div>
                                   )}
                                 </div>
                               </div>
