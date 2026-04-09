@@ -82,6 +82,9 @@ export interface SPRegistration {
   Nachname?: string;
   StarterType?: string; // B2Run: 'Durchstarter' | 'Funstarter'
   PreferredStarterType?: string; // B2Run: Wunsch (bei Fallback/Warteliste)
+  QuizScore?: number; // Anzahl richtige Antworten
+  QuizAnswers?: string; // JSON-Array der gegebenen Antworten
+  QuizCompletedAt?: string; // ISO-DateTime
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
@@ -1700,6 +1703,9 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
+      { title: 'QuizScore', type: 9 }, // Number - Anzahl richtiger Antworten
+      { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (fuer Statistik)
+      { title: 'QuizCompletedAt', type: 4 }, // DateTime
       { title: 'RegistrationDate', type: 4 },
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
@@ -2245,6 +2251,9 @@ export class EventService {
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
+      { title: 'QuizScore', type: 9 },
+      { title: 'QuizAnswers', type: 3 },
+      { title: 'QuizCompletedAt', type: 4 },
     ];
 
     for (const f of requiredFields) {
@@ -2303,6 +2312,32 @@ export class EventService {
     }
 
     return { added, viewFixed };
+  }
+
+  /**
+   * Quiz-Ergebnis in die Registrierung eines Teilnehmers schreiben.
+   * answers ist ein Array von ausgewaehlten Antwort-Indices (arrays,
+   * weil Fragen mehrere richtige Antworten haben koennen).
+   */
+  public async saveQuizResult(
+    subsiteUrl: string,
+    itemId: number,
+    score: number,
+    answers: number[][]
+  ): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        {
+          'QuizScore': score,
+          'QuizAnswers': JSON.stringify(answers),
+          'QuizCompletedAt': new Date().toISOString(),
+        }
+      );
+      return resp.ok || resp.status === 406;
+    } catch {
+      return false;
+    }
   }
 
   /**

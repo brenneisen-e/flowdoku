@@ -881,6 +881,134 @@ export default function AdminPage(): React.ReactElement {
         )}
       </div>
 
+      {/* ===== QUIZ-STATISTIK ===== */}
+      {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && (() => {
+        const regsWithQuiz = registrations.filter(r => typeof r.QuizCompletedAt === 'string' && r.QuizCompletedAt && typeof r.QuizScore === 'number');
+        const totalQuizzes = regsWithQuiz.length;
+
+        // Pro Frage: wie oft richtig beantwortet?
+        const perQuestion = selectedEvent.quiz.map((q, qIdx) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const correct = (q as any).correctIndices || [(q as any).correctIndex || 0];
+          let correctCount = 0;
+          for (const reg of regsWithQuiz) {
+            try {
+              const answers = JSON.parse(reg.QuizAnswers || '[]');
+              const given: number[] = Array.isArray(answers[qIdx]) ? answers[qIdx] : [];
+              const isRight = correct.length === given.length && correct.every((c: number) => given.indexOf(c) >= 0);
+              if (isRight) correctCount++;
+            } catch { /* skip */ }
+          }
+          return { question: q.question, correctCount, total: totalQuizzes };
+        });
+
+        // Top 10 nach Score (bei Gleichstand: frueher abgeschlossen)
+        const top10 = regsWithQuiz.slice().sort((a, b) => {
+          const sa = a.QuizScore || 0;
+          const sb = b.QuizScore || 0;
+          if (sb !== sa) return sb - sa;
+          const ta = new Date(a.QuizCompletedAt || 0).getTime();
+          const tb = new Date(b.QuizCompletedAt || 0).getTime();
+          return ta - tb;
+        }).slice(0, 10);
+
+        return (
+          <div className="card" style={{ padding: 24, marginTop: 24 }}>
+            <h3 style={{ margin: 0, marginBottom: 16 }}>
+              <FileText size={18} /> Quiz-Statistik
+            </h3>
+
+            {totalQuizzes === 0 ? (
+              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>
+                Noch kein Teilnehmer hat das Quiz abgeschlossen.
+              </p>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+                  <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>{totalQuizzes}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Durchgefuehrt</div>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>{selectedEvent.quiz.length}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Fragen</div>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                      {totalQuizzes > 0
+                        ? (regsWithQuiz.reduce((sum, r) => sum + (r.QuizScore || 0), 0) / totalQuizzes).toFixed(1)
+                        : '0'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Durchschnitt</div>
+                  </div>
+                </div>
+
+                {/* Pro Frage */}
+                <h4 style={{ marginTop: 0, marginBottom: 12 }}>Pro Frage</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+                  {perQuestion.map((pq, idx) => {
+                    const pct = pq.total > 0 ? Math.round((pq.correctCount / pq.total) * 100) : 0;
+                    return (
+                      <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                            {idx + 1}. {pq.question}
+                          </span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
+                            {pq.correctCount} / {pq.total} ({pct}%)
+                          </span>
+                        </div>
+                        <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${pct}%`,
+                            background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)',
+                            transition: 'width 0.3s',
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Top 10 */}
+                <h4 style={{ marginTop: 0, marginBottom: 12 }}>Top 10 Teilnehmer</h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                        <th style={{ textAlign: 'left', padding: 8, width: 40 }}>#</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
+                        <th style={{ textAlign: 'left', padding: 8, width: 80 }}>Score</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Abgeschlossen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {top10.map((reg, i) => {
+                        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                        return (
+                          <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                            <td style={{ padding: 8, fontWeight: 700 }}>{medal}</td>
+                            <td style={{ padding: 8, fontWeight: 500 }}>{name}</td>
+                            <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                            <td style={{ padding: 8, fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                              {reg.QuizScore} / {selectedEvent.quiz.length}
+                            </td>
+                            <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.QuizCompletedAt || '')}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ===== EMAIL COMPOSE MODAL ===== */}
       {showEmailModal && selectedEvent && (
         <div
