@@ -237,6 +237,8 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
   );
   const [currentStep, setCurrentStep] = React.useState(0);
+  const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
+  const [b2runStartblocks, setB2runStartblocks] = React.useState<string>('');
   const [showPreview, setShowPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
@@ -277,6 +279,55 @@ export default function EventCreationPage(): React.ReactElement {
   const updateCustomField = (id: string, updates: Partial<CustomFieldInput>): void => {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
+
+  /**
+   * Template-Auswahl: setzt EventType und Custom Fields automatisch.
+   * B2Run: legt alle Pflichtfelder fuer die Anmeldung bei b2run.com an
+   * (laut Excel "Deloitte_Teilnehmer_innen_B2Run_Koeln_2025_v4.xlsx").
+   */
+  const applyTemplate = (template: 'blank' | 'b2run'): void => {
+    setSelectedTemplate(template);
+    if (template === 'blank') {
+      setEventType('Other');
+      setCustomFields([]);
+      setB2runStartblocks('');
+      return;
+    }
+    if (template === 'b2run') {
+      setEventType('B2Run');
+      // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
+      // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
+      const fields: CustomFieldInput[] = [
+        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks, visible: true },
+        { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: 'offene Klasse, Nordic Walker, Damen, Herren', visible: true },
+        { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: 'unter 18, 18-29, 30-39, 40-49, 50-59, 60+', visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: '', visible: true },
+        { id: 'b2run_infoservice', label: 'Verwendung Infoservice (SMS von B2Run, benoetigt Mobilnummer)', type: 'checkbox', required: false, options: '', visible: true },
+        { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: '', visible: true },
+        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen (Pflicht)', type: 'checkbox', required: true, options: '', visible: true },
+      ];
+      setCustomFields(fields);
+    }
+  };
+
+  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen
+  React.useEffect(() => {
+    if (selectedTemplate !== 'b2run' && !(isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) return;
+    setCustomFields(prev => prev.map(f =>
+      f.id === 'b2run_startblock' ? { ...f, options: b2runStartblocks } : f
+    ));
+  }, [b2runStartblocks]);
+
+  // Edit-Mode: Wenn das Event B2Run-Custom-Fields hat, Startbloecke aus dem Field laden
+  React.useEffect(() => {
+    if (!isEditMode) return;
+    const sb = customFields.find(f => f.id === 'b2run_startblock');
+    if (sb && !b2runStartblocks) {
+      setB2runStartblocks(sb.options || '');
+      setSelectedTemplate('b2run');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
 
   const fillDemo = (): void => {
     const now = new Date();
@@ -807,6 +858,64 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 0: Grundlagen ===== */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+              {!isEditMode && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Template
+                    <span className="info-icon" title="Vorlage fuer das Event. B2Run legt automatisch die fuer die Anmeldung bei b2run.com benoetigten Felder an." style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {([
+                      { id: 'blank', label: 'Leer', desc: 'Eigene Felder definieren', icon: 'Add' },
+                      { id: 'b2run', label: 'B2Run', desc: 'Alle B2Run-Pflichtfelder', icon: 'Running' },
+                    ] as const).map(tpl => {
+                      const isActive = selectedTemplate === tpl.id;
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => applyTemplate(tpl.id)}
+                          style={{
+                            flex: '1 1 200px', minWidth: 180, padding: 16,
+                            borderRadius: 'var(--dex-radius, 12px)',
+                            border: isActive ? '2px solid var(--dex-green)' : '2px solid var(--dex-gray-200)',
+                            background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                            cursor: 'pointer', textAlign: 'left',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <Icon iconName={tpl.icon} style={{ fontSize: 18, color: isActive ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-500)' }} />
+                            <strong style={{ fontSize: '0.95rem' }}>{tpl.label}</strong>
+                            {isActive && <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontSize: '0.8rem' }}>✓</span>}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{tpl.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* B2Run Startbloecke - nur anzeigen wenn B2Run Template gewaehlt wurde */}
+              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
+                <div className="form-group" style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                  <label className="form-label">
+                    Startbloecke (fuer B2Run)
+                    <span className="info-icon" title="Komma-getrennte Liste der Startbloecke. Wird als Dropdown in der Teilnehmer-Registrierung angezeigt." style={{ marginLeft: 8 }}>i</span>
+                  </label>
+                  <input
+                    className="form-input"
+                    value={b2runStartblocks}
+                    onChange={e => setB2runStartblocks(e.target.value)}
+                    placeholder="z.B. 17:00 Uhr Durchstarter (Orange), 18:00 Uhr Mittelfeld (Gruen), 19:00 Uhr Walker (Blau)"
+                  />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, marginBottom: 0 }}>
+                    Einzelne Bloecke mit Komma trennen. Teilnehmer waehlen dann einen dieser Bloecke bei der Anmeldung.
+                  </p>
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtitle')}

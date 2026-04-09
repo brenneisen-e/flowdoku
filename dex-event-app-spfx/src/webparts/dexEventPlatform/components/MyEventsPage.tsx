@@ -369,7 +369,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
+  const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
   const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -381,8 +381,14 @@ export default function MyEventsPage(): React.ReactElement {
   const [loadError, setLoadError] = React.useState('');
 
   React.useEffect(() => {
+    // Warten bis Events fertig geladen sind, sonst zeigen wir Fehler obwohl nur noch geladen wird
+    if (isEventsLoading) {
+      setIsLoading(true);
+      setLoadError('');
+      return;
+    }
     loadMyRegistrations();
-  }, [events]);
+  }, [events, isEventsLoading]);
 
   async function loadMyRegistrations(): Promise<void> {
     setIsLoading(true);

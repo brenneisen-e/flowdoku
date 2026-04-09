@@ -82,6 +82,116 @@ export default function AdminPage(): React.ReactElement {
       return e.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
     });
 
+  /**
+   * CSV Export fuer Teilnehmerlisten.
+   * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
+   * - 'b2run': Format laut B2Run Excel-Template (Nr, Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB, Anonym, Gruppe, Strasse, PLZ, Stadt, Mobilnummer, Infoservice, Altersklasse)
+   */
+  const exportCsv = (mode: 'deloitte' | 'b2run'): void => {
+    if (!selectedEvent) return;
+    const activeRegsForExport = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+    if (activeRegsForExport.length === 0) { alert('Keine aktiven Teilnehmer zum Exportieren.'); return; }
+
+    // CSV-Wert sicher escapen (Komma, Quotes, Newlines)
+    const esc = (v: unknown): string => {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 || s.indexOf(';') >= 0) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parseCustom = (json: string): Record<string, any> => {
+      try { return JSON.parse(json || '{}'); } catch { return {}; }
+    };
+
+    let headers: string[] = [];
+    let rows: string[][] = [];
+
+    if (mode === 'b2run') {
+      // Reihenfolge exakt wie B2Run Excel
+      headers = [
+        'Nr.', 'Anrede', 'Vorname', 'Nachname', 'E-Mail',
+        'Startblock', 'Zustimmung AGB & Datenschutzhinweise', 'Anonym',
+        'Gruppe', 'Strasse und Hausnummer (privat)', 'PLZ (privat)', 'Stadt (privat)',
+        'Mobilnummer', 'Verwendung Infoservice', 'Altersklasse',
+      ];
+      rows = activeRegsForExport.map(r => {
+        const cd = parseCustom(r.CustomData || '{}');
+        const vorname = r.Vorname || (r.ParticipantName || '').split(' ').slice(0, -1).join(' ') || '';
+        const nachname = r.Nachname || (r.ParticipantName || '').split(' ').slice(-1).join(' ') || '';
+        return [
+          String(r.TeilnehmerID || ''),
+          r.Anrede || '',
+          vorname,
+          nachname,
+          r.ParticipantEmail || '',
+          cd.b2run_startblock || '',
+          cd.b2run_datenschutz ? 'Ja' : 'Nein',
+          cd.b2run_anonym ? 'Ja' : 'Nein',
+          cd.b2run_gruppe || '',
+          '', // Strasse - nicht abgefragt
+          '', // PLZ - nicht abgefragt
+          '', // Stadt - nicht abgefragt
+          cd.b2run_mobilnummer || '',
+          cd.b2run_infoservice ? 'Ja' : 'Nein',
+          cd.b2run_altersklasse || '',
+        ];
+      });
+    } else {
+      // Deloitte View: alle internen Felder
+      headers = [
+        'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email',
+        'Department', 'Location', 'JobTitle', 'Phone',
+        'Status', 'RegistrationDate',
+      ];
+      // Dynamisch alle Custom Field Labels aus dem Event sammeln
+      const customLabels: Array<{ id: string; label: string }> = (selectedEvent.eventSpecificFields || []).map(f => ({ id: f.id, label: f.label }));
+      headers = headers.concat(customLabels.map(cf => cf.label));
+
+      rows = activeRegsForExport.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyReg = r as any;
+        const cd = parseCustom(r.CustomData || '{}');
+        const base = [
+          String(r.TeilnehmerID || ''),
+          r.Anrede || '',
+          r.Vorname || '',
+          r.Nachname || '',
+          r.ParticipantEmail || '',
+          anyReg.Department || '',
+          anyReg.Location || '',
+          anyReg.JobTitle || '',
+          anyReg.Phone || '',
+          r.Status || '',
+          r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
+        ];
+        const customValues = customLabels.map(cf => {
+          const v = cd[cf.id];
+          if (v === undefined || v === null) return '';
+          if (typeof v === 'boolean') return v ? 'Ja' : 'Nein';
+          return String(v);
+        });
+        return base.concat(customValues);
+      });
+    }
+
+    // CSV zusammenbauen (UTF-8 BOM fuer Excel-Umlaute + Semikolon-Separator fuer deutsche Excel)
+    const csvBody = [headers, ...rows].map(row => row.map(esc).join(';')).join('\r\n');
+    const csv = '\ufeff' + csvBody;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = (selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+    a.download = `${mode === 'b2run' ? 'B2Run' : 'Deloitte'}_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
     setIsLoadingRegs(true);
@@ -394,6 +504,24 @@ export default function AdminPage(): React.ReactElement {
             >
               <Mail size={16} /> {t('admin.emailall')}
             </button>
+            {/* Deloitte-Export: alle Teilnehmer mit internen Feldern */}
+            <button
+              className="btn btn-secondary btn-block"
+              onClick={() => exportCsv('deloitte')}
+              title="CSV mit allen Teilnehmerdaten (Abteilung, Position, Location, ...)"
+            >
+              <FileText size={16} /> Deloitte View (CSV)
+            </button>
+            {/* B2Run-Export: nur bei B2Run Events */}
+            {selectedEvent && selectedEvent.type === 'B2Run' && (
+              <button
+                className="btn btn-secondary btn-block"
+                onClick={() => exportCsv('b2run')}
+                title="CSV im B2Run-Format fuer die Anmeldung bei b2run.com"
+              >
+                <FileText size={16} /> B2Run View (CSV)
+              </button>
+            )}
           </div>
         </div>
       </div>
