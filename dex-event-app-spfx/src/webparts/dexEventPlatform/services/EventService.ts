@@ -997,16 +997,25 @@ export class EventService {
     if (exists) {
       await this.ensureMissingFields(listName);
 
+      // Default-View komplett neu aufbauen: ID, Title, EventImageUrl, dann Rest
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/removeallviewfields`,
+          {}
+        );
+      } catch { /* ignore */ }
       await this.configureDefaultView(listName, [
+        'ID', 'LinkTitle', 'EventImageUrl',
         'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
-        'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
+        'WaitlistEnabled', 'Organizer', 'DisableEmails', 'DisableOutlook',
+        'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
       ]);
       await this.setColumnFormatting(listName, 'EventImageUrl', {
         '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
         'elmType': 'img',
         'attributes': { 'src': '@currentField' },
-        'style': { 'max-height': '50px', 'max-width': '120px', 'border-radius': '4px' },
+        'style': { 'max-height': '60px', 'max-width': '120px', 'border-radius': '6px', 'box-shadow': '0 1px 3px rgba(0,0,0,0.15)' },
       });
       try {
         const listInfo = await this.context.spHttpClient.get(
