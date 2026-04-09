@@ -2306,6 +2306,56 @@ export class EventService {
   }
 
   /**
+   * Ersten Warteliste-Teilnehmer nachruecken: Status -> Angemeldet.
+   * Wenn inheritStarterType uebergeben wird (B2Run Split-Capacity), wird dieser Typ
+   * dem Nachruecker zugewiesen (er erbt den Platz des Abgemeldeten).
+   *
+   * Wird **client-seitig** ausgefuehrt (von der App beim Abmelden), damit der
+   * Power Automate DEX_IDReorder-Flow keinen doppelten Nachrueck-Versuch macht.
+   * Liefert den nachgerueckten Teilnehmer (Email + Name) zurueck fuer die
+   * Nachrueck-E-Mail.
+   */
+  public async promoteFirstWaitlistItem(
+    subsiteUrl: string,
+    inheritStarterType?: string
+  ): Promise<{ success: boolean; email?: string; name?: string }> {
+    try {
+      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst)
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=Status eq 'Warteliste'&$orderby=RegistrationDate asc&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return { success: false };
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return { success: false };
+
+      const firstWaiting = items[0];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mergeBody: Record<string, any> = { 'Status': 'Angemeldet' };
+      if (inheritStarterType) {
+        mergeBody['StarterType'] = inheritStarterType;
+      }
+      const mergeResp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
+        mergeBody
+      );
+      if (!(mergeResp.ok || mergeResp.status === 406)) return { success: false };
+
+      const vorname = firstWaiting.Vorname || '';
+      const nachname = firstWaiting.Nachname || '';
+      const name = (vorname && nachname) ? `${vorname} ${nachname}` : (firstWaiting.ParticipantName || '');
+      return {
+        success: true,
+        email: firstWaiting.ParticipantEmail || firstWaiting.Title || '',
+        name: name,
+      };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  /**
    * Registrierung stornieren
    */
   public async cancelRegistration(
