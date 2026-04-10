@@ -111,8 +111,7 @@ export default function LandingPage(): React.ReactElement {
             background: 'var(--dex-white)', padding: '12px 20px',
             borderRadius: 'var(--dex-radius-lg)', border: '1px solid var(--dex-gray-200)',
           }}>
-            The Event Experience Platform is a solution for managing participants at Deloitte events.
-            Developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in pilot phase.
+            {t('landing.about')}
           </p>
         )}
       </div>
