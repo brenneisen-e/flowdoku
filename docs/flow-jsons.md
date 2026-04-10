@@ -450,9 +450,9 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 
 **Trigger:** Neuer Eintrag in DEX_Events
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
-**Letztes Update:** 2026-04-06
+**Letztes Update:** 2026-04-09
 
-Ablauf: Trigger (neues Event) → Config laden (Logo + Default-Bild) → Compose_Logo → Compose_Image → Platzhalter in OutlookBody ersetzen → Outlook-Termin mit HTML-Body erstellen → CalendarLink in DEX_Events speichern
+Ablauf: Trigger (neues Event) → Config laden (Logo + Default-Bild) → Compose_Logo → Compose_Image → Platzhalter in OutlookBody ersetzen → Outlook-Termin mit HTML-Body erstellen (UTC-Zeit wird per `convertFromUtc` nach Europe/Berlin konvertiert) → CalendarLink in DEX_Events speichern
 
 **Hinweis:** Der OutlookBody wird bereits in der SPFx-App im Deloitte-HTML-Template gewrappt (mit `{{LOGO_URL}}` und `{{ORB_URL}}` Platzhaltern). Der Flow ersetzt diese Platzhalter durch Base64-Bilder.
 
@@ -514,8 +514,8 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
     "parameters": {
       "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
       "item/subject": "@triggerBody()?['Title']",
-      "item/start": "@formatDateTime(triggerBody()?['StartDate'], 'yyyy-MM-ddTHH:mm:ss')",
-      "item/end": "@formatDateTime(triggerBody()?['EndDate'], 'yyyy-MM-ddTHH:mm:ss')",
+      "item/start": "@convertFromUtc(triggerBody()?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
+      "item/end": "@convertFromUtc(triggerBody()?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
       "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
       "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
@@ -576,9 +576,9 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
 **Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen ODER Event-Daten aktualisieren (via Graph API)
-**Letztes Update:** 2026-04-08
+**Letztes Update:** 2026-04-09
 
-Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende → Nein: Einladen/Ausladen → Status=Sent
+Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende (Zeit wird per `convertFromUtc` nach Europe/Berlin konvertiert) → Nein: Einladen/Ausladen → Status=Sent
 
 **ActionTypes:** `Einladen` (Teilnehmer hinzufügen), `Ausladen` (Teilnehmer entfernen), `UpdateEvent` (Termin-Daten aktualisieren)
 
@@ -738,7 +738,7 @@ CHECK_CALENDARLINK (CalendarLink vorhanden? + Einladen/Ausladen/UpdateEvent):
                 "parameters": {
                   "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varRealEventId'))",
                   "Method": "PATCH",
-                  "Body": "@json(concat('{\"subject\":\"', first(outputs('Get_Event_Details')?['body/value'])?['Title'], '\",\"start\":{\"dateTime\":\"', formatDateTime(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"},\"end\":{\"dateTime\":\"', formatDateTime(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"}}'))",
+                  "Body": "@json(concat('{\"subject\":\"', first(outputs('Get_Event_Details')?['body/value'])?['Title'], '\",\"start\":{\"dateTime\":\"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"},\"end\":{\"dateTime\":\"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '\",\"timeZone\":\"W. Europe Standard Time\"}}'))",
                   "ContentType": "application/json"
                 },
                 "host": {

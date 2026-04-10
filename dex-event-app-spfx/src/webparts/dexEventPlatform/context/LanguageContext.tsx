@@ -27,6 +27,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'landing.subtitle': 'Nutze die neue App für deine Registrierung bei Deloitte Events.',
     'landing.start': 'Start',
     'landing.about': 'Die Event Experience Platform ist eine Lösung zur Verwaltung von Teilnehmern bei Deloitte-Events. Entwickelt von Eike Brenneisen, Andreas Enk und Nils Felten. Aktuell in der Pilotphase.',
+    'eventlist.title': 'Deine Events',
+    'eventlist.hint': 'Hier siehst du die Events, die für dich zur Registrierung verfügbar sind. Manche Events sind nur für bestimmte Standorte oder Bereiche sichtbar.',
+    'eventlist.onlyactive': 'Nur aktive Events',
 
     // Start Page
     'start.title': 'Event Experience Platform',
@@ -332,6 +335,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'landing.subtitle': 'Enjoy the new app to handle your registration for your Deloitte Event.',
     'landing.start': 'Start',
     'landing.about': 'The Event Experience Platform is a solution for managing participants at Deloitte events. Developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in pilot phase.',
+    'eventlist.title': 'Your events',
+    'eventlist.hint': 'Here are the events available for your registration. Some events are only visible for certain locations or areas.',
+    'eventlist.onlyactive': 'Only active events',
 
     // Start Page
     'start.title': 'Event Experience Platform',

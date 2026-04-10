@@ -160,6 +160,20 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
 `}
         </div>
       )}
+      {/* Titel + Hinweis: Events sind fuer den User personalisiert */}
+      <div className="card" style={{
+        padding: '16px 20px',
+        marginBottom: 16,
+        background: 'linear-gradient(135deg, rgba(134,188,37,0.08) 0%, rgba(134,188,37,0.02) 100%)',
+        border: '1px solid var(--dex-green, #86bc25)',
+      }}>
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: '1.1rem', fontWeight: 700 }}>
+          {t('eventlist.title')}
+        </h2>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+          {t('eventlist.hint')}
+        </p>
+      </div>
       <div className="flex-between mb-16">
         <div />
         <div className="toggle-wrapper">
@@ -171,7 +185,7 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
             />
             <span className="toggle-slider" />
           </label>
-          <span>Only Active Events</span>
+          <span>{t('eventlist.onlyactive')}</span>
         </div>
       </div>
       <div className="event-grid">
