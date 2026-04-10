@@ -2720,6 +2720,22 @@ export class EventService {
   }
 
   /**
+   * Dokument-Attachment von einem DEX_Events-Item loeschen.
+   * Wird beim Edit verwendet, wenn der User ein bestehendes Dokument entfernt.
+   */
+  public async deleteEventDocument(eventId: number, fileName: string): Promise<boolean> {
+    try {
+      const resp = await this._delete(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`
+      );
+      return resp.ok || resp.status === 200 || resp.status === 204;
+    } catch (err) {
+      console.warn('[DEX] deleteEventDocument error:', err);
+      return false;
+    }
+  }
+
+  /**
    * Attachments eines DEX_Events-Items laden.
    * Bilder mit Praefix __eventimage__ werden ausgefiltert (nur fuer EventImageUrl).
    */
