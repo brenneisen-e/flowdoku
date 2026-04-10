@@ -406,13 +406,32 @@ export default function AdminPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* Event-Bild */}
+      {/* Event-Bild - eigene kleine Kachel, Original-Aufloesung */}
       {selectedEvent.imageUrl && (
-        <div style={{
-          height: 180, borderRadius: 'var(--dex-radius-lg)',
-          background: `url(${selectedEvent.imageUrl}) center/cover no-repeat`,
-          marginBottom: 24,
-        }} />
+        <div
+          className="card"
+          style={{
+            padding: 12,
+            marginBottom: 24,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            maxWidth: 360,
+            background: 'var(--dex-gray-50, #fafafa)',
+          }}
+        >
+          <img
+            src={selectedEvent.imageUrl}
+            alt={selectedEvent.title}
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              maxHeight: 220,
+              borderRadius: 'var(--dex-radius, 12px)',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
       )}
 
       {/* Event-Info + Aktionen */}
