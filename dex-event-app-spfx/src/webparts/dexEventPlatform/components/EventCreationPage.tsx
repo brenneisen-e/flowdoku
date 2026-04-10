@@ -232,6 +232,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [documents, setDocuments] = React.useState<Array<{name: string; file?: File; url: string; size: number}>>(
     editEvent?.documents?.map(d => ({...d, size: d.size || 0})) || []
   );
+  // Snapshot der beim Edit-Start vorhandenen Dokument-Namen, um beim Speichern
+  // entfernte Attachments aus SharePoint loeschen zu koennen.
+  const [initialDocumentNames] = React.useState<string[]>(
+    editEvent?.documents?.map(d => d.name) || []
+  );
   const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndices: number[]}>>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
@@ -500,15 +505,30 @@ export default function EventCreationPage(): React.ReactElement {
 
       setProgress(50);
 
-      // Neue Dokumente als Attachments hochladen (kein Documents-Feld noetig)
-      if (selectedEventId && documents.some(d => d.file)) {
+      // Dokument-Sync: entfernte Attachments loeschen + neue hochladen.
+      // Wichtig: erst loeschen, dann uploaden (SharePoint verbietet Duplikat-Namen).
+      if (selectedEventId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ctx = (window as any).__dexSpfxContext;
         if (ctx) {
           const svc = new EventService(ctx);
+          // Namen die weiterhin vorhanden sind (als bestehende Attachments, ohne file)
+          const keptOriginalNames = new Set(
+            documents.filter(d => !d.file).map(d => d.name)
+          );
+          // Namen die im initialen Snapshot waren, jetzt aber nicht mehr
+          const toDelete = initialDocumentNames.filter(name => !keptOriginalNames.has(name));
+          for (const fileName of toDelete) {
+            try {
+              await svc.deleteEventDocument(Number(selectedEventId), fileName);
+            } catch { /* einzelner Delete-Fehler darf Save nicht blockieren */ }
+          }
+          // Neue Dokumente hochladen
           for (const doc of documents) {
             if (doc.file) {
-              await svc.uploadEventDocument(Number(selectedEventId), doc.file);
+              try {
+                await svc.uploadEventDocument(Number(selectedEventId), doc.file);
+              } catch { /* einzelner Upload-Fehler darf Save nicht blockieren */ }
             }
           }
         }
