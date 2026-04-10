@@ -133,7 +133,14 @@ export class EventService {
     const listName = 'DEX_Emails';
     const exists = await this.listExists(listName);
     if (exists) {
-      // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      // Recipient-Feld auf Plain Text (RichText=false) setzen, falls es
+      // noch im alten RichText-Modus ist. SharePoint wrappt sonst den Wert
+      // in <div class="ExternalClassXXXX">...</div>, was den Power Automate
+      // Flow "emailMessage/To must be String/email" Fehler ausloest.
+      try {
+        await this.setRecipientFieldPlainText(listName);
+      } catch { /* ignore */ }
+
       // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -158,10 +165,13 @@ export class EventService {
       'AllowContentTypes': false,
     });
 
-    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
-      { title: 'Recipient', type: 3 }, // Note (multiline) fuer Massenmail mit vielen Empfaengern
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fields: Array<Record<string, any>> = [
+      // Recipient als Plain-Text Note-Feld (RichText=false), damit der Flow
+      // die Email-Adresse(n) ohne HTML-Wrapping bekommt.
+      { title: 'Recipient', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
       { title: 'RecipientName', type: 2 },
-      { title: 'Body', type: 3 }, // Note (multiline/HTML)
+      { title: 'Body', type: 3 }, // Body darf Rich/HTML bleiben (wird als HTML gerendert)
       { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
       { title: 'EventTitle', type: 2 },
       { title: 'EventId', type: 2 },
@@ -170,7 +180,8 @@ export class EventService {
     ];
 
     for (const f of fields) {
-      const payload: Record<string, unknown> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
         '__metadata': { 'type': f.metaType || 'SP.Field' },
         'Title': f.title,
         'FieldTypeKind': f.type,
@@ -178,6 +189,10 @@ export class EventService {
       };
       if (f.choices) {
         payload['Choices'] = { 'results': f.choices };
+      }
+      if (f.metaType === 'SP.FieldMultiLineText') {
+        payload['RichText'] = !!f.richText;
+        if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
       }
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
     }
@@ -188,6 +203,35 @@ export class EventService {
     ]);
 
     await this.setEmailsListPermissions(listName);
+  }
+
+  /**
+   * Recipient-Feld auf Plain Text (RichText=false) umstellen.
+   * Idempotent: Wenn schon Plain Text, macht nichts.
+   * Nur moeglich wenn der Current User Manage Lists Rechte hat (Owner/Admin).
+   */
+  private async setRecipientFieldPlainText(listName: string): Promise<void> {
+    const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Recipient')`;
+    const resp = await this.context.spHttpClient.get(
+      `${fieldUrl}?$select=FieldTypeKind,RichText`,
+      SPHttpClient.configurations.v1
+    );
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const kind = data.FieldTypeKind ?? data.d?.FieldTypeKind;
+    const richText = data.RichText ?? data.d?.RichText;
+    // Wenn bereits Note + Plain Text: nichts zu tun
+    if (kind === 3 && richText === false) return;
+    // Feld auf Note + RichText=false patchen
+    await this._merge(
+      fieldUrl,
+      {
+        '__metadata': { 'type': 'SP.FieldMultiLineText' },
+        'FieldTypeKind': 3,
+        'RichText': false,
+        'NumberOfLines': 3,
+      }
+    );
   }
 
   /**
