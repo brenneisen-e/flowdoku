@@ -361,6 +361,8 @@
       .my-event-card__details { grid-template-columns: 1fr; }
       .my-event-card__actions { flex-direction: column; }
       .my-event-card__actions .btn { width: 100%; justify-content: center; }
+      /* Thumbnail kleiner auf Mobile, damit es nicht die halbe Karte einnimmt */
+      .my-event-card__thumb { width: 90px !important; height: 70px !important; }
 
       /* Event Creation */
       .creation-layout { grid-template-columns: 1fr; }

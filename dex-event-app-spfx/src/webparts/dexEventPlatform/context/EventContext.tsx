@@ -318,7 +318,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
       const lang = event.emailLanguage || 'EN';
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
-      const vars = { Name: nameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`, WaitlistPosition: posText };
+      const vars = { Name: nameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       if (spTemplate) {
@@ -369,7 +369,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (!event.disableEmails) {
           try {
             const lang = event.emailLanguage || 'EN';
-            const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView` };
+            const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
             let emailData: { subject: string; body: string };
             const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
             if (spTpl) {
@@ -409,7 +409,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 Name: promoted.name || '',
                 EventTitle: event.title,
                 Organizer: event.organizers.join(', '),
-                AppUrl: `${eventService.siteUrl}/SitePages/Test_App.aspx?env=WebView`,
+                AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
                 WaitlistPosition: '',
               };
               let emailData: { subject: string; body: string };

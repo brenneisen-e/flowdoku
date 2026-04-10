@@ -11,7 +11,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
-const APP_URL = `${SITE_URL}/SitePages/Test_App.aspx?env=WebView`;
+const APP_URL = `${SITE_URL}/SitePages/DEX.aspx?env=WebView`;
 // Gecachtes Logo Base64 aus DEX_EmailTemplates (_Config)
 // ORB/Event-Bild wird NICHT gecacht - der Flow setzt das event-spezifische Bild ein
 let cachedLogoBase64 = '';

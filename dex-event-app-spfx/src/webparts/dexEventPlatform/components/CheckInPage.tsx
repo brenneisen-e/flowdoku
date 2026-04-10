@@ -53,7 +53,7 @@ export default function CheckInPage(): React.ReactElement {
     const ctx = (window as any).__dexSpfxContext;
     if (ctx) {
       return ctx.pageContext.site.absoluteUrl + ctx.pageContext.site.serverRelativeUrl.replace(ctx.pageContext.site.serverRelativeUrl, '') + '/SitePages/' +
-        (window.location.pathname.split('/').pop() || 'Test_App.aspx');
+        (window.location.pathname.split('/').pop() || 'DEX.aspx');
     }
     return window.location.href;
   };

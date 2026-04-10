@@ -532,28 +532,54 @@ export default function MyEventsPage(): React.ReactElement {
               }));
 
             return (
-              <div key={event.id} className="card my-event-card" style={{ overflow: 'hidden' }}>
-                {event.imageUrl && (
-                  <div style={{
-                    height: 100, background: `url(${event.imageUrl}) center/cover no-repeat`,
-                    margin: '-16px -16px 0 -16px',
-                  }} />
-                )}
+              <div key={event.id} className="card my-event-card">
+                {/* Header-Zeile: Thumbnail links + Titel/Details rechts */}
+                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  {event.imageUrl && (
+                    <div
+                      className="my-event-card__thumb"
+                      style={{
+                        flexShrink: 0,
+                        width: 140,
+                        height: 100,
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        background: 'var(--dex-gray-50, #fafafa)',
+                        border: '1px solid var(--dex-gray-200)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <img
+                        src={event.imageUrl}
+                        alt={event.title}
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          objectFit: 'contain',
+                          display: 'block',
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Header: Titel + Status Badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
+                      <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
+                        {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
+                          ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
+                          : getStatusLabel(registration.Status, t)}
+                      </span>
+                    </div>
 
-                {/* Header: Titel + Status Badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: event.imageUrl ? 16 : 0 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
-                  <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
-                    {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
-                      ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
-                      : getStatusLabel(registration.Status, t)}
-                  </span>
-                </div>
-
-                {/* Kompakte Info-Zeilen */}
-                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {event.location || '-'}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
+                    {/* Kompakte Info-Zeilen */}
+                    <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {event.location || '-'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Custom Fields als kompakte Tags */}
