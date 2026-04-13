@@ -94,7 +94,7 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   const { events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents, currentUserRole } = useRoles();
+  const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   const [showDebug, setShowDebug] = React.useState(false);
@@ -108,8 +108,9 @@ export default function EventListPage(): React.ReactElement {
     ? events.filter((e) => e.status === 'Active')
     : events;
 
-  // Admin/Organizer sehen alle, normale User nur passende
-  const filteredEvents = (canCreateEvents
+  // Admin sieht alle Events. Organizer + User sehen nur Events, die zur Filterlogik
+  // (Standort + Zielgruppe) passen.
+  const filteredEvents = (isAdmin
     ? statusFiltered
     : statusFiltered.filter((e: DeloitteEvent) =>
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
