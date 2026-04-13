@@ -11,7 +11,7 @@ import * as React from 'react';
 export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in';
 
 // Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Fuer andere"-Modus oeffnen)
-export type NavIntent = 'register-other' | undefined;
+export type NavIntent = 'register-other' | 'auto-cancel' | undefined;
 
 interface NavigationContextType {
   currentPage: Page;

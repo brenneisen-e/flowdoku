@@ -382,7 +382,25 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 }
 
 export default function MyEventsPage(): React.ReactElement {
-  const { navigate } = useNavigation();
+  const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
+
+  // Auto-Cancel: wenn die Seite via Deep-Link mit Intent 'auto-cancel' geoeffnet
+  // wurde (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt den Abmelde-
+  // Bestaetigungsdialog fuer das uebergebene Event aufklappen.
+  const didAutoOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoOpen.current) return;
+    if (navIntent !== 'auto-cancel' || !selectedEventId) return;
+    didAutoOpen.current = true;
+    // cancellingId wird unten im Component-State gesetzt - wir scrollen zuerst die Karte ein,
+    // dann triggern wir den 1-Klick-Modus (ohne direkt zu cancellen, damit User bestaetigen muss)
+    setTimeout(() => {
+      setCancellingId(selectedEventId);
+      const el = document.getElementById(`dex-myevent-${selectedEventId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+    clearIntent();
+  }, [navIntent, selectedEventId]);
   const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
   const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
@@ -535,7 +553,7 @@ export default function MyEventsPage(): React.ReactElement {
               }));
 
             return (
-              <div key={event.id} className="card my-event-card">
+              <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">
                 {/* Header-Zeile: Thumbnail links + Titel/Details rechts */}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                   {event.imageUrl && (

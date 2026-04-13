@@ -36,10 +36,37 @@ export interface IDexEventPlatformProps {
 
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
-  const { currentPage } = useNavigation();
+  const { currentPage, navigate } = useNavigation();
   const { isAdmin } = useRoles();
-  const { markExpiredEventsAsCompleted, isEventsLoading } = useEvents();
+  const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
   const layoutRef = React.useRef<HTMLDivElement>(null);
+
+  // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
+  // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
+  // My Events navigieren mit der eventId - MyEventsPage oeffnet dann den
+  // Bestaetigungsdialog zum Abmelden.
+  const didHandleDeepLink = React.useRef(false);
+  React.useEffect(() => {
+    if (didHandleDeepLink.current) return;
+    if (isEventsLoading) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      const eventParam = params.get('event');
+      if (action === 'cancel' && eventParam) {
+        didHandleDeepLink.current = true;
+        const eventNumber = parseInt(eventParam, 10);
+        if (!isNaN(eventNumber)) {
+          const evt = events.find(e => e.eventNumber === eventNumber);
+          if (evt) {
+            navigate('my-events', evt.id, 'auto-cancel');
+          } else {
+            navigate('my-events');
+          }
+        }
+      }
+    } catch { /* URL-Parsing fehlgeschlagen, ignorieren */ }
+  }, [isEventsLoading, events]);
 
   // Admin-Cleanup einmal pro App-Session: Abgelaufene Events (EndDate < jetzt)
   // mit Status='Active' werden automatisch auf 'Completed' gesetzt.
