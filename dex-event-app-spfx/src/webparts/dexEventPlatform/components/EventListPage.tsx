@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import EventCard from './EventCard';
+import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 
 /**
  * Prüft ob ein User-Standort zu einem LocationFilter passt.
@@ -126,17 +127,11 @@ export default function EventListPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div style={{ padding: 48 }}>
-          <div style={{
-            width: 48, height: 48, margin: '0 auto 16px', borderRadius: '50%',
-            // Voller Ring (transparente Seiten + gruener Top) damit der Spinner auch
-            // optisch wie ein Kreis wirkt - vorher wurde nur borderTop gesetzt, was
-            // bei fehlender Keyframe-Injektion wie ein flackernder Cursor aussah.
-            border: '4px solid rgba(134,188,37,0.18)',
-            borderTopColor: 'var(--dex-green)',
-            boxSizing: 'border-box',
-            animation: 'dexOrbSpin 1s linear infinite',
-          }} />
-          <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.loading')}</p>
+          <Spinner
+            size={SpinnerSize.large}
+            label={t('myevents.loading')}
+            styles={{ circle: { borderColor: 'var(--dex-green) var(--dex-gray-200) var(--dex-gray-200)', borderWidth: 3 }, label: { color: 'var(--dex-gray-500)', marginTop: 12 } }}
+          />
         </div>
       </div>
     );
