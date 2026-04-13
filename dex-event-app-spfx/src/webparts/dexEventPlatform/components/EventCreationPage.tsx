@@ -150,7 +150,7 @@ interface CustomFieldInput {
 
 export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
-  const { events, createEvent, updateEvent } = useEvents();
+  const { events, createEvent, updateEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers } = useRoles();
   const { t } = useLanguage();
@@ -557,6 +557,10 @@ export default function EventCreationPage(): React.ReactElement {
               const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
               if (uploadedUrl) {
                 await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
+                // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh anzeigt
+                // (updateEvent oben hat schon einmal geladen, aber zu dem Zeitpunkt war
+                // EventImageUrl noch der alte Wert)
+                await refreshEvents();
               } else {
                 setImageUploadError('Bild-Upload fehlgeschlagen.');
               }
@@ -677,6 +681,8 @@ export default function EventCreationPage(): React.ReactElement {
                 const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(eventId), compressed);
                 if (uploadedUrl) {
                   await svc.updateEventImageUrl(Number(eventId), uploadedUrl);
+                  // Events neu laden, damit das gerade hochgeladene Bild sofort sichtbar ist
+                  await refreshEvents();
                 } else {
                   setImageUploadError('Bild-Upload fehlgeschlagen.');
                 }
