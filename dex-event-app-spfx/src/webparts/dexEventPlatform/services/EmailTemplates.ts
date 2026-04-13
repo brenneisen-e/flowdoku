@@ -109,7 +109,7 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Platzhalter in Subject und Body ersetzen.
+ * Platzhalter in HTML-Body ersetzen (mit HTML-Escaping gegen XSS).
  */
 export function replacePlaceholders(text: string, vars: Record<string, string>): string {
   let result = text;
@@ -123,6 +123,18 @@ export function replacePlaceholders(text: string, vars: Record<string, string>):
 }
 
 /**
+ * Platzhalter in Plain-Text-Feldern (Subject, Heading) ersetzen - OHNE HTML-Escaping,
+ * damit z.B. "SR&T" im Subject nicht zu "SR&amp;T" wird.
+ */
+export function replacePlaceholdersPlain(text: string, vars: Record<string, string>): string {
+  let result = text;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+  return result;
+}
+
+/**
  * Email aus SharePoint-Template generieren.
  * Nutzt wrapTemplate fuer das Deloitte-Design.
  */
@@ -130,8 +142,10 @@ export function buildEmailFromTemplate(
   template: { subject: string; headingColor: string; heading: string; bodyHtml: string },
   vars: Record<string, string>
 ): { subject: string; body: string } {
-  const subject = replacePlaceholders(template.subject, vars);
-  const heading = replacePlaceholders(template.heading, vars);
+  // Subject + Heading: plain text (kein HTML-Escaping, sonst wird "&" zu "&amp;")
+  const subject = replacePlaceholdersPlain(template.subject, vars);
+  const heading = replacePlaceholdersPlain(template.heading, vars);
+  // Body: HTML, daher Werte escapen
   const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
   return {
     subject,

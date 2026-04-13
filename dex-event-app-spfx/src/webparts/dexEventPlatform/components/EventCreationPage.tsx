@@ -169,8 +169,9 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
+  // Mehrere Organizer werden mit '; ' getrennt gespeichert (innerhalb eines Namens kann ',' vorkommen, z.B. 'Maerzluft, Petra')
   const [organizer, setOrganizer] = React.useState(
-    editEvent ? editEvent.organizers.join(', ') : `${currentUser.firstName} ${currentUser.surname}`
+    editEvent ? editEvent.organizers.join('; ') : `${currentUser.firstName} ${currentUser.surname}`
   );
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [organizerEmails, setOrganizerEmails] = React.useState<string[]>([currentUser.email]);
@@ -968,8 +969,8 @@ export default function EventCreationPage(): React.ReactElement {
                     const val = e.target.value;
                     setOrganizer(val);
                     if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
-                    // Nur den Teil nach dem letzten Komma fuer die Suche nutzen
-                    const lastPart = val.split(',').pop()?.trim() || '';
+                    // Nur den Teil nach dem letzten Semikolon fuer die Suche nutzen
+                    const lastPart = val.split(';').pop()?.trim() || '';
                     if (lastPart.length >= 2) {
                       organizerTimerRef.current = setTimeout(async () => {
                         setIsSearchingOrganizer(true);
@@ -1003,10 +1004,10 @@ export default function EventCreationPage(): React.ReactElement {
                         }}
                         onMouseDown={() => {
                           // Letzten Teil (Suchbegriff) durch ausgewaehlten Namen ersetzen
-                          const parts = organizer.split(',').map(s => s.trim());
+                          const parts = organizer.split(';').map(s => s.trim());
                           parts.pop();
                           parts.push(u.displayName);
-                          setOrganizer(parts.filter(Boolean).join(', '));
+                          setOrganizer(parts.filter(Boolean).join('; '));
                           setOrganizerEmails(prev => [...prev.filter(e => e !== u.email), u.email]);
                           setOrganizerResults([]);
                         }}
@@ -1017,6 +1018,75 @@ export default function EventCreationPage(): React.ReactElement {
                     ))}
                   </div>
                 )}
+                {/* Organizer-Reihenfolge (Chips mit Reorder + Remove), nur wenn 2+ Organizer */}
+                {(() => {
+                  const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                  if (orgList.length < 2) return null;
+                  const move = (idx: number, dir: -1 | 1): void => {
+                    const next = [...orgList];
+                    const target = idx + dir;
+                    if (target < 0 || target >= next.length) return;
+                    [next[idx], next[target]] = [next[target], next[idx]];
+                    setOrganizer(next.join('; '));
+                  };
+                  const remove = (idx: number): void => {
+                    const next = orgList.filter((_, i) => i !== idx);
+                    setOrganizer(next.join('; '));
+                  };
+                  return (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>
+                        Reihenfolge (per Pfeil ändern, X zum Entfernen):
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {orgList.map((name, i) => (
+                          <div
+                            key={`${name}-${i}`}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '6px 10px', background: 'var(--dex-gray-100)',
+                              borderRadius: 'var(--dex-radius)', fontSize: '0.85rem',
+                            }}
+                          >
+                            <span style={{ flex: 1 }}>{i + 1}. {name}</span>
+                            <button
+                              type="button"
+                              onClick={() => move(i, -1)}
+                              disabled={i === 0}
+                              style={{
+                                background: 'none', border: '1px solid var(--dex-gray-300)',
+                                borderRadius: 4, width: 24, height: 24, cursor: i === 0 ? 'not-allowed' : 'pointer',
+                                opacity: i === 0 ? 0.4 : 1, color: 'var(--dex-gray-700)', fontSize: '0.85rem', lineHeight: 1,
+                              }}
+                              title="Nach oben"
+                            >▲</button>
+                            <button
+                              type="button"
+                              onClick={() => move(i, 1)}
+                              disabled={i === orgList.length - 1}
+                              style={{
+                                background: 'none', border: '1px solid var(--dex-gray-300)',
+                                borderRadius: 4, width: 24, height: 24, cursor: i === orgList.length - 1 ? 'not-allowed' : 'pointer',
+                                opacity: i === orgList.length - 1 ? 0.4 : 1, color: 'var(--dex-gray-700)', fontSize: '0.85rem', lineHeight: 1,
+                              }}
+                              title="Nach unten"
+                            >▼</button>
+                            <button
+                              type="button"
+                              onClick={() => remove(i)}
+                              style={{
+                                background: 'none', border: '1px solid var(--dex-red, #da291c)',
+                                borderRadius: 4, width: 24, height: 24, cursor: 'pointer',
+                                color: 'var(--dex-red, #da291c)', fontSize: '0.85rem', lineHeight: 1,
+                              }}
+                              title="Entfernen"
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="form-group">

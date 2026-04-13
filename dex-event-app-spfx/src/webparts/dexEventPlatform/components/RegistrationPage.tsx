@@ -288,17 +288,27 @@ export default function RegistrationPage(): React.ReactElement {
               style={{
                 position: 'relative',
                 background: event.imageUrl
-                  ? `url(${event.imageUrl}) center/cover no-repeat`
+                  ? 'var(--dex-gray-100)'
                   : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
                 borderRadius: 'var(--dex-radius)',
                 overflow: 'hidden',
-                // Hochkant: schmaler aber volle Hoehe der Karte
-                // Querformat: volle Breite, groesserer Hoehe als bisher (200 -> 360)
+                // Hochkant: schmal links + volle Karten-Hoehe
+                // Querformat: volle Breite oben, Hoehe richtet sich nach Bild-Aspect (kein Crop)
                 ...(imgOrientation === 'portrait'
-                  ? { flex: '0 0 200px', minHeight: 360, alignSelf: 'stretch' }
-                  : { width: '100%', height: 360 }),
+                  ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
+                  : { width: '100%', display: 'flex', justifyContent: 'center' }),
               }}
             >
+              {event.imageUrl && (
+                <img
+                  src={event.imageUrl}
+                  alt={event.title}
+                  style={imgOrientation === 'portrait'
+                    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+                    : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
+                  }
+                />
+              )}
               <button className="event-card__info-btn" aria-label="Event info" onClick={() => setShowDescription(!showDescription)}>
                 <Info size={16} />
               </button>

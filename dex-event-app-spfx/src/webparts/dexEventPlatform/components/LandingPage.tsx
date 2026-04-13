@@ -33,6 +33,37 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
+      {/* Hinweis-Box rechts: neue Version + Link zur alten App */}
+      <div className="landing__notice" style={{
+        position: 'absolute', top: 48, right: 16,
+        maxWidth: 320, padding: '14px 16px',
+        background: 'rgba(255,255,255,0.92)', borderRadius: 'var(--dex-radius-lg)',
+        border: '1px solid var(--dex-gray-200)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        fontSize: '0.78rem', lineHeight: 1.5, color: 'var(--dex-gray-700)',
+        zIndex: 5,
+      }}>
+        <div style={{ fontWeight: 700, color: 'var(--dex-green)', marginBottom: 6, fontSize: '0.82rem' }}>
+          {locale === 'de' ? 'Neue Version der DEX App' : 'New version of the DEX App'}
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          {locale === 'de'
+            ? 'Dies ist die neue Version der DEX App. Falls du Zugriff auf ein altes Event benötigst, das noch nicht über die neue Version verwaltet wird, nutze bitte die alte App.'
+            : 'This is the new version of the DEX App. If you need access to an older event that is not yet managed via the new version, please use the legacy app.'}
+        </div>
+        <a
+          href="https://apps.powerapps.com/play/e/5bbcd5e1-8573-e5f8-b7b1-e4866693b255/a/796780aa-feb8-4579-b1aa-1978a4faa85b?tenantId=36da45f1-dd2c-4d1f-af13-5abe46b99921&hint=0dfc47c9-7457-463f-851a-1002de314739&sourcetime=1766053193836"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-block', padding: '6px 12px', borderRadius: 6,
+            background: 'var(--dex-green)', color: '#fff', textDecoration: 'none',
+            fontWeight: 600, fontSize: '0.75rem',
+          }}
+        >
+          {locale === 'de' ? 'Alte App öffnen' : 'Open legacy app'}
+        </a>
+      </div>
       {/* Sprachauswahl */}
       <div style={{
         position: 'absolute', top: 12, left: 16,
@@ -88,7 +119,7 @@ export default function LandingPage(): React.ReactElement {
               width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
             }}
-            title="Über die App"
+            title={locale === 'de' ? 'Über die App' : 'About the app'}
           >
             <Info size={18} />
           </button>
@@ -99,7 +130,7 @@ export default function LandingPage(): React.ReactElement {
               width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
             }}
-            title="Kontakt aufnehmen"
+            title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
           >
             <Mail size={18} />
           </a>
