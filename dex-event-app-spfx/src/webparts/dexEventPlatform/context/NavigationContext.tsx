@@ -10,11 +10,16 @@ import * as React from 'react';
 
 export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in';
 
+// Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Fuer andere"-Modus oeffnen)
+export type NavIntent = 'register-other' | undefined;
+
 interface NavigationContextType {
   currentPage: Page;
   selectedEventId: string | null;
-  navigate: (page: Page, eventId?: string) => void;
+  navIntent: NavIntent;
+  navigate: (page: Page, eventId?: string, intent?: NavIntent) => void;
   goBack: () => void;
+  clearIntent: () => void;
 }
 
 const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
@@ -22,18 +27,20 @@ const NavigationContext = React.createContext<NavigationContextType | undefined>
 interface HistoryEntry {
   page: Page;
   eventId: string | null;
+  intent: NavIntent;
 }
 
 export function NavigationProvider(props: { children: React.ReactNode }): React.ReactElement {
   const [currentPage, setCurrentPage] = React.useState<Page>('landing');
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
+  const [navIntent, setNavIntent] = React.useState<NavIntent>(undefined);
   const [history, setHistory] = React.useState<HistoryEntry[]>([]);
 
-  const navigate = (page: Page, eventId?: string): void => {
-    // Aktuelle Seite in den History-Stack pushen
-    setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId }]);
+  const navigate = (page: Page, eventId?: string, intent?: NavIntent): void => {
+    setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
     setCurrentPage(page);
     setSelectedEventId(eventId || null);
+    setNavIntent(intent);
   };
 
   const goBack = (): void => {
@@ -42,12 +49,15 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
       setHistory(h => h.slice(0, -1));
       setCurrentPage(prev.page);
       setSelectedEventId(prev.eventId);
+      setNavIntent(prev.intent);
     }
   };
 
+  const clearIntent = (): void => setNavIntent(undefined);
+
   return React.createElement(
     NavigationContext.Provider,
-    { value: { currentPage, selectedEventId, navigate, goBack } },
+    { value: { currentPage, selectedEventId, navIntent, navigate, goBack, clearIntent } },
     props.children
   );
 }
