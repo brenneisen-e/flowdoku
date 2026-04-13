@@ -33,6 +33,7 @@ export interface SPEvent {
   EventNumber: number;
   Description: string;
   Location: string;
+  LocationAddress: string; // JSON-String: { street, houseNo, zip, city }
   LocationFilter: string;
   Audience: string; // Zielgruppen-Filter (Gruppen + Emails, kommasepariert)
   FilterMode: string; // 'AND' | 'OR' - Verknüpfung Standort+Zielgruppe
@@ -1131,6 +1132,7 @@ export class EventService {
       { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
       { title: 'Description', type: 3 },
       { title: 'Location', type: 2 },
+      { title: 'LocationAddress', type: 2 }, // JSON-String: { street, houseNo, zip, city }
       { title: 'LocationFilter', type: 2 },
       { title: 'Audience', type: 2 },
       { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
@@ -1305,7 +1307,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1400,6 +1402,7 @@ export class EventService {
     type: string;
     description: string;
     location: string;
+    locationAddress?: string; // JSON-String: { street, houseNo, zip, city }
     locationFilter: string;
     audience: string;
     filterMode: string;
@@ -1470,6 +1473,7 @@ export class EventService {
         'EventType': event.type,
         'Description': event.description,
         'Location': event.location,
+        'LocationAddress': event.locationAddress || '',
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
         'FilterMode': event.filterMode || 'OR',

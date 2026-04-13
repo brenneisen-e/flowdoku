@@ -115,20 +115,20 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
         </div>
       </div>
       <div className="event-card__body" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-        {/* Freie Plätze Badge */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {/* Datum links + Freie-Plaetze-Badge rechts in einer Zeile */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+          <div className="event-card__dates" style={{ flex: 1, minWidth: 0 }}>
+            {formatDate(event.startDate)} {t('events.until')}
+            <br />
+            {formatDate(event.endDate)}
+          </div>
           <span style={{
-            padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600,
+            padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
             background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
             color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
           }}>
             {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
           </span>
-        </div>
-        <div className="event-card__dates">
-          {formatDate(event.startDate)} {t('events.until')}
-          <br />
-          {formatDate(event.endDate)}
         </div>
         {event.registrationDeadline && formatDate(event.registrationDeadline) && (
           <div className="event-card__deadline">

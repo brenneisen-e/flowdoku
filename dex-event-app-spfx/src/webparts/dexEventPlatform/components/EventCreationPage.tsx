@@ -178,6 +178,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
+  // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
+  const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
+  const [addrHouseNo, setAddrHouseNo] = React.useState(editEvent?.locationAddress?.houseNo || '');
+  const [addrZip, setAddrZip] = React.useState(editEvent?.locationAddress?.zip || '');
+  const [addrCity, setAddrCity] = React.useState(editEvent?.locationAddress?.city || '');
   const [locationFilter, setLocationFilter] = React.useState(
     editEvent ? editEvent.locationAudience.join(', ') : ''
   );
@@ -472,6 +477,9 @@ export default function EventCreationPage(): React.ReactElement {
         'EventType': eventType,
         'Description': description,
         'Location': location,
+        'LocationAddress': (addrStreet || addrHouseNo || addrZip || addrCity)
+          ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
+          : '',
         'LocationFilter': locationFilter,
         'Audience': audience,
         'FilterMode': filterMode,
@@ -604,6 +612,9 @@ export default function EventCreationPage(): React.ReactElement {
         status: 'Active',
         description,
         location,
+        locationAddress: (addrStreet || addrHouseNo || addrZip || addrCity)
+          ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
+          : '',
         locationFilter,
         audience,
         filterMode,
@@ -1245,6 +1256,20 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Adresse
+                  <span className="info-icon" title="Strukturierte Adresse - wird auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
+                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
+                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
+                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
+                </div>
               </div>
 
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

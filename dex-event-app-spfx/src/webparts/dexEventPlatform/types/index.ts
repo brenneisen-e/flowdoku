@@ -14,6 +14,7 @@ export interface DeloitteEvent {
   status: EventStatus;
   organizers: string[];
   location: string;
+  locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];
   audienceFilter: string[];
   filterMode: 'AND' | 'OR';
