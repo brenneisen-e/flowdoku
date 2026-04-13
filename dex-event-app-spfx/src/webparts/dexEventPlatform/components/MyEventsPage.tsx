@@ -582,7 +582,7 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                         <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)', marginTop: 2 }} />
                         <div>
-                          <div>{event.location || '-'}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.location || '-'}</div>
                           {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
                             <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>
                               {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
