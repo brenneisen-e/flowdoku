@@ -79,6 +79,17 @@ export default function RegistrationPage(): React.ReactElement {
   const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(false);
 
+  // Bild-Orientierung erkennen (Hochkant -> links | Querformat -> oben)
+  const [imgOrientation, setImgOrientation] = React.useState<'portrait' | 'landscape'>('landscape');
+  React.useEffect(() => {
+    if (!event?.imageUrl) { setImgOrientation('landscape'); return; }
+    const img = new Image();
+    img.onload = () => {
+      setImgOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
+    };
+    img.src = event.imageUrl;
+  }, [event?.imageUrl]);
+
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
     && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
@@ -262,52 +273,69 @@ export default function RegistrationPage(): React.ReactElement {
         {/* Event-Info links */}
         <div className="registration-event">
           <div className="section-header section-header--red">{t('reg.selectedevent')}</div>
-          <div className="registration-event__card">
+          <div
+            className="registration-event__card"
+            style={{
+              display: 'flex',
+              // Hochkant -> Bild links + Inhalt rechts | Querformat -> Bild oben + Inhalt drunter
+              flexDirection: imgOrientation === 'portrait' ? 'row' : 'column',
+              gap: 12,
+              alignItems: 'stretch',
+            }}
+          >
             <div
               className="registration-event__image"
               style={{
+                position: 'relative',
                 background: event.imageUrl
                   ? `url(${event.imageUrl}) center/cover no-repeat`
                   : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                borderRadius: 'var(--dex-radius)',
+                overflow: 'hidden',
+                // Hochkant: schmaler aber volle Hoehe der Karte
+                // Querformat: volle Breite, groesserer Hoehe als bisher (200 -> 360)
+                ...(imgOrientation === 'portrait'
+                  ? { flex: '0 0 200px', minHeight: 360, alignSelf: 'stretch' }
+                  : { width: '100%', height: 360 }),
               }}
             >
               <button className="event-card__info-btn" aria-label="Event info" onClick={() => setShowDescription(!showDescription)}>
                 <Info size={16} />
               </button>
-              <div className="registration-event__overlay">
-                <h4>{event.title}</h4>
-                <p>
-                  {formatDate(event.startDate)} {t('reg.until')}<br />
-                  {formatDate(event.endDate)}
-                </p>
-                <div style={{ fontSize: '0.78rem', opacity: 0.8, marginTop: 4 }}>
-                  Organizer:
-                  <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
-                    {event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map((o, i) => {
-                      const trimmed = o.trim();
-                      const parts = trimmed.split(',').map(s => s.trim());
-                      const name = parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
-                      return <li key={i}>{name}</li>;
-                    })}
-                  </ul>
-                </div>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 4px 4px 0' }}>
+              <h4 style={{ fontSize: '1rem', margin: 0 }}>{event.title}</h4>
+              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: 0 }}>
+                {formatDate(event.startDate)} {t('reg.until')}<br />
+                {formatDate(event.endDate)}
+              </p>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                Organizer:
+                <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
+                  {event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map((o, i) => {
+                    const trimmed = o.trim();
+                    const parts = trimmed.split(',').map(s => s.trim());
+                    const name = parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                    return <li key={i}>{name}</li>;
+                  })}
+                </ul>
               </div>
             </div>
-            {showDescription && event.description && (
-              <div style={{
-                padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-                background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
-                borderTop: '1px solid var(--dex-gray-200)',
-              }}>
-                {event.description}
-              </div>
-            )}
-            {isFull && (
-              <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
-                {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
-              </p>
-            )}
           </div>
+          {showDescription && event.description && (
+            <div style={{
+              padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+              background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
+              borderTop: '1px solid var(--dex-gray-200)',
+            }}>
+              {event.description}
+            </div>
+          )}
+          {isFull && (
+            <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
+              {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
+            </p>
+          )}
         </div>
 
         {/* Persoenliche Daten */}

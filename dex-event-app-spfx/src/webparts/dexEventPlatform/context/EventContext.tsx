@@ -90,9 +90,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // Seed: SR&T P_MD_D Meeting (April 2026) Migration
-    try { await eventService.seedSRTMeeting(); } catch { /* */ }
-    try { await eventService.seedSRTParticipants(); } catch { /* */ }
+    // SR&T Meeting Migration entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
   }
