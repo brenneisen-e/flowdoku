@@ -232,7 +232,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
   const [blobUrl, setBlobUrl] = React.useState<string>('');
   const [pdfBlob, setPdfBlob] = React.useState<Blob | null>(null);
   const [loading, setLoading] = React.useState(false);
-  // Mobile-Erkennung: Nur auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewaehrt)
+  // Mobile-Erkennung: Auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewaehrt)
   const [isMobile, setIsMobile] = React.useState<boolean>(
     typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false
   );
@@ -301,7 +301,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
           // Mobile: PDF via react-pdf (Canvas) - funktioniert wo iframe versagt
           setPdfBlob(correctBlob);
         } else {
-          // Desktop oder Bilder: Blob-URL + iframe (bewaehrt, bleibt unveraendert)
+          // Desktop oder Bilder: Blob-URL + iframe (bewaehrt)
           setBlobUrl(URL.createObjectURL(correctBlob));
         }
       }
@@ -353,13 +353,16 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
                     {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
                   </div>
                 ) : pdfBlob ? (
-                  /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile */
-                  <PdfViewer blob={pdfBlob} height={500} />
+                  /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile, eigenes Scrolling */
+                  <PdfViewer blob={pdfBlob} height={600} />
                 ) : blobUrl ? (
-                  /* Bilder etc. via iframe */
+                  /* Desktop-PDF + Bilder via iframe.
+                     #view=FitH zwingt das Browser-PDF-Plugin in vertikalen Scroll-Modus
+                     (sonst wird oft "Fit page" angenommen und der Scrollbalken fehlt). */
                   <iframe
-                    src={blobUrl}
-                    style={{ width: '100%', height: 500, border: 'none' }}
+                    src={doc.name.toLowerCase().endsWith('.pdf') ? `${blobUrl}#view=FitH&toolbar=1` : blobUrl}
+                    scrolling="auto"
+                    style={{ width: '100%', height: '75vh', minHeight: 600, border: 'none', display: 'block' }}
                     title={doc.name}
                   />
                 ) : (

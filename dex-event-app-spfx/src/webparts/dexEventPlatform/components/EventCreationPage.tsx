@@ -275,7 +275,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [iconSearch, setIconSearch] = React.useState('');
   const [showAllIcons, setShowAllIcons] = React.useState(false);
 
-  const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Stuttgart', 'All'];
+  const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Nürnberg', 'Stuttgart', 'All'];
 
   const addCustomField = (): void => {
     setCustomFields([...customFields, {
