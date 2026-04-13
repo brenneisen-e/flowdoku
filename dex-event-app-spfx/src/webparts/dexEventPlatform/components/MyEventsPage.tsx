@@ -232,6 +232,22 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
   const [blobUrl, setBlobUrl] = React.useState<string>('');
   const [pdfBlob, setPdfBlob] = React.useState<Blob | null>(null);
   const [loading, setLoading] = React.useState(false);
+  // Mobile-Erkennung: Auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewaehrt)
+  const [isMobile, setIsMobile] = React.useState<boolean>(
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false
+  );
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+
   const toggleDoc = async (doc: { url: string; name: string }): Promise<void> => {
     if (expandedDoc === doc.url) {
       setExpandedDoc(null);
@@ -281,12 +297,11 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
         const ext = doc.name.split('.').pop()?.toLowerCase() || '';
         const mimeMap: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' };
         const correctBlob = (mimeMap[ext] && blob.type !== mimeMap[ext]) ? new Blob([blob], { type: mimeMap[ext] }) : blob;
-        if (ext === 'pdf') {
-          // PDF via react-pdf (Canvas) - sowohl Desktop als auch Mobile
-          // (eigener Scroll-Container, damit Browser-PDF-Plugin im iframe nicht das Scrollen blockiert)
+        if (ext === 'pdf' && isMobile) {
+          // Mobile: PDF via react-pdf (Canvas) - funktioniert wo iframe versagt
           setPdfBlob(correctBlob);
         } else {
-          // Bilder etc.: Blob-URL + iframe
+          // Desktop oder Bilder: Blob-URL + iframe (bewaehrt)
           setBlobUrl(URL.createObjectURL(correctBlob));
         }
       }
@@ -341,10 +356,13 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
                   /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile, eigenes Scrolling */
                   <PdfViewer blob={pdfBlob} height={600} />
                 ) : blobUrl ? (
-                  /* Bilder etc. via iframe (Browser-natives Scrollen) */
+                  /* Desktop-PDF + Bilder via iframe.
+                     #view=FitH zwingt das Browser-PDF-Plugin in vertikalen Scroll-Modus
+                     (sonst wird oft "Fit page" angenommen und der Scrollbalken fehlt). */
                   <iframe
-                    src={blobUrl}
-                    style={{ width: '100%', height: 600, border: 'none', display: 'block' }}
+                    src={doc.name.toLowerCase().endsWith('.pdf') ? `${blobUrl}#view=FitH&toolbar=1` : blobUrl}
+                    scrolling="auto"
+                    style={{ width: '100%', height: '75vh', minHeight: 600, border: 'none', display: 'block' }}
                     title={doc.name}
                   />
                 ) : (
