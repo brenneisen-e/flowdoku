@@ -152,7 +152,46 @@ export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, createEvent, updateEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers } = useRoles();
+  const { searchUsers, searchGroups, getGroupMembers } = useRoles();
+  // Audience-Suche (Personen + Verteiler/Security-Groups)
+  const [audienceSearch, setAudienceSearch] = React.useState('');
+  const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
+  const [isSearchingAudience, setIsSearchingAudience] = React.useState(false);
+  const audienceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Modal: Members einer Gruppe anzeigen
+  const [memberModalOpen, setMemberModalOpen] = React.useState(false);
+  const [memberModalGroupEmail, setMemberModalGroupEmail] = React.useState('');
+  const [memberModalGroupName, setMemberModalGroupName] = React.useState('');
+  const [memberModalLoading, setMemberModalLoading] = React.useState(false);
+  const [memberModalMembers, setMemberModalMembers] = React.useState<Array<{ email: string; displayName: string }>>([]);
+  const [memberModalError, setMemberModalError] = React.useState('');
+
+  const addAudienceItem = (value: string): void => {
+    const list = audience.split(',').map(s => s.trim()).filter(Boolean);
+    if (list.indexOf(value) >= 0) return;
+    list.push(value);
+    setAudience(list.join(', '));
+  };
+  const removeAudienceItem = (value: string): void => {
+    const list = audience.split(',').map(s => s.trim()).filter(Boolean).filter(x => x !== value);
+    setAudience(list.join(', '));
+  };
+  const openMembersModal = async (groupEmail: string): Promise<void> => {
+    setMemberModalOpen(true);
+    setMemberModalGroupEmail(groupEmail);
+    setMemberModalGroupName(groupEmail);
+    setMemberModalMembers([]);
+    setMemberModalError('');
+    setMemberModalLoading(true);
+    const res = await getGroupMembers(groupEmail);
+    setMemberModalLoading(false);
+    if (!res) {
+      setMemberModalError('Mitglieder konnten nicht geladen werden. Vermutlich fehlt die Berechtigung "Group.Read.All" im SharePoint App Catalog (Admin Consent erforderlich).');
+      return;
+    }
+    setMemberModalGroupName(res.groupName || groupEmail);
+    setMemberModalMembers(res.members);
+  };
   const { t } = useLanguage();
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
@@ -1147,22 +1186,123 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
                   Zielgruppen-Filter
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Hier kannst du <strong>zusätzliche Personen oder Gruppen</strong> einladen, die das Event sehen sollen — unabhängig vom Standort.<br />
-                  <em>Beispiel: Du trägst &bdquo;SAPALL&ldquo; ein → Alle Mitarbeiter der SAP-Abteilung sehen das Event, auch wenn ihr Standort nicht im Standort-Filter steht. Du kannst auch einzelne E-Mail-Adressen angeben (z.B. mmustermann@deloitte.de).</em>
+                  Suche nach <strong>Personen oder Gruppen</strong> (Verteilerlisten / Security Groups aus Entra) — diese sehen das Event zusätzlich, unabhängig vom Standort.
                 </p>
+                {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege */}
+                {audience.trim().length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {audience.split(',').map(s => s.trim()).filter(Boolean).map((entry, i) => {
+                      const isEmail = entry.indexOf('@') >= 0;
+                      return (
+                        <span key={i} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '4px 10px', borderRadius: 999,
+                          background: isEmail ? 'rgba(0,118,168,0.10)' : 'rgba(134,188,37,0.12)',
+                          color: isEmail ? 'var(--dex-blue, #0076a8)' : 'var(--dex-green-dark)',
+                          fontSize: '0.8rem', fontWeight: 600,
+                        }}>
+                          {entry}
+                          {isEmail && entry.indexOf('@') > 0 && /^[A-Z]/.test(entry) === false && (
+                            // Kleine Heuristik: wenn es sehr nach Verteiler aussieht (z.B. SAPAlliance643@), Mitglieder-Button anbieten
+                            null
+                          )}
+                          <button
+                            type="button"
+                            title="Mitglieder anzeigen"
+                            onClick={() => openMembersModal(entry)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: isEmail ? 'inline-flex' : 'none', color: 'inherit' }}
+                          >
+                            <Users size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeAudienceItem(entry)}
+                            title="Entfernen"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', fontWeight: 700 }}
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Such-Input */}
                 <input
                   className="form-input"
-                  value={audience}
-                  onChange={e => setAudience(e.target.value)}
-                  placeholder="z.B. DEALL, SAPALL, mmustermann@deloitte.de"
+                  value={audienceSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setAudienceSearch(val);
+                    if (audienceTimerRef.current) clearTimeout(audienceTimerRef.current);
+                    if (val.trim().length >= 2) {
+                      audienceTimerRef.current = setTimeout(async () => {
+                        setIsSearchingAudience(true);
+                        try {
+                          const [users, groups] = await Promise.all([
+                            searchUsers(val.trim()),
+                            searchGroups(val.trim()),
+                          ]);
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const u: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = users.map((x: any) => ({ kind: 'user' as const, email: x.email, displayName: x.displayName }));
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const g: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = groups.map((x: any) => ({ kind: 'group' as const, email: x.email, displayName: x.displayName }));
+                          setAudienceResults([...g, ...u]); // Gruppen zuerst anzeigen
+                        } catch { setAudienceResults([]); }
+                        setIsSearchingAudience(false);
+                      }, 300);
+                    } else {
+                      setAudienceResults([]);
+                    }
+                  }}
+                  placeholder="Personen oder Gruppen suchen (z.B. SAPAlliance, max@deloitte.de, DEKOELN)"
                 />
+                {isSearchingAudience && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+                )}
+                {audienceResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 280, overflowY: 'auto',
+                  }}>
+                    {audienceResults.map((r, i) => (
+                      <div
+                        key={`${r.kind}-${r.email}-${i}`}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                        }}
+                        onMouseDown={() => {
+                          addAudienceItem(r.email);
+                          setAudienceSearch('');
+                          setAudienceResults([]);
+                        }}
+                      >
+                        <span style={{
+                          fontSize: '0.7rem', fontWeight: 700,
+                          padding: '2px 8px', borderRadius: 4,
+                          background: r.kind === 'group' ? 'rgba(134,188,37,0.18)' : 'rgba(0,118,168,0.14)',
+                          color: r.kind === 'group' ? 'var(--dex-green-dark)' : 'var(--dex-blue, #0076a8)',
+                        }}>
+                          {r.kind === 'group' ? 'GRUPPE' : 'USER'}
+                        </span>
+                        <strong>{r.displayName}</strong>
+                        <span style={{ color: 'var(--dex-gray-400)', marginLeft: 'auto' }}>{r.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
-                  Kommasepariert. Gruppen: DEALL, DEKOELN, SAPALL. Einzelne E-Mails: name@deloitte.de
+                  Klicke einen Treffer an um ihn hinzuzufügen. Bei Gruppen kannst du im Chip per <Users size={11} /> die Mitglieder einsehen.
+                  Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
                 </p>
               </div>
 
@@ -1207,7 +1347,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="info-icon" title="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." style={{ marginLeft: 8 }}>i</span>
                 </label>
                 {imagePreview && (
-                  <div style={{ position: 'relative', marginBottom: 8, display: 'inline-block', maxWidth: '100%' }}>
+                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
                     <img
                       src={imagePreview}
                       alt="Vorschau"
@@ -2401,6 +2541,62 @@ export default function EventCreationPage(): React.ReactElement {
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mitglieder-Modal: zeigt die Members einer Entra-Gruppe an */}
+      {memberModalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setMemberModalOpen(false)}>
+          <div className="card" style={{ width: '90%', maxWidth: 560, maxHeight: '80vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0 }}>
+                <Users size={18} /> Mitglieder von <span style={{ color: 'var(--dex-green-dark)' }}>{memberModalGroupName}</span>
+              </h3>
+              <button
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
+                onClick={() => setMemberModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 12 }}>
+              {memberModalGroupEmail}
+            </div>
+            {memberModalLoading ? (
+              <p style={{ color: 'var(--dex-gray-500)', textAlign: 'center', padding: 20 }}>Mitglieder werden geladen...</p>
+            ) : memberModalError ? (
+              <div style={{ background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)', borderRadius: 6, padding: 12, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
+                {memberModalError}
+              </div>
+            ) : memberModalMembers.length === 0 ? (
+              <p style={{ color: 'var(--dex-gray-500)', textAlign: 'center', padding: 20 }}>Keine Mitglieder gefunden.</p>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                  <strong>{memberModalMembers.length}</strong> {memberModalMembers.length === 1 ? 'Mitglied' : 'Mitglieder'}:
+                </p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                      <th style={{ textAlign: 'left', padding: 6 }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>E-Mail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memberModalMembers.map(m => (
+                      <tr key={m.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                        <td style={{ padding: 6 }}>{m.displayName}</td>
+                        <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{m.email}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         </div>
       )}
