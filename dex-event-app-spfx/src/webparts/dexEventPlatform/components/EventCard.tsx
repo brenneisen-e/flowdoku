@@ -9,7 +9,6 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
-import { Info } from './Icons';
 import { DeloitteEvent } from '../types';
 
 // Deutsches Datumsformat
@@ -94,16 +93,6 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           ? `url(${event.imageUrl}) center/cover no-repeat`
           : getEventGradient(event.type, index),
       }}>
-        <button
-          className="event-card__info-btn"
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation();
-            navigate('registration', event.id);
-          }}
-          aria-label="Event info"
-        >
-          <Info size={18} />
-        </button>
         <div className="event-card__overlay">
           <h3 className="event-card__title">{event.title}</h3>
           <div className="event-card__meta">
