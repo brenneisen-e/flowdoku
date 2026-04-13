@@ -1359,6 +1359,180 @@ export class EventService {
   }
 
   /**
+   * Seed: SR&T P_MD_D Meeting (April 2026) anlegen falls nicht vorhanden.
+   */
+  public async seedSRTMeeting(): Promise<void> {
+    try {
+      const check = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'SR%26T P_MD_D Meeting'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (check.ok) {
+        const data = await check.json();
+        const items = data.value || data.d?.results || [];
+        if (items.length > 0) return; // Existiert bereits
+      }
+
+      await this.createEvent({
+        title: 'SR&T P_MD_D Meeting',
+        type: 'Other',
+        status: 'Active',
+        description: 'SR&T P_MD_D Meeting - in person - Tagesveranstaltung',
+        location: 'The Stage - Düsseldorf Office',
+        locationFilter: '',
+        audience: 'All',
+        filterMode: 'OR',
+        startDate: '2026-04-21T09:00:00.000Z',
+        endDate: '2026-04-21T17:30:00.000Z',
+        registrationDeadline: '2026-03-30T16:00:00.000Z',
+        lastDeregisterDate: '2026-03-30T16:00:00.000Z',
+        maxParticipants: 450,
+        waitlistEnabled: false,
+        eventImageUrl: '',
+        organizer: 'Peters, Kerstin; Genctuerk, Ebru; Korth, Jasmin; Eppel, Christina',
+        organizerEmail: 'kerpeters@deloitte.de',
+        outlookEventId: '',
+        outlookBody: '',
+        emailLanguage: 'EN',
+        emailTemplateOverrides: '',
+        disableEmails: false,
+        disableOutlook: false,
+        customFields: [
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+          { id: 'foodPreferences', label: 'FoodPreferences', type: 'select', required: false, visible: true, options: ['No preference', 'Vegetarian', 'Vegan'] },
+          { id: 'hotelRequired', label: 'HotelRequired', type: 'select', required: false, visible: true, options: ['True', 'False'] },
+          { id: 'roomType', label: 'RoomType', type: 'text', required: false, visible: true },
+          { id: 'preferredRoommate', label: 'PreferredRoommate', type: 'text', required: false, visible: true },
+        ],
+        agenda: '[]',
+        transfers: '[]',
+        documents: '[]',
+      });
+    } catch { /* Seed fehlgeschlagen - nicht kritisch */ }
+  }
+
+  /**
+   * Seed-Migration: Teilnehmer fuer SR&T P_MD_D Meeting eintragen.
+   * Laeuft einmalig beim ersten Start. KEINE E-Mails, KEINE Outlook-Einladungen.
+   */
+  public async seedSRTParticipants(): Promise<void> {
+    try {
+      // 1. Event finden
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'SR%26T P_MD_D Meeting'&$top=1&$select=Id,SubsiteUrl,EventNumber`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return;
+
+      const event = items[0];
+      const subsiteUrl = event.SubsiteUrl;
+      const eventNumber = event.EventNumber;
+      if (!subsiteUrl) return;
+
+      // 2. Pruefen ob schon Teilnehmer existieren
+      const checkResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (checkResp.ok) {
+        const checkData = await checkResp.json();
+        const existing = checkData.value || checkData.d?.results || [];
+        if (existing.length > 0) return; // Schon migriert
+      }
+
+      // 3. Teilnehmer importieren
+      const { SRT_MEETING_PARTICIPANTS } = await import('../data/seedSRTParticipants');
+
+      // FieldMap fuer Custom Fields ermitteln
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      const fieldMap: Record<string, string> = {};
+      if (fieldsResp.ok) {
+        const fieldsData = await fieldsResp.json();
+        const fields = fieldsData.value || fieldsData.d?.results || [];
+        for (const f of fields) {
+          fieldMap[f.Title] = f.InternalName;
+        }
+      }
+
+      // ListItemEntityTypeFullName ermitteln
+      let listItemType = 'SP.Data.TeilnehmerListItem';
+      try {
+        const typeResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      const nowIso = new Date().toISOString();
+
+      for (const p of SRT_MEETING_PARTICIPANTS) {
+        try {
+          // CustomData JSON
+          const customData: Record<string, string> = {};
+          if (p.al) customData['allergies'] = p.al;
+          if (p.fp) customData['foodPreferences'] = p.fp;
+          if (p.hr) customData['hotelRequired'] = p.hr;
+          if (p.rt) customData['roomType'] = p.rt;
+          if (p.pr) customData['preferredRoommate'] = p.pr;
+
+          const payload: Record<string, unknown> = {
+            '__metadata': { 'type': listItemType },
+            'Title': p.em,
+            'ParticipantName': `${p.fn} ${p.ln}`,
+            'ParticipantEmail': p.em,
+            'Vorname': p.fn,
+            'Nachname': p.ln,
+            'Anrede': p.sal || null,
+            'Status': p.st,
+            'TeilnehmerID': p.nr || null,
+            'Department': p.dp,
+            'JobTitle': p.jt,
+            'Location': p.of,
+            'RegistrationDate': nowIso,
+            'CancellationDate': p.st === 'Abgemeldet' ? nowIso : null,
+            'CustomData': JSON.stringify(customData),
+          };
+
+          // Custom Field SP-InternalNames zuordnen
+          if (p.al && fieldMap['Allergies']) payload[fieldMap['Allergies']] = p.al;
+          if (p.fp && fieldMap['FoodPreferences']) payload[fieldMap['FoodPreferences']] = p.fp;
+          if (p.hr && fieldMap['HotelRequired']) payload[fieldMap['HotelRequired']] = p.hr;
+          if (p.rt && fieldMap['RoomType']) payload[fieldMap['RoomType']] = p.rt;
+          if (p.pr && fieldMap['PreferredRoommate']) payload[fieldMap['PreferredRoommate']] = p.pr;
+
+          await this.context.spHttpClient.post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=verbose',
+                'Content-Type': 'application/json;odata=verbose',
+                'odata-version': '',
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+
+          // DEX_Participants aktualisieren (Dual-Write) - keine Mails
+          if (eventNumber && p.st === 'Angemeldet') {
+            this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
+          }
+        } catch { /* Einzelnen Teilnehmer ueberspringen */ }
+      }
+    } catch { /* Seed fehlgeschlagen - nicht kritisch */ }
+  }
+
+  /**
    * Alle Events laden
    */
   public async getEvents(): Promise<SPEvent[]> {
