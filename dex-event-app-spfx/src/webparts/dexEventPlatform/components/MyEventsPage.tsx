@@ -579,7 +579,19 @@ export default function MyEventsPage(): React.ReactElement {
 
                     {/* Kompakte Info-Zeilen */}
                     <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {event.location || '-'}</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                        <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)', marginTop: 2 }} />
+                        <div>
+                          <div>{event.location || '-'}</div>
+                          {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>
+                              {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
+                              {(event.locationAddress.zip || event.locationAddress.city) ? ', ' : ''}
+                              {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
                   </div>

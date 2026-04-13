@@ -37,6 +37,7 @@ export interface CreateEventInput {
   status: string;
   description: string;
   location: string;
+  locationAddress?: string; // JSON: { street, houseNo, zip, city }
   locationFilter: string;
   audience: string;
   filterMode: string;
@@ -170,6 +171,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
       organizers: (e.Organizer || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       location: e.Location || '',
+      locationAddress: (() => {
+        try {
+          if (!e.LocationAddress) return undefined;
+          const o = JSON.parse(e.LocationAddress);
+          return { street: o.street || '', houseNo: o.houseNo || '', zip: o.zip || '', city: o.city || '' };
+        } catch { return undefined; }
+      })(),
       locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
       audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
       filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',

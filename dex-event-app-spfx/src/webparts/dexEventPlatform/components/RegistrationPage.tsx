@@ -334,17 +334,38 @@ export default function RegistrationPage(): React.ReactElement {
                 {formatDate(event.startDate)} {t('reg.until')}<br />
                 {formatDate(event.endDate)}
               </p>
-              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                Organizer:
-                <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
-                  {event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map((o, i) => {
-                    const trimmed = o.trim();
-                    const parts = trimmed.split(',').map(s => s.trim());
-                    const name = parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
-                    return <li key={i}>{name}</li>;
-                  })}
-                </ul>
-              </div>
+              {/* Strukturierte Adresse anzeigen falls vorhanden */}
+              {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', margin: '2px 0 0' }}>
+                  {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
+                  {(event.locationAddress.zip || event.locationAddress.city) && <br />}
+                  {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
+                </p>
+              )}
+              {(() => {
+                // Organizer: bei einem einzelnen einfach inline, sonst Liste mit Bullets
+                const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+                  const trimmed = o.trim();
+                  const parts = trimmed.split(',').map(s => s.trim());
+                  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                }).filter(Boolean);
+                if (orgs.length === 0) return null;
+                if (orgs.length === 1) {
+                  return (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                      Organizer: <strong style={{ fontWeight: 600 }}>{orgs[0]}</strong>
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                    Organizer:
+                    <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
+                      {orgs.map((name, i) => <li key={i}>{name}</li>)}
+                    </ul>
+                  </div>
+                );
+              })()}
             </div>
           </div>
           {showDescription && event.description && (
