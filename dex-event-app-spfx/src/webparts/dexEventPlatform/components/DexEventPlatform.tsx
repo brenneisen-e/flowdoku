@@ -12,9 +12,9 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
 import { LanguageProvider } from '../context/LanguageContext';
-import { EventProvider } from '../context/EventContext';
+import { EventProvider, useEvents } from '../context/EventContext';
 import { UserProvider } from '../context/UserContext';
-import { RoleProvider } from '../context/RoleContext';
+import { RoleProvider, useRoles } from '../context/RoleContext';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -37,7 +37,20 @@ export interface IDexEventPlatformProps {
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
   const { currentPage } = useNavigation();
+  const { isAdmin } = useRoles();
+  const { markExpiredEventsAsCompleted, isEventsLoading } = useEvents();
   const layoutRef = React.useRef<HTMLDivElement>(null);
+
+  // Admin-Cleanup einmal pro App-Session: Abgelaufene Events (EndDate < jetzt)
+  // mit Status='Active' werden automatisch auf 'Completed' gesetzt.
+  const didExpireCheck = React.useRef(false);
+  React.useEffect(() => {
+    if (didExpireCheck.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return; // warten bis Events geladen sind
+    didExpireCheck.current = true;
+    markExpiredEventsAsCompleted().catch(err => console.warn('[DEX] expire check failed:', err));
+  }, [isAdmin, isEventsLoading]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {

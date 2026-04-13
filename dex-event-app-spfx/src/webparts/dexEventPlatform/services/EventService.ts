@@ -1517,6 +1517,38 @@ export class EventService {
 
 
   /**
+   * Admin-Cleanup beim App-Start: alle Events mit EventStatus='Active' und EndDate < jetzt
+   * werden automatisch auf 'Completed' gesetzt. Liefert die Anzahl der aktualisierten Events.
+   */
+  public async markExpiredEventsAsCompleted(): Promise<number> {
+    try {
+      // SharePoint OData Filter: Active + EndDate < jetzt
+      const nowIso = new Date().toISOString();
+      const filter = `EventStatus eq 'Active' and EndDate lt datetime'${nowIso}'`;
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=${encodeURIComponent(filter)}&$select=Id,Title,EndDate&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return 0;
+      const data = await resp.json();
+      const items: Array<{ Id: number; Title: string }> = data.value || data.d?.results || [];
+      if (items.length === 0) return 0;
+
+      let updated = 0;
+      for (const it of items) {
+        try {
+          const ok = await this.updateEvent(it.Id, { 'EventStatus': 'Completed' });
+          if (ok) updated += 1;
+        } catch { /* einzelnes Update ueberspringen */ }
+      }
+      return updated;
+    } catch (err) {
+      console.warn('[DEX] markExpiredEventsAsCompleted failed:', err);
+      return 0;
+    }
+  }
+
+  /**
    * Event aktualisieren
    */
   public async updateEvent(eventId: number, updates: Record<string, unknown>): Promise<boolean> {

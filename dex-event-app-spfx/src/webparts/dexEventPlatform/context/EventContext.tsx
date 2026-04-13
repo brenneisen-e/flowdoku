@@ -28,6 +28,7 @@ interface EventContextType {
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
+  markExpiredEventsAsCompleted: () => Promise<number>;
 }
 
 export interface CreateEventInput {
@@ -531,13 +532,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await loadEvents();
   }
 
+  /**
+   * Admin-Cleanup: Events mit Status='Active' + EndDate < jetzt auf 'Completed' setzen.
+   * Anschliessend wird die Event-Liste neu geladen, damit die UI die neuen Status sieht.
+   */
+  async function markExpiredEventsAsCompleted(): Promise<number> {
+    const n = await eventService.markExpiredEventsAsCompleted();
+    if (n > 0) await loadEvents();
+    return n;
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts,
+        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
       },
     },
     props.children
