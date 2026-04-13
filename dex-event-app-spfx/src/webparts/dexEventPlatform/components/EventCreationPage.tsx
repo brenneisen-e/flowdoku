@@ -1207,7 +1207,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <span className="info-icon" title="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." style={{ marginLeft: 8 }}>i</span>
                 </label>
                 {imagePreview && (
-                  <div style={{ position: 'relative', marginBottom: 8, display: 'inline-block', maxWidth: '100%' }}>
+                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
                     <img
                       src={imagePreview}
                       alt="Vorschau"
