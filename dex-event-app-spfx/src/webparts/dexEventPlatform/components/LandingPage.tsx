@@ -3,37 +3,16 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useRoles } from '../context/RoleContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
-import LandingEffects, { EFFECT_LABELS, EFFECT_COUNT } from './LandingEffects';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
-  const { isAdmin } = useRoles();
   const [showInfo, setShowInfo] = React.useState(true);
 
-  // Admin-only Hintergrund-Effekt fuer die Landing-Page.
-  // Nicht-Admins sehen immer 0 (keinen Effekt). Admin-Auswahl persistiert in localStorage.
-  const [effectId, setEffectId] = React.useState<number>(() => {
-    try {
-      const v = localStorage.getItem('dex-landing-effect');
-      const n = v ? parseInt(v, 10) : 0;
-      return isNaN(n) ? 0 : Math.max(0, Math.min(EFFECT_COUNT - 1, n));
-    } catch { return 0; }
-  });
-  const cycleEffect = (): void => {
-    const next = (effectId + 1) % EFFECT_COUNT;
-    setEffectId(next);
-    try { localStorage.setItem('dex-landing-effect', String(next)); } catch { /* */ }
-  };
-  // Nicht-Admins nie einen Effekt rendern
-  const activeEffectId = isAdmin ? effectId : 0;
-
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
-  // @keyframes innerhalb von :global manchmal nicht korrekt emittieren.
-  // Enthaelt auch die Blob-Drift-Animationen fuer den Landing-Hintergrund.
+  // @keyframes innerhalb von :global manchmal nicht korrekt emittieren
   React.useEffect(() => {
     const id = 'dex-orb-keyframes';
     if (!document.getElementById(id)) {
@@ -41,39 +20,15 @@ export default function LandingPage(): React.ReactElement {
       style.id = id;
       style.textContent = `
         @keyframes dexOrbSpin { to { transform: rotate(360deg); } }
-        @keyframes dexBlobA { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(80px, 60px) scale(1.15); } 100% { transform: translate(0, 0) scale(1); } }
-        @keyframes dexBlobB { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-90px, 70px) scale(1.1); } 100% { transform: translate(0, 0) scale(1); } }
-        @keyframes dexBlobC { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(60px, -70px) scale(0.95); } 100% { transform: translate(0, 0) scale(1); } }
-        @keyframes dexBlobD { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-70px, -60px) scale(1.2); } 100% { transform: translate(0, 0) scale(1); } }
-        @keyframes dexAuroraSlow { 0% { transform: translateX(-4%); } 50% { transform: translateX(4%); } 100% { transform: translateX(-4%); } }
       `;
       document.head.appendChild(style);
     }
   }, []);
 
   return (
-    <div className="landing" style={{ position: 'relative', overflow: 'hidden' }}>
-      <LandingEffects effectId={activeEffectId} />
-      {/* Admin-only Effekt-Durchschalter (oben rechts, ueber der Versionsanzeige) */}
-      {isAdmin && (
-        <button
-          onClick={cycleEffect}
-          title="Landing background effect (Admin only)"
-          style={{
-            position: 'absolute', top: 32, right: 16, zIndex: 10,
-            background: 'rgba(255,255,255,0.85)',
-            border: '1px solid var(--dex-gray-200)',
-            borderRadius: 999, padding: '4px 12px',
-            fontSize: '0.7rem', fontWeight: 600,
-            cursor: 'pointer', color: 'var(--dex-gray-600)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          }}
-        >
-          Effect {effectId}/{EFFECT_COUNT - 1} · {EFFECT_LABELS[effectId]}
-        </button>
-      )}
+    <div className="landing" style={{ position: 'relative' }}>
       <span style={{
-        position: 'absolute', top: 12, right: 16, zIndex: 5,
+        position: 'absolute', top: 12, right: 16,
         fontSize: '0.7rem', color: 'var(--dex-gray-300)',
       }}>
         v{APP_VERSION}
