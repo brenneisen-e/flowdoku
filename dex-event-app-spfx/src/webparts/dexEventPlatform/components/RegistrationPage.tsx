@@ -380,6 +380,9 @@ export default function RegistrationPage(): React.ReactElement {
               padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
               background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
               borderTop: '1px solid var(--dex-gray-200)',
+              // pre-wrap: erhaelt Zeilenumbrueche aus dem Description-Textarea
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
             }}>
               {event.description}
             </div>

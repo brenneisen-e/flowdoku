@@ -777,6 +777,90 @@ export class SharePointService {
   }
 
   /**
+   * Verteilerlisten + Security-Groups aus Entra suchen via ClientPeoplePicker.
+   * PrincipalType 6 = 2 (Distribution List) + 4 (Security Group).
+   * Liefert Email (= mail des Verteilers) und DisplayName.
+   */
+  public async searchGroups(query: string): Promise<Array<{ email: string; displayName: string }>> {
+    if (!query || query.length < 2) return [];
+    try {
+      const body = {
+        'queryParams': {
+          '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
+          'AllowEmailAddresses': true,
+          'AllowMultipleEntities': false,
+          'MaximumEntitySuggestions': 12,
+          'QueryString': query,
+          'PrincipalType': 6, // 2|4 = Distribution List + Security Group
+          'PrincipalSource': 15,
+          'SharePointGroupID': 0,
+        },
+      };
+      const response = await this._post(
+        `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
+        body
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
+      const results = JSON.parse(resultsStr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return results
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((r: any) => r.EntityData?.Email || r.Key)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => ({
+          email: r.EntityData?.Email || r.Key || '',
+          displayName: r.DisplayText || r.EntityData?.Title || r.EntityData?.AccountName || '',
+        }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((g: any) => g.email);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Mitglieder einer Entra-Gruppe via Microsoft Graph laden.
+   * Benoetigt Group.Read.All Berechtigung im SharePoint App Catalog (admin-consent).
+   * Nutzt MSGraphClientV3 aus dem WebPartContext.
+   */
+  public async getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null> {
+    if (!groupEmail) return null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = this.context as any;
+      if (!ctx.msGraphClientFactory) return null;
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      // 1. Gruppe anhand der Mail-Adresse finden
+      const escaped = groupEmail.replace(/'/g, "''");
+      const groupResp = await client.api(`/groups`)
+        .filter(`mail eq '${escaped}' or proxyAddresses/any(p:p eq 'smtp:${escaped}')`)
+        .select('id,displayName')
+        .top(1)
+        .get();
+      const groups = groupResp?.value || [];
+      if (groups.length === 0) return { groupName: groupEmail, members: [] };
+      const group = groups[0];
+      // 2. Transitive Members (inkl. verschachtelte Gruppen) holen
+      const membersResp = await client.api(`/groups/${group.id}/transitiveMembers/microsoft.graph.user`)
+        .select('id,displayName,mail,userPrincipalName')
+        .top(200)
+        .get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const members = (membersResp?.value || []).map((u: any) => ({
+        email: u.mail || u.userPrincipalName || '',
+        displayName: u.displayName || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })).filter((m: any) => m.email);
+      return { groupName: group.displayName || groupEmail, members };
+    } catch (err) {
+      console.warn('[DEX] getGroupMembers failed:', err);
+      return null;
+    }
+  }
+
+  /**
    * Hilfsmethode für POST-Requests
    */
   private async _post(url: string, body: object): Promise<SPHttpClientResponse> {

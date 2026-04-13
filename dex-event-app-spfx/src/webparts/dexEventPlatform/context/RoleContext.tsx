@@ -29,6 +29,8 @@ interface RoleContextType {
   refreshRoles: () => Promise<void>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string } | null>;
   searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string }>>;
+  searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
+  getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null>;
 }
 
 // Migration: alte SP-Werte auf neue mappen
@@ -178,6 +180,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.searchUsers(query);
   }
 
+  async function searchGroups(query: string): Promise<Array<{ email: string; displayName: string }>> {
+    return spService.searchGroups(query);
+  }
+
+  async function getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null> {
+    return spService.getGroupMembers(groupEmail);
+  }
+
   const isAdmin = currentUserRole === 'Admin';
   const isOrganizer = currentUserRole === 'Organizer' || currentUserRole === 'Admin';
   const canCreateEvents = isOrganizer;
@@ -189,7 +199,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       value: {
         roles, currentUserRole, isRolesLoading,
         isAdmin, isOrganizer, canCreateEvents, siteUrl,
-        addRole, updateRole, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers,
+        addRole, updateRole, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers,
       },
     },
     props.children
