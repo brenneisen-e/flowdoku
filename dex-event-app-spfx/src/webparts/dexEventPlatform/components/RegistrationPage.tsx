@@ -25,7 +25,7 @@ function formatDate(iso: string): string {
 }
 
 export default function RegistrationPage(): React.ReactElement {
-  const { selectedEventId, navigate } = useNavigation();
+  const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, searchUsers, isOrganizer, isAdmin } = useRoles();
@@ -70,6 +70,17 @@ export default function RegistrationPage(): React.ReactElement {
   const [surname, setSurname] = React.useState(currentUser.surname);
   const [email, setEmail] = React.useState(currentUser.email);
   const [registerForOther, setRegisterForOther] = React.useState(false);
+
+  // Wenn die Seite mit Intent 'register-other' geoeffnet wird (z.B. via "Register another person"
+  // Button auf einer Karte, fuer die der Organizer/Admin schon selbst registriert ist),
+  // direkt in den "Fuer andere registrieren"-Modus springen und Felder leeren.
+  React.useEffect(() => {
+    if (navIntent === 'register-other' && (canCreateEvents)) {
+      setRegisterForOther(true);
+      setFirstName(''); setSurname(''); setEmail('');
+      clearIntent();
+    }
+  }, [navIntent, canCreateEvents]);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
   const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
   const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);

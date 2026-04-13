@@ -8,6 +8,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useRoles } from '../context/RoleContext';
 import { Info } from './Icons';
 import { DeloitteEvent } from '../types';
 
@@ -45,6 +46,7 @@ interface Props {
 export default function EventCard({ event, index, isRegistered, isWaitlisted }: Props): React.ReactElement {
   const { navigate } = useNavigation();
   const { t } = useLanguage();
+  const { canCreateEvents } = useRoles();
   const isUnlimited = !event.maxParticipants || event.maxParticipants === 0;
   const freePlaces = isUnlimited ? Infinity : event.maxParticipants - event.currentParticipants;
   const isFull = !isUnlimited && freePlaces <= 0;
@@ -64,13 +66,27 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginBottom: 16 }}>
             {event.title}
           </div>
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: '0.85rem', padding: '8px 20px' }}
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); navigate('my-events'); }}
-          >
-            {t('myevents.title')}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: '0.85rem', padding: '8px 20px' }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); navigate('my-events'); }}
+            >
+              {t('myevents.title')}
+            </button>
+            {canCreateEvents && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '6px 16px' }}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  navigate('registration', event.id, 'register-other');
+                }}
+              >
+                {t('reg.registerother')}
+              </button>
+            )}
+          </div>
         </div>
       )}
       <div className="event-card__image" style={{
