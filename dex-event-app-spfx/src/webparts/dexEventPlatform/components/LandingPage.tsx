@@ -5,11 +5,12 @@ import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
+import LandingInfoModal from './LandingInfoModal';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
-  const [showInfo, setShowInfo] = React.useState(true);
+  const [showInfo, setShowInfo] = React.useState(false);
 
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
   // @keyframes innerhalb von :global manchmal nicht korrekt emittieren
@@ -135,17 +136,8 @@ export default function LandingPage(): React.ReactElement {
             <Mail size={18} />
           </a>
         </div>
-        {showInfo && (
-          <p style={{
-            color: 'var(--dex-gray-500)', fontSize: '0.78rem', marginTop: 12,
-            textAlign: 'center', lineHeight: 1.5, maxWidth: 600,
-            background: 'var(--dex-white)', padding: '12px 20px',
-            borderRadius: 'var(--dex-radius-lg)', border: '1px solid var(--dex-gray-200)',
-          }}>
-            {t('landing.about')}
-          </p>
-        )}
       </div>
+      <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
     </div>
   );
 }
