@@ -249,8 +249,12 @@ export default function RegistrationPage(): React.ReactElement {
           <h2>{isFull ? t('reg.waitlisttitle') : t('reg.success')}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             {isFull
-              ? t('reg.waitlistmsg').replace('{title}', event.title)
-              : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)}
+              ? (registerForOther
+                  ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
+                  : t('reg.waitlistmsg').replace('{title}', event.title))
+              : (registerForOther
+                  ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
+                  : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email))}
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
