@@ -334,13 +334,20 @@ export default function RegistrationPage(): React.ReactElement {
                 {formatDate(event.startDate)} {t('reg.until')}<br />
                 {formatDate(event.endDate)}
               </p>
-              {/* Strukturierte Adresse anzeigen falls vorhanden */}
-              {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', margin: '2px 0 0' }}>
-                  {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
-                  {(event.locationAddress.zip || event.locationAddress.city) && <br />}
-                  {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
-                </p>
+              {/* Veranstaltungsort: Name fett + strukturierte Adresse darunter */}
+              {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', margin: '2px 0 0' }}>
+                  {event.location && (
+                    <div style={{ fontWeight: 700, color: 'var(--dex-gray-700)' }}>{event.location}</div>
+                  )}
+                  {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
+                    <div>
+                      {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
+                      {(event.locationAddress.zip || event.locationAddress.city) && <br />}
+                      {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
+                    </div>
+                  )}
+                </div>
               )}
               {(() => {
                 // Organizer: bei einem einzelnen einfach inline, sonst Liste mit Bullets
