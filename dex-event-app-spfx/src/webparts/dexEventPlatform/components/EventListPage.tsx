@@ -97,8 +97,6 @@ export default function EventListPage(): React.ReactElement {
   const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
-  // Admin kann per Toggle auch vergangene Events (EndDate < heute) einblenden
-  const [showPast, setShowPast] = React.useState(false);
   const [showDebug, setShowDebug] = React.useState(false);
   const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
 
@@ -110,22 +108,11 @@ export default function EventListPage(): React.ReactElement {
     ? events.filter((e) => e.status === 'Active')
     : events;
 
-  // Vergangene Events rausfiltern (alle User + Organizer immer; Admin optional via Toggle).
-  // Ein Event gilt als "vergangen" wenn EndDate < jetzt. Events ohne EndDate werden angezeigt.
-  const now = Date.now();
-  const pastFiltered = (isAdmin && showPast)
-    ? statusFiltered
-    : statusFiltered.filter((e: DeloitteEvent) => {
-        if (!e.endDate) return true;
-        const t = new Date(e.endDate).getTime();
-        return isNaN(t) ? true : t >= now;
-      });
-
   // Admin sieht alle Events. Organizer + User sehen nur Events, die zur Filterlogik
   // (Standort + Zielgruppe) passen.
   const filteredEvents = (isAdmin
-    ? pastFiltered
-    : pastFiltered.filter((e: DeloitteEvent) =>
+    ? statusFiltered
+    : statusFiltered.filter((e: DeloitteEvent) =>
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
       )
   ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
@@ -196,31 +183,16 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
       </div>
       <div className="flex-between mb-16">
         <div />
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-          {isAdmin && (
-            <div className="toggle-wrapper">
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={showPast}
-                  onChange={(e) => setShowPast(e.target.checked)}
-                />
-                <span className="toggle-slider" />
-              </label>
-              <span>{t('eventlist.showpast')}</span>
-            </div>
-          )}
-          <div className="toggle-wrapper">
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={onlyActive}
-                onChange={(e) => setOnlyActive(e.target.checked)}
-              />
-              <span className="toggle-slider" />
-            </label>
-            <span>{t('eventlist.onlyactive')}</span>
-          </div>
+        <div className="toggle-wrapper">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={onlyActive}
+              onChange={(e) => setOnlyActive(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+          <span>{t('eventlist.onlyactive')}</span>
         </div>
       </div>
       <div className="event-grid">
