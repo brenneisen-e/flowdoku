@@ -56,10 +56,16 @@ export default function PdfViewer(props: PdfViewerProps): React.ReactElement {
       ref={containerRef}
       style={{
         width: '100%',
-        maxHeight: height,
-        overflowY: 'auto',
+        height,
+        overflowY: 'scroll',
+        overflowX: 'hidden',
+        // touch-action: pan-y erlaubt vertikales Scrollen per Touch (sonst blockiert Canvas)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        touchAction: 'pan-y' as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         WebkitOverflowScrolling: 'touch' as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        overscrollBehavior: 'contain' as any,
         background: '#525659',
         padding: 12,
       }}
@@ -85,7 +91,16 @@ export default function PdfViewer(props: PdfViewerProps): React.ReactElement {
           }
         >
           {Array.from({ length: numPages }, (_, i) => (
-            <div key={i} style={{ marginBottom: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
+            <div
+              key={i}
+              style={{
+                marginBottom: 12,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                // touch-action auch auf Page-Wrapper, damit Canvas das Scrollen nicht blockiert
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                touchAction: 'pan-y' as any,
+              }}
+            >
               <Page
                 pageNumber={i + 1}
                 width={width > 24 ? width - 24 : undefined}
