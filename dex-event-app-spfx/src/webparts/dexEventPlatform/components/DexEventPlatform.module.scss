@@ -285,7 +285,7 @@
     .event-card__register-btn { align-self: flex-end; padding: 6px 20px; font-size: 0.85rem; margin-top: 4px; }
 
     /* ========== Registration Page ========== */
-    .registration-layout { display: grid; grid-template-columns: 260px 1fr 1fr; gap: 24px; align-items: start; }
+    .registration-layout { display: grid; grid-template-columns: minmax(360px, 420px) 1fr 1fr; gap: 24px; align-items: start; }
     .registration-event, .registration-form, .registration-specific {
       background: var(--dex-white); border: 1px solid var(--dex-gray-200);
       border-radius: var(--dex-radius-lg); overflow: hidden;
