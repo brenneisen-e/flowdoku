@@ -13,7 +13,6 @@ import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import EventCard from './EventCard';
-import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 
 /**
  * Prüft ob ein User-Standort zu einem LocationFilter passt.
@@ -127,11 +126,16 @@ export default function EventListPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div style={{ padding: 48 }}>
-          <Spinner
-            size={SpinnerSize.large}
-            label={t('myevents.loading')}
-            styles={{ circle: { borderColor: 'var(--dex-green) var(--dex-gray-200) var(--dex-gray-200)', borderWidth: 3 }, label: { color: 'var(--dex-gray-500)', marginTop: 12 } }}
-          />
+          {/* SVG-Spinner mit SMIL animateTransform - laeuft unabhaengig von
+              CSS-Keyframes / SPFx-Style-Hashing / React inline-style-Ordering.
+              Voller hellgruener Ring + dunkelgruener Arc der rotiert. */}
+          <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
+            <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+            <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+              <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+            </path>
+          </svg>
+          <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.loading')}</p>
         </div>
       </div>
     );
