@@ -876,3 +876,155 @@ CHECK_CALENDARLINK (CalendarLink vorhanden? + Einladen/Ausladen/UpdateEvent):
 | DEX_Emails | 57aa0840-df98-41ae-a39b-323c0b80ae3b |
 | DEX_Outlook | d794655b-c950-416c-a478-5dbae285e46d |
 | DEX_EmailTemplates | 2c428d35-e6fb-42f9-8a20-580acd6d05f4 |
+
+---
+
+# NEUER FLOW: DEX_OutlookDeclineHandler
+
+**Zweck:** Wenn ein User einen Outlook-Kalender-Termin im `no_reply.events@deloitte.de`-Postfach **ablehnt**, aber in der DEX-Teilnehmerliste noch als angemeldet steht, bekommt er eine Erinnerungsmail mit einem Action-Button "Anmeldung stornieren". Der Link öffnet die DEX App im Abmelde-Modus (Deep-Link `?action=cancel&event=<eventNumber>`).
+
+## UI-Anleitung zum Anlegen (Schritt für Schritt)
+
+### 1. Neuer Cloud-Flow anlegen
+
+1. https://make.powerautomate.com öffnen
+2. Links **Create** → **Automated cloud flow**
+3. Name: `DEX_OutlookDeclineHandler`
+4. Trigger suchen: **When an event is modified (V3)** (Office 365 Outlook)
+5. **Create** klicken
+
+### 2. Trigger konfigurieren
+
+- **Calendar Id:** `Calendar` (Standardkalender des Shared Mailbox)
+- Unter **Advanced parameters**:
+  - **Original Mailbox Address:** `no_reply.events@deloitte.de`
+
+### 3. Condition: Nur weiter wenn mindestens ein Attendee declined hat
+
+- **+ New step** → **Condition**
+- Expression (fx-Tab) links:
+  ```
+  length(filter(triggerOutputs()?['body/attendees'], item => item?['status']?['response'] == 'declined'))
+  ```
+- Operator: `is greater than` → Wert: `0`
+
+### 4. If Yes: Liste der declined Attendees initialisieren
+
+- **Initialize variable** → Name `declinedAttendees`, Type `Array`, Value (Expression):
+  ```
+  filter(triggerOutputs()?['body/attendees'], item => item?['status']?['response'] == 'declined')
+  ```
+
+### 5. iCalUId aus Trigger holen + Event in DEX_Events finden
+
+- **Get items** (SharePoint) →
+  - **Site Address:** `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+  - **List Name:** `DEX_Events`
+  - **Filter Query (Expression):**
+    ```
+    concat('CalendarLink eq ''', triggerOutputs()?['body/iCalUId'], '''')
+    ```
+  - **Top Count:** `1`
+- Rename (⋮) → `Get_DEX_Event`
+
+### 6. Condition: Event gefunden?
+
+- **Condition:** `length(outputs('Get_DEX_Event')?['body/value'])` is greater than `0`
+
+### 7. If Yes: Apply to each declined Attendee
+
+- **Apply to each** über `variables('declinedAttendees')`
+
+#### 7a. Teilnehmer-Email extrahieren
+
+- **Initialize variable** (innerhalb der Schleife, oder direkt als Expression nutzen):
+  - Wert Expression: `items('Apply_to_each')?['emailAddress']?['address']`
+
+#### 7b. Subsite URL holen
+
+- Expression: `first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']`
+
+#### 7c. Teilnehmer-Liste abfragen
+
+- **Send an HTTP request to SharePoint**:
+  - **Site Address:** `@{first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']}`
+  - **Method:** `GET`
+  - **Uri (Expression):**
+    ```
+    @concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=ParticipantEmail eq ''', items('Apply_to_each')?['emailAddress']?['address'], ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status')
+    ```
+  - **Headers:** `Accept: application/json;odata=nometadata`
+
+#### 7d. Condition: Teilnehmer noch angemeldet?
+
+- **Condition:** `length(body('Send_an_HTTP_request_to_SharePoint')?['value'])` is greater than `0`
+
+#### 7e. If Yes: Mail in DEX_Emails-Queue eintragen
+
+- **Create item** (SharePoint) → Liste `DEX_Emails`:
+  - **Title:** `Outlook-Abmeldung-Reminder: @{first(outputs('Get_DEX_Event')?['body/value'])?['Title']}`
+  - **Recipient:** `@{items('Apply_to_each')?['emailAddress']?['address']}`
+  - **RecipientName:** `@{items('Apply_to_each')?['emailAddress']?['name']}`
+  - **EmailType:** `OutlookDeclineReminder`
+  - **EventTitle:** `@{first(outputs('Get_DEX_Event')?['body/value'])?['Title']}`
+  - **EventId:** `@{first(outputs('Get_DEX_Event')?['body/value'])?['ID']}`
+  - **Status:** `Pending`
+
+### 8. Bestehender Flow DEX_SEND_MAIL
+
+Der bestehende DEX_SEND_MAIL-Flow muss wissen, wie er den `OutlookDeclineReminder`-Template rendert und den `{{CancelUrl}}`-Platzhalter befüllt.
+
+**Änderung in DEX_SEND_MAIL (bei der Template-Auswahl):**
+
+- Wenn `EmailType == 'OutlookDeclineReminder'`:
+  - Template aus `DEX_EmailTemplates` mit `TemplateType eq 'OutlookDeclineReminder'` und passender Sprache holen
+  - `{{CancelUrl}}` ersetzen mit Expression:
+    ```
+    concat(
+      'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=',
+      first(body('Get_Event_from_DEX_Events')?['value'])?['EventNumber']
+    )
+    ```
+    (EventNumber, nicht ID!)
+
+## Ablauf-Diagramm
+
+```
+Trigger: When an event is modified (no_reply.events@deloitte.de)
+   │
+   ├── Condition: mind. 1 Attendee mit response='declined'?
+   │
+   ├── Yes: Get DEX_Events (Filter: CalendarLink eq iCalUId)
+   │        │
+   │        ├── Event gefunden?
+   │        │
+   │        └── Yes: Apply to each declined attendee
+   │                   │
+   │                   ├── Teilnehmerliste (Subsite/Teilnehmer) nach Email filtern
+   │                   │
+   │                   └── Noch angemeldet (Status != 'Abgemeldet')?
+   │                        │
+   │                        └── Yes: Create item in DEX_Emails
+   │                                 (EmailType='OutlookDeclineReminder')
+   │
+   └── DEX_SEND_MAIL picks up Pending Mails und sendet mit Template,
+       {{CancelUrl}} zeigt auf DEX.aspx?action=cancel&event=<eventNumber>
+```
+
+## App-seitige Unterstützung (bereits implementiert)
+
+- `DexEventPlatform.tsx` parsed `?action=cancel&event=<n>` aus `window.location.search`
+- Navigiert zu `my-events` mit `selectedEventId` + Intent `auto-cancel`
+- `MyEventsPage.tsx` prüft den Intent, scrollt zur Event-Karte und öffnet den Abmelde-Bestätigungsdialog automatisch
+- User muss aktiv auf "Abmeldung bestätigen" klicken — der Deep-Link cancelt NICHT direkt, damit Missbrauch ausgeschlossen ist (User muss eingeloggt sein und ist dann nur in der Lage, SEINE EIGENE Registrierung zu canceln)
+
+## Neues Template in DEX_EmailTemplates
+
+Beim nächsten App-Start legt die App folgende Template-Einträge automatisch an (falls noch nicht vorhanden):
+
+| TemplateType | Language | Subject |
+|--------------|----------|---------|
+| OutlookDeclineReminder | EN | Do you also want to cancel your registration? {{EventTitle}} |
+| OutlookDeclineReminder | DE | Möchtest du dich auch offiziell abmelden? {{EventTitle}} |
+
+Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my registration"-Action-Button, der auf `{{CancelUrl}}` zeigt.
