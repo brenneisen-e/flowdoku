@@ -535,6 +535,9 @@ export class EventService {
     if (exists) {
       // Liste existiert - pruefen ob _Config Zeile und Logo-Spalten vorhanden
       await this.ensureEmailTemplatesConfig(listName);
+      // Neuere Templates nachruesten (falls die Liste vor v3.0.27 angelegt wurde
+      // und OutlookDeclineReminder noch nicht existiert)
+      await this.ensureMissingEmailTemplates(listName);
       return;
     }
 
@@ -579,7 +582,7 @@ export class EventService {
         BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
         BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
+      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
         BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       // ===== DEUTSCH =====
       { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
@@ -592,7 +595,7 @@ export class EventService {
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>Gute Nachrichten! Ein Platz ist frei geworden und du bist von der Warteliste <strong>als Teilnehmer bestätigt</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> ab.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
-      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
+      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
     ];
 
@@ -640,6 +643,58 @@ export class EventService {
 
   /**
    * Sicherstellen dass LogoBase64/DefaultImageBase64 Spalten und _Config Zeile existieren.
+   * Fuer Tenants wo DEX_EmailTemplates schon vor v3.0.27 angelegt wurde:
+   * neuere Templates (z.B. OutlookDeclineReminder DE+EN) nachruesten, ohne
+   * bestehende zu ueberschreiben.
+   */
+  private async ensureMissingEmailTemplates(listName: string): Promise<void> {
+    const newTemplates = [
+      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+    ];
+
+    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+    try {
+      const typeResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1
+      );
+      if (typeResp.ok) {
+        const typeData = await typeResp.json();
+        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback */ }
+
+    for (const t of newTemplates) {
+      try {
+        // Existiert das Template bereits? (TemplateType + Language)
+        const checkResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          const items = checkData.value || checkData.d?.results || [];
+          if (items.length > 0) continue; // Schon vorhanden - nicht ueberschreiben
+        }
+        // Template fehlt - nachlegen
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+          '__metadata': { 'type': listItemType },
+          'Title': `${t.TemplateType}_${t.Language}`,
+          'TemplateType': t.TemplateType,
+          'Language': t.Language,
+          'Subject': t.Subject,
+          'HeadingColor': t.HeadingColor,
+          'Heading': t.Heading,
+          'BodyHtml': t.BodyHtml,
+        });
+      } catch { /* Einzelnen Fehler nicht kritisch */ }
+    }
+  }
+
+  /**
    * Wird aufgerufen wenn die Liste bereits existiert (nachtraegliches Upgrade).
    */
   private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
