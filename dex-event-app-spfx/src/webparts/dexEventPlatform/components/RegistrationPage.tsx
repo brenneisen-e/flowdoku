@@ -88,7 +88,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
-  const [showDescription, setShowDescription] = React.useState(false);
+  const [showDescription, setShowDescription] = React.useState(true);
 
   // Bild-Orientierung erkennen (Hochkant -> links | Querformat -> oben)
   const [imgOrientation, setImgOrientation] = React.useState<'portrait' | 'landscape'>('landscape');
