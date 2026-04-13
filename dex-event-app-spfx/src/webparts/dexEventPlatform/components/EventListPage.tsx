@@ -128,7 +128,13 @@ export default function EventListPage(): React.ReactElement {
         <div style={{ padding: 48 }}>
           <div style={{
             width: 48, height: 48, margin: '0 auto 16px', borderRadius: '50%',
-            borderTop: '4px solid var(--dex-green)', animation: 'dexOrbSpin 1s linear infinite',
+            // Voller Ring (transparente Seiten + gruener Top) damit der Spinner auch
+            // optisch wie ein Kreis wirkt - vorher wurde nur borderTop gesetzt, was
+            // bei fehlender Keyframe-Injektion wie ein flackernder Cursor aussah.
+            border: '4px solid rgba(134,188,37,0.18)',
+            borderTopColor: 'var(--dex-green)',
+            boxSizing: 'border-box',
+            animation: 'dexOrbSpin 1s linear infinite',
           }} />
           <p style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.loading')}</p>
         </div>

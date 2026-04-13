@@ -82,6 +82,9 @@ function AppContent(): React.ReactElement {
         padding-bottom: 0 !important;
         margin-bottom: 0 !important;
       }
+      /* Globale Keyframes fuer Loading-Spinner (werden von EventListPage/MyEventsPage genutzt,
+         unabhaengig davon ob die LandingPage vorher gerendert wurde) */
+      @keyframes dexOrbSpin { to { transform: rotate(360deg); } }
     `;
     document.head.appendChild(styleEl);
 
