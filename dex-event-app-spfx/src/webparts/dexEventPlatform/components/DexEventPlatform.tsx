@@ -43,8 +43,19 @@ function AppContent(): React.ReactElement {
 
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
   // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
-  // My Events navigieren mit der eventId - MyEventsPage oeffnet dann den
-  // Bestaetigungsdialog zum Abmelden.
+  // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
+  // Registrierung automatisch.
+  //
+  // Damit der User nicht 5 Sekunden lang auf der LandingPage "haengt" bis die
+  // Events geladen sind, zeigen wir statt der LandingPage einen Vollbild-
+  // Lade-Spinner, sobald wir erkennen dass ein Cancel-Deep-Link aktiv ist.
+  const isCancelDeepLink = React.useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('action') === 'cancel' && !!params.get('event');
+    } catch { return false; }
+  }, []);
+
   const didHandleDeepLink = React.useRef(false);
   React.useEffect(() => {
     if (didHandleDeepLink.current) return;
@@ -155,6 +166,30 @@ function AppContent(): React.ReactElement {
 
   // Seitenauswahl basierend auf dem aktuellen State
   const renderPage = (): React.ReactElement => {
+    // Deep-Link Cancel aktiv? Dann Lade-Spinner statt LandingPage zeigen,
+    // solange wir noch nicht zu MyEventsPage navigiert sind.
+    if (isCancelDeepLink && currentPage === 'landing') {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          minHeight: 400, padding: 48, textAlign: 'center',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            border: '4px solid var(--dex-gray-200, #e5e5e5)',
+            borderTopColor: 'var(--dex-green, #86bc25)',
+            animation: 'dexOrbSpin 0.8s linear infinite',
+            marginBottom: 20,
+          }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dex-gray-800, #333)' }}>
+            Loading your registration…
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--dex-gray-500, #888)', marginTop: 6 }}>
+            Cancelling registration, please wait.
+          </div>
+        </div>
+      );
+    }
     switch (currentPage) {
       case 'landing':
         return <LandingPage />;
