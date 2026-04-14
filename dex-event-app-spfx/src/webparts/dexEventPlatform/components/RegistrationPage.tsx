@@ -53,8 +53,12 @@ export default function RegistrationPage(): React.ReactElement {
     const audMatch = !hasAud || audFilters.some(f => {
       const fl = f.trim().toLowerCase();
       if (fl.indexOf('@') >= 0) return email === fl;
-      if (fl === 'deall') return true;
-      if (fl.startsWith('de')) return loc.indexOf(fl.substring(2)) >= 0;
+      if (fl === 'all' || fl === 'deall') return true;
+      if (fl.startsWith('de')) {
+        const city = fl.substring(2);
+        const norm = city.replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/ae/g, 'ä');
+        return loc.indexOf(city) >= 0 || loc.indexOf(norm) >= 0;
+      }
       return false;
     });
 
