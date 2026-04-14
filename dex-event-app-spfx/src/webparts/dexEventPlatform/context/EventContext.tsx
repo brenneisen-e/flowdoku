@@ -92,8 +92,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // Migrationen (idempotent: bei bereits gefuellter Teilnehmer-Liste auf Subsite werden sie geskippt)
-    try { await eventService.seedJPMorganMigration(); } catch { /* */ }
+    // Seed: 6 neue Events einmalig anlegen (idempotent: skip wenn Title schon existiert)
+    try { await eventService.seedNewEvents(); } catch { /* */ }
     await loadEvents();
     setIsEventsLoading(false);
   }

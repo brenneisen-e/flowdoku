@@ -1580,189 +1580,153 @@ export class EventService {
 
 
   /**
-   * Seed-Migration: JP Morgan Corporate Challenge (Firmenlauf).
-   * - Sheet "Teilnehmerliste": SILENT insert (kein Mail, kein Outlook) - bestehende Teilnehmer
-   * - Sheet "Warteliste": Anmeldung wie ueber die App ueblich:
-   *     - wenn MaxParticipants noch nicht erreicht -> Status='Angemeldet' + Anmeldebestaetigungs-Mail + Outlook-Einladung
-   *     - sonst -> Status='Warteliste' + Warteliste-Mail (kein Outlook)
-   * Migration ist idempotent: wenn Teilnehmer-Liste auf der Subsite schon befuellt ist, wird komplett uebersprungen.
+   * Seed-Migration: 6 neue Events anlegen (idempotent ueber Title-Check).
+   * Quelle: Events (6).csv vom 14.04.2026.
+   * Wenn ein Event mit gleichem Title bereits existiert, wird es uebersprungen.
    */
-  public async seedJPMorganMigration(): Promise<{ teiln: number; warteAngemeldet: number; warteWarteliste: number } | null> {
-    try {
-      // 1. Event finden (inkl. MaxParticipants fuer Warteliste-Logik)
-      const eventTitle = 'JP Morgan Corporate Challenge (Firmenlauf)';
-      const titleEnc = encodeURIComponent(eventTitle.replace(/'/g, "''"));
-      const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id,SubsiteUrl,EventNumber,Title,MaxParticipants`,
-        SPHttpClient.configurations.v1
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      if (items.length === 0) return null;
-      const event = items[0];
-      const subsiteUrl: string = event.SubsiteUrl;
-      const eventNumber: number = event.EventNumber;
-      const eventId: number = event.Id;
-      const maxParticipants: number = typeof event.MaxParticipants === 'number' ? event.MaxParticipants : 0;
-      if (!subsiteUrl) return null;
+  public async seedNewEvents(): Promise<{ created: number; skipped: number }> {
+    const events: Array<{
+      title: string; description: string; location: string; locationFilter: string;
+      startDate: string; endDate: string; registrationDeadline: string; lastDeregisterDate: string;
+      maxParticipants: number; organizer: string; organizerEmail: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      customFields: any[];
+    }> = [
+      {
+        title: 'E2E M&A Activation Session Munich',
+        description: 'Internal Meeting: E2E M&A Activation Session Munich',
+        location: 'Munich',
+        locationFilter: '',
+        startDate: '2026-04-23T19:00:00.000Z',
+        endDate: '2026-04-24T15:30:00.000Z',
+        registrationDeadline: '2026-04-17T23:59:00.000Z',
+        lastDeregisterDate: '2026-04-17T23:59:00.000Z',
+        maxParticipants: 55,
+        organizer: 'Kraus, Annika; Mamberger, Ellen',
+        organizerEmail: 'akraus@deloitte.de',
+        customFields: [
+          { id: 'attendance', label: 'Attendance', type: 'select', required: false, visible: true, options: ['I will attend at the conference and the dinner.', 'I will only attend the conference.', 'I will only attend the dinner.'] },
+          { id: 'menu', label: 'Menu preference', type: 'select', required: false, visible: true, options: ['Standard Menu (meat)', 'Vegan', 'Vegetarian'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Munich Plogging - City Clean up',
+        description: "Let's combine movement with impact: grab a bag, lace up your shoes, and help clean up our surroundings.\n\nBe part of the change and join us for a cleaner planet!",
+        location: 'München',
+        locationFilter: '',
+        startDate: '2026-04-24T13:00:00.000Z',
+        endDate: '2026-04-24T17:00:00.000Z',
+        registrationDeadline: '2026-04-24T10:00:00.000Z',
+        lastDeregisterDate: '2026-04-22T10:00:00.000Z',
+        maxParticipants: 20,
+        organizer: 'Hendrichs, Lars; Krumpe, Iris; Bihler, Birgit',
+        organizerEmail: 'lhendrichs@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Köln City Clean-up',
+        description: 'Im Rahmen des Deloitte Earth Month organisieren wir an allen Standorten Clean up Aktionen – und auch in Köln sind wir natürlich dabei!\nAm 16. April ziehen wir gemeinsam in einer kleinen Gruppe vom Büro los und sammeln Müll in der Umgebung.',
+        location: 'Köln',
+        locationFilter: '',
+        startDate: '2026-04-16T15:00:00.000Z',
+        endDate: '2026-04-16T18:00:00.000Z',
+        registrationDeadline: '2026-04-15T15:00:00.000Z',
+        lastDeregisterDate: '2026-04-15T15:00:00.000Z',
+        maxParticipants: 16,
+        organizer: 'Grashof, Katrin; Schupp, Kimba Lou Alice',
+        organizerEmail: 'kgrashof@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Berlin Plogging - City Clean up',
+        description: 'Im Rahmen des Earth Months organisiert Deloitte in diesem Jahr Plogging-Aktionen an verschiedenen Standorten. Beim Plogging verbinden wir gemeinsames Joggen oder zügiges Spazierengehen mit dem Sammeln von Müll in der Umgebung.',
+        location: 'Berlin',
+        locationFilter: '',
+        startDate: '2026-04-17T16:00:00.000Z',
+        endDate: '2026-04-17T18:00:00.000Z',
+        registrationDeadline: '2026-04-16T17:00:00.000Z',
+        lastDeregisterDate: '2026-04-12T10:00:00.000Z',
+        maxParticipants: 20,
+        organizer: 'Hendrichs, Lars; Wagner, Carolin Leonie; Leitsch, Anna Luise; Lorenzen, Leonie',
+        organizerEmail: 'lhendrichs@deloitte.de',
+        customFields: [
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Better Futures Day Stuttgart',
+        description: 'Clean-Up in der Umgebung. Nach einer fachkundigen Führung im Degerlocher Wald in unmittelbarer Umgebung unseres Offices, findet der Clean Up statt.',
+        location: 'Stuttgart',
+        locationFilter: '',
+        startDate: '2026-04-24T16:00:00.000Z',
+        endDate: '2026-04-24T18:30:00.000Z',
+        registrationDeadline: '2026-04-23T18:00:00.000Z',
+        lastDeregisterDate: '2026-04-23T18:00:00.000Z',
+        maxParticipants: 35,
+        organizer: 'Sathasivam, Philipp; Oesterle, Ines',
+        organizerEmail: 'psathasivam@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+    ];
 
-      // 2. Pruefen ob schon migriert (Teilnehmer-Liste auf Subsite hat Eintraege)
-      const checkResp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$top=1&$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (checkResp.ok) {
-        const checkData = await checkResp.json();
-        const existing = checkData.value || checkData.d?.results || [];
-        if (existing.length > 0) return { teiln: 0, warteAngemeldet: 0, warteWarteliste: 0 };
-      }
-
-      // 3. Daten + Field-Map laden
-      const { JPMORGAN_TEILNEHMER, JPMORGAN_WARTELISTE } = await import('../data/seedJPMorganParticipants');
-      const fieldsResp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
-        SPHttpClient.configurations.v1
-      );
-      const fieldMap: Record<string, string> = {};
-      if (fieldsResp.ok) {
-        const fieldsData = await fieldsResp.json();
-        const fields = fieldsData.value || fieldsData.d?.results || [];
-        for (const f of fields) {
-          fieldMap[f.Title] = f.InternalName;
-        }
-      }
-
-      let listItemType = 'SP.Data.TeilnehmerListItem';
+    let created = 0;
+    let skipped = 0;
+    for (const e of events) {
       try {
-        const typeResp = await this.context.spHttpClient.get(
-          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')?$select=ListItemEntityTypeFullName`,
+        const titleEnc = encodeURIComponent(e.title.replace(/'/g, "''"));
+        const checkResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id`,
           SPHttpClient.configurations.v1
         );
-        if (typeResp.ok) {
-          const typeData = await typeResp.json();
-          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        if (checkResp.ok) {
+          const data = await checkResp.json();
+          const items = data.value || data.d?.results || [];
+          if (items.length > 0) { skipped += 1; continue; }
         }
-      } catch { /* Fallback */ }
-
-      const nowIso = new Date().toISOString();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const insertParticipant = async (p: any): Promise<boolean> => {
-        try {
-          const customData: Record<string, string> = {};
-          if (p.al) customData['allergies'] = p.al;
-          if (p.fp) customData['foodPreferences'] = p.fp;
-          if (p.hr) customData['hotelRequired'] = p.hr;
-          if (p.rt) customData['roomType'] = p.rt;
-          if (p.pr) customData['preferredRoommate'] = p.pr;
-
-          const payload: Record<string, unknown> = {
-            '__metadata': { 'type': listItemType },
-            'Title': p.em,
-            'ParticipantName': `${p.fn} ${p.ln}`,
-            'ParticipantEmail': p.em,
-            'Vorname': p.fn,
-            'Nachname': p.ln,
-            'Anrede': p.sal || null,
-            'Status': p.st,
-            'TeilnehmerID': p.nr || null,
-            'Department': p.dp,
-            'JobTitle': p.jt,
-            'Location': p.of,
-            'RegistrationDate': nowIso,
-            'CancellationDate': p.st === 'Abgemeldet' ? nowIso : null,
-            'CustomData': JSON.stringify(customData),
-          };
-          if (p.al && fieldMap['Allergies']) payload[fieldMap['Allergies']] = p.al;
-          if (p.fp && fieldMap['FoodPreferences']) payload[fieldMap['FoodPreferences']] = p.fp;
-          if (p.hr && fieldMap['HotelRequired']) payload[fieldMap['HotelRequired']] = p.hr;
-          if (p.rt && fieldMap['RoomType']) payload[fieldMap['RoomType']] = p.rt;
-          if (p.pr && fieldMap['PreferredRoommate']) payload[fieldMap['PreferredRoommate']] = p.pr;
-
-          await this.context.spHttpClient.post(
-            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                'Accept': 'application/json;odata=verbose',
-                'Content-Type': 'application/json;odata=verbose',
-                'odata-version': '',
-              },
-              body: JSON.stringify(payload),
-            }
-          );
-          // DEX_Participants Dual-Write (silent)
-          if (eventNumber && p.st === 'Angemeldet') {
-            this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
-          }
-          return true;
-        } catch { return false; }
-      };
-
-      let teilnCount = 0;
-      let warteAngemeldet = 0;
-      let warteWarteliste = 0;
-      // Lokaler Zaehler fuer aktive Teilnehmer (Angemeldet) - dient als Grundlage fuer
-      // die Warteliste-Logik. Startet bei der Anzahl der Teilnehmerliste-Inserts mit Status='Angemeldet'.
-      let currentRegistered = 0;
-
-      // 4a. Teilnehmerliste: SILENT insert (alle als Angemeldet bzw. Abgemeldet wie im Sheet)
-      for (const p of JPMORGAN_TEILNEHMER) {
-        const ok = await insertParticipant(p);
-        if (ok) {
-          teilnCount += 1;
-          if (p.st === 'Angemeldet') currentRegistered += 1;
-        }
-      }
-
-      // 4b. Warteliste: ganz normaler Anmelde-Flow:
-      //   - wenn MaxParticipants noch nicht erreicht -> Angemeldet + Anmeldungs-Mail + Outlook
-      //   - sonst -> Warteliste + Warteliste-Mail (kein Outlook)
-      let waitlistPosition = 0;
-      for (const p of JPMORGAN_WARTELISTE) {
-        const isFull = maxParticipants > 0 && currentRegistered >= maxParticipants;
-        const status = isFull ? 'Warteliste' : 'Angemeldet';
-        const personPayload = { ...p, st: status };
-        const ok = await insertParticipant(personPayload);
-        if (!ok) continue;
-
-        if (status === 'Angemeldet') {
-          warteAngemeldet += 1;
-          currentRegistered += 1;
-          // Anmeldebestaetigung + Outlook-Einladung
-          try {
-            const subject = `Anmeldebestätigung: ${eventTitle}`;
-            const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
-              `<p>du hast dich erfolgreich für das Event <strong>${eventTitle}</strong> angemeldet.</p>` +
-              `<p>Eine Outlook-Einladung erhältst du in Kürze. Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die Event Experience Platform ab.</p>` +
-              `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
-            await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Anmeldung', eventTitle, String(eventId));
-          } catch { /* */ }
-          try {
-            await this.queueOutlookEvent(p.em, String(eventId), eventTitle, 'Einladen');
-          } catch { /* */ }
-        } else {
-          warteWarteliste += 1;
-          waitlistPosition += 1;
-          // Warteliste-Mail (kein Outlook)
-          try {
-            const subject = `Warteliste: ${eventTitle}`;
-            const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
-              `<p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>${eventTitle}</strong>.</p>` +
-              `<p>Deine aktuelle Position: <strong>#${waitlistPosition}</strong></p>` +
-              `<p>Wir benachrichtigen dich, sobald ein Platz frei wird.</p>` +
-              `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
-            await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Warteliste', eventTitle, String(eventId));
-          } catch { /* */ }
-        }
-      }
-
-      return { teiln: teilnCount, warteAngemeldet, warteWarteliste };
-    } catch (err) {
-      console.warn('[DEX] seedJPMorganMigration failed:', err);
-      return null;
+        await this.createEvent({
+          title: e.title,
+          type: 'Other',
+          status: 'Active',
+          description: e.description,
+          location: e.location,
+          locationAddress: '',
+          locationFilter: e.locationFilter,
+          audience: '',
+          filterMode: 'AND',
+          startDate: e.startDate,
+          endDate: e.endDate,
+          registrationDeadline: e.registrationDeadline,
+          lastDeregisterDate: e.lastDeregisterDate,
+          maxParticipants: e.maxParticipants,
+          waitlistEnabled: true,
+          eventImageUrl: '',
+          organizer: e.organizer,
+          organizerEmail: e.organizerEmail,
+          outlookEventId: '',
+          outlookBody: '',
+          emailLanguage: 'EN',
+          emailTemplateOverrides: '',
+          disableEmails: false,
+          disableOutlook: false,
+          customFields: e.customFields,
+          agenda: '[]',
+          transfers: '[]',
+          documents: '[]',
+        });
+        created += 1;
+      } catch { /* einzelnes Event ueberspringen */ }
     }
+    return { created, skipped };
   }
 
   /**
