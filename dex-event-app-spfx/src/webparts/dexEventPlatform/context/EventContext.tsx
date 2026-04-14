@@ -92,10 +92,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // Seed: Events einmalig anlegen + Organizer in DEX_Roles eintragen (idempotent)
-    try { await eventService.seedNewEvents(); } catch { /* */ }
-    // Seed: Teilnehmer aus den 5 CSV-Migrationen silent einfuegen (idempotent)
-    try { await eventService.seedNewEventsParticipants(); } catch { /* */ }
+    // Seed-Migrationen entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
   }
