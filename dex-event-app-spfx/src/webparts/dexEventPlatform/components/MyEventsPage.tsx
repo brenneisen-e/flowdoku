@@ -11,6 +11,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
+import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
 
@@ -471,9 +472,10 @@ export default function MyEventsPage(): React.ReactElement {
 
       const success = await cancelRegistration(eventId);
       if (success) {
-        // Late cancellation: alle Organizer benachrichtigen, in der konfigurierten Event-Sprache.
-        // WICHTIG: entry.event.organizers ist eine Liste von NAMEN, nicht von E-Mails.
-        // Die E-Mail-Adressen liegen in entry.event.organizerEmails (aus SP-Feld OrganizerEmail).
+        // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
+        // die semikolon-separierte Liste), im Deloitte-Layout via wrapTemplate,
+        // in der konfigurierten Event-Sprache.
+        // entry.event.organizers = NAMEN, entry.event.organizerEmails = E-Mails.
         if (isLateCancellation && entry && entry.event.organizerEmails.length > 0) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -488,18 +490,21 @@ export default function MyEventsPage(): React.ReactElement {
               const subject = isDe
                 ? `Verspätete Abmeldung: ${entry.event.title}`
                 : `Late cancellation: ${entry.event.title}`;
-              const body = isDe
-                ? `<p><strong>${userName}</strong> hat seine/ihre Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p>E-Mail: ${userEmail}</p>`
-                : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p>E-Mail: ${userEmail}</p>`;
-              // An jeden Organizer separat queuen (ein DEX_Emails-Eintrag pro Empfaenger,
-              // damit Recipient ein valides Einzel-Empfaengerfeld bleibt).
-              await Promise.all(entry.event.organizerEmails.map((orgEmail, idx) => {
-                const orgName = entry.event.organizers[idx] || orgEmail;
-                // EmailType 'Info' (statt 'LateCancel'), da das SP-Choice-Feld EmailType
-                // nur Anmeldung/Abmeldung/Warteliste/Nachruecken/Info zulaesst.
-                return svc.queueEmail(subject, orgEmail, orgName, body, 'Info', entry.event.title, eventId)
-                  .catch(err => console.warn('[DEX] LateCancel queueEmail failed for', orgEmail, err));
-              }));
+              const innerBody = isDe
+                ? `<p><strong>${userName}</strong> hat die Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`
+                : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`;
+              const heading = isDe ? 'Verspätete Abmeldung' : 'Late cancellation';
+              const subheading = entry.event.title;
+              const body = wrapTemplate('#ed8b00', heading, subheading, innerBody);
+              // EINE Mail mit ';'-separierter Recipient-Liste - die Recipient-Spalte
+              // ist Multi-Line (Note), kann also mehrere E-Mails enthalten. So sehen
+              // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).
+              const toList = entry.event.organizerEmails.join(';');
+              const toNames = entry.event.organizers.join(', ') || toList;
+              // EmailType 'Info' (Choice-Feld laesst nur Anmeldung/Abmeldung/
+              // Warteliste/Nachruecken/Info zu).
+              await svc.queueEmail(subject, toList, toNames, body, 'Info', entry.event.title, eventId)
+                .catch(err => console.warn('[DEX] LateCancel queueEmail failed:', err));
             }
           } catch { /* Email-Fehler ignorieren */ }
         }
