@@ -1582,17 +1582,18 @@ export class EventService {
   /**
    * Seed-Migration: JP Morgan Corporate Challenge (Firmenlauf).
    * - Sheet "Teilnehmerliste": SILENT insert (kein Mail, kein Outlook) - bestehende Teilnehmer
-   * - Sheet "Warteliste": SILENT insert + Mail-Queue (Anmeldung) + Outlook-Queue (Einladen)
-   *   Die Warteliste-User bekommen jetzt einen Platz und sollen ueber neuen Status informiert werden.
+   * - Sheet "Warteliste": Anmeldung wie ueber die App ueblich:
+   *     - wenn MaxParticipants noch nicht erreicht -> Status='Angemeldet' + Anmeldebestaetigungs-Mail + Outlook-Einladung
+   *     - sonst -> Status='Warteliste' + Warteliste-Mail (kein Outlook)
    * Migration ist idempotent: wenn Teilnehmer-Liste auf der Subsite schon befuellt ist, wird komplett uebersprungen.
    */
-  public async seedJPMorganMigration(): Promise<{ teiln: number; warte: number } | null> {
+  public async seedJPMorganMigration(): Promise<{ teiln: number; warteAngemeldet: number; warteWarteliste: number } | null> {
     try {
-      // 1. Event finden
+      // 1. Event finden (inkl. MaxParticipants fuer Warteliste-Logik)
       const eventTitle = 'JP Morgan Corporate Challenge (Firmenlauf)';
       const titleEnc = encodeURIComponent(eventTitle.replace(/'/g, "''"));
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id,SubsiteUrl,EventNumber,Title`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id,SubsiteUrl,EventNumber,Title,MaxParticipants`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return null;
@@ -1603,6 +1604,7 @@ export class EventService {
       const subsiteUrl: string = event.SubsiteUrl;
       const eventNumber: number = event.EventNumber;
       const eventId: number = event.Id;
+      const maxParticipants: number = typeof event.MaxParticipants === 'number' ? event.MaxParticipants : 0;
       if (!subsiteUrl) return null;
 
       // 2. Pruefen ob schon migriert (Teilnehmer-Liste auf Subsite hat Eintraege)
@@ -1613,7 +1615,7 @@ export class EventService {
       if (checkResp.ok) {
         const checkData = await checkResp.json();
         const existing = checkData.value || checkData.d?.results || [];
-        if (existing.length > 0) return { teiln: 0, warte: 0 };
+        if (existing.length > 0) return { teiln: 0, warteAngemeldet: 0, warteWarteliste: 0 };
       }
 
       // 3. Daten + Field-Map laden
@@ -1699,35 +1701,64 @@ export class EventService {
       };
 
       let teilnCount = 0;
-      let warteCount = 0;
+      let warteAngemeldet = 0;
+      let warteWarteliste = 0;
+      // Lokaler Zaehler fuer aktive Teilnehmer (Angemeldet) - dient als Grundlage fuer
+      // die Warteliste-Logik. Startet bei der Anzahl der Teilnehmerliste-Inserts mit Status='Angemeldet'.
+      let currentRegistered = 0;
 
-      // 4a. Teilnehmerliste: SILENT insert
+      // 4a. Teilnehmerliste: SILENT insert (alle als Angemeldet bzw. Abgemeldet wie im Sheet)
       for (const p of JPMORGAN_TEILNEHMER) {
         const ok = await insertParticipant(p);
-        if (ok) teilnCount += 1;
+        if (ok) {
+          teilnCount += 1;
+          if (p.st === 'Angemeldet') currentRegistered += 1;
+        }
       }
 
-      // 4b. Warteliste: insert + Mail-Queue + Outlook-Queue (Einladen)
+      // 4b. Warteliste: ganz normaler Anmelde-Flow:
+      //   - wenn MaxParticipants noch nicht erreicht -> Angemeldet + Anmeldungs-Mail + Outlook
+      //   - sonst -> Warteliste + Warteliste-Mail (kein Outlook)
+      let waitlistPosition = 0;
       for (const p of JPMORGAN_WARTELISTE) {
-        const ok = await insertParticipant(p);
+        const isFull = maxParticipants > 0 && currentRegistered >= maxParticipants;
+        const status = isFull ? 'Warteliste' : 'Angemeldet';
+        const personPayload = { ...p, st: status };
+        const ok = await insertParticipant(personPayload);
         if (!ok) continue;
-        warteCount += 1;
-        // Mail-Queue: Anmeldebestaetigung (Template type 'Anmeldung')
-        try {
-          const subject = `Anmeldebestätigung: ${eventTitle}`;
-          const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
-            `<p>du hast jetzt einen Platz beim Event <strong>${eventTitle}</strong> – herzlichen Glueckwunsch!</p>` +
-            `<p>Eine Outlook-Einladung erhaeltst du in Kuerze. Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig ueber die Event Experience Platform ab.</p>` +
-            `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
-          await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Anmeldung', eventTitle, String(eventId));
-        } catch { /* mail-queue fehlgeschlagen, weiter */ }
-        // Outlook-Queue: Einladen
-        try {
-          await this.queueOutlookEvent(p.em, String(eventId), eventTitle, 'Einladen');
-        } catch { /* outlook-queue fehlgeschlagen, weiter */ }
+
+        if (status === 'Angemeldet') {
+          warteAngemeldet += 1;
+          currentRegistered += 1;
+          // Anmeldebestaetigung + Outlook-Einladung
+          try {
+            const subject = `Anmeldebestätigung: ${eventTitle}`;
+            const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
+              `<p>du hast dich erfolgreich für das Event <strong>${eventTitle}</strong> angemeldet.</p>` +
+              `<p>Eine Outlook-Einladung erhältst du in Kürze. Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die Event Experience Platform ab.</p>` +
+              `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
+            await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Anmeldung', eventTitle, String(eventId));
+          } catch { /* */ }
+          try {
+            await this.queueOutlookEvent(p.em, String(eventId), eventTitle, 'Einladen');
+          } catch { /* */ }
+        } else {
+          warteWarteliste += 1;
+          waitlistPosition += 1;
+          // Warteliste-Mail (kein Outlook)
+          try {
+            const subject = `Warteliste: ${eventTitle}`;
+            const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
+              `<p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>${eventTitle}</strong>.</p>` +
+              `<p>Deine aktuelle Position: <strong>#${waitlistPosition}</strong></p>` +
+              `<p>Wir benachrichtigen dich, sobald ein Platz frei wird.</p>` +
+              `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
+            await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Warteliste', eventTitle, String(eventId));
+          } catch { /* */ }
+        }
       }
 
-      return { teiln: teilnCount, warte: warteCount };
+      return { teiln: teilnCount, warteAngemeldet, warteWarteliste };
     } catch (err) {
       console.warn('[DEX] seedJPMorganMigration failed:', err);
       return null;
