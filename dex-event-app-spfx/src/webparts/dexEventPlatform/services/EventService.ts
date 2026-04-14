@@ -538,6 +538,9 @@ export class EventService {
       // Neuere Templates nachruesten (falls die Liste vor v3.0.27 angelegt wurde
       // und OutlookDeclineReminder noch nicht existiert)
       await this.ensureMissingEmailTemplates(listName);
+      // Standard-Templates auf aktuelle Version upgraden (uerschreibt User-Customizing!)
+      // Damit Platzhalter wie {{WaitlistPosition}} bei aelteren Tenants nachgezogen werden.
+      await this.upgradeStandardEmailTemplates(listName);
       return;
     }
 
@@ -691,6 +694,105 @@ export class EventService {
           'BodyHtml': t.BodyHtml,
         });
       } catch { /* Einzelnen Fehler nicht kritisch */ }
+    }
+  }
+
+  /**
+   * Standard-Email-Templates auf die aktuelle Version aktualisieren.
+   * Wird bei jedem App-Start aufgerufen, wenn die Liste schon existiert.
+   *
+   * !! ACHTUNG !! Ueberschreibt User-Customizing.
+   *
+   * Hintergrund: Templates wie 'Warteliste' wurden ueber die Zeit erweitert
+   * (z.B. {{WaitlistPosition}}-Platzhalter). Aelter angelegte Tenants haben
+   * noch die OOTB-Version ohne diese Felder. Diese Funktion zieht den BodyHtml
+   * (sowie Subject + Heading) auf den aktuellen Code-Stand nach.
+   */
+  private async upgradeStandardEmailTemplates(listName: string): Promise<void> {
+    const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
+    void APP_URL; // Reserviert fuer spaetere Templates die {{AppUrl}} hardcoden
+    const standards = [
+      // ========== EN ==========
+      { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMy Events\u201C) so the spot might be allocated to another participant.</p><p>For organizational questions about the event, please contact <strong>{{Organizer}}</strong>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">Event Experience Platform</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Spot available: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You got a spot!',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
+      { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
+        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+      // ========== DE ==========
+      { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMeine Events\u201C) ab, damit der Platz an einen anderen Teilnehmer vergeben werden kann.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an <strong>{{Organizer}}</strong>.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">Event Experience Platform</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Platz frei: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du bist nachgerückt!',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>Gute Nachrichten! Ein Platz ist frei geworden und du bist von der Warteliste <strong>als Teilnehmer bestätigt</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> ab.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+      { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
+      { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
+        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+    ];
+
+    let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
+    try {
+      const typeResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1
+      );
+      if (typeResp.ok) {
+        const typeData = await typeResp.json();
+        listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback */ }
+
+    for (const t of standards) {
+      try {
+        // Bestehendes Item finden
+        const checkResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id,BodyHtml`,
+          SPHttpClient.configurations.v1
+        );
+        if (!checkResp.ok) continue;
+        const checkData = await checkResp.json();
+        const items = checkData.value || checkData.d?.results || [];
+        if (items.length === 0) {
+          // existiert nicht -> anlegen (uebernimmt ensureMissingEmailTemplates fuer einige; hier sicherheitshalber auch)
+          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+            '__metadata': { 'type': listItemType },
+            'Title': `${t.TemplateType}_${t.Language}`,
+            'TemplateType': t.TemplateType,
+            'Language': t.Language,
+            'Subject': t.Subject,
+            'HeadingColor': t.HeadingColor,
+            'Heading': t.Heading,
+            'BodyHtml': t.BodyHtml,
+          });
+        } else {
+          // existiert -> updaten falls BodyHtml vom Default abweicht
+          const item = items[0];
+          if (item.BodyHtml !== t.BodyHtml) {
+            await this._merge(
+              `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${item.Id})`,
+              {
+                'Title': `${t.TemplateType}_${t.Language}`,
+                'TemplateType': t.TemplateType,
+                'Language': t.Language,
+                'Subject': t.Subject,
+                'HeadingColor': t.HeadingColor,
+                'Heading': t.Heading,
+                'BodyHtml': t.BodyHtml,
+              }
+            );
+          }
+        }
+      } catch { /* einzelnes Template ueberspringen */ }
     }
   }
 
