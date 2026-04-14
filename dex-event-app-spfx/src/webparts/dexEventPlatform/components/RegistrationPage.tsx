@@ -300,6 +300,21 @@ export default function RegistrationPage(): React.ReactElement {
           {' '}{t('reg.yourlocation')}: {currentUser.location || t('reg.unknown')}.
         </div>
       )}
+      {/* Deadline-Banner fuer Organizer/Admin: die Registrierungsfrist ist abgelaufen,
+          das Formular wird aber trotzdem angezeigt (Admin/Organizer darf weiter registrieren). */}
+      {isDeadlinePassed && (isOrganizer || isAdmin) && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
+          background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)',
+          color: 'var(--dex-red, #c00)', fontSize: '0.85rem',
+        }}>
+          <strong>{t('reg.deadlinepassed.title')}:</strong>{' '}
+          {t('reg.deadlinepassed.text')}{' '}
+          {event && event.registrationDeadline && (
+            <span>({t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>)</span>
+          )}
+        </div>
+      )}
       <div className="registration-layout">
         {/* Event-Info links */}
         <div className="registration-event">
