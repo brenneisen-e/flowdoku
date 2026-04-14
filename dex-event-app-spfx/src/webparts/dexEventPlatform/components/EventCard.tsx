@@ -23,6 +23,19 @@ function formatDate(iso: string): string {
   }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Nur Datum (ohne Uhrzeit) - wird z.B. fuer die Registration Deadline verwendet,
+// die im Formular ausschliesslich als Datum gepflegt wird.
+function formatDateOnly(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 // 4 verschiedene Farbverlaeufe, rotieren durch
 // type wird aktuell nicht genutzt, koennte man spaeter fuer typspezifische Farben verwenden
 function getEventGradient(_type: string, index: number): string {
@@ -119,9 +132,9 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
             {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
           </span>
         </div>
-        {event.registrationDeadline && formatDate(event.registrationDeadline) && (
+        {event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
           <div className="event-card__deadline">
-            {t('events.regopen')} {formatDate(event.registrationDeadline)}
+            {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
           </div>
         )}
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>

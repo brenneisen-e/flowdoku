@@ -471,8 +471,10 @@ export default function MyEventsPage(): React.ReactElement {
 
       const success = await cancelRegistration(eventId);
       if (success) {
-        // If late cancellation, send notification to organizer
-        if (isLateCancellation && entry) {
+        // Late cancellation: alle Organizer benachrichtigen, in der konfigurierten Event-Sprache.
+        // WICHTIG: entry.event.organizers ist eine Liste von NAMEN, nicht von E-Mails.
+        // Die E-Mail-Adressen liegen in entry.event.organizerEmails (aus SP-Feld OrganizerEmail).
+        if (isLateCancellation && entry && entry.event.organizerEmails.length > 0) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const ctx = (window as any).__dexSpfxContext;
@@ -480,15 +482,24 @@ export default function MyEventsPage(): React.ReactElement {
               const { EventService } = await import('../services/EventService');
               const svc = new EventService(ctx);
               const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
-              await svc.queueEmail(
-                `[DEX] Late cancellation: ${entry.event.title}`,
-                entry.event.organizers[0] || '',
-                entry.event.organizers[0] || '',
-                `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${new Date(entry.event.lastDeregisterDate).toLocaleDateString('de-DE')}).</p><p>E-Mail: ${entry.registration.ParticipantEmail || entry.registration.Title}</p>`,
-                'LateCancel',
-                entry.event.title,
-                eventId
-              );
+              const userEmail = entry.registration.ParticipantEmail || entry.registration.Title;
+              const isDe = (entry.event.emailLanguage || 'EN').toUpperCase() === 'DE';
+              const deadlineStr = new Date(entry.event.lastDeregisterDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB');
+              const subject = isDe
+                ? `Verspätete Abmeldung: ${entry.event.title}`
+                : `Late cancellation: ${entry.event.title}`;
+              const body = isDe
+                ? `<p><strong>${userName}</strong> hat seine/ihre Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p>E-Mail: ${userEmail}</p>`
+                : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p>E-Mail: ${userEmail}</p>`;
+              // An jeden Organizer separat queuen (ein DEX_Emails-Eintrag pro Empfaenger,
+              // damit Recipient ein valides Einzel-Empfaengerfeld bleibt).
+              await Promise.all(entry.event.organizerEmails.map((orgEmail, idx) => {
+                const orgName = entry.event.organizers[idx] || orgEmail;
+                // EmailType 'Info' (statt 'LateCancel'), da das SP-Choice-Feld EmailType
+                // nur Anmeldung/Abmeldung/Warteliste/Nachruecken/Info zulaesst.
+                return svc.queueEmail(subject, orgEmail, orgName, body, 'Info', entry.event.title, eventId)
+                  .catch(err => console.warn('[DEX] LateCancel queueEmail failed for', orgEmail, err));
+              }));
             }
           } catch { /* Email-Fehler ignorieren */ }
         }

@@ -208,6 +208,18 @@ export default function EventCreationPage(): React.ReactElement {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
+  // Deadline-Datum als Ende-des-Tages (23:59:59 lokale Zeit) speichern, damit:
+  //  a) Die Uhrzeit-Anzeige in der EventCard nicht mehr "02:00" zeigt
+  //  b) Die Deadline-Pruefung "new Date(deadline) < new Date()" wirklich den
+  //     gesamten ausgewaehlten Tag als gueltig behandelt (statt nur bis UTC-Mitternacht).
+  const deadlineToEndOfDayIso = (dateStr: string): string | null => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    d.setHours(23, 59, 59, 999);
+    return d.toISOString();
+  };
+
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
   // Mehrere Organizer werden mit '; ' getrennt gespeichert (innerhalb eines Namens kann ',' vorkommen, z.B. 'Maerzluft, Petra')
   const [organizer, setOrganizer] = React.useState(
@@ -524,7 +536,7 @@ export default function EventCreationPage(): React.ReactElement {
         'FilterMode': filterMode,
         'StartDate': startDate ? new Date(startDate).toISOString() : null,
         'EndDate': endDate ? new Date(endDate).toISOString() : null,
-        'RegistrationDeadline': registrationDeadline ? new Date(registrationDeadline).toISOString() : null,
+        'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
         'MaxParticipants': Number(maxParticipants) || 0,
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
@@ -535,7 +547,7 @@ export default function EventCreationPage(): React.ReactElement {
       };
 
       // Optionale Felder - immer senden damit Loeschungen wirken
-      updates['LastDeregisterDate'] = lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : null;
+      updates['LastDeregisterDate'] = deadlineToEndOfDayIso(lastDeregisterDate);
       updates['OutlookBody'] = outlookBody ? buildOutlookBody(title, outlookBody) : '';
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
@@ -663,8 +675,8 @@ export default function EventCreationPage(): React.ReactElement {
         filterMode,
         startDate: startDate ? new Date(startDate).toISOString() : '',
         endDate: endDate ? new Date(endDate).toISOString() : '',
-        registrationDeadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : '',
-        lastDeregisterDate: lastDeregisterDate ? new Date(lastDeregisterDate).toISOString() : '',
+        registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
+        lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
         maxParticipants: Number(maxParticipants) || 0,
         waitlistEnabled,
         eventImageUrl: imageUrl,
@@ -2128,7 +2140,8 @@ export default function EventCreationPage(): React.ReactElement {
                   {t('create.templates.hint')}
                 </p>
 
-                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachrücken'].map(tType => {
+                {/* TemplateType in DEX_EmailTemplates ist ASCII 'Nachruecken' (Umlaut nicht erlaubt in Choice-Feld). */}
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
                   const isEditing = editingTemplate === tType;

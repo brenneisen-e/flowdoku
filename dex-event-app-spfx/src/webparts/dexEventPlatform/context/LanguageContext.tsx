@@ -114,6 +114,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'reg.deadlinepassed.title': 'Anmeldefrist abgelaufen',
     'reg.deadlinepassed.text': 'Die Anmeldefrist für dieses Event ist leider abgelaufen. Du kannst dich nicht mehr registrieren.',
     'reg.deadlinepassed.date': 'Anmeldeschluss war',
+    'reg.deadlinepassed.adminnotice': 'Hinweis: Als normaler User könntest du dich nicht mehr registrieren - die Anmeldefrist ist abgelaufen.',
     'reg.privacy': 'Im Rahmen des Events {title} werden von Deloitte Audio-, Bild- und Videoaufnahmen erstellt. Durch die eindeutige bestätigende Handlung, z.B. Posieren oder Lächeln in die Kamera, willigst du in die Erstellung von Audio-, Bild- und Videoaufnahmen ein. Die Aufnahmen können für Deloitte-interne Veröffentlichungszwecke (z.B. DeloitteNet) verwendet werden. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft und ohne negative Konsequenzen per E-Mail an privacy@deloitte.de widerrufen werden.',
 
     // My Events
@@ -240,6 +241,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Warteliste': 'Warteliste-Bestätigung',
     'create.tpl.Abmeldung': 'Abmeldebestätigung',
     'create.tpl.Nachrücken': 'Nachrücken',
+    'create.tpl.Nachruecken': 'Nachrücken',
     'create.agenda': 'Agenda',
     'create.agenda.add': 'Programmpunkt hinzufügen',
     'create.agenda.icon': 'Icon',
@@ -424,6 +426,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'reg.deadlinepassed.title': 'Registration closed',
     'reg.deadlinepassed.text': 'The registration period for this event has ended. You can no longer register.',
     'reg.deadlinepassed.date': 'Registration deadline was',
+    'reg.deadlinepassed.adminnotice': 'Note: As a regular user you would no longer be able to register - the registration deadline has passed.',
     'reg.privacy': 'As part of the event {title}, audio, image, and video recordings will be made for Deloitte. By the clear confirming action, e.g., posing or smiling at the camera, you consent to the creation of audio, image, and video recordings. The recordings may be used for Deloitte internal publication purposes (e.g., DeloitteNet). The consent can be revoked at any time with future effect and without any negative consequences by sending an email to privacy@deloitte.de.',
 
     // My Events
@@ -550,6 +553,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Warteliste': 'Waitlist Confirmation',
     'create.tpl.Abmeldung': 'Cancellation Confirmation',
     'create.tpl.Nachrücken': 'Waitlist Promotion',
+    'create.tpl.Nachruecken': 'Waitlist Promotion',
     'create.agenda': 'Agenda',
     'create.agenda.add': 'Add agenda item',
     'create.agenda.icon': 'Icon',

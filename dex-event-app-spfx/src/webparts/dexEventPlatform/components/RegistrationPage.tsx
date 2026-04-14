@@ -301,17 +301,17 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       )}
       {/* Deadline-Banner fuer Organizer/Admin: die Registrierungsfrist ist abgelaufen,
-          das Formular wird aber trotzdem angezeigt (Admin/Organizer darf weiter registrieren). */}
+          das Formular wird aber trotzdem angezeigt (Admin/Organizer darf weiter registrieren).
+          Der Ton entspricht dem Location-Banner: "als normaler User koenntest du dich nicht registrieren". */}
       {isDeadlinePassed && (isOrganizer || isAdmin) && (
         <div style={{
           padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
-          background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)',
-          color: 'var(--dex-red, #c00)', fontSize: '0.85rem',
+          background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
+          color: 'var(--dex-orange)', fontSize: '0.85rem',
         }}>
-          <strong>{t('reg.deadlinepassed.title')}:</strong>{' '}
-          {t('reg.deadlinepassed.text')}{' '}
+          {t('reg.deadlinepassed.adminnotice')}
           {event && event.registrationDeadline && (
-            <span>({t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>)</span>
+            <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
           )}
         </div>
       )}
