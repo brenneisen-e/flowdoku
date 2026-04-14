@@ -1580,6 +1580,161 @@ export class EventService {
 
 
   /**
+   * Seed-Migration: JP Morgan Corporate Challenge (Firmenlauf).
+   * - Sheet "Teilnehmerliste": SILENT insert (kein Mail, kein Outlook) - bestehende Teilnehmer
+   * - Sheet "Warteliste": SILENT insert + Mail-Queue (Anmeldung) + Outlook-Queue (Einladen)
+   *   Die Warteliste-User bekommen jetzt einen Platz und sollen ueber neuen Status informiert werden.
+   * Migration ist idempotent: wenn Teilnehmer-Liste auf der Subsite schon befuellt ist, wird komplett uebersprungen.
+   */
+  public async seedJPMorganMigration(): Promise<{ teiln: number; warte: number } | null> {
+    try {
+      // 1. Event finden
+      const eventTitle = 'JP Morgan Corporate Challenge (Firmenlauf)';
+      const titleEnc = encodeURIComponent(eventTitle.replace(/'/g, "''"));
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id,SubsiteUrl,EventNumber,Title`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return null;
+      const event = items[0];
+      const subsiteUrl: string = event.SubsiteUrl;
+      const eventNumber: number = event.EventNumber;
+      const eventId: number = event.Id;
+      if (!subsiteUrl) return null;
+
+      // 2. Pruefen ob schon migriert (Teilnehmer-Liste auf Subsite hat Eintraege)
+      const checkResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (checkResp.ok) {
+        const checkData = await checkResp.json();
+        const existing = checkData.value || checkData.d?.results || [];
+        if (existing.length > 0) return { teiln: 0, warte: 0 };
+      }
+
+      // 3. Daten + Field-Map laden
+      const { JPMORGAN_TEILNEHMER, JPMORGAN_WARTELISTE } = await import('../data/seedJPMorganParticipants');
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      const fieldMap: Record<string, string> = {};
+      if (fieldsResp.ok) {
+        const fieldsData = await fieldsResp.json();
+        const fields = fieldsData.value || fieldsData.d?.results || [];
+        for (const f of fields) {
+          fieldMap[f.Title] = f.InternalName;
+        }
+      }
+
+      let listItemType = 'SP.Data.TeilnehmerListItem';
+      try {
+        const typeResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (typeResp.ok) {
+          const typeData = await typeResp.json();
+          listItemType = typeData.d?.ListItemEntityTypeFullName || typeData.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      const nowIso = new Date().toISOString();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const insertParticipant = async (p: any): Promise<boolean> => {
+        try {
+          const customData: Record<string, string> = {};
+          if (p.al) customData['allergies'] = p.al;
+          if (p.fp) customData['foodPreferences'] = p.fp;
+          if (p.hr) customData['hotelRequired'] = p.hr;
+          if (p.rt) customData['roomType'] = p.rt;
+          if (p.pr) customData['preferredRoommate'] = p.pr;
+
+          const payload: Record<string, unknown> = {
+            '__metadata': { 'type': listItemType },
+            'Title': p.em,
+            'ParticipantName': `${p.fn} ${p.ln}`,
+            'ParticipantEmail': p.em,
+            'Vorname': p.fn,
+            'Nachname': p.ln,
+            'Anrede': p.sal || null,
+            'Status': p.st,
+            'TeilnehmerID': p.nr || null,
+            'Department': p.dp,
+            'JobTitle': p.jt,
+            'Location': p.of,
+            'RegistrationDate': nowIso,
+            'CancellationDate': p.st === 'Abgemeldet' ? nowIso : null,
+            'CustomData': JSON.stringify(customData),
+          };
+          if (p.al && fieldMap['Allergies']) payload[fieldMap['Allergies']] = p.al;
+          if (p.fp && fieldMap['FoodPreferences']) payload[fieldMap['FoodPreferences']] = p.fp;
+          if (p.hr && fieldMap['HotelRequired']) payload[fieldMap['HotelRequired']] = p.hr;
+          if (p.rt && fieldMap['RoomType']) payload[fieldMap['RoomType']] = p.rt;
+          if (p.pr && fieldMap['PreferredRoommate']) payload[fieldMap['PreferredRoommate']] = p.pr;
+
+          await this.context.spHttpClient.post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=verbose',
+                'Content-Type': 'application/json;odata=verbose',
+                'odata-version': '',
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+          // DEX_Participants Dual-Write (silent)
+          if (eventNumber && p.st === 'Angemeldet') {
+            this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
+          }
+          return true;
+        } catch { return false; }
+      };
+
+      let teilnCount = 0;
+      let warteCount = 0;
+
+      // 4a. Teilnehmerliste: SILENT insert
+      for (const p of JPMORGAN_TEILNEHMER) {
+        const ok = await insertParticipant(p);
+        if (ok) teilnCount += 1;
+      }
+
+      // 4b. Warteliste: insert + Mail-Queue + Outlook-Queue (Einladen)
+      for (const p of JPMORGAN_WARTELISTE) {
+        const ok = await insertParticipant(p);
+        if (!ok) continue;
+        warteCount += 1;
+        // Mail-Queue: Anmeldebestaetigung (Template type 'Anmeldung')
+        try {
+          const subject = `Anmeldebestätigung: ${eventTitle}`;
+          const bodyHtml = `<p><strong>Hallo ${p.fn} ${p.ln},</strong></p>` +
+            `<p>du hast jetzt einen Platz beim Event <strong>${eventTitle}</strong> – herzlichen Glueckwunsch!</p>` +
+            `<p>Eine Outlook-Einladung erhaeltst du in Kuerze. Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig ueber die Event Experience Platform ab.</p>` +
+            `<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`;
+          await this.queueEmail(subject, p.em, `${p.fn} ${p.ln}`, bodyHtml, 'Anmeldung', eventTitle, String(eventId));
+        } catch { /* mail-queue fehlgeschlagen, weiter */ }
+        // Outlook-Queue: Einladen
+        try {
+          await this.queueOutlookEvent(p.em, String(eventId), eventTitle, 'Einladen');
+        } catch { /* outlook-queue fehlgeschlagen, weiter */ }
+      }
+
+      return { teiln: teilnCount, warte: warteCount };
+    } catch (err) {
+      console.warn('[DEX] seedJPMorganMigration failed:', err);
+      return null;
+    }
+  }
+
+  /**
    * Admin-Cleanup beim App-Start: alle Events mit EventStatus='Active' und EndDate < jetzt
    * werden automatisch auf 'Completed' gesetzt. Liefert die Anzahl der aktualisierten Events.
    */
