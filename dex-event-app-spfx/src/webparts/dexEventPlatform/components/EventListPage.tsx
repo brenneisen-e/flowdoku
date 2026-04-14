@@ -64,7 +64,23 @@ function matchesAudience(userEmail: string, userLocation: string, audienceFilter
 }
 
 /**
+ * Audience-Liste normalisieren: 'All'/'DEALL' bedeuten "kein Audience-Filter"
+ * und werden weggefiltert. So wird "München + All" korrekt als "nur München"
+ * interpretiert (statt 'All' als Override fuer alle User).
+ */
+function normalizeAudience(audience: string[]): string[] {
+  return audience
+    .map(s => s.trim())
+    .filter(s => s && s.toLowerCase() !== 'all' && s.toLowerCase() !== 'deall');
+}
+
+/**
  * Prüft ob ein Event fuer den User sichtbar ist.
+ *
+ * Default: AND (Schnittmenge). Wenn Standort UND Zielgruppe gesetzt sind,
+ * muss BEIDES passen (z.B. "München + SAP" = nur Munich-SAP-Mitarbeiter).
+ * Mit filterMode='OR' wird stattdessen die Vereinigung verwendet (z.B.
+ * "Köln-Mitarbeiter ODER explizit eingeladene Gäste").
  */
 function isEventVisibleForUser(
   event: DeloitteEvent,
@@ -72,21 +88,22 @@ function isEventVisibleForUser(
   userLocation: string
 ): boolean {
   const hasLocationFilter = event.locationAudience.length > 0;
-  const hasAudienceFilter = event.audienceFilter.length > 0;
+  const normalizedAud = normalizeAudience(event.audienceFilter);
+  const hasAudienceFilter = normalizedAud.length > 0;
 
   if (!hasLocationFilter && !hasAudienceFilter) return true;
 
   const locMatch = matchesLocation(userLocation, event.locationAudience);
-  const audMatch = matchesAudience(userEmail, userLocation, event.audienceFilter);
+  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud);
 
-  if (event.filterMode === 'AND') {
-    // Beide müssen passen (sofern gesetzt)
-    if (hasLocationFilter && hasAudienceFilter) return locMatch && audMatch;
+  // Default = AND. Nur wenn explizit OR konfiguriert wird Union genutzt.
+  if (event.filterMode === 'OR') {
+    if (hasLocationFilter && hasAudienceFilter) return locMatch || audMatch;
     if (hasLocationFilter) return locMatch;
     return audMatch;
   }
-  // OR: mindestens einer muss passen
-  if (hasLocationFilter && hasAudienceFilter) return locMatch || audMatch;
+  // AND (Default): beide Filter muessen passen, falls beide gesetzt
+  if (hasLocationFilter && hasAudienceFilter) return locMatch && audMatch;
   if (hasLocationFilter) return locMatch;
   return audMatch;
 }

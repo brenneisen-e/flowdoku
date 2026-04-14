@@ -229,7 +229,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent && editEvent.audienceFilter ? editEvent.audienceFilter.join(', ') : ''
   );
   const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>(
-    editEvent ? editEvent.filterMode : 'OR'
+    editEvent ? editEvent.filterMode : 'AND'
   );
   const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
   const [eventType, setEventType] = React.useState<EventType>(editEvent ? editEvent.type : 'Other');
@@ -2000,8 +2000,10 @@ export default function EventCreationPage(): React.ReactElement {
                           ))}
                           <button
                             onClick={() => {
-                              const opts = field.options ? field.options + ',' : '';
-                              updateCustomField(field.id, { options: opts });
+                              // Bestehende Optionen beibehalten + leeren Slot anhaengen
+                              const existing = field.options ? field.options.split(',').filter(o => o.trim()) : [];
+                              existing.push('');
+                              updateCustomField(field.id, { options: existing.join(',') + ',' });
                             }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 4,
