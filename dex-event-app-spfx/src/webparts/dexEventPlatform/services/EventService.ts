@@ -3008,16 +3008,76 @@ export class EventService {
    *
    * Liefert die Anzahl tatsaechlich aktualisierter Items.
    */
-  public async fixRecentParticipantsProfileData(n: number): Promise<{ scanned: number; updated: number }> {
+  /**
+   * Cleanup nur fuer EIN Event: lae alle Teilnehmer-Profile per Email nachladen
+   * und JobTitle/Department/Location/Phone updaten falls abweichend.
+   * Wird per Admin-Button im Admin Center pro Event getriggert.
+   */
+  public async fixEventParticipantsProfileData(subsiteUrl: string, n: number = 1000): Promise<{ scanned: number; updated: number; failedLookups: number }> {
     let scanned = 0;
     let updated = 0;
+    let failedLookups = 0;
+    const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
+    if (!subsiteUrl) return { scanned, updated, failedLookups };
     try {
-      // Alle Events laden
+      const listResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
+        SPHttpClient.configurations.v1
+      );
+      if (!listResp.ok) return { scanned, updated, failedLookups };
+      const listData = await listResp.json();
+      const items = listData.value || listData.d?.results || [];
+      for (const it of items) {
+        scanned += 1;
+        const email: string = (it.ParticipantEmail || '').trim();
+        if (!email) continue;
+        let profile = { department: '', location: '', jobTitle: '', phone: '' };
+        let success = false;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const p = await this.getUserProfileByEmail(email);
+            if (p && (p.jobTitle || p.department || p.location)) {
+              profile = p; success = true; break;
+            }
+          } catch { /* */ }
+          await sleep(500 * (attempt + 1));
+        }
+        if (!success) { failedLookups += 1; continue; }
+        try {
+          const needsUpdate =
+            (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
+            (profile.department && profile.department !== (it.Department || '')) ||
+            (profile.location && profile.location !== (it.Location || '')) ||
+            (profile.phone && profile.phone !== (it.Phone || ''));
+          if (needsUpdate) {
+            const ok = await this._merge(
+              `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
+              {
+                'JobTitle': profile.jobTitle || it.JobTitle || '',
+                'Department': profile.department || it.Department || '',
+                'Location': profile.location || it.Location || '',
+                'Phone': profile.phone || it.Phone || '',
+              }
+            );
+            if (ok && (ok as { ok: boolean }).ok) updated += 1;
+          }
+        } catch { /* */ }
+        await sleep(200);
+      }
+    } catch { /* */ }
+    return { scanned, updated, failedLookups };
+  }
+
+  public async fixRecentParticipantsProfileData(n: number): Promise<{ scanned: number; updated: number; failedLookups: number }> {
+    let scanned = 0;
+    let updated = 0;
+    let failedLookups = 0;
+    const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
+    try {
       const events = await this.getEvents();
       for (const evt of events) {
         if (!evt.SubsiteUrl) continue;
         try {
-          // Letzte N Teilnehmer nach RegistrationDate desc
           const listResp = await this.context.spHttpClient.get(
             `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
             SPHttpClient.configurations.v1
@@ -3029,15 +3089,30 @@ export class EventService {
             scanned += 1;
             const email: string = (it.ParticipantEmail || '').trim();
             if (!email) continue;
+            // Profil-Lookup mit Retry on Failure (max 3 Versuche, exponential backoff)
+            let profile = { department: '', location: '', jobTitle: '', phone: '' };
+            let success = false;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                const p = await this.getUserProfileByEmail(email);
+                if (p && (p.jobTitle || p.department || p.location)) {
+                  profile = p;
+                  success = true;
+                  break;
+                }
+              } catch { /* */ }
+              await sleep(500 * (attempt + 1));
+            }
+            if (!success) { failedLookups += 1; continue; }
             try {
-              const profile = await this.getUserProfileByEmail(email);
-              // Nur updaten wenn min. ein Feld abweicht
               const needsUpdate =
                 (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
                 (profile.department && profile.department !== (it.Department || '')) ||
                 (profile.location && profile.location !== (it.Location || '')) ||
                 (profile.phone && profile.phone !== (it.Phone || ''));
-              if (!needsUpdate) continue;
+              if (!needsUpdate) {
+                await sleep(200); continue;
+              }
               const ok = await this._merge(
                 `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
                 {
@@ -3048,12 +3123,14 @@ export class EventService {
                 }
               );
               if (ok && (ok as { ok: boolean }).ok) updated += 1;
-            } catch { /* einzelnen Teilnehmer ueberspringen */ }
+            } catch { /* einzelnen ueberspringen */ }
+            // Throttle gegen Rate-Limit der UserProfile-API
+            await sleep(200);
           }
-        } catch { /* einzelnes Event ueberspringen */ }
+        } catch { /* */ }
       }
     } catch { /* */ }
-    return { scanned, updated };
+    return { scanned, updated, failedLookups };
   }
 
   /**

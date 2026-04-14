@@ -62,6 +62,8 @@ export default function AdminPage(): React.ReactElement {
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
+  const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
+  const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   const [emailSubject, setEmailSubject] = React.useState('');
@@ -702,9 +704,37 @@ export default function AdminPage(): React.ReactElement {
                 {isFixingColumns ? 'Spalten werden gefixt...' : 'Spalten fixen'}
               </button>
             )}
-            {(reorderResult || fixColumnsResult) && (
-              <span style={{ fontSize: '0.75rem', color: (reorderResult || fixColumnsResult || '').includes('Fehler') ? 'var(--dex-red)' : 'var(--dex-green)' }}>
-                {reorderResult || fixColumnsResult}
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isRefreshingProfiles || !selectedEvent?.subsiteUrl}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  // Frage wie viele der letzten Teilnehmer aufgefrischt werden sollen
+                  const ans = prompt('Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)', '20');
+                  if (!ans) return;
+                  const n = parseInt(ans, 10);
+                  if (isNaN(n) || n <= 0) { alert('Bitte eine positive Zahl eingeben.'); return; }
+                  setIsRefreshingProfiles(true);
+                  setRefreshProfilesResult(null);
+                  try {
+                    const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
+                    setRefreshProfilesResult(`${result.scanned} geprueft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  } catch {
+                    setRefreshProfilesResult('Fehler beim Auffrischen der Profile');
+                  }
+                  setIsRefreshingProfiles(false);
+                }}
+              >
+                {isRefreshingProfiles ? 'Profile werden geladen...' : 'Profile neu laden'}
+              </button>
+            )}
+            {(reorderResult || fixColumnsResult || refreshProfilesResult) && (
+              <span style={{ fontSize: '0.75rem', color: (reorderResult || fixColumnsResult || refreshProfilesResult || '').includes('Fehler') ? 'var(--dex-red)' : 'var(--dex-green)' }}>
+                {reorderResult || fixColumnsResult || refreshProfilesResult}
               </span>
             )}
           </div>
