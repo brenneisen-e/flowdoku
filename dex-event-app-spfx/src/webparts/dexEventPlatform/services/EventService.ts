@@ -2202,8 +2202,13 @@ export class EventService {
         }
       } catch { /* Fallback: 1 */ }
 
-      // Profildaten laden
-      const profile = await this.getCurrentUserProfile();
+      // Profildaten laden - fuer den TATSAECHLICHEN Teilnehmer (nicht den eingeloggten User!)
+      // Wenn jemand fuer eine andere Person registriert, muss deren Profil geladen werden,
+      // sonst wird der eigene JobTitle/Department/Office in deren Teilnehmer-Eintrag geschrieben.
+      const myEmail = (this.context.pageContext.user.email || '').toLowerCase();
+      const profile = participantEmail.toLowerCase() === myEmail
+        ? await this.getCurrentUserProfile()
+        : await this.getUserProfileByEmail(participantEmail);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: Record<string, any> = {
@@ -2980,6 +2985,96 @@ export class EventService {
         return p && p.Value ? p.Value : '';
       };
 
+      return {
+        department: get('Department'),
+        location: get('Office'),
+        jobTitle: get('Title'),
+        phone: get('WorkPhone') || get('CellPhone'),
+      };
+    } catch {
+      return { department: '', location: '', jobTitle: '', phone: '' };
+    }
+  }
+
+  /**
+   * Cleanup: bei den N juengsten Teilnehmer-Eintraegen jedes Events JobTitle, Department,
+   * Location und Phone aus dem aktuellen Benutzerprofil neu laden und ueberschreiben.
+   * Notwendig weil bis v3.0.x diese Felder versehentlich vom EINGELOGGTEN User (statt
+   * vom registrierten Teilnehmer) gezogen wurden, wenn jemand fuer eine andere Person
+   * registriert hat.
+   *
+   * Idempotent: wenn die Daten bereits stimmen (Profil-Lookup liefert dasselbe), passiert
+   * nichts. Wird typisch einmalig per LocalStorage-Flag in EventContext getriggert.
+   *
+   * Liefert die Anzahl tatsaechlich aktualisierter Items.
+   */
+  public async fixRecentParticipantsProfileData(n: number): Promise<{ scanned: number; updated: number }> {
+    let scanned = 0;
+    let updated = 0;
+    try {
+      // Alle Events laden
+      const events = await this.getEvents();
+      for (const evt of events) {
+        if (!evt.SubsiteUrl) continue;
+        try {
+          // Letzte N Teilnehmer nach RegistrationDate desc
+          const listResp = await this.context.spHttpClient.get(
+            `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
+            SPHttpClient.configurations.v1
+          );
+          if (!listResp.ok) continue;
+          const listData = await listResp.json();
+          const items = listData.value || listData.d?.results || [];
+          for (const it of items) {
+            scanned += 1;
+            const email: string = (it.ParticipantEmail || '').trim();
+            if (!email) continue;
+            try {
+              const profile = await this.getUserProfileByEmail(email);
+              // Nur updaten wenn min. ein Feld abweicht
+              const needsUpdate =
+                (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
+                (profile.department && profile.department !== (it.Department || '')) ||
+                (profile.location && profile.location !== (it.Location || '')) ||
+                (profile.phone && profile.phone !== (it.Phone || ''));
+              if (!needsUpdate) continue;
+              const ok = await this._merge(
+                `${evt.SubsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
+                {
+                  'JobTitle': profile.jobTitle || it.JobTitle || '',
+                  'Department': profile.department || it.Department || '',
+                  'Location': profile.location || it.Location || '',
+                  'Phone': profile.phone || it.Phone || '',
+                }
+              );
+              if (ok && (ok as { ok: boolean }).ok) updated += 1;
+            } catch { /* einzelnen Teilnehmer ueberspringen */ }
+          }
+        } catch { /* einzelnes Event ueberspringen */ }
+      }
+    } catch { /* */ }
+    return { scanned, updated };
+  }
+
+  /**
+   * Profildaten eines bestimmten Users via Email laden (fuer "Register for someone else").
+   * Wird gebraucht weil getCurrentUserProfile() immer den eingeloggten User liefert,
+   * nicht die Person, fuer die registriert wird.
+   */
+  public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
+    if (!email) return { department: '', location: '', jobTitle: '', phone: '' };
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return { department: '', location: '', jobTitle: '', phone: '' };
+      const data = await response.json();
+      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+      const get = (key: string): string => {
+        const p = props.find(x => x.Key === key);
+        return p && p.Value ? p.Value : '';
+      };
       return {
         department: get('Department'),
         location: get('Office'),
