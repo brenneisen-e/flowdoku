@@ -6,15 +6,22 @@
 
 When deploying changes to the SPFx project:
 
-1. Run `cd dex-event-app-spfx && npm run package` to build and bundle
+1. **Clean stale bundles BEFORE building** (kritisch, sonst waechst das .sppkg bei jedem Build um ca. 2.8 MB):
+   ```bash
+   cd dex-event-app-spfx
+   rm -rf sharepoint/solution/debug/ClientSideAssets sharepoint/solution/debug/deploy
+   ```
+   Hintergrund: `gulp bundle --ship` schreibt jede neue Bundle-Version (`dex-event-platform-web-part_<hash>.js`) zusaetzlich in `sharepoint/solution/debug/ClientSideAssets/`, entfernt die alten aber NICHT. `gulp clean` raeumt diesen Ordner NICHT auf. Beim Packagen landen alle Bundles im `.sppkg` → es waechst unkontrolliert (beobachtet: 956 KB → 4.5 MB nach 4 Builds). Ein sauberes .sppkg ist ca. 950 KB.
+2. Run `npm run package` to build and bundle
    - This automatically bumps the patch version (e.g. 1.0.37 → 1.0.38)
    - If `gulp` is not found, run `npm install` first, then use `npx gulp bundle --ship && npx gulp package-solution --ship`
    - **IMPORTANT:** Always use `npm run package` (not raw gulp commands) so the version gets bumped automatically
-2. **Always** copy the built package to `dist/`:
+3. **Always** copy the built package to `dist/`:
    ```bash
    cp dex-event-app-spfx/sharepoint/solution/dex-event-platform.sppkg dist/dex-event-platform.sppkg
    ```
-3. Commit and push both the source changes and the updated `dist/dex-event-platform.sppkg`
+4. **Size-Check:** Das resultierende `.sppkg` sollte ca. 950 KB - 1.1 MB gross sein. Wenn es deutlich groesser ist (>2 MB), wurden die alten Bundles nicht entfernt - Schritt 1 wiederholen und neu bauen.
+5. Commit and push both the source changes and the updated `dist/dex-event-platform.sppkg`
 
 The `dist/dex-event-platform.sppkg` must always reflect the latest build so it can be downloaded directly from GitHub.
 
