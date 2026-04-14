@@ -37,7 +37,7 @@ const OUTLOOK_DECLINE_BODY_EN = wrapTemplateForStorage(
   'Event {{EventTitle}}',
   `<p>Dear {{Name}},</p>
 <p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p>
-<p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone else.</p>
+<p>If you no longer want to attend, please also cancel your registration.</p>
 <p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p>
 <p>If you clicked decline by accident, you can simply ignore this message.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -49,7 +49,7 @@ const OUTLOOK_DECLINE_BODY_DE = wrapTemplateForStorage(
   'Event {{EventTitle}}',
   `<p>Hallo {{Name}},</p>
 <p>wir haben gesehen, dass du die Outlook-Kalendereinladung f\u00FCr <strong>{{EventTitle}}</strong> abgelehnt hast \u2013 du bist aber noch als offiziell angemeldet gelistet.</p>
-<p>Falls du nicht mehr teilnehmen m\u00F6chtest, melde dich bitte auch offiziell ab, damit dein Platz an jemand anderen vergeben werden kann.</p>
+<p>Falls du nicht mehr teilnehmen m\u00F6chtest, melde dich bitte auch offiziell ab.</p>
 <p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p>
 <p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p>
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
