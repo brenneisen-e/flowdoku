@@ -10,8 +10,10 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useNavigation } from '../context/NavigationContext';
 import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { Icon } from '@fluentui/react/lib/Icon';
 import EventCard from './EventCard';
 
 /**
@@ -114,6 +116,15 @@ export default function EventListPage(): React.ReactElement {
   const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
+  // View-Mode (Cards | List) - persistiert in localStorage
+  const [viewMode, setViewMode] = React.useState<'cards' | 'list'>(() => {
+    try { return (localStorage.getItem('dex-eventlist-view') as 'cards' | 'list') || 'cards'; }
+    catch { return 'cards'; }
+  });
+  const switchView = (m: 'cards' | 'list'): void => {
+    setViewMode(m);
+    try { localStorage.setItem('dex-eventlist-view', m); } catch { /* */ }
+  };
   const [showDebug, setShowDebug] = React.useState(false);
   const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
 
@@ -198,7 +209,33 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
         </p>
       </div>
       <div className="flex-between mb-16">
-        <div />
+        {/* View-Mode Switcher: Cards / List */}
+        <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
+          <button
+            onClick={() => switchView('cards')}
+            style={{
+              padding: '6px 12px', fontSize: '0.78rem', cursor: 'pointer', border: 'none',
+              background: viewMode === 'cards' ? 'var(--dex-green)' : 'transparent',
+              color: viewMode === 'cards' ? '#fff' : 'var(--dex-gray-600)',
+              fontWeight: viewMode === 'cards' ? 600 : 400,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Icon iconName="GridViewMedium" style={{ fontSize: 14 }} /> Cards
+          </button>
+          <button
+            onClick={() => switchView('list')}
+            style={{
+              padding: '6px 12px', fontSize: '0.78rem', cursor: 'pointer', border: 'none',
+              background: viewMode === 'list' ? 'var(--dex-green)' : 'transparent',
+              color: viewMode === 'list' ? '#fff' : 'var(--dex-gray-600)',
+              fontWeight: viewMode === 'list' ? 600 : 400,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Icon iconName="GroupedList" style={{ fontSize: 14 }} /> List
+          </button>
+        </div>
         <div className="toggle-wrapper">
           <label className="toggle">
             <input
@@ -211,22 +248,96 @@ ${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.
           <span>{t('eventlist.onlyactive')}</span>
         </div>
       </div>
-      <div className="event-grid">
-        {filteredEvents.map((event, i) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            index={i}
-            isRegistered={myNumbers.registered.includes(event.eventNumber)}
-            isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
-          />
-        ))}
-      </div>
+      {viewMode === 'cards' ? (
+        <div className="event-grid">
+          {filteredEvents.map((event, i) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              index={i}
+              isRegistered={myNumbers.registered.includes(event.eventNumber)}
+              isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+            />
+          ))}
+        </div>
+      ) : (
+        <EventListView
+          events={filteredEvents}
+          myNumbers={myNumbers}
+          formatDate={(iso) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          }}
+        />
+      )}
       {filteredEvents.length === 0 && (
         <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
           Keine Events für dich gefunden.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Listen-Ansicht der Events - im Stil der Admin/Organizer-Seite.
+ */
+function EventListView({ events, myNumbers, formatDate }: {
+  events: DeloitteEvent[];
+  myNumbers: { registered: number[]; waitlisted: number[] };
+  formatDate: (iso: string) => string;
+}): React.ReactElement {
+  const { navigate } = useNavigation();
+  return (
+    <div className="my-events-list">
+      {events.map(event => {
+        const isReg = myNumbers.registered.includes(event.eventNumber);
+        const isWait = myNumbers.waitlisted.includes(event.eventNumber);
+        const targetPage = (isReg || isWait) ? 'my-events' : 'registration';
+        return (
+          <div
+            key={event.id}
+            className="card card-clickable"
+            style={{ padding: '20px 24px', cursor: 'pointer' }}
+            onClick={() => navigate(targetPage, event.id)}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                {event.imageUrl && (
+                  <div style={{
+                    width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                    background: `url(${event.imageUrl}) center/cover no-repeat`,
+                  }} />
+                )}
+                <div>
+                  <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
+                    {formatDate(event.startDate)} - {formatDate(event.endDate)}
+                    {event.location ? ` · ${event.location}` : ''}
+                  </p>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
+                    Organizer: {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                  {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
+                </span>
+                {isReg && (
+                  <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(134,188,37,0.18)', color: 'var(--dex-green-dark)' }}>Angemeldet</span>
+                )}
+                {isWait && (
+                  <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(237,139,0,0.18)', color: 'var(--dex-orange, #ed8b00)' }}>Warteliste</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

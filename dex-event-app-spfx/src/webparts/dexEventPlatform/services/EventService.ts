@@ -1724,9 +1724,200 @@ export class EventService {
           documents: '[]',
         });
         created += 1;
+        // Organizer als 'Organizer' in DEX_Roles eintragen (sofern noch keine Rolle haben)
+        await this.ensureOrganizerRoles(e.organizer);
       } catch { /* einzelnes Event ueberspringen */ }
     }
     return { created, skipped };
+  }
+
+  /**
+   * Fuer eine Organizer-String (z.B. "Hendrichs, Lars; Krumpe, Iris; Bihler, Birgit")
+   * jeden Namen per PeoplePicker suchen, dessen Email finden, und in DEX_Roles als
+   * 'Organizer' eintragen - sofern dort noch keine Rolle fuer den User existiert.
+   * Bestehende Rollen (auch Admin oder User) werden NICHT ueberschrieben.
+   */
+  private async ensureOrganizerRoles(organizerString: string): Promise<void> {
+    if (!organizerString) return;
+    // Aufsplitten: mehrere durch ';' getrennt
+    const names = organizerString.split(';').map(s => s.trim()).filter(Boolean);
+    for (const raw of names) {
+      try {
+        // Format: "Lastname, Firstname" oder "Firstname Lastname"
+        const parts = raw.split(',').map(s => s.trim());
+        const searchTerm = parts.length === 2 ? `${parts[1]} ${parts[0]}` : raw;
+        // PeoplePicker via clientPeoplePickerSearchUser
+        const body = {
+          'queryParams': {
+            '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
+            'AllowEmailAddresses': true,
+            'AllowMultipleEntities': false,
+            'MaximumEntitySuggestions': 3,
+            'QueryString': searchTerm,
+            'PrincipalType': 1,
+            'PrincipalSource': 15,
+            'SharePointGroupID': 0,
+          },
+        };
+        const ppResp = await this._post(
+          `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
+          body
+        );
+        if (!ppResp.ok) continue;
+        const ppData = await ppResp.json();
+        const ppStr = ppData.d?.ClientPeoplePickerSearchUser || ppData.ClientPeoplePickerSearchUser || '[]';
+        const ppResults = JSON.parse(ppStr);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const first = (ppResults as any[]).find(r => r.EntityData?.Email);
+        if (!first) continue;
+        const email: string = first.EntityData.Email;
+        const displayName: string = first.DisplayText || first.EntityData.Title || searchTerm;
+        // Pruefen ob User bereits eine Rolle hat
+        const checkResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(email.replace(/'/g, "''"))}'&$top=1&$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          const existing = checkData.value || checkData.d?.results || [];
+          if (existing.length > 0) continue; // Schon Rolle vorhanden -> nicht ueberschreiben
+        }
+        // Rolle 'Organizer' anlegen
+        const payload = {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_RolesListItem' },
+          'Title': email,
+          'UserName': displayName,
+          'Role': 'Organizer',
+          'UserLocation': '',
+          'AssignedBy': 'seedNewEvents (auto)',
+          'AssignedDate': new Date().toISOString(),
+        };
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items`, payload);
+      } catch { /* einzelnen Organizer ueberspringen */ }
+    }
+  }
+
+  /**
+   * Seed-Migration: Teilnehmer fuer die 5 neuen Events einfuegen (silent).
+   * Liest aus data/seedNewEventsParticipants.ts. Pro Event:
+   * - Idempotent: wenn die Teilnehmer-Liste der Subsite schon Items hat, skip
+   * - Insert ohne Mail, ohne Outlook
+   * - Status wie im CSV ('Angemeldet' oder 'Abgemeldet')
+   */
+  public async seedNewEventsParticipants(): Promise<Record<string, number>> {
+    const result: Record<string, number> = {};
+    try {
+      const { MIGRATIONS } = await import('../data/seedNewEventsParticipants');
+      for (const m of MIGRATIONS) {
+        try {
+          const titleEnc = encodeURIComponent(m.title.replace(/'/g, "''"));
+          const evResp = await this.context.spHttpClient.get(
+            `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id,SubsiteUrl,EventNumber`,
+            SPHttpClient.configurations.v1
+          );
+          if (!evResp.ok) continue;
+          const evData = await evResp.json();
+          const evItems = evData.value || evData.d?.results || [];
+          if (evItems.length === 0) { result[m.title] = -1; continue; } // Event nicht da
+          const event = evItems[0];
+          const subsiteUrl: string = event.SubsiteUrl;
+          const eventNumber: number = event.EventNumber;
+          if (!subsiteUrl) continue;
+
+          // Idempotenz-Check
+          const checkResp = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$top=1&$select=Id`,
+            SPHttpClient.configurations.v1
+          );
+          if (checkResp.ok) {
+            const cd = await checkResp.json();
+            const existing = cd.value || cd.d?.results || [];
+            if (existing.length > 0) { result[m.title] = 0; continue; }
+          }
+
+          // Field-Map
+          const fieldsResp = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
+            SPHttpClient.configurations.v1
+          );
+          const fieldMap: Record<string, string> = {};
+          if (fieldsResp.ok) {
+            const fd = await fieldsResp.json();
+            const fields = fd.value || fd.d?.results || [];
+            for (const f of fields) fieldMap[f.Title] = f.InternalName;
+          }
+
+          let listItemType = 'SP.Data.TeilnehmerListItem';
+          try {
+            const tr = await this.context.spHttpClient.get(
+              `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')?$select=ListItemEntityTypeFullName`,
+              SPHttpClient.configurations.v1
+            );
+            if (tr.ok) {
+              const td = await tr.json();
+              listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
+            }
+          } catch { /* */ }
+
+          const nowIso = new Date().toISOString();
+          let count = 0;
+          for (const p of m.participants) {
+            try {
+              const customData: Record<string, string> = {};
+              if (p.al) customData['allergies'] = p.al;
+              if (p.fp) customData['foodPreferences'] = p.fp;
+              if (p.hr) customData['hotelRequired'] = p.hr;
+              if (p.rt) customData['roomType'] = p.rt;
+              if (p.pr) customData['preferredRoommate'] = p.pr;
+              if (p.dd1) customData['dropdown1'] = p.dd1;
+              if (p.dd2) customData['dropdown2'] = p.dd2;
+
+              const payload: Record<string, unknown> = {
+                '__metadata': { 'type': listItemType },
+                'Title': p.em,
+                'ParticipantName': `${p.fn} ${p.ln}`,
+                'ParticipantEmail': p.em,
+                'Vorname': p.fn,
+                'Nachname': p.ln,
+                'Anrede': p.sal || null,
+                'Status': p.st,
+                'TeilnehmerID': p.nr || null,
+                'Department': p.dp,
+                'JobTitle': p.jt,
+                'Location': p.of,
+                'RegistrationDate': nowIso,
+                'CancellationDate': p.st === 'Abgemeldet' ? nowIso : null,
+                'CustomData': JSON.stringify(customData),
+              };
+              if (p.al && fieldMap['Allergies']) payload[fieldMap['Allergies']] = p.al;
+              if (p.fp && fieldMap['FoodPreferences']) payload[fieldMap['FoodPreferences']] = p.fp;
+              if (p.hr && fieldMap['HotelRequired']) payload[fieldMap['HotelRequired']] = p.hr;
+              if (p.rt && fieldMap['RoomType']) payload[fieldMap['RoomType']] = p.rt;
+              if (p.pr && fieldMap['PreferredRoommate']) payload[fieldMap['PreferredRoommate']] = p.pr;
+
+              await this.context.spHttpClient.post(
+                `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items`,
+                SPHttpClient.configurations.v1,
+                {
+                  headers: {
+                    'Accept': 'application/json;odata=verbose',
+                    'Content-Type': 'application/json;odata=verbose',
+                    'odata-version': '',
+                  },
+                  body: JSON.stringify(payload),
+                }
+              );
+              if (eventNumber && p.st === 'Angemeldet') {
+                this.upsertParticipant(p.fn, p.ln, p.em, eventNumber, 'Angemeldet').catch(() => {});
+              }
+              count += 1;
+            } catch { /* einzelnen ueberspringen */ }
+          }
+          result[m.title] = count;
+        } catch { /* eines der Events ueberspringen */ }
+      }
+    } catch { /* */ }
+    return result;
   }
 
   /**
