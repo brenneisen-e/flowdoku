@@ -1181,9 +1181,11 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
     ```
     (EventNumber, nicht ID!)
 
-## Finaler Flow-JSON (Stand 2026-04-14, Recipient-Filter via Filter array)
+## Finaler Flow-JSON (Stand 2026-04-14, Body pre-rendered im Handler)
 
-**Wichtig:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfaenger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
+**Wichtig 1 — Recipient-Filter:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfaenger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
+
+**Wichtig 2 — Body Pre-Rendering:** DEX_SEND_MAIL rendert nur `{{LOGO_URL}}`/`{{ORB_URL}}` — restliche Platzhalter (`{{Name}}`, `{{EventTitle}}`, `{{CancelUrl}}`) muessen bereits beim Erstellen des Queue-Items ersetzt sein, sonst schlaegt DEX_SEND_MAIL mit `replace expects string, got null` fehl (wenn Body leer bleibt). Daher holt der Handler das OutlookDeclineReminder-Template aus DEX_EmailTemplates (Sprache aus DEX_Events.EmailLanguage) und ersetzt die Platzhalter **vor** dem Queue-Insert.
 
 **TRIGGER (Office 365 Outlook — SharedMailboxOnNewEmailV2):**
 ```json
@@ -1284,22 +1286,36 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
               "type": "If",
               "expression": { "and": [ { "equals": ["@length(body('Filter_By_Recipient'))", 0] } ] },
               "actions": {
+                "Get_Reminder_Template": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+                      "$filter": "@concat(\n  'TemplateType eq ''OutlookDeclineReminder'' and Language eq ''',\n  coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'),\n  ''''\n)",
+                      "$top": 1
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
+                  }
+                },
                 "Create_Reminder_Queue_Item": {
                   "type": "OpenApiConnection",
                   "inputs": {
                     "parameters": {
                       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                       "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                      "item/Title": "@concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+                      "item/Title": "@replace(\n  coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['Subject'], concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])),\n  '{{EventTitle}}',\n  first(outputs('Get_DEX_Event')?['body/value'])?['Title']\n)",
                       "item/Recipient": "@triggerOutputs()?['body/from']",
                       "item/RecipientName": "@triggerOutputs()?['body/from']",
                       "item/EmailType/Value": "OutlookDeclineReminder",
                       "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
                       "item/Status/Value": "Pending",
+                      "item/Body": "@replace(\n  replace(\n    replace(\n      coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''),\n      '{{Name}}',\n      triggerOutputs()?['body/from']\n    ),\n    '{{EventTitle}}',\n    first(outputs('Get_DEX_Event')?['body/value'])?['Title']\n  ),\n  '{{CancelUrl}}',\n  concat(\n    'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=',\n    string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber'])\n  )\n)",
                       "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
                     },
                     "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
-                  }
+                  },
+                  "runAfter": { "Get_Reminder_Template": ["Succeeded"] }
                 }
               },
               "else": { "actions": {} },
