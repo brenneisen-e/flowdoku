@@ -575,14 +575,96 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 ## 4. DEX_Outlook_Einladungen
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
-**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen ODER Event-Daten aktualisieren (via Graph API)
-**Letztes Update:** 2026-04-09
+**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin loeschen (via Graph API)
+**Letztes Update:** 2026-04-14 (DeleteEvent-Branch hinzugefuegt)
 
-Ablauf: Trigger → Event-Details laden → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden? → Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende (Zeit wird per `convertFromUtc` nach Europe/Berlin konvertiert) → Nein: Einladen/Ausladen → Status=Sent
+Ablauf:
+1. Trigger (neues DEX_Outlook-Item)
+2. **Is_DeleteEvent?** → Ja: Outlook-Termin per `triggerBody()?['CalendarLink']` finden (iCalUId) → DELETE → Status=Sent. Nein: weiter.
+3. Event-Details laden (DEX_Events via EventId) → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden?
+4. Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende → Nein: Einladen/Ausladen → Status=Sent
 
-**ActionTypes:** `Einladen` (Teilnehmer hinzufügen), `Ausladen` (Teilnehmer entfernen), `UpdateEvent` (Termin-Daten aktualisieren)
+**ActionTypes:**
+- `Einladen` — einzelnen Teilnehmer zum Outlook-Termin hinzufuegen
+- `Ausladen` — einzelnen Teilnehmer aus dem Outlook-Termin entfernen
+- `UpdateEvent` — Titel/Start/Ende des Outlook-Termins aktualisieren
+- `DeleteEvent` — kompletten Outlook-Termin loeschen. Das DEX_Outlook-Queue-Item
+  enthaelt `CalendarLink` (iCalUId) direkt, weil das zugehoerige DEX_Events-Item
+  bereits geloescht ist, wenn der Flow laeuft.
 
 **Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
+
+### Is_DeleteEvent-Branch (ganz am Anfang, vor Get_Event_Details)
+
+```json
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      { "equals": ["@triggerBody()?['ActionType']?['Value']", "DeleteEvent"] }
+    ]
+  },
+  "actions": {
+    "Find_Outlook_Event_For_Delete": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events?$filter=iCalUId eq ''', triggerBody()?['CalendarLink'], '''')",
+          "Method": "GET",
+          "ContentType": "application/json"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365", "connection": "shared_office365", "operationId": "HttpRequest" }
+      }
+    },
+    "Outlook_Event_Found": {
+      "type": "If",
+      "expression": { "and": [ { "greater": ["@length(body('Find_Outlook_Event_For_Delete')?['value'])", 0] } ] },
+      "actions": {
+        "Delete_Outlook_Event": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', first(body('Find_Outlook_Event_For_Delete')?['value'])?['id'])",
+              "Method": "DELETE",
+              "ContentType": "application/json"
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365", "connection": "shared_office365", "operationId": "HttpRequest" }
+          }
+        },
+        "Set_Sent_DeleteEvent": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+              "table": "d794655b-c950-416c-a478-5dbae285e46d",
+              "id": "@triggerBody()?['ID']",
+              "item/Title": "@triggerBody()?['Title']",
+              "item/Status/Value": "Sent",
+              "item/SentDate": "@utcNow()"
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
+          },
+          "runAfter": { "Delete_Outlook_Event": ["Succeeded", "Failed"] }
+        }
+      },
+      "else": { "actions": {} },
+      "runAfter": { "Find_Outlook_Event_For_Delete": ["Succeeded"] }
+    }
+  },
+  "else": { "actions": {} },
+  "runAfter": {}
+}
+```
+
+Wichtig: `Get_Event_Details` hat nach Einfuegen dieser Condition `runAfter = { "Is_DeleteEvent": ["Succeeded"] }`, damit die Haupt-Logik nur laeuft wenn es kein DeleteEvent ist. Der Else-Zweig von `Is_DeleteEvent` ist leer (alle weiteren Actions kommen sowieso nach der Condition).
+
+### SharePoint-Liste DEX_Outlook
+
+Fuer `DeleteEvent` muessen folgende Schema-Aenderungen vorgenommen werden (werden bei neuen Listen automatisch von `ensureOutlookList()` angelegt, bei bestehenden muss der Admin sie manuell ergaenzen):
+
+- **Choice `ActionType`** erweitern um `DeleteEvent`
+- **Neue Spalte** `CalendarLink` (Multiple lines of text, plain) — enthaelt die iCalUId, damit der Flow das Outlook-Event auch ohne Zugriff auf DEX_Events finden kann.
+
 
 ```json
 TRIGGER (Neues Item in DEX_Outlook, Concurrency: 1):

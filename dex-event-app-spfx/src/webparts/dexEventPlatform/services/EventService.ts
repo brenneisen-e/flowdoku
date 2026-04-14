@@ -374,9 +374,18 @@ export class EventService {
     const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Attendee', type: 2 },
       { title: 'EventId', type: 2 },
-      { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen'], metaType: 'SP.FieldChoice' },
+      // ActionType:
+      //  - Einladen / Ausladen: einzelnen Attendee zum Outlook-Termin hinzufuegen/entfernen
+      //  - UpdateEvent: Titel/Start/Ende aktualisieren (kein Attendee)
+      //  - DeleteEvent: kompletten Kalender-Termin loeschen (wird beim Loeschen eines Events
+      //    aus der App abgesetzt, inkl. CalendarLink damit der Flow nicht auf DEX_Events
+      //    angewiesen ist - das Event-Item wird direkt danach aus DEX_Events geloescht).
+      { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen', 'UpdateEvent', 'DeleteEvent'], metaType: 'SP.FieldChoice' },
       { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
       { title: 'SentDate', type: 4 },
+      // CalendarLink (iCalUId) - nur fuer DeleteEvent noetig, damit der Flow das Outlook-
+      // Event auch dann noch finden kann, wenn das DEX_Events-Item schon geloescht wurde.
+      { title: 'CalendarLink', type: 3 },
     ];
 
     for (const f of fields) {
@@ -393,7 +402,7 @@ export class EventService {
     }
 
     await this.configureDefaultView(listName, [
-      'Attendee', 'EventId', 'ActionType', 'Status', 'SentDate',
+      'Attendee', 'EventId', 'ActionType', 'Status', 'SentDate', 'CalendarLink',
     ]);
 
     await this.setQueueListPermissions(listName);
@@ -419,6 +428,36 @@ export class EventService {
           'EventId': eventId,
           'ActionType': actionType,
           'Status': 'Pending',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * DeleteEvent in die DEX_Outlook-Queue eintragen. Wird vom deleteEvent-Flow
+   * aufgerufen, BEVOR das DEX_Events-Item geloescht wird. Der DEX_Outlook_Einladungen-
+   * Flow findet den Outlook-Termin ueber CalendarLink (iCalUId) und loescht ihn.
+   * Attendee bleibt leer - DeleteEvent wirkt event-weit.
+   */
+  public async queueOutlookDeleteEvent(
+    eventId: string,
+    eventTitle: string,
+    calendarLink: string
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+          'Title': `DeleteEvent: ${eventTitle}`,
+          'Attendee': '',
+          'EventId': eventId,
+          'ActionType': 'DeleteEvent',
+          'Status': 'Pending',
+          'CalendarLink': calendarLink,
         }
       );
       return response.ok;
@@ -1753,52 +1792,21 @@ export class EventService {
    * 2. Alte Registrierungsliste loeschen (DEX_Reg_*) - fuer alte Events
    * 3. Event-Eintrag aus DEX_Events loeschen
    */
-  /**
-   * Outlook-Kalendereintrag im Shared Mailbox `no_reply.events@deloitte.de` loeschen.
-   * Wird vom deleteEvent-Flow aufgerufen, BEVOR das DEX_Events-Item geloescht wird
-   * (sonst ist der iCalUId nicht mehr verfuegbar).
-   *
-   * Voraussetzung:
-   *  - webApiPermissionRequest 'Calendars.ReadWrite.Shared' in package-solution.json
-   *  - Der ausfuehrende Admin hat Zugriff auf das Shared-Postfach
-   *    (in diesem Tenant gegeben, nur Admins koennen Events loeschen).
-   */
-  public async deleteOutlookEvent(iCalUId: string): Promise<boolean> {
-    if (!iCalUId) return false;
-    const mailbox = 'no_reply.events@deloitte.de';
-    try {
-      const client = await this.context.msGraphClientFactory.getClient('3');
-      // Graph gibt event-ID nicht direkt per iCalUId-DELETE heraus; erst suchen.
-      const search = await client
-        .api(`/users/${mailbox}/events`)
-        .filter(`iCalUId eq '${iCalUId.replace(/'/g, "''")}'`)
-        .select('id')
-        .top(1)
-        .get();
-      const items = search && search.value ? search.value : [];
-      if (items.length === 0) {
-        console.warn(`[DEX] deleteOutlookEvent: no Outlook event found for iCalUId ${iCalUId}`);
-        return false;
-      }
-      await client.api(`/users/${mailbox}/events/${items[0].id}`).delete();
-      console.warn(`[DEX] deleteOutlookEvent: deleted Outlook event ${items[0].id} (iCalUId ${iCalUId})`);
-      return true;
-    } catch (err) {
-      console.warn('[DEX] deleteOutlookEvent failed:', err);
-      return false;
-    }
-  }
-
   public async deleteEvent(eventId: number): Promise<boolean> {
     try {
       // Event-Daten laden um SubsiteUrl und RegistrationListName zu bekommen
       const event = await this.getEvent(eventId);
       if (!event) return false;
 
-      // 0. Outlook-Kalendereintrag loeschen (vor allem anderen, damit CalendarLink
-      //    noch verfuegbar ist). Fehler ignorieren - Event-Delete soll trotzdem durchlaufen.
+      // 0. Outlook-Kalendereintrag per Queue loeschen (VOR allem anderen, damit
+      //    CalendarLink noch vorhanden ist). Der DEX_Outlook_Einladungen-Flow
+      //    greift den DeleteEvent-Eintrag auf und loescht den Kalender-Termin
+      //    im Shared Mailbox ueber den Flow-Service-Account.
+      //    Fehler hier ignorieren - Event-Delete soll trotzdem durchlaufen.
       if (event.CalendarLink) {
-        await this.deleteOutlookEvent(event.CalendarLink).catch(() => null);
+        try {
+          await this.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
+        } catch { /* Queue-Fehler ignorieren */ }
       }
 
       // 1. Subsite loeschen (neue Events)
