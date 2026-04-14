@@ -1024,7 +1024,150 @@ Beim nächsten App-Start legt die App folgende Template-Einträge automatisch an
 
 | TemplateType | Language | Subject |
 |--------------|----------|---------|
-| OutlookDeclineReminder | EN | Do you also want to cancel your registration? {{EventTitle}} |
-| OutlookDeclineReminder | DE | Möchtest du dich auch offiziell abmelden? {{EventTitle}} |
+| OutlookDeclineReminder | EN | Action Required: Do you also want to cancel your registration? {{EventTitle}} |
+| OutlookDeclineReminder | DE | Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}} |
 
 Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my registration"-Action-Button, der auf `{{CancelUrl}}` zeigt.
+
+---
+
+## Finaler Flow-JSON (Referenz, Stand 2026-04-13)
+
+**Trigger:**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "table": "<no_reply.events@deloitte.de Calendar-Id>"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "CalendarGetOnUpdatedItemsV3"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+```
+
+**Filter_Declined_Attendees (Query):**
+```json
+{
+  "type": "Query",
+  "inputs": {
+    "from": "@triggerOutputs()?['body/attendees']",
+    "where": "@equals(item()?['status']?['response'],'declined')"
+  },
+  "runAfter": {}
+}
+```
+
+**Has_Declined_Attendees (If):**
+```json
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      { "greater": ["@length(body('Filter_Declined_Attendees'))", 0] }
+    ]
+  }
+}
+```
+
+**Get_DEX_Event:**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+      "$filter": "@concat('CalendarLink eq ''', triggerOutputs()?['body/iCalUId'], '''')",
+      "$top": 1
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItems"
+    }
+  }
+}
+```
+
+**Event_Found (If):** `@length(outputs('Get_DEX_Event')?['body/value']) > 0`
+
+**For_Each_Declined (Foreach):** `@body('Filter_Declined_Attendees')`
+
+**Get_Teilnehmer_Entry (HTTP to SharePoint, in Loop):**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
+      "parameters/method": "GET",
+      "parameters/uri": "@concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=ParticipantEmail eq ''', items('For_Each_Declined')?['emailAddress']?['address'], ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status')",
+      "parameters/headers": { "Accept": "application/json;odata=nometadata" }
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "HttpRequest"
+    }
+  }
+}
+```
+
+**Still_Registered (If):** `@length(body('Get_Teilnehmer_Entry')?['value']) > 0`
+
+**Get_Existing_Reminder (SP Get items, in Still_Registered/yes):**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "$filter": "@concat('EmailType eq ''OutlookDeclineReminder'' and Recipient eq ''', items('For_Each_Declined')?['emailAddress']?['address'], ''' and EventId eq ''', first(outputs('Get_DEX_Event')?['body/value'])?['ID'], '''')",
+      "$top": 1
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItems"
+    }
+  }
+}
+```
+
+**No_Reminder_Yet (If):** `@length(outputs('Get_Existing_Reminder')?['body/value']) == 0`
+
+**Create_Email_Queue_Item (SP Create item, in No_Reminder_Yet/yes):**
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "item/Title": "@concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+      "item/Recipient": "@items('For_Each_Declined')?['emailAddress']?['address']",
+      "item/RecipientName": "@items('For_Each_Declined')?['emailAddress']?['name']",
+      "item/EmailType/Value": "OutlookDeclineReminder",
+      "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
+      "item/Status/Value": "Pending",
+      "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "PostItem"
+    }
+  }
+}
+```
+
+---
+

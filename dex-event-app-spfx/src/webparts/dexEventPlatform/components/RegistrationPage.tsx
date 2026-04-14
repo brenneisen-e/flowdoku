@@ -35,7 +35,10 @@ export default function RegistrationPage(): React.ReactElement {
   // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
   const showLocationBanner = canCreateEvents && event && (() => {
     const locFilters = event.locationAudience;
-    const audFilters = event.audienceFilter || [];
+    // Audience-Filter normalisieren: 'All'/'DEALL' = "kein Audience-Filter"
+    const audFilters = (event.audienceFilter || [])
+      .map(s => s.trim())
+      .filter(s => s && s.toLowerCase() !== 'all' && s.toLowerCase() !== 'deall');
     const hasLoc = locFilters.length > 0;
     const hasAud = audFilters.length > 0;
     if (!hasLoc && !hasAud) return false; // kein Filter = alle sehen es
@@ -53,15 +56,19 @@ export default function RegistrationPage(): React.ReactElement {
     const audMatch = !hasAud || audFilters.some(f => {
       const fl = f.trim().toLowerCase();
       if (fl.indexOf('@') >= 0) return email === fl;
-      if (fl === 'deall') return true;
-      if (fl.startsWith('de')) return loc.indexOf(fl.substring(2)) >= 0;
+      if (fl.startsWith('de')) {
+        const city = fl.substring(2);
+        const norm = city.replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/ae/g, 'ä');
+        return loc.indexOf(city) >= 0 || loc.indexOf(norm) >= 0;
+      }
       return false;
     });
 
-    const mode = event.filterMode || 'OR';
-    const visible = mode === 'AND'
-      ? (hasLoc && hasAud ? locMatch && audMatch : hasLoc ? locMatch : audMatch)
-      : (locMatch || audMatch);
+    // Default: AND (Schnittmenge). Nur OR wenn explizit gesetzt.
+    const mode = event.filterMode || 'AND';
+    const visible = mode === 'OR'
+      ? (locMatch || audMatch)
+      : (hasLoc && hasAud ? locMatch && audMatch : hasLoc ? locMatch : audMatch);
     return !visible;
   })();
 

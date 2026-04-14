@@ -37,17 +37,17 @@ export default function LandingPage(): React.ReactElement {
       {/* Hinweis-Box rechts: neue Version + Link zur alten App */}
       <div className="landing__notice" style={{
         position: 'absolute', top: 48, right: 16,
-        maxWidth: 320, padding: '14px 16px',
-        background: 'rgba(255,255,255,0.92)', borderRadius: 'var(--dex-radius-lg)',
+        maxWidth: 560, padding: '32px 36px',
+        background: 'rgba(255,255,255,0.95)', borderRadius: 'var(--dex-radius-lg)',
         border: '1px solid var(--dex-gray-200)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-        fontSize: '0.78rem', lineHeight: 1.5, color: 'var(--dex-gray-700)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+        fontSize: '1rem', lineHeight: 1.55, color: 'var(--dex-gray-700)',
         zIndex: 5,
       }}>
-        <div style={{ fontWeight: 700, color: 'var(--dex-green)', marginBottom: 6, fontSize: '0.82rem' }}>
+        <div style={{ fontWeight: 700, color: 'var(--dex-green)', marginBottom: 14, fontSize: '1.35rem' }}>
           {locale === 'de' ? 'Neue Version der DEX App' : 'New version of the DEX App'}
         </div>
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 20 }}>
           {locale === 'de'
             ? 'Dies ist die neue Version der DEX App. Falls du Zugriff auf ein altes Event benötigst, das noch nicht über die neue Version verwaltet wird, nutze bitte die alte App.'
             : 'This is the new version of the DEX App. If you need access to an older event that is not yet managed via the new version, please use the legacy app.'}
@@ -57,9 +57,9 @@ export default function LandingPage(): React.ReactElement {
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            display: 'inline-block', padding: '6px 12px', borderRadius: 6,
+            display: 'inline-block', padding: '12px 24px', borderRadius: 8,
             background: 'var(--dex-green)', color: '#fff', textDecoration: 'none',
-            fontWeight: 600, fontSize: '0.75rem',
+            fontWeight: 600, fontSize: '0.95rem',
           }}
         >
           {locale === 'de' ? 'Alte App öffnen' : 'Open legacy app'}
