@@ -233,7 +233,7 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
       GREEN,
       'Registration successful',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
       <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -252,7 +252,7 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
       '#ed8b00',
       'Waitlist confirmation',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>you have been placed on the <strong>waitlist</strong> for the event <strong>${eventTitle}</strong>.</p>
       ${posInfo}
       <p>We will notify you as soon as a spot becomes available. You can always check your current waitlist position in the <a href="${APP_URL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> under &bdquo;My Events&ldquo;.</p>
@@ -271,7 +271,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       '#da291c',
       'Cancellation confirmed',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>your registration for the event <strong>${eventTitle}</strong> has been <strong>cancelled</strong>.</p>
       <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -289,7 +289,7 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
       GREEN,
       'You got a spot!',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>${eventTitle}</strong>.</p>
       <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -307,7 +307,7 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
       GREEN,
       'Event Created',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>your event <strong>${eventTitle}</strong> has been successfully created.</p>
       <p>You can find the list of participants here:</p>
       <ul>
@@ -329,7 +329,7 @@ export function qrCodeEmail(recipientName: string, eventTitle: string, qrImageHt
       GREEN,
       'Your QR Code',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
       <p>Please show this QR code at check-in.</p>
       <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
@@ -349,7 +349,7 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
       '#333333',
       'Information',
       `Event ${eventTitle}`,
-      `<p><strong>Dear ${recipientName},</strong></p>
+      `<p>Dear ${recipientName},</p>
       <p>${message}</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
