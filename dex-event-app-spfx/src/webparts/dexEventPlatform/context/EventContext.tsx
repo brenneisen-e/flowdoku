@@ -408,7 +408,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         try {
           const promoted = await eventService.promoteFirstWaitlistItem(
             subsiteUrl,
-            cancelledStarterType || undefined
+            cancelledStarterType || undefined,
+            event.maxParticipants
           );
           if (promoted && promoted.success && !event.disableEmails) {
             // Nachrueck-E-Mail an den Nachruecker senden
@@ -422,7 +423,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 WaitlistPosition: '',
               };
               let emailData: { subject: string; body: string };
-              const spTpl = await eventService.getEmailTemplate('Nachrücken', lang).catch(() => null);
+              // WICHTIG: TemplateType/EmailType-Choice ist ASCII 'Nachruecken'
+              // (sowohl im SharePoint-Choice-Feld als auch in DEX_EmailTemplates).
+              // Die Variante 'Nachrücken' mit Umlaut existiert nicht in der Liste
+              // und wuerde das Queuen der Nachrueck-E-Mail fehlschlagen lassen.
+              const spTpl = await eventService.getEmailTemplate('Nachruecken', lang).catch(() => null);
               if (spTpl) {
                 emailData = buildEmailFromTemplate(spTpl, promoteVars);
               } else {
@@ -431,7 +436,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               if (promoted.email) {
                 await eventService.queueEmail(
                   emailData.subject, promoted.email, promoted.name || '', emailData.body,
-                  'Nachrücken', event.title, eventId
+                  'Nachruecken', event.title, eventId
                 );
                 // Outlook-Einladung fuer den Nachruecker
                 if (!event.disableOutlook) {

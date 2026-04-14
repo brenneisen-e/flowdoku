@@ -2595,12 +2595,28 @@ export class EventService {
    * Power Automate DEX_IDReorder-Flow keinen doppelten Nachrueck-Versuch macht.
    * Liefert den nachgerueckten Teilnehmer (Email + Name) zurueck fuer die
    * Nachrueck-E-Mail.
+   *
+   * Schutz gegen Ueberbuchung: Wenn maxParticipants gesetzt ist und die Anzahl
+   * der aktuell Angemeldeten (nach der Abmeldung) >= maxParticipants ist, wird
+   * NICHT nachgerueckt. Das verhindert, dass nach einer frueheren Ueberbuchung
+   * der Abbruch der Abmeldung nicht zu einer weiteren Ueberbuchung fuehrt.
    */
   public async promoteFirstWaitlistItem(
     subsiteUrl: string,
-    inheritStarterType?: string
-  ): Promise<{ success: boolean; email?: string; name?: string }> {
+    inheritStarterType?: string,
+    maxParticipants?: number
+  ): Promise<{ success: boolean; email?: string; name?: string; skippedOverbooked?: boolean }> {
     try {
+      // Ueberbuchungs-Schutz: Nur nachruecken, wenn tatsaechlich ein Platz frei ist.
+      // Bei unlimited (maxParticipants === 0 oder undefined) immer nachruecken.
+      if (maxParticipants && maxParticipants > 0) {
+        const counts = await this.getRegistrationCount(subsiteUrl);
+        if (counts.registered >= maxParticipants) {
+          console.warn(`[DEX] promoteFirstWaitlistItem: skipping promotion - event is overbooked (${counts.registered}/${maxParticipants} registered).`);
+          return { success: false, skippedOverbooked: true };
+        }
+      }
+
       // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst)
       const resp = await this.context.spHttpClient.get(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=Status eq 'Warteliste'&$orderby=RegistrationDate asc&$top=1`,
