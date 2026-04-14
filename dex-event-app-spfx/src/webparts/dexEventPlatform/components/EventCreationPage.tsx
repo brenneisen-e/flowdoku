@@ -425,11 +425,18 @@ export default function EventCreationPage(): React.ReactElement {
 
   const fillDemo = (): void => {
     const now = new Date();
+    // Demo-Events sollen standardmaessig am Wochenende stattfinden:
+    // Naechster Samstag ab now+7 Tage (getDay() === 6 = Samstag).
     const eventStart = new Date(now);
     eventStart.setDate(now.getDate() + 7);
-    eventStart.setHours(14, 0, 0, 0); // 14:00 Uhr
+    while (eventStart.getDay() !== 6) {
+      eventStart.setDate(eventStart.getDate() + 1);
+    }
+    eventStart.setHours(9, 0, 0, 0); // Samstag 09:00
+    // Event laeuft bis Sonntag 17:00 (zwei-Tages-Weekend-Event)
     const eventEnd = new Date(eventStart);
-    eventEnd.setHours(18, 0, 0, 0); // 18:00 Uhr
+    eventEnd.setDate(eventStart.getDate() + 1);
+    eventEnd.setHours(17, 0, 0, 0);
     const deadline = new Date(eventStart);
     deadline.setDate(eventStart.getDate() - 2);
     const lastDereg = new Date(eventStart);
