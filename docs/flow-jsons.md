@@ -1181,7 +1181,9 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
     ```
     (EventNumber, nicht ID!)
 
-## Finaler Flow-JSON (Stand 2026-04-14)
+## Finaler Flow-JSON (Stand 2026-04-14, Recipient-Filter via Filter array)
+
+**Wichtig:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfaenger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
 
 **TRIGGER (Office 365 Outlook — SharedMailboxOnNewEmailV2):**
 ```json
@@ -1264,15 +1266,23 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
                 "parameters": {
                   "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                   "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                  "$filter": "@concat(\n  'EmailType eq ''OutlookDeclineReminder'' and Recipient eq ''',\n  replace(triggerOutputs()?['body/from'], '''', ''''''),\n  ''' and EventId eq ''',\n  first(outputs('Get_DEX_Event')?['body/value'])?['ID'],\n  ''''\n)",
-                  "$top": 1
+                  "$filter": "@concat(\n  'EmailType eq ''OutlookDeclineReminder'' and EventId eq ''',\n  first(outputs('Get_DEX_Event')?['body/value'])?['ID'],\n  ''''\n)",
+                  "$top": 20
                 },
                 "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
               }
             },
+            "Filter_By_Recipient": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_Existing_Reminder')?['value']",
+                "where": "@contains(concat(';', replace(item()?['Recipient'], ' ', ''), ';'), concat(';', triggerOutputs()?['body/from'], ';'))"
+              },
+              "runAfter": { "Get_Existing_Reminder": ["Succeeded"] }
+            },
             "No_Reminder_Yet": {
               "type": "If",
-              "expression": { "and": [ { "equals": ["@length(outputs('Get_Existing_Reminder')?['body/value'])", 0] } ] },
+              "expression": { "and": [ { "equals": ["@length(body('Filter_By_Recipient'))", 0] } ] },
               "actions": {
                 "Create_Reminder_Queue_Item": {
                   "type": "OpenApiConnection",
@@ -1293,7 +1303,7 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
                 }
               },
               "else": { "actions": {} },
-              "runAfter": { "Get_Existing_Reminder": ["Succeeded"] }
+              "runAfter": { "Filter_By_Recipient": ["Succeeded"] }
             }
           },
           "else": { "actions": {} },
