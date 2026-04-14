@@ -1133,7 +1133,16 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 - **EventTitle (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['Title']`
 - **EventId (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['ID']`
 - **Status Value:** `Pending`.
-- **Body:** leer lassen (DEX_SEND_MAIL füllt den Body aus dem Template).
+- **Body (fx):** Der Flow laedt das Template per `Get_Reminder_Template` aus
+  `DEX_EmailTemplates` (TemplateType=`OutlookDeclineReminder`, Language
+  passend zum Event) und ersetzt drei Platzhalter selbst — `DEX_SEND_MAIL`
+  ersetzt danach nur noch `{{LOGO_URL}}` / `{{ORB_URL}}`:
+  ```
+  replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], triggerOutputs()?['body/from'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber'])))
+  ```
+  **Wichtig beim `{{Name}}`-Replace:** `coalesce(...Vorname, from)` nutzen
+  (nicht nur `from`), sonst landet die Mail-Adresse in der Anrede statt des
+  Vornamens. Same `coalesce`-Expression wie bei `RecipientName`.
 - Rename → `Create_Reminder_Queue_Item`.
 
 ## Ablauf-Diagramm
@@ -1313,22 +1322,36 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
               "type": "If",
               "expression": { "and": [ { "equals": ["@length(body('Filter_By_Recipient'))", 0] } ] },
               "actions": {
+                "Get_Reminder_Template": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+                      "$filter": "@concat('TemplateType eq ''OutlookDeclineReminder'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
+                      "$top": 1
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
+                  }
+                },
                 "Create_Reminder_Queue_Item": {
                   "type": "OpenApiConnection",
                   "inputs": {
                     "parameters": {
                       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                       "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                      "item/Title": "@concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+                      "item/Title": "@replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['Subject'], concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
                       "item/Recipient": "@triggerOutputs()?['body/from']",
                       "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], triggerOutputs()?['body/from'])",
                       "item/EmailType/Value": "OutlookDeclineReminder",
                       "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
                       "item/Status/Value": "Pending",
+                      "item/Body": "@replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], triggerOutputs()?['body/from'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber'])))",
                       "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
                     },
                     "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
-                  }
+                  },
+                  "runAfter": { "Get_Reminder_Template": ["Succeeded"] }
                 }
               },
               "else": { "actions": {} },
