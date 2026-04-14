@@ -1068,9 +1068,12 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
   concat(
     '_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=ParticipantEmail eq ''',
     replace(triggerOutputs()?['body/from'], '''', ''''''),
-    ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status'
+    ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status,Vorname,Nachname'
   )
   ```
+  **Wichtig:** `Vorname` und `Nachname` MUESSEN mit im `$select` stehen, damit
+  `Create_Reminder_Queue_Item` den echten Vornamen als `RecipientName` setzen
+  kann (statt der Mail-Adresse als Fallback).
 - **Headers:**
   - `Accept: application/json;odata=nometadata`
 - Rename → `Get_Teilnehmer_Entry`.
@@ -1114,7 +1117,18 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 - **List Name:** `DEX_Emails`.
 - **Title (fx):** `concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])`
 - **Recipient (fx):** `triggerOutputs()?['body/from']`
-- **RecipientName (fx):** `triggerOutputs()?['body/from']` (kein Display-Name im Mail-Trigger verfügbar)
+- **RecipientName (fx):**
+  ```
+  coalesce(
+    first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'],
+    triggerOutputs()?['body/from']
+  )
+  ```
+  Der Shared-Mailbox-Trigger liefert **keinen Display-Namen**, nur die
+  Mail-Adresse. Darum ziehen wir den Vornamen aus dem Teilnehmer-Eintrag,
+  damit die Mail mit "Dear Eike," statt "Dear ebrenneisen@deloitte.de,"
+  beginnt. Fallback auf die Mail-Adresse (falls `Vorname` im Teilnehmer-
+  Eintrag leer ist).
 - **EmailType Value:** `OutlookDeclineReminder`.
 - **EventTitle (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['Title']`
 - **EventId (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['ID']`
@@ -1265,7 +1279,7 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
             "parameters": {
               "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
               "parameters/method": "GET",
-              "parameters/uri": "@concat(\n  '_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=ParticipantEmail eq ''',\n  replace(triggerOutputs()?['body/from'], '''', ''''''),\n  ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status'\n)",
+              "parameters/uri": "@concat(\n  '_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=ParticipantEmail eq ''',\n  replace(triggerOutputs()?['body/from'], '''', ''''''),\n  ''' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status,Vorname,Nachname'\n)",
               "parameters/headers": { "Accept": "application/json;odata=nometadata" }
             },
             "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
@@ -1307,7 +1321,7 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
                       "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
                       "item/Title": "@concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
                       "item/Recipient": "@triggerOutputs()?['body/from']",
-                      "item/RecipientName": "@triggerOutputs()?['body/from']",
+                      "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], triggerOutputs()?['body/from'])",
                       "item/EmailType/Value": "OutlookDeclineReminder",
                       "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
                       "item/Status/Value": "Pending",

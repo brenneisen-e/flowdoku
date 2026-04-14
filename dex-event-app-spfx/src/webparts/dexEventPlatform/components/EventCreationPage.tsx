@@ -749,12 +749,21 @@ export default function EventCreationPage(): React.ReactElement {
                 setImageUploadError('Bild-Upload fehlgeschlagen.');
               }
             }
-            // Event-Created Mail an alle Organizer senden
+            // Event-Created Mail an alle Organizer senden.
+            // {{Name}} in der Anrede = nur Vorname (nicht voller Name), darum
+            // den Organizer-String anhand von ";" in Namen splitten und pro
+            // Name das erste Token als Vorname nehmen. Paarweise zu den
+            // organizerEmails - bei Laengen-Mismatch faellt wir auf den
+            // ersten Namen zurueck.
             const allOrgEmails = organizerEmails.length > 0 ? organizerEmails : [currentUser.email];
-            for (const orgEmail of allOrgEmails) {
-              const emailData = eventCreatedEmail(organizer, title, subsiteUrl);
+            const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+            for (let i = 0; i < allOrgEmails.length; i++) {
+              const orgEmail = allOrgEmails[i];
+              const orgFullName = orgNames[i] || orgNames[0] || `${currentUser.firstName} ${currentUser.surname}`;
+              const orgFirstName = orgFullName.split(/\s+/)[0] || orgFullName;
+              const emailData = eventCreatedEmail(orgFirstName, title, subsiteUrl);
               svc.queueEmail(
-                emailData.subject, orgEmail, organizer, emailData.body,
+                emailData.subject, orgEmail, orgFullName, emailData.body,
                 'EventErstellt', title, String(eventId)
               ).catch(err => console.warn('[DEX]', err));
             }
