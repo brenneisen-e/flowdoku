@@ -76,6 +76,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   const eventService = React.useMemo(() => new EventService(props.context), []);
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
+  // Vorname fuer E-Mail-Anreden ({{Name}} im Template).
+  // Deloitte-displayName ist "Nachname, Vorname" (mit Komma) -> Teil nach Komma.
+  // Fallback: displayName ohne Komma -> erstes Wort (vereinzelt "Vorname Nachname").
+  const getFirstName = (displayName: string): string => {
+    if (!displayName) return '';
+    const commaIdx = displayName.indexOf(',');
+    if (commaIdx >= 0) return displayName.substring(commaIdx + 1).trim().split(/\s+/)[0];
+    return displayName.trim().split(/\s+/)[0];
+  };
+  const currentUserFirstName = getFirstName(currentUserName);
 
   React.useEffect(() => {
     initEvents().catch(() => setIsEventsLoading(false));
@@ -328,15 +338,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
       const lang = event.emailLanguage || 'EN';
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
-      const vars = { Name: nameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
+      // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
+      // aus dem displayName gesplittet, bei "Fuer andere registrieren" explizit gesetzt).
+      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
         emailData = status === 'Warteliste'
-          ? waitlistEmail(nameToUse, event.title, waitlistPosition)
-          : registrationEmail(nameToUse, event.title);
+          ? waitlistEmail(firstNameToUse, event.title, waitlistPosition)
+          : registrationEmail(firstNameToUse, event.title);
       }
       if (!event.disableEmails) {
         eventService.queueEmail(
@@ -379,13 +391,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (!event.disableEmails) {
           try {
             const lang = event.emailLanguage || 'EN';
-            const cancelVars = { Name: currentUserName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
+            // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
+            // "Nachname, Vorname" -> getFirstName extrahiert den Vornamen).
+            const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
             let emailData: { subject: string; body: string };
             const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
             if (spTpl) {
               emailData = buildEmailFromTemplate(spTpl, cancelVars);
             } else {
-              emailData = cancellationEmail(currentUserName, event.title);
+              emailData = cancellationEmail(currentUserFirstName, event.title);
             }
             const emailOk = await eventService.queueEmail(
               emailData.subject, currentUserEmail, currentUserName, emailData.body,
@@ -416,8 +430,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             // Nachrueck-E-Mail an den Nachruecker senden
             try {
               const lang = event.emailLanguage || 'EN';
+              // {{Name}}: nur Vorname. promoted.name ist "Vorname Nachname" -> erstes Token.
+              const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
               const promoteVars = {
-                Name: promoted.name || '',
+                Name: promotedFirstName,
                 EventTitle: event.title,
                 Organizer: event.organizers.join(', '),
                 AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
@@ -432,7 +448,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               if (spTpl) {
                 emailData = buildEmailFromTemplate(spTpl, promoteVars);
               } else {
-                emailData = promotionEmail(promoted.name || '', event.title);
+                emailData = promotionEmail(promotedFirstName, event.title);
               }
               if (promoted.email) {
                 await eventService.queueEmail(
