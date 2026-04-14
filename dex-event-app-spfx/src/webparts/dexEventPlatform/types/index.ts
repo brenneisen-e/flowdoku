@@ -13,6 +13,7 @@ export interface DeloitteEvent {
   type: EventType;
   status: EventStatus;
   organizers: string[];
+  organizerEmails: string[]; // ';'-separiert in SharePoint (OrganizerEmail), hier als Array fuer Benachrichtigungen
   location: string;
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];
