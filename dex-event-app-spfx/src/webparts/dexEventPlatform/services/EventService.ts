@@ -1753,11 +1753,53 @@ export class EventService {
    * 2. Alte Registrierungsliste loeschen (DEX_Reg_*) - fuer alte Events
    * 3. Event-Eintrag aus DEX_Events loeschen
    */
+  /**
+   * Outlook-Kalendereintrag im Shared Mailbox `no_reply.events@deloitte.de` loeschen.
+   * Wird vom deleteEvent-Flow aufgerufen, BEVOR das DEX_Events-Item geloescht wird
+   * (sonst ist der iCalUId nicht mehr verfuegbar).
+   *
+   * Voraussetzung:
+   *  - webApiPermissionRequest 'Calendars.ReadWrite.Shared' in package-solution.json
+   *  - Der ausfuehrende Admin hat Zugriff auf das Shared-Postfach
+   *    (in diesem Tenant gegeben, nur Admins koennen Events loeschen).
+   */
+  public async deleteOutlookEvent(iCalUId: string): Promise<boolean> {
+    if (!iCalUId) return false;
+    const mailbox = 'no_reply.events@deloitte.de';
+    try {
+      const client = await this.context.msGraphClientFactory.getClient('3');
+      // Graph gibt event-ID nicht direkt per iCalUId-DELETE heraus; erst suchen.
+      const search = await client
+        .api(`/users/${mailbox}/events`)
+        .filter(`iCalUId eq '${iCalUId.replace(/'/g, "''")}'`)
+        .select('id')
+        .top(1)
+        .get();
+      const items = search && search.value ? search.value : [];
+      if (items.length === 0) {
+        console.warn(`[DEX] deleteOutlookEvent: no Outlook event found for iCalUId ${iCalUId}`);
+        return false;
+      }
+      await client.api(`/users/${mailbox}/events/${items[0].id}`).delete();
+      console.warn(`[DEX] deleteOutlookEvent: deleted Outlook event ${items[0].id} (iCalUId ${iCalUId})`);
+      return true;
+    } catch (err) {
+      console.warn('[DEX] deleteOutlookEvent failed:', err);
+      return false;
+    }
+  }
+
   public async deleteEvent(eventId: number): Promise<boolean> {
     try {
       // Event-Daten laden um SubsiteUrl und RegistrationListName zu bekommen
       const event = await this.getEvent(eventId);
       if (!event) return false;
+
+      // 0. Outlook-Kalendereintrag loeschen (vor allem anderen, damit CalendarLink
+      //    noch verfuegbar ist). Fehler ignorieren - Event-Delete soll trotzdem durchlaufen.
+      if (event.CalendarLink) {
+        await this.deleteOutlookEvent(event.CalendarLink).catch(() => null);
+      }
 
       // 1. Subsite loeschen (neue Events)
       if (event.SubsiteUrl) {
