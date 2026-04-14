@@ -92,8 +92,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // Migrationen (idempotent: bei bereits gefuellter Teilnehmer-Liste auf Subsite werden sie geskippt)
-    try { await eventService.seedJPMorganMigration(); } catch { /* */ }
+    // JP Morgan Migration entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
   }
