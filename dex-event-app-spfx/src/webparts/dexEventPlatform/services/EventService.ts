@@ -2609,9 +2609,16 @@ export class EventService {
     try {
       // Ueberbuchungs-Schutz: Nur nachruecken, wenn tatsaechlich ein Platz frei ist.
       // Bei unlimited (maxParticipants === 0 oder undefined) immer nachruecken.
+      //
+      // WICHTIG: '>' statt '>='. Die Abmeldung (Status->Abgemeldet) ist kurz vor
+      // diesem Call passiert; falls SharePoint den Statuswechsel noch nicht in
+      // getRegistrationCount reflektiert (stale read), wuerden wir bei einem
+      // vollen Event (z.B. 128/128) mit '>=' faelschlich skippen. Mit '>' ist
+      // 'registered == max' noch erlaubt (= genau ein Platz wird nachgerueckt),
+      // und eine echte Ueberbuchung (401 > 128) wird weiterhin abgefangen.
       if (maxParticipants && maxParticipants > 0) {
         const counts = await this.getRegistrationCount(subsiteUrl);
-        if (counts.registered >= maxParticipants) {
+        if (counts.registered > maxParticipants) {
           console.warn(`[DEX] promoteFirstWaitlistItem: skipping promotion - event is overbooked (${counts.registered}/${maxParticipants} registered).`);
           return { success: false, skippedOverbooked: true };
         }
@@ -2642,11 +2649,9 @@ export class EventService {
       const vorname = firstWaiting.Vorname || '';
       const nachname = firstWaiting.Nachname || '';
       const name = (vorname && nachname) ? `${vorname} ${nachname}` : (firstWaiting.ParticipantName || '');
-      return {
-        success: true,
-        email: firstWaiting.ParticipantEmail || firstWaiting.Title || '',
-        name: name,
-      };
+      const email = firstWaiting.ParticipantEmail || firstWaiting.Title || '';
+      console.warn(`[DEX] promoteFirstWaitlistItem: promoted ${name} <${email}> (item ${firstWaiting.Id}) to Angemeldet.`);
+      return { success: true, email, name };
     } catch {
       return { success: false };
     }
