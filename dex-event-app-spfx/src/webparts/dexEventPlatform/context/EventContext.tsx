@@ -92,7 +92,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // JP Morgan Migration entfernt - erfolgreich abgeschlossen
+    // Seed: 6 neue Events einmalig anlegen (idempotent: skip wenn Title schon existiert)
+    try { await eventService.seedNewEvents(); } catch { /* */ }
     await loadEvents();
     setIsEventsLoading(false);
   }

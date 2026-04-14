@@ -1580,6 +1580,174 @@ export class EventService {
 
 
   /**
+   * Seed-Migration: 6 neue Events anlegen (idempotent ueber Title-Check).
+   * Quelle: Events (6).csv vom 14.04.2026.
+   * Wenn ein Event mit gleichem Title bereits existiert, wird es uebersprungen.
+   */
+  public async seedNewEvents(): Promise<{ created: number; skipped: number }> {
+    const events: Array<{
+      title: string; description: string; location: string; locationFilter: string;
+      startDate: string; endDate: string; registrationDeadline: string; lastDeregisterDate: string;
+      maxParticipants: number; organizer: string; organizerEmail: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      customFields: any[];
+    }> = [
+      {
+        title: 'DTAG Global Account Meeting 2026',
+        description: 'DTAG Global Planning Meeting 14.6.-17.6. im Hilton Frankfurt Gravenbruch für Teammitglieder 2026.',
+        location: 'Hilton Hotel, 63263 Neu-Isenburg',
+        locationFilter: '', // ALL = kein Filter
+        startDate: '2026-06-14T00:00:00.000Z',
+        endDate: '2026-06-17T00:00:00.000Z',
+        registrationDeadline: '2026-04-01T15:00:00.000Z',
+        lastDeregisterDate: '2026-06-01T00:00:00.000Z',
+        maxParticipants: 87,
+        organizer: 'Schaffland, Nadine',
+        organizerEmail: 'nschaffland@deloitte.de',
+        customFields: [
+          { id: 'language', label: "What's your preferred language for the team event?", type: 'select', required: false, visible: true, options: ['English', 'German'] },
+          { id: 'diet', label: 'I am...', type: 'select', required: false, visible: true, options: ['vegan', 'vegetarian', 'neither vegan nor vegetarian'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'E2E M&A Activation Session Munich',
+        description: 'Internal Meeting: E2E M&A Activation Session Munich',
+        location: 'Munich',
+        locationFilter: '',
+        startDate: '2026-04-23T19:00:00.000Z',
+        endDate: '2026-04-24T15:30:00.000Z',
+        registrationDeadline: '2026-04-17T23:59:00.000Z',
+        lastDeregisterDate: '2026-04-17T23:59:00.000Z',
+        maxParticipants: 55,
+        organizer: 'Kraus, Annika; Mamberger, Ellen',
+        organizerEmail: 'akraus@deloitte.de',
+        customFields: [
+          { id: 'attendance', label: 'Attendance', type: 'select', required: false, visible: true, options: ['I will attend at the conference and the dinner.', 'I will only attend the conference.', 'I will only attend the dinner.'] },
+          { id: 'menu', label: 'Menu preference', type: 'select', required: false, visible: true, options: ['Standard Menu (meat)', 'Vegan', 'Vegetarian'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Munich Plogging - City Clean up',
+        description: "Let's combine movement with impact: grab a bag, lace up your shoes, and help clean up our surroundings.\n\nBe part of the change and join us for a cleaner planet!",
+        location: 'München',
+        locationFilter: '',
+        startDate: '2026-04-24T13:00:00.000Z',
+        endDate: '2026-04-24T17:00:00.000Z',
+        registrationDeadline: '2026-04-24T10:00:00.000Z',
+        lastDeregisterDate: '2026-04-22T10:00:00.000Z',
+        maxParticipants: 20,
+        organizer: 'Hendrichs, Lars; Krumpe, Iris; Bihler, Birgit',
+        organizerEmail: 'lhendrichs@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Köln City Clean-up',
+        description: 'Im Rahmen des Deloitte Earth Month organisieren wir an allen Standorten Clean up Aktionen – und auch in Köln sind wir natürlich dabei!\nAm 16. April ziehen wir gemeinsam in einer kleinen Gruppe vom Büro los und sammeln Müll in der Umgebung.',
+        location: 'Köln',
+        locationFilter: '',
+        startDate: '2026-04-16T15:00:00.000Z',
+        endDate: '2026-04-16T18:00:00.000Z',
+        registrationDeadline: '2026-04-15T15:00:00.000Z',
+        lastDeregisterDate: '2026-04-15T15:00:00.000Z',
+        maxParticipants: 16,
+        organizer: 'Grashof, Katrin; Schupp, Kimba Lou Alice',
+        organizerEmail: 'kgrashof@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Berlin Plogging - City Clean up',
+        description: 'Im Rahmen des Earth Months organisiert Deloitte in diesem Jahr Plogging-Aktionen an verschiedenen Standorten. Beim Plogging verbinden wir gemeinsames Joggen oder zügiges Spazierengehen mit dem Sammeln von Müll in der Umgebung.',
+        location: 'Berlin',
+        locationFilter: '',
+        startDate: '2026-04-17T16:00:00.000Z',
+        endDate: '2026-04-17T18:00:00.000Z',
+        registrationDeadline: '2026-04-16T17:00:00.000Z',
+        lastDeregisterDate: '2026-04-12T10:00:00.000Z',
+        maxParticipants: 20,
+        organizer: 'Hendrichs, Lars; Wagner, Carolin Leonie; Leitsch, Anna Luise; Lorenzen, Leonie',
+        organizerEmail: 'lhendrichs@deloitte.de',
+        customFields: [
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+      {
+        title: 'Better Futures Day Stuttgart',
+        description: 'Clean-Up in der Umgebung. Nach einer fachkundigen Führung im Degerlocher Wald in unmittelbarer Umgebung unseres Offices, findet der Clean Up statt.',
+        location: 'Stuttgart',
+        locationFilter: '',
+        startDate: '2026-04-24T16:00:00.000Z',
+        endDate: '2026-04-24T18:30:00.000Z',
+        registrationDeadline: '2026-04-23T18:00:00.000Z',
+        lastDeregisterDate: '2026-04-23T18:00:00.000Z',
+        maxParticipants: 35,
+        organizer: 'Sathasivam, Philipp; Oesterle, Ines',
+        organizerEmail: 'psathasivam@deloitte.de',
+        customFields: [
+          { id: 'tshirt', label: 'T-Shirt Size', type: 'select', required: false, visible: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
+        ],
+      },
+    ];
+
+    let created = 0;
+    let skipped = 0;
+    for (const e of events) {
+      try {
+        const titleEnc = encodeURIComponent(e.title.replace(/'/g, "''"));
+        const checkResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq '${titleEnc}'&$top=1&$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (checkResp.ok) {
+          const data = await checkResp.json();
+          const items = data.value || data.d?.results || [];
+          if (items.length > 0) { skipped += 1; continue; }
+        }
+        await this.createEvent({
+          title: e.title,
+          type: 'Other',
+          status: 'Active',
+          description: e.description,
+          location: e.location,
+          locationAddress: '',
+          locationFilter: e.locationFilter,
+          audience: '',
+          filterMode: 'AND',
+          startDate: e.startDate,
+          endDate: e.endDate,
+          registrationDeadline: e.registrationDeadline,
+          lastDeregisterDate: e.lastDeregisterDate,
+          maxParticipants: e.maxParticipants,
+          waitlistEnabled: true,
+          eventImageUrl: '',
+          organizer: e.organizer,
+          organizerEmail: e.organizerEmail,
+          outlookEventId: '',
+          outlookBody: '',
+          emailLanguage: 'EN',
+          emailTemplateOverrides: '',
+          disableEmails: false,
+          disableOutlook: false,
+          customFields: e.customFields,
+          agenda: '[]',
+          transfers: '[]',
+          documents: '[]',
+        });
+        created += 1;
+      } catch { /* einzelnes Event ueberspringen */ }
+    }
+    return { created, skipped };
+  }
+
+  /**
    * Admin-Cleanup beim App-Start: alle Events mit EventStatus='Active' und EndDate < jetzt
    * werden automatisch auf 'Completed' gesetzt. Liefert die Anzahl der aktualisierten Events.
    */
