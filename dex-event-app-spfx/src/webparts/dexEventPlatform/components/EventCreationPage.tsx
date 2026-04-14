@@ -144,7 +144,8 @@ interface CustomFieldInput {
   label: string;
   type: 'text' | 'select' | 'number' | 'checkbox';
   required: boolean;
-  options: string;
+  // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
+  options: string[];
   visible: boolean;
 }
 
@@ -249,7 +250,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>(
     editEvent ? editEvent.eventSpecificFields.map(f => ({
       id: f.id, label: f.label, type: f.type, required: f.required,
-      options: f.options ? f.options.join(', ') : '', visible: true,
+      options: f.options ? [...f.options] : [], visible: true,
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
@@ -325,7 +326,7 @@ export default function EventCreationPage(): React.ReactElement {
   const addCustomField = (): void => {
     setCustomFields([...customFields, {
       id: `cf-${Date.now()}`, label: '', type: 'text',
-      required: false, options: '', visible: true,
+      required: false, options: [], visible: true,
     }]);
   };
 
@@ -355,24 +356,23 @@ export default function EventCreationPage(): React.ReactElement {
       // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
       // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
       const fields: CustomFieldInput[] = [
-        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: b2runStartblocks.join(', '), visible: true },
-        { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: 'offene Klasse, Nordic Walker, Damen, Herren', visible: true },
-        { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: 'unter 18, 18-29, 30-39, 40-49, 50-59, 60+', visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: '', visible: true },
-        { id: 'b2run_infoservice', label: 'Verwendung Infoservice (SMS von B2Run, benoetigt Mobilnummer)', type: 'checkbox', required: false, options: '', visible: true },
-        { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: '', visible: true },
-        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen (Pflicht)', type: 'checkbox', required: true, options: '', visible: true },
+        { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
+        { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true },
+        { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: [], visible: true },
+        { id: 'b2run_infoservice', label: 'Verwendung Infoservice (SMS von B2Run, benoetigt Mobilnummer)', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen (Pflicht)', type: 'checkbox', required: true, options: [], visible: true },
       ];
       setCustomFields(fields);
     }
   };
 
-  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen (als CSV in options)
+  // Startbloecke-Aenderung direkt in das Custom Field uebernehmen
   React.useEffect(() => {
     if (selectedTemplate !== 'b2run' && !(isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) return;
-    const asCsv = b2runStartblocks.join(', ');
     setCustomFields(prev => prev.map(f =>
-      f.id === 'b2run_startblock' ? { ...f, options: asCsv } : f
+      f.id === 'b2run_startblock' ? { ...f, options: [...b2runStartblocks] } : f
     ));
   }, [b2runStartblocks]);
 
@@ -380,8 +380,8 @@ export default function EventCreationPage(): React.ReactElement {
   React.useEffect(() => {
     if (!isEditMode) return;
     const sb = customFields.find(f => f.id === 'b2run_startblock');
-    if (sb && b2runStartblocks.length === 0 && sb.options) {
-      const parts = sb.options.split(',').map(s => s.trim()).filter(Boolean);
+    if (sb && b2runStartblocks.length === 0 && sb.options && sb.options.length > 0) {
+      const parts = sb.options.map(s => s.trim()).filter(Boolean);
       setB2runStartblocks(parts);
       setSelectedTemplate('b2run');
     }
@@ -447,9 +447,9 @@ export default function EventCreationPage(): React.ReactElement {
     setWaitlistEnabled(true);
     setEventImageUrl('');
     setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: true, options: 'XS, S, M, L, XL, XXL', visible: true },
-      { id: `cf-${Date.now() + 1}`, label: 'Notfallkontakt (Name & Telefon)', type: 'text', required: true, options: '', visible: true },
-      { id: `cf-${Date.now() + 2}`, label: 'Ernährungsbesonderheiten', type: 'text', required: false, options: '', visible: true },
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+      { id: `cf-${Date.now() + 1}`, label: 'Notfallkontakt (Name & Telefon)', type: 'text', required: true, options: [], visible: true },
+      { id: `cf-${Date.now() + 2}`, label: 'Ernährungsbesonderheiten', type: 'text', required: false, options: [], visible: true },
     ]);
   };
 
@@ -530,7 +530,7 @@ export default function EventCreationPage(): React.ReactElement {
         'Organizer': organizer,
         'CustomFields': JSON.stringify(customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
-          ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+          ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
         }))),
       };
 
@@ -686,7 +686,7 @@ export default function EventCreationPage(): React.ReactElement {
         funstarterCapacity: isB2runTemplate ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
         customFields: customFields.map(f => ({
           id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
-          ...(f.type === 'select' ? { options: f.options.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+          ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
         })),
       });
 
@@ -843,7 +843,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <div className="form-group" key={field.id}>
                     <label className="form-label">{field.required && <span className="required">*</span>}{field.label}</label>
                     {field.type === 'select' ? (
-                      <select className="form-select" disabled><option>Please select</option>{field.options.split(',').map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
+                      <select className="form-select" disabled><option>Please select</option>{field.options.map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
                     ) : field.type === 'checkbox' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
                     ) : (
@@ -1967,32 +1967,31 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ marginLeft: 32, paddingTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
                         <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 8, fontWeight: 600 }}>Dropdown-Optionen:</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                          {/* ALLE Optionen rendern (auch leere), damit ein gerade per
-                              '+ Option' hinzugefuegter leerer Slot sichtbar wird */}
-                          {(field.options !== undefined && field.options !== '' ? field.options.split(',') : []).map((opt, optIdx) => (
+                          {/* Alle Optionen aus dem Array rendern (auch leere Slots) */}
+                          {(field.options || []).map((opt, optIdx) => (
                             <div key={optIdx} style={{
                               display: 'flex', alignItems: 'center', gap: 4,
                               background: '#fff', border: '1px solid var(--dex-gray-300)',
                               borderRadius: 20, padding: '4px 8px 4px 12px', fontSize: '0.85rem',
                             }}>
                               <input
-                                value={opt.trim()}
+                                value={opt}
                                 placeholder={`Option ${optIdx + 1}`}
                                 onChange={e => {
-                                  const opts = field.options ? field.options.split(',') : [];
+                                  const opts = [...(field.options || [])];
                                   opts[optIdx] = e.target.value;
-                                  updateCustomField(field.id, { options: opts.join(',') });
+                                  updateCustomField(field.id, { options: opts });
                                 }}
                                 style={{
                                   border: 'none', background: 'transparent', outline: 'none',
-                                  width: Math.max(60, (opt.trim().length + 2) * 8), fontSize: '0.85rem',
+                                  width: Math.max(60, (opt.length + 2) * 8), fontSize: '0.85rem',
                                 }}
                               />
                               <button
                                 onClick={() => {
-                                  const opts = field.options.split(',').filter(o => o.trim());
+                                  const opts = [...(field.options || [])];
                                   opts.splice(optIdx, 1);
-                                  updateCustomField(field.id, { options: opts.join(',') });
+                                  updateCustomField(field.id, { options: opts });
                                 }}
                                 style={{ background: 'none', border: 'none', color: 'var(--dex-gray-400)', padding: 0, cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1 }}
                               >
@@ -2002,10 +2001,8 @@ export default function EventCreationPage(): React.ReactElement {
                           ))}
                           <button
                             onClick={() => {
-                              // Bestehende Optionen beibehalten + leeren Slot anhaengen
-                              const existing = field.options ? field.options.split(',').filter(o => o.trim()) : [];
-                              existing.push('');
-                              updateCustomField(field.id, { options: existing.join(',') + ',' });
+                              // Genau EINEN leeren Slot anhaengen
+                              updateCustomField(field.id, { options: [...(field.options || []), ''] });
                             }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 4,
