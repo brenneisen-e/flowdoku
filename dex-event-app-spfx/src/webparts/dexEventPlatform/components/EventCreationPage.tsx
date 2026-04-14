@@ -1967,7 +1967,9 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ marginLeft: 32, paddingTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
                         <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 8, fontWeight: 600 }}>Dropdown-Optionen:</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                          {(field.options ? field.options.split(',').filter(o => o.trim()) : []).map((opt, optIdx) => (
+                          {/* ALLE Optionen rendern (auch leere), damit ein gerade per
+                              '+ Option' hinzugefuegter leerer Slot sichtbar wird */}
+                          {(field.options !== undefined && field.options !== '' ? field.options.split(',') : []).map((opt, optIdx) => (
                             <div key={optIdx} style={{
                               display: 'flex', alignItems: 'center', gap: 4,
                               background: '#fff', border: '1px solid var(--dex-gray-300)',

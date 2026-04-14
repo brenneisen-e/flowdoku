@@ -65,10 +65,19 @@ export default function RegistrationPage(): React.ReactElement {
     });
 
     // Default: AND (Schnittmenge). Nur OR wenn explizit gesetzt.
+    // Wichtig: wenn nur EIN Filter gesetzt ist, zaehlt nur dieser - egal ob AND/OR.
     const mode = event.filterMode || 'AND';
-    const visible = mode === 'OR'
-      ? (locMatch || audMatch)
-      : (hasLoc && hasAud ? locMatch && audMatch : hasLoc ? locMatch : audMatch);
+    let visible: boolean;
+    if (mode === 'OR') {
+      if (hasLoc && hasAud) visible = locMatch || audMatch;
+      else if (hasLoc) visible = locMatch;
+      else visible = audMatch;
+    } else {
+      // AND
+      if (hasLoc && hasAud) visible = locMatch && audMatch;
+      else if (hasLoc) visible = locMatch;
+      else visible = audMatch;
+    }
     return !visible;
   })();
 
