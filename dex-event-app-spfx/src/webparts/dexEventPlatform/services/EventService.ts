@@ -1593,24 +1593,6 @@ export class EventService {
       customFields: any[];
     }> = [
       {
-        title: 'DTAG Global Account Meeting 2026',
-        description: 'DTAG Global Planning Meeting 14.6.-17.6. im Hilton Frankfurt Gravenbruch für Teammitglieder 2026.',
-        location: 'Hilton Hotel, 63263 Neu-Isenburg',
-        locationFilter: '', // ALL = kein Filter
-        startDate: '2026-06-14T00:00:00.000Z',
-        endDate: '2026-06-17T00:00:00.000Z',
-        registrationDeadline: '2026-04-01T15:00:00.000Z',
-        lastDeregisterDate: '2026-06-01T00:00:00.000Z',
-        maxParticipants: 87,
-        organizer: 'Schaffland, Nadine',
-        organizerEmail: 'nschaffland@deloitte.de',
-        customFields: [
-          { id: 'language', label: "What's your preferred language for the team event?", type: 'select', required: false, visible: true, options: ['English', 'German'] },
-          { id: 'diet', label: 'I am...', type: 'select', required: false, visible: true, options: ['vegan', 'vegetarian', 'neither vegan nor vegetarian'] },
-          { id: 'allergies', label: 'Allergies', type: 'text', required: false, visible: true },
-        ],
-      },
-      {
         title: 'E2E M&A Activation Session Munich',
         description: 'Internal Meeting: E2E M&A Activation Session Munich',
         location: 'Munich',
