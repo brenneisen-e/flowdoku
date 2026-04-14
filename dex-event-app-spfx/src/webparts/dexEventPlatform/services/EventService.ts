@@ -19,7 +19,41 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
-import { buildOutlookBody } from './EmailTemplates';
+import { buildOutlookBody, wrapTemplateForStorage } from './EmailTemplates';
+
+/**
+ * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
+ * Deloitte-Design gewrappt, damit er vom DEX_SEND_MAIL-Flow direkt versendet
+ * werden kann (der Flow ersetzt nur {{LOGO_URL}} und {{ORB_URL}}, wickelt aber
+ * keinen Template-Wrapper mehr drumherum).
+ *
+ * Der Hinweis auf die Warteliste wurde bewusst durch eine neutrale Formulierung
+ * ("your spot can be offered to someone else") ersetzt, damit die Mail auch
+ * dann korrekt wirkt, wenn das konkrete Event keine Warteliste hat.
+ */
+const OUTLOOK_DECLINE_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00',
+  'You declined the Outlook invite',
+  'Event {{EventTitle}}',
+  `<p><strong>Dear {{Name}},</strong></p>
+<p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p>
+<p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone else.</p>
+<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p>
+<p>If you clicked decline by accident, you can simply ignore this message.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+
+const OUTLOOK_DECLINE_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00',
+  'Du hast den Outlook-Termin abgelehnt',
+  'Event {{EventTitle}}',
+  `<p><strong>Hallo {{Name}},</strong></p>
+<p>wir haben gesehen, dass du die Outlook-Kalendereinladung f\u00FCr <strong>{{EventTitle}}</strong> abgelehnt hast \u2013 du bist aber noch als offiziell angemeldet gelistet.</p>
+<p>Falls du nicht mehr teilnehmen m\u00F6chtest, melde dich bitte auch offiziell ab, damit dein Platz an jemand anderen vergeben werden kann.</p>
+<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p>
+<p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p>
+<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
 
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
@@ -625,7 +659,7 @@ export class EventService {
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
         BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
       // ===== DEUTSCH =====
       { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMeine Events\u201C) ab, damit der Platz an einen anderen Teilnehmer vergeben werden kann.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an <strong>{{Organizer}}</strong>.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
@@ -638,7 +672,7 @@ export class EventService {
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -692,9 +726,9 @@ export class EventService {
   private async ensureMissingEmailTemplates(listName: string): Promise<void> {
     const newTemplates = [
       { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
       { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -763,7 +797,7 @@ export class EventService {
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
         BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-        BodyHtml: '<p><strong>Dear {{Name}},</strong></p><p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p><p>If you no longer want to attend, please also cancel your registration so your spot can be offered to someone from the waitlist.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p><p>If you clicked decline by accident, you can simply ignore this message.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_EN },
       // ========== DE ==========
       { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">Event Experience Platform</a> (\u201EMeine Events\u201C) ab, damit der Platz an einen anderen Teilnehmer vergeben werden kann.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an <strong>{{Organizer}}</strong>.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
@@ -776,7 +810,7 @@ export class EventService {
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-        BodyHtml: '<p><strong>Hallo {{Name}},</strong></p><p>wir haben gesehen, dass du die Outlook-Kalendereinladung für <strong>{{EventTitle}}</strong> abgelehnt hast – du bist aber noch als offiziell angemeldet gelistet.</p><p>Falls du nicht mehr teilnehmen möchtest, melde dich bitte auch offiziell ab, damit dein Platz an jemanden von der Warteliste vergeben werden kann.</p><p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p><p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+        BodyHtml: OUTLOOK_DECLINE_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';

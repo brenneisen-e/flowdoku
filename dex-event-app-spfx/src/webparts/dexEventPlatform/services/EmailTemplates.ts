@@ -20,6 +20,74 @@ function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/**
+ * Wrapped Deloitte-Template-HTML fuer die SPEICHERUNG in DEX_EmailTemplates
+ * erzeugen. Im Unterschied zu wrapTemplate() wird KEIN dynamisches Datum
+ * eingebettet - der gespeicherte Template-HTML bleibt stabil, sodass
+ * upgradeStandardEmailTemplates() die SharePoint-Eintraege nicht bei jedem
+ * App-Start unnoetig patcht.
+ *
+ * Wird fuer Templates genutzt, die von Power Automate direkt aus dem
+ * BodyHtml-Feld versendet werden (z.B. OutlookDeclineReminder), weil dort
+ * keine SPFx-seitige wrapTemplate()-Wrapper-Logik greift.
+ */
+export function wrapTemplateForStorage(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${heading}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
+<tr><td align="center" style="padding:20px 10px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
+<tr>
+<td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
+  <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
+</td>
+</tr>
+<tr>
+<td style="padding:10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
+  Deutschland | Event Experience Platform
+</td>
+</tr>
+<tr>
+<td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
+</td>
+</tr>
+<tr>
+<td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
+</tr>
+<tr>
+<td style="padding:30px 30px 10px;">
+  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
+  <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
+</td>
+</tr>
+<tr>
+<td style="padding:0 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
+  ${bodyHtml}
+</td>
+</tr>
+<tr>
+<td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
+  <p style="margin:0 0 8px;"><strong>Deloitte GmbH Wirtschaftspr&uuml;fungsgesellschaft</strong><br>
+  Rosenheimer Platz 4<br>
+  81669 M&uuml;nchen<br>
+  Deutschland</p>
+  <p style="margin:0;">Deloitte bezieht sich auf Deloitte Touche Tohmatsu Limited (&bdquo;DTTL&ldquo;), ihr weltweites Netzwerk von Mitgliedsunternehmen und ihre verbundenen Unternehmen (zusammen die &bdquo;Deloitte-Organisation&ldquo;). DTTL (auch &bdquo;Deloitte Global&ldquo; genannt) und jedes ihrer Mitgliedsunternehmen sowie ihre verbundenen Unternehmen sind rechtlich selbstst&auml;ndige und unabh&auml;ngige Unternehmen, die sich gegen&uuml;ber Dritten nicht gegenseitig verpflichten oder binden k&ouml;nnen. DTTL, jedes DTTL-Mitgliedsunternehmen und verbundene Unternehmen haften nur f&uuml;r ihre eigenen Handlungen und Unterlassungen und nicht f&uuml;r die der anderen. DTTL erbringt selbst keine Leistungen gegen&uuml;ber Mandanten. Weitere Informationen finden Sie unter <a href="http://www.deloitte.com/de/UeberUns" style="color:${GREEN};">www.deloitte.com/de/UeberUns</a>.</p>
+</td>
+</tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
 export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="de">

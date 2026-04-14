@@ -1153,9 +1153,24 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
 ## App-seitige Unterstützung (bereits implementiert)
 
 - `DexEventPlatform.tsx` parsed `?action=cancel&event=<n>` aus `window.location.search`
+- Erkennt den Deep-Link schon beim ersten Render und zeigt einen Vollbild-
+  Lade-Spinner (statt der LandingPage), solange die Events noch geladen werden.
+  Dadurch sieht der User sofort, dass eine Aktion läuft und "hängt" nicht
+  sekundenlang auf der Willkommensseite.
 - Navigiert zu `my-events` mit `selectedEventId` + Intent `auto-cancel`
-- `MyEventsPage.tsx` prüft den Intent, scrollt zur Event-Karte und öffnet den Abmelde-Bestätigungsdialog automatisch
-- User muss aktiv auf "Abmeldung bestätigen" klicken — der Deep-Link cancelt NICHT direkt, damit Missbrauch ausgeschlossen ist (User muss eingeloggt sein und ist dann nur in der Lage, SEINE EIGENE Registrierung zu canceln)
+- `MyEventsPage.tsx` prüft den Intent, scrollt zur Event-Karte und **storniert
+  die Registrierung direkt** (ohne zusätzlichen "Abmeldung bestätigen"-Klick).
+  Der Klick auf den Action-Button in der Mail gilt als Bestätigung. Das ist
+  sicher, weil der User eingeloggt sein muss und durch Item-Level Security
+  ohnehin nur seine eigene Registrierung stornieren kann.
+- Der OutlookDeclineReminder-Template-Body wird als fertig gewrapptes
+  Deloitte-HTML (Logo, grüne Linie, Footer) in `DEX_EmailTemplates.BodyHtml`
+  gespeichert — der `DEX_SEND_MAIL`-Flow ersetzt nur `{{LOGO_URL}}` und
+  `{{ORB_URL}}` und muss keinen Template-Wrapper selbst erzeugen.
+- Der Waitlist-Hinweis wurde bewusst durch eine neutrale Formulierung ersetzt
+  ("so your spot can be offered to someone else" / "damit dein Platz an jemand
+  anderen vergeben werden kann"), damit die Mail auch für Events ohne
+  Warteliste korrekt wirkt.
 
 ## Neues Template in DEX_EmailTemplates
 

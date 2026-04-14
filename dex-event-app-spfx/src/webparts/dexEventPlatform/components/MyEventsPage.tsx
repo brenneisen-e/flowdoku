@@ -384,24 +384,6 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-
-  // Auto-Cancel: wenn die Seite via Deep-Link mit Intent 'auto-cancel' geoeffnet
-  // wurde (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt den Abmelde-
-  // Bestaetigungsdialog fuer das uebergebene Event aufklappen.
-  const didAutoOpen = React.useRef(false);
-  React.useEffect(() => {
-    if (didAutoOpen.current) return;
-    if (navIntent !== 'auto-cancel' || !selectedEventId) return;
-    didAutoOpen.current = true;
-    // cancellingId wird unten im Component-State gesetzt - wir scrollen zuerst die Karte ein,
-    // dann triggern wir den 1-Klick-Modus (ohne direkt zu cancellen, damit User bestaetigen muss)
-    setTimeout(() => {
-      setCancellingId(selectedEventId);
-      const el = document.getElementById(`dex-myevent-${selectedEventId}`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 300);
-    clearIntent();
-  }, [navIntent, selectedEventId]);
   const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
   const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
@@ -462,60 +444,90 @@ export default function MyEventsPage(): React.ReactElement {
     setIsLoading(false);
   }
 
+  // Eigentliche Cancel-Logik (direkt ausfuehren, ohne 2-Klick-Bestaetigung).
+  // Wird sowohl von handleCancel (beim 2. Klick) als auch vom Auto-Cancel-
+  // Deep-Link (direkt nach Navigation) genutzt.
+  const performCancel = async (eventId: string): Promise<void> => {
+    setCancellingId(eventId);
+    setIsCancelling(true);
+
+    // Check if this is a late cancellation
+    const entry = myEvents.find(e => e.event.id === eventId);
+    const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
+
+    const success = await cancelRegistration(eventId);
+    if (success) {
+      // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
+      // die semikolon-separierte Liste), im Deloitte-Layout via wrapTemplate,
+      // in der konfigurierten Event-Sprache.
+      // entry.event.organizers = NAMEN, entry.event.organizerEmails = E-Mails.
+      if (isLateCancellation && entry && entry.event.organizerEmails.length > 0) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctx = (window as any).__dexSpfxContext;
+          if (ctx) {
+            const { EventService } = await import('../services/EventService');
+            const svc = new EventService(ctx);
+            const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
+            const userEmail = entry.registration.ParticipantEmail || entry.registration.Title;
+            const isDe = (entry.event.emailLanguage || 'EN').toUpperCase() === 'DE';
+            const deadlineStr = new Date(entry.event.lastDeregisterDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB');
+            const subject = isDe
+              ? `Verspätete Abmeldung: ${entry.event.title}`
+              : `Late cancellation: ${entry.event.title}`;
+            const innerBody = isDe
+              ? `<p><strong>${userName}</strong> hat die Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`
+              : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`;
+            const heading = isDe ? 'Verspätete Abmeldung' : 'Late cancellation';
+            const subheading = entry.event.title;
+            const body = wrapTemplate('#ed8b00', heading, subheading, innerBody);
+            // EINE Mail mit ';'-separierter Recipient-Liste - die Recipient-Spalte
+            // ist Multi-Line (Note), kann also mehrere E-Mails enthalten. So sehen
+            // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).
+            const toList = entry.event.organizerEmails.join(';');
+            const toNames = entry.event.organizers.join(', ') || toList;
+            // EmailType 'Info' (Choice-Feld laesst nur Anmeldung/Abmeldung/
+            // Warteliste/Nachruecken/Info zu).
+            await svc.queueEmail(subject, toList, toNames, body, 'Info', entry.event.title, eventId)
+              .catch(err => console.warn('[DEX] LateCancel queueEmail failed:', err));
+          }
+        } catch { /* Email-Fehler ignorieren */ }
+      }
+      await loadMyRegistrations();
+    }
+    setCancellingId(null);
+    setIsCancelling(false);
+  };
+
   const handleCancel = async (eventId: string): Promise<void> => {
     if (cancellingId === eventId) {
-      setIsCancelling(true);
-
-      // Check if this is a late cancellation
-      const entry = myEvents.find(e => e.event.id === eventId);
-      const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
-
-      const success = await cancelRegistration(eventId);
-      if (success) {
-        // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
-        // die semikolon-separierte Liste), im Deloitte-Layout via wrapTemplate,
-        // in der konfigurierten Event-Sprache.
-        // entry.event.organizers = NAMEN, entry.event.organizerEmails = E-Mails.
-        if (isLateCancellation && entry && entry.event.organizerEmails.length > 0) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ctx = (window as any).__dexSpfxContext;
-            if (ctx) {
-              const { EventService } = await import('../services/EventService');
-              const svc = new EventService(ctx);
-              const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
-              const userEmail = entry.registration.ParticipantEmail || entry.registration.Title;
-              const isDe = (entry.event.emailLanguage || 'EN').toUpperCase() === 'DE';
-              const deadlineStr = new Date(entry.event.lastDeregisterDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB');
-              const subject = isDe
-                ? `Verspätete Abmeldung: ${entry.event.title}`
-                : `Late cancellation: ${entry.event.title}`;
-              const innerBody = isDe
-                ? `<p><strong>${userName}</strong> hat die Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`
-                : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`;
-              const heading = isDe ? 'Verspätete Abmeldung' : 'Late cancellation';
-              const subheading = entry.event.title;
-              const body = wrapTemplate('#ed8b00', heading, subheading, innerBody);
-              // EINE Mail mit ';'-separierter Recipient-Liste - die Recipient-Spalte
-              // ist Multi-Line (Note), kann also mehrere E-Mails enthalten. So sehen
-              // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).
-              const toList = entry.event.organizerEmails.join(';');
-              const toNames = entry.event.organizers.join(', ') || toList;
-              // EmailType 'Info' (Choice-Feld laesst nur Anmeldung/Abmeldung/
-              // Warteliste/Nachruecken/Info zu).
-              await svc.queueEmail(subject, toList, toNames, body, 'Info', entry.event.title, eventId)
-                .catch(err => console.warn('[DEX] LateCancel queueEmail failed:', err));
-            }
-          } catch { /* Email-Fehler ignorieren */ }
-        }
-        await loadMyRegistrations();
-      }
-      setCancellingId(null);
-      setIsCancelling(false);
+      await performCancel(eventId);
     } else {
       setCancellingId(eventId);
     }
   };
+
+  // Auto-Cancel: wenn die Seite via Deep-Link mit Intent 'auto-cancel' geoeffnet
+  // wurde (z.B. aus einer Outlook-Decline-Reminder-Mail), die Registrierung
+  // direkt stornieren - OHNE dass der User zusaetzlich auf "Abmeldung
+  // bestaetigen" klicken muss. Der Klick auf den Link in der Mail gilt als
+  // Bestaetigung. Da der User eingeloggt sein muss und nur seine eigene
+  // Registrierung cancelt, ist das sicher.
+  const didAutoOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoOpen.current) return;
+    if (navIntent !== 'auto-cancel' || !selectedEventId) return;
+    // Warten bis die Registrierungen geladen sind, sonst findet performCancel
+    // den entry nicht (late-cancel-check schlaegt fehl).
+    if (isLoading) return;
+    didAutoOpen.current = true;
+    clearIntent();
+    // Event-Karte einscrollen damit der User den aktualisierten Status sieht
+    const el = document.getElementById(`dex-myevent-${selectedEventId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Direkt cancellen
+    performCancel(selectedEventId).catch(err => console.warn('[DEX] auto-cancel failed:', err));
+  }, [navIntent, selectedEventId, isLoading]);
 
   const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
