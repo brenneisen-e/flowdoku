@@ -79,6 +79,35 @@ function AppContent(): React.ReactElement {
     markExpiredEventsAsCompleted().catch(err => console.warn('[DEX] expire check failed:', err));
   }, [isAdmin, isEventsLoading]);
 
+  // Einmalige Cleanup-Migration: bei den letzten 20 Teilnehmern jedes Events
+  // JobTitle/Department/Location/Phone aus dem echten User-Profil neu laden.
+  // Hintergrund: bis v3.0.x wurden diese Felder vom eingeloggten User gezogen,
+  // wenn jemand fuer eine andere Person registriert hat. -> falsche Daten.
+  // Flag in localStorage damit es nur einmal pro Browser laeuft.
+  const didProfileFix = React.useRef(false);
+  React.useEffect(() => {
+    if (didProfileFix.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    try {
+      if (localStorage.getItem('dex-fix-profile-data-v1') === 'done') {
+        didProfileFix.current = true;
+        return;
+      }
+    } catch { /* */ }
+    didProfileFix.current = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = (window as any).__dexSpfxContext;
+    if (!ctx) return;
+    // dynamisch importieren um den Bundle nicht zu groessern - lazy load
+    import('../services/EventService').then(({ EventService }) => {
+      const svc = new EventService(ctx);
+      svc.fixRecentParticipantsProfileData(20).then(() => {
+        try { localStorage.setItem('dex-fix-profile-data-v1', 'done'); } catch { /* */ }
+      }).catch(err => console.warn('[DEX] fixRecentParticipantsProfileData failed:', err));
+    }).catch(() => { /* */ });
+  }, [isAdmin, isEventsLoading]);
+
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {
     // Style-Tag injizieren mit !important - SP kann das nicht überschreiben

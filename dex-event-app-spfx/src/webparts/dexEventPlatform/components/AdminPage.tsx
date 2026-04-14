@@ -721,7 +721,18 @@ export default function AdminPage(): React.ReactElement {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                  {([['id', '#'], ['anrede', 'Anrede'], ['name', 'Name'], ['email', 'Email'], ['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
+                  {([['id', '#'], ['anrede', 'Anrede'], ['name', 'Name'], ['email', 'Email']] as const).map(([col, label]) => (
+                    <th
+                      key={col}
+                      style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                      onClick={() => handleSort(col)}
+                    >
+                      {label}{sortIcon(col)}
+                    </th>
+                  ))}
+                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Job Title</th>
+                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Standort</th>
+                  {([['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
                     <th
                       key={col}
                       style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
@@ -740,6 +751,10 @@ export default function AdminPage(): React.ReactElement {
                     <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>
                     <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).JobTitle || '-'}</td>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).Location || '-'}</td>
                     <td style={{ padding: 8 }}>
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>

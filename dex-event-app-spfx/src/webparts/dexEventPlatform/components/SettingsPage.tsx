@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Trash2 } from './Icons';
 
@@ -17,6 +18,33 @@ export default function SettingsPage(): React.ReactElement {
     roles, currentUserRole, isAdmin, canCreateEvents,
     addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
+  const { events } = useEvents();
+
+  /**
+   * Map: organizer-email-lowercase -> Liste von Event-Titeln, die diese Person koordiniert.
+   * Nutzt den gleichen Substring-Match wie die AdminPage Filter-Logik:
+   * Organizer-Eintrag enthaelt entweder den Vor+Nachnamen oder nur den Nachnamen.
+   */
+  const organizerEventMap = React.useMemo<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {};
+    for (const role of roles) {
+      if (role.role !== 'Organizer' && role.role !== 'Admin') continue;
+      const fullName = role.userName.toLowerCase();
+      // Heuristik: Nachname = letztes Wort
+      const lastName = fullName.split(/\s+/).pop() || fullName;
+      const matched: string[] = [];
+      for (const evt of events) {
+        if (!evt.organizers || evt.organizers.length === 0) continue;
+        const hits = evt.organizers.some(o => {
+          const ol = o.toLowerCase();
+          return ol.indexOf(fullName) >= 0 || ol.indexOf(lastName) >= 0;
+        });
+        if (hits) matched.push(evt.title);
+      }
+      if (matched.length > 0) map[role.userEmail.toLowerCase()] = matched;
+    }
+    return map;
+  }, [roles, events]);
   // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
@@ -208,6 +236,7 @@ export default function SettingsPage(): React.ReactElement {
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Role</th>
                       <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Location</th>
+                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
                       <th style={{ textAlign: 'right', padding: '8px 0 8px 8px', color: 'var(--dex-gray-500)' }} />
                     </tr>
                   </thead>
@@ -226,7 +255,7 @@ export default function SettingsPage(): React.ReactElement {
                         return (
                           <React.Fragment key={r.id}>
                             {showSeparator && (
-                              <tr><td colSpan={5} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
+                              <tr><td colSpan={6} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
                             )}
                             <tr style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
                         <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>{r.userName}</td>
@@ -260,6 +289,24 @@ export default function SettingsPage(): React.ReactElement {
                               }
                             }}
                           />
+                        </td>
+                        <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
+                          {(() => {
+                            const evts = organizerEventMap[r.userEmail.toLowerCase()] || [];
+                            if (r.role === 'User') return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                            if (evts.length === 0) return <span style={{ color: 'var(--dex-gray-300)' }}>keine</span>;
+                            return (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {evts.map((title, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
+                                    fontSize: '0.74rem', fontWeight: 600,
+                                  }}>{title}</span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td style={{ padding: '10px 0 10px 8px', textAlign: 'right' }}>
                           {r.userEmail.toLowerCase() !== currentUser.email.toLowerCase() && (
