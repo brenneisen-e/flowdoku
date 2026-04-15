@@ -308,13 +308,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }
 
+    // Audit-Trail: wer klickt gerade "Register"? = der eingeloggte User.
+    // Bei Self-Registration ist das = der Teilnehmer selbst, bei "Fuer andere
+    // Person registrieren" ist das der Organizer/Admin (Teilnehmer-Daten
+    // wurden ueber participantFirstName/participantEmail uebergeben).
+    const actorName = currentUserName;
+    const actorEmail = currentUserEmail;
+
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail);
     } else {
       success = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
-        effectiveStarterType, preferredStarterType
+        effectiveStarterType, preferredStarterType, actorName, actorEmail
       );
     }
 

@@ -27,8 +27,8 @@ interface RoleContextType {
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
   refreshRoles: () => Promise<void>;
-  searchUser: (email: string) => Promise<{ displayName: string; location: string } | null>;
-  searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string }>>;
+  searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string } | null>;
+  searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
   searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
   getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null>;
 }
@@ -172,11 +172,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return success;
   }
 
-  async function searchUser(email: string): Promise<{ displayName: string; location: string } | null> {
+  async function searchUser(email: string): Promise<{ displayName: string; location: string; jobTitle: string } | null> {
     return spService.searchUserByEmail(email);
   }
 
-  async function searchUsers(query: string): Promise<Array<{ email: string; displayName: string; location: string }>> {
+  async function searchUsers(query: string): Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>> {
     return spService.searchUsers(query);
   }
 

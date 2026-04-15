@@ -663,50 +663,82 @@ export class SharePointService {
   }
 
   /**
-   * User per E-Mail in Microsoft 365 suchen.
-   * Gibt Name und Standort zurueck falls gefunden.
+   * User per E-Mail in Microsoft 365 suchen — robust gegen UPN != SMTP-Mismatches.
+   * Gibt Name, Standort und JobTitle zurueck falls gefunden.
+   *
+   * Strategie:
+   *   1. Direkter Claim-Lookup mit `i:0#.f|membership|<email>` (schnell).
+   *   2. Wenn leer oder kein DisplayName: per `siteusers/getbyemail` den echten
+   *      LoginName aufloesen (UPN-Claim), dann GetPropertiesFor damit erneut
+   *      aufrufen. Deckt UPN != SMTP, Guest-Accounts, Alias-SMTP-Adressen ab.
    */
   public async searchUserByEmail(email: string): Promise<{
     displayName: string;
     location: string;
+    jobTitle: string;
   } | null> {
+    if (!email) return null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extract = (data: any): { displayName: string; location: string; jobTitle: string } | null => {
+      if (!data || !data.DisplayName) return null;
+      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+      const getProp = (keys: string[]): string => {
+        for (const k of keys) {
+          const p = props.find(x => x.Key === k);
+          if (p && p.Value) return p.Value;
+        }
+        return '';
+      };
+      return {
+        displayName: data.DisplayName,
+        location: getProp(['Office', 'SPS-Location', 'SPS-City', 'City']),
+        jobTitle: getProp(['Title', 'SPS-JobTitle']),
+      };
+    };
+
+    // 1) Direkter Lookup per SMTP
     try {
-      // Ueber SharePoint People API suchen
-      const response = await this.context.spHttpClient.get(
+      const directResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'&$select=DisplayName,UserProfileProperties`,
         SPHttpClient.configurations.v1
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.DisplayName) {
-          let location = '';
-          if (data.UserProfileProperties) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            // Versuche verschiedene Properties für den Standort
-            const locationKeys = ['Office', 'SPS-Location', 'SPS-City', 'City'];
-            for (const key of locationKeys) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const prop = data.UserProfileProperties.find((p: any) => p.Key === key);
-              if (prop && prop.Value) {
-                location = prop.Value;
-                break;
-              }
-            }
-          }
-          return { displayName: data.DisplayName, location };
+      if (directResp.ok) {
+        const data = await directResp.json();
+        const hit = extract(data);
+        if (hit && (hit.jobTitle || hit.location)) return hit;
+        // DisplayName ohne Properties? Merken fuer Fallback-Default.
+        if (hit) {
+          // weiter zum LoginName-Pfad - vielleicht bringt der jobTitle
         }
       }
+    } catch { /* weiter */ }
 
-      // Fallback: ueber siteusers suchen
-      const fallback = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Title`,
+    // 2) Fallback: echten LoginName (UPN-Claim) via siteusers/getbyemail
+    try {
+      const siteUserResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName,Title`,
         SPHttpClient.configurations.v1
       );
-      if (fallback.ok) {
-        const fbData = await fallback.json();
-        if (fbData.Title) {
-          return { displayName: fbData.Title, location: '' };
+      if (siteUserResp.ok) {
+        const su = await siteUserResp.json();
+        const loginName: string = su.LoginName || su.d?.LoginName || '';
+        const fallbackDisplayName: string = su.Title || su.d?.Title || '';
+        if (loginName) {
+          try {
+            const profileResp = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'&$select=DisplayName,UserProfileProperties`,
+              SPHttpClient.configurations.v1
+            );
+            if (profileResp.ok) {
+              const pData = await profileResp.json();
+              const hit = extract(pData);
+              if (hit) return hit;
+            }
+          } catch { /* */ }
+        }
+        if (fallbackDisplayName) {
+          return { displayName: fallbackDisplayName, location: '', jobTitle: '' };
         }
       }
     } catch { /* User nicht gefunden */ }
@@ -721,6 +753,7 @@ export class SharePointService {
     email: string;
     displayName: string;
     location: string;
+    jobTitle: string;
   }>> {
     if (!query || query.length < 2) return [];
 
@@ -750,7 +783,7 @@ export class SharePointService {
       const results = JSON.parse(resultsStr);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = results
+      const mapped: Array<{ email: string; displayName: string; location: string; jobTitle: string }> = results
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((r: any) => r.EntityData?.Email)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -758,14 +791,17 @@ export class SharePointService {
           email: r.EntityData.Email || '',
           displayName: r.DisplayText || r.EntityData.Title || '',
           location: '', // Wird per User Profile nachgeladen
+          jobTitle: r.EntityData.Title || '', // EntityData.Title ist bei SharePoint manchmal schon JobTitle;
+                                               // Wird unten durch UserProfile-Lookup ueberschrieben.
         }));
 
-      // Location per User Profile nachladen (Office-Standort)
+      // Location + JobTitle per User Profile nachladen
       for (const user of mapped) {
         try {
           const profile = await this.searchUserByEmail(user.email);
-          if (profile && profile.location) {
-            user.location = profile.location;
+          if (profile) {
+            if (profile.location) user.location = profile.location;
+            if (profile.jobTitle) user.jobTitle = profile.jobTitle;
           }
         } catch { /* ignore */ }
       }

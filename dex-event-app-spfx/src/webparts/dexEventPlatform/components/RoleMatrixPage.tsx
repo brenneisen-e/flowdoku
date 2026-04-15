@@ -37,7 +37,9 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Registrierungen', feature: 'Selbst registrieren', user: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Angaben bearbeiten', user: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren', user: true, organizer: true, admin: true },
-  { category: 'Registrierungen', feature: 'Für andere registrieren', user: false, organizer: true, admin: true },
+  { category: 'Registrierungen', feature: 'Für andere registrieren', user: 'Assistant: nur Partner/Director ¹', organizer: 'Eigene Events ²', admin: true },
+  { category: 'Registrierungen', feature: 'Nach Anmeldefrist registrieren', user: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Registrierungen', feature: 'Audit-Trail: RegisteredBy wird automatisch gesetzt', user: true, organizer: true, admin: true },
 
   // Teilnehmerverwaltung (Admin Center)
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmerliste sehen', user: false, organizer: 'Eigene Events', admin: true },
@@ -157,10 +159,22 @@ export default function RoleMatrixPage(): React.ReactElement {
         <div style={{
           padding: '16px 28px', borderTop: '1px solid var(--dex-gray-200)',
           display: 'flex', gap: 24, fontSize: '0.8rem', color: 'var(--dex-gray-500)',
+          flexWrap: 'wrap',
         }}>
           <span><span style={{ color: '#22c55e', fontWeight: 600 }}>&#10003;</span> = Berechtigt</span>
           <span><span style={{ color: '#ef4444', fontWeight: 500 }}>&mdash;</span> = Kein Zugriff</span>
           <span><span style={{ color: '#f59e0b', fontWeight: 500 }}>Text</span> = Eingeschränkt</span>
+        </div>
+        <div style={{
+          padding: '12px 28px 20px', borderTop: '1px dashed var(--dex-gray-200)',
+          fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.6,
+        }}>
+          <div style={{ marginBottom: 4 }}>
+            <strong>¹ Assistant-Ausnahme:</strong> User mit JobTitle <em>&quot;Assistant&quot;</em> oder <em>&quot;Senior Assistant&quot;</em> dürfen &quot;Für andere registrieren&quot; nutzen, aber nur für Personen mit JobTitle <strong>Partner</strong> oder <strong>Director</strong> — und nur solange die Anmeldefrist noch nicht abgelaufen ist.
+          </div>
+          <div>
+            <strong>² Eigene Events:</strong> gilt nur wenn der User in <code>OrganizerEmail</code> des jeweiligen Events steht. Tenant-weiter Organizer-Status reicht nicht — Event A-Organizer können keine Admin-Aktionen für Event B ausführen. Admin darf global alles.
+          </div>
         </div>
       </div>
 
