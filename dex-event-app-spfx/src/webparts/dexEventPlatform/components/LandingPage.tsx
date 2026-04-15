@@ -129,18 +129,19 @@ export default function LandingPage(): React.ReactElement {
             >
               <Info size={18} />
             </button>
-            <a
-              href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Feedback"
+            <button
+              type="button"
+              onClick={() => setShowInquiry(true)}
               style={{
                 background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
                 width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
-                flexShrink: 0,
+                cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
+                flexShrink: 0, padding: 0,
               }}
-              title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
+              title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
             >
               <Mail size={18} />
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => setShowInquiry(true)}
