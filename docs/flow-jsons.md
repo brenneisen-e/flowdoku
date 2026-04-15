@@ -1207,16 +1207,27 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 - **SharePoint — Get items**.
 - **Site Address:** `DOL-c-DE-EventExperiencePlatform`.
 - **List Name:** `DEX_EmailTemplates`.
-- **Filter Query (fx):**
+- **Filter Query (fx):** Konditional — Direkt-Decliner bekommen die schlichte
+  Variante, OnBehalfOf bekommen die Variante mit Assistant-Forward-Button:
   ```
-  concat(
-    'TemplateType eq ''OutlookDeclineReminder'' and Language eq ''',
-    coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'),
-    ''''
-  )
+  concat('TemplateType eq ''', if(empty(outputs('Decliner_Lastname')), 'OutlookDeclineReminder', 'OutlookDeclineReminder_OnBehalfOf'), ''' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')
   ```
 - **Top Count:** `1`.
 - Rename → `Get_Reminder_Template`.
+
+### 11a. `Assistant_Forward_Mailto` (Compose, nach `Get_Reminder_Template`)
+
+- **Data Operation — Compose**.
+- **Inputs (fx):** Baut die `mailto:`-URL fuer den Assistant-Forward-Button im
+  OnBehalfOf-Template — vorausgefuellt mit Event-Organizer-Adressen, Subject
+  und Body, der den Partner-Namen + Event-Titel enthaelt:
+  ```
+  concat('mailto:', first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail'], '?subject=', encodeUriComponent(concat('Bitte um Abmeldung: ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' — ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '&body=', encodeUriComponent(concat('Hallo,', decodeUriComponent('%0D%0A%0D%0A'), 'ich (Assistenz) habe in Vertretung den Outlook-Termin für ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' (', outputs('Final_Recipient_Email'), ') abgelehnt.', decodeUriComponent('%0D%0A%0D%0A'), 'Bitte storniere die Anmeldung für die Person für das Event "', first(outputs('Get_DEX_Event')?['body/value'])?['Title'], '" über das Admin Center der Event Experience Platform.', decodeUriComponent('%0D%0A%0D%0A'), 'Danke!')))
+  ```
+  Das Standard-Decliner-Template enthaelt keinen `{{AssistantForwardUrl}}`-
+  Platzhalter, dort wird der Compose-Output einfach nicht verwendet.
+- **Configure run after** → `Get_Reminder_Template` → `Succeeded`.
+- Rename → `Assistant_Forward_Mailto`.
 
 ### 12. `Create_Reminder_Queue_Item` (SharePoint Create item, nach `Get_Reminder_Template`)
 
@@ -1239,15 +1250,17 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 - **EventTitle (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['Title']`
 - **EventId (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['ID']`
 - **Status Value:** `Pending`.
-- **Body (fx):** Template laden und drei Platzhalter ersetzen — `DEX_SEND_MAIL`
+- **Body (fx):** Template laden und vier Platzhalter ersetzen — `DEX_SEND_MAIL`
   ersetzt danach nur noch `{{LOGO_URL}}` / `{{ORB_URL}}`:
   ```
-  replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber'])))
+  replace(replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']))), '{{AssistantForwardUrl}}', outputs('Assistant_Forward_Mailto'))
   ```
   **Wichtig beim `{{Name}}`-Replace:** `coalesce(...Vorname, Final_Recipient_Email)`
   nutzen (nicht `Real_Sender`), sonst landet bei OnBehalfOf-Faellen die
-  Assistenz-Mail-Adresse in der Anrede statt des Principal-Vornamens.
-- **Configure run after** → `Get_Reminder_Template` → `Succeeded`.
+  Assistenz-Mail-Adresse in der Anrede statt des Principal-Vornamens. Der
+  vierte Replace `{{AssistantForwardUrl}}` ist NUR im OnBehalfOf-Template als
+  Platzhalter vorhanden — bei Direkt-Decliner-Mails wirkt er als No-op.
+- **Configure run after** → `Assistant_Forward_Mailto` → `Succeeded`.
 - Rename → `Create_Reminder_Queue_Item`.
 
 ## Ablauf-Diagramm
@@ -1455,11 +1468,16 @@ Forward-Support (`Real_Sender`) und On-Behalf-Of-Support (`Decliner_Lastname`
                     "parameters": {
                       "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                       "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
-                      "$filter": "@concat('TemplateType eq ''OutlookDeclineReminder'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
+                      "$filter": "@concat('TemplateType eq ''', if(empty(outputs('Decliner_Lastname')), 'OutlookDeclineReminder', 'OutlookDeclineReminder_OnBehalfOf'), ''' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
                       "$top": 1
                     },
                     "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
                   }
+                },
+                "Assistant_Forward_Mailto": {
+                  "type": "Compose",
+                  "inputs": "@concat('mailto:', first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail'], '?subject=', encodeUriComponent(concat('Bitte um Abmeldung: ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' \u2014 ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '&body=', encodeUriComponent(concat('Hallo,', decodeUriComponent('%0D%0A%0D%0A'), 'ich (Assistenz) habe in Vertretung den Outlook-Termin f\u00FCr ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' (', outputs('Final_Recipient_Email'), ') abgelehnt.', decodeUriComponent('%0D%0A%0D%0A'), 'Bitte storniere die Anmeldung f\u00FCr die Person f\u00FCr das Event \"', first(outputs('Get_DEX_Event')?['body/value'])?['Title'], '\" \u00FCber das Admin Center der Event Experience Platform.', decodeUriComponent('%0D%0A%0D%0A'), 'Danke!')))",
+                  "runAfter": { "Get_Reminder_Template": ["Succeeded"] }
                 },
                 "Create_Reminder_Queue_Item": {
                   "type": "OpenApiConnection",
@@ -1473,12 +1491,12 @@ Forward-Support (`Real_Sender`) und On-Behalf-Of-Support (`Decliner_Lastname`
                       "item/EmailType/Value": "OutlookDeclineReminder",
                       "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
                       "item/Status/Value": "Pending",
-                      "item/Body": "@replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber'])))",
+                      "item/Body": "@replace(replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']))), '{{AssistantForwardUrl}}', outputs('Assistant_Forward_Mailto'))",
                       "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
                     },
                     "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
                   },
-                  "runAfter": { "Get_Reminder_Template": ["Succeeded"] }
+                  "runAfter": { "Assistant_Forward_Mailto": ["Succeeded"] }
                 }
               },
               "else": { "actions": {} },
