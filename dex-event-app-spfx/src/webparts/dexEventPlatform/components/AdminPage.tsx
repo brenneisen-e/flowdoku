@@ -42,7 +42,7 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, isEventsLoading, getAllRegistrations, deleteEvent } = useEvents();
+  const { events, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
   const { t } = useLanguage();
@@ -62,6 +62,8 @@ export default function AdminPage(): React.ReactElement {
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
+  const [isFixingFields, setIsFixingFields] = React.useState(false);
+  const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Email Compose Modal
@@ -386,6 +388,46 @@ export default function AdminPage(): React.ReactElement {
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste').filter(matchesSearch)
     .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
+
+  // Roommate-Matching: durchsucht CustomData nach user-Type Feldern, extrahiert
+  // Email aus "Name <email>"-Format, baut Map Email -> Partner-Email. Match-Badge,
+  // wenn beide sich gegenseitig ausgewaehlt haben.
+  const userFieldIds = (selectedEvent?.eventSpecificFields || [])
+    .filter(f => f.type === 'user')
+    .map(f => f.id);
+  const roommateChoice: Record<string, { partnerEmail: string; partnerName: string }> = {};
+  if (userFieldIds.length > 0) {
+    const allActiveAndWaitlist = registrations.filter(r =>
+      r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt' || r.Status === 'Warteliste'
+    );
+    for (const r of allActiveAndWaitlist) {
+      const email = (r.ParticipantEmail || '').toLowerCase();
+      if (!email) continue;
+      let cd: Record<string, string> = {};
+      try { cd = JSON.parse(r.CustomData || '{}'); } catch { /* */ }
+      for (const fid of userFieldIds) {
+        const v = cd[fid];
+        if (!v) continue;
+        const m = v.match(/<([^>]+@[^>]+)>/);
+        if (!m) continue;
+        const pEmail = m[1].trim().toLowerCase();
+        const pName = v.replace(/<[^>]*>/, '').trim();
+        if (pEmail && pEmail !== email) {
+          roommateChoice[email] = { partnerEmail: pEmail, partnerName: pName };
+          break; // nur erstes user-Feld
+        }
+      }
+    }
+  }
+  const getRoommateInfo = (reg: { ParticipantEmail?: string }): { partnerName: string; mutual: boolean } | null => {
+    const email = (reg.ParticipantEmail || '').toLowerCase();
+    if (!email) return null;
+    const choice = roommateChoice[email];
+    if (!choice) return null;
+    const reverse = roommateChoice[choice.partnerEmail];
+    const mutual = !!reverse && reverse.partnerEmail === email;
+    return { partnerName: choice.partnerName || choice.partnerEmail, mutual };
+  };
 
   return (
     <div className="page-container" role="main">
@@ -717,6 +759,84 @@ export default function AdminPage(): React.ReactElement {
               <button
                 className="btn btn-secondary"
                 style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isFixingFields || !selectedEvent}
+                onClick={async () => {
+                  if (!selectedEvent) return;
+                  setIsFixingFields(true);
+                  setFixFieldsResult(null);
+                  try {
+                    // Normalisiert die Custom-Fields-Typen (Zustimmung/AGB -> checkbox,
+                    // T-Shirt-Feld -> 'Kein T-Shirt benoetigt'-Option), und entfernt das
+                    // redundante '(Pflicht)'-Suffix aus Labels, da das rote Sternchen den
+                    // Pflicht-Status schon visualisiert.
+                    const changes: string[] = [];
+                    const raw = selectedEvent.eventSpecificFields || [];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const fixed = raw.map((f: any) => {
+                      const nf = { ...f };
+                      const label = String(nf.label || '');
+                      const lowLabel = label.toLowerCase();
+                      // Zustimmung / AGB / Datenschutz -> checkbox
+                      const isConsent = lowLabel.indexOf('zustimmung') >= 0
+                        || lowLabel.indexOf('agb') >= 0
+                        || lowLabel.indexOf('datenschutz') >= 0;
+                      const isB2RunCheckbox = ['b2run_infoservice', 'b2run_anonym', 'b2run_datenschutz'].indexOf(nf.id) >= 0;
+                      if ((isConsent || isB2RunCheckbox) && nf.type !== 'checkbox') {
+                        nf.type = 'checkbox';
+                        nf.options = [];
+                        changes.push(`${label} -> Checkbox`);
+                      }
+                      // T-Shirt: 'Kein T-Shirt benoetigt' als Option hinzu, required=false
+                      const isShirt = lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0;
+                      if (isShirt && nf.type === 'select') {
+                        const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                        const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
+                        if (!hasNo) {
+                          opts.unshift('Kein T-Shirt benötigt');
+                          nf.options = opts;
+                          changes.push(`${label} -> 'Kein T-Shirt benötigt'-Option`);
+                        }
+                        if (nf.required) {
+                          nf.required = false;
+                          changes.push(`${label} -> optional`);
+                        }
+                      }
+                      // '(Pflicht)'-Suffix aus Labels entfernen
+                      const stripped = label.replace(/\s*\((?:pflicht|mandatory|required)\)\s*$/i, '').trim();
+                      if (stripped && stripped !== label) {
+                        nf.label = stripped;
+                        changes.push(`Label "${label}" -> "${stripped}"`);
+                      }
+                      return nf;
+                    });
+                    // Speichert zurueck in DEX_Events. Die SP-Spalte heisst 'CustomFields'
+                    // (PascalCase) und enthaelt die Felder als JSON-String.
+                    const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
+                    if (ok) {
+                      setFixFieldsResult(changes.length > 0
+                        ? `Geaendert: ${changes.join(' | ')}`
+                        : 'Keine Aenderungen noetig.');
+                    } else {
+                      setFixFieldsResult('Update fehlgeschlagen.');
+                    }
+                  } catch (err) {
+                    setFixFieldsResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsFixingFields(false);
+                }}
+              >
+                {isFixingFields ? 'Felder werden repariert...' : 'Felder reparieren'}
+              </button>
+            )}
+            {fixFieldsResult && (
+              <span style={{ fontSize: '0.75rem', color: fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') ? 'var(--dex-red)' : 'var(--dex-gray-500)' }}>
+                {fixFieldsResult}
+              </span>
+            )}
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
                 disabled={isRefreshingProfiles || !selectedEvent?.subsiteUrl}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
@@ -781,6 +901,9 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   ))}
                   <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">Registriert von</th>
+                  {userFieldIds.length > 0 && (
+                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Ausgewaehlter Zimmerpartner. Match = beide haben sich gegenseitig ausgewaehlt.">Zimmerpartner</th>
+                  )}
                   <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                 </tr>
               </thead>
@@ -814,6 +937,28 @@ export default function AdminPage(): React.ReactElement {
                         );
                       })()}
                     </td>
+                    {userFieldIds.length > 0 && (
+                      <td style={{ padding: 8, fontSize: '0.8rem' }}>
+                        {(() => {
+                          const info = getRoommateInfo(reg);
+                          if (!info) return <span style={{ color: 'var(--dex-gray-300)' }}>-</span>;
+                          return (
+                            <span>
+                              {info.partnerName}
+                              {info.mutual && (
+                                <span
+                                  className="badge"
+                                  style={{ marginLeft: 6, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
+                                  title="Beide haben sich gegenseitig als Zimmerpartner ausgewaehlt"
+                                >
+                                  Match
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    )}
                     <td style={{ padding: 8, display: 'flex', gap: 4 }}>
                       {reg.Status === 'Eingecheckt' ? (
                         <button

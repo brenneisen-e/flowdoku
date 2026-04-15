@@ -141,7 +141,7 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;

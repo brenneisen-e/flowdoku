@@ -245,9 +245,12 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
-    // Pflicht-Custom-Fields validieren
+    // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder muessen 'true' sein,
+    // alle anderen duerfen nach trim nicht leer sein.
     const missingRequired = event.eventSpecificFields
-      .filter(f => f.required && !eventSpecific[f.id]?.trim());
+      .filter(f => f.required && (f.type === 'checkbox'
+        ? eventSpecific[f.id] !== 'true'
+        : !eventSpecific[f.id]?.trim()));
     if (missingRequired.length > 0) {
       setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
       return;
@@ -715,16 +718,48 @@ export default function RegistrationPage(): React.ReactElement {
             ) : (
               event.eventSpecificFields.map(field => (
                 <div className="form-group" key={field.id}>
-                  <label className="form-label">
-                    {field.required && <span className="required">*</span>}
-                    {field.label}
-                    {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
-                  </label>
+                  {field.type !== 'checkbox' && (
+                    <label className="form-label">
+                      {field.required && <span className="required">*</span>}
+                      {field.label}
+                      {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+                    </label>
+                  )}
                   {field.type === 'select' ? (
                     <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
                       <option value="">{t('reg.pleaseselect')}</option>
                       {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
+                  ) : field.type === 'user' ? (
+                    <UserFieldPicker
+                      value={eventSpecific[field.id] || ''}
+                      onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
+                      searchUsers={searchUsers}
+                      placeholder={field.label + ' (Name oder E-Mail suchen)'}
+                      errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
+                    />
+                  ) : field.type === 'checkbox' ? (
+                    <label
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 8,
+                        cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)',
+                        padding: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '6px 8px' : 0,
+                        border: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '1px solid var(--dex-red)' : 'none',
+                        borderRadius: showErrors && field.required && eventSpecific[field.id] !== 'true' ? 6 : 0,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={eventSpecific[field.id] === 'true'}
+                        onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
+                        style={{ marginTop: 3, flexShrink: 0 }}
+                      />
+                      <span>
+                        {field.required && <span className="required">*</span>}
+                        {field.label}
+                        {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+                      </span>
+                    </label>
                   ) : (
                     <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
                   )}
@@ -756,6 +791,80 @@ export default function RegistrationPage(): React.ReactElement {
           <Send size={16} /> {isSubmitting ? t('reg.submitting') : t('reg.register')}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ==================== User-Picker fuer Custom Fields (type='user') ====================
+// Speichert im Value das Format "Vorname Nachname <email>" - so kann beim
+// Registrieren spaeter die Email per regex extrahiert und (z.B. fuer Zimmerpartner)
+// eine Info-Mail an diese Person gequeued werden.
+function UserFieldPicker(props: {
+  value: string;
+  onChange: (v: string) => void;
+  searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string }>>;
+  placeholder: string;
+  errorStyle: React.CSSProperties;
+}): React.ReactElement {
+  const [query, setQuery] = React.useState(props.value);
+  const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string }>>([]);
+  const [isSearching, setIsSearching] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => { setQuery(props.value); }, [props.value]);
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="form-input"
+        value={query}
+        onChange={e => {
+          const val = e.target.value;
+          setQuery(val);
+          props.onChange(val);
+          if (timerRef.current) clearTimeout(timerRef.current);
+          if (val.length >= 2) {
+            timerRef.current = setTimeout(async () => {
+              setIsSearching(true);
+              try { setResults(await props.searchUsers(val)); }
+              catch { setResults([]); }
+              setIsSearching(false);
+            }, 300);
+          } else {
+            setResults([]);
+          }
+        }}
+        placeholder={props.placeholder}
+        style={props.errorStyle}
+      />
+      {isSearching && (
+        <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+      )}
+      {results.length > 0 && (
+        <div style={{
+          position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+          background: '#fff', border: '1px solid var(--dex-gray-200)',
+          borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          maxHeight: 200, overflowY: 'auto',
+        }}>
+          {results.map(u => (
+            <div
+              key={u.email}
+              style={{
+                padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
+                borderBottom: '1px solid var(--dex-gray-100)',
+              }}
+              onMouseDown={() => {
+                const formatted = `${u.displayName} <${u.email}>`;
+                setQuery(formatted);
+                props.onChange(formatted);
+                setResults([]);
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{u.email}{u.location ? ` · ${u.location}` : ''}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

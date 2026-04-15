@@ -80,7 +80,7 @@ export interface EventDocument {
 export interface EventSpecificField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
   required: boolean;
   options?: string[];
   helpText?: string;
