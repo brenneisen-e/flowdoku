@@ -663,52 +663,82 @@ export class SharePointService {
   }
 
   /**
-   * User per E-Mail in Microsoft 365 suchen.
+   * User per E-Mail in Microsoft 365 suchen — robust gegen UPN != SMTP-Mismatches.
    * Gibt Name, Standort und JobTitle zurueck falls gefunden.
+   *
+   * Strategie:
+   *   1. Direkter Claim-Lookup mit `i:0#.f|membership|<email>` (schnell).
+   *   2. Wenn leer oder kein DisplayName: per `siteusers/getbyemail` den echten
+   *      LoginName aufloesen (UPN-Claim), dann GetPropertiesFor damit erneut
+   *      aufrufen. Deckt UPN != SMTP, Guest-Accounts, Alias-SMTP-Adressen ab.
    */
   public async searchUserByEmail(email: string): Promise<{
     displayName: string;
     location: string;
     jobTitle: string;
   } | null> {
+    if (!email) return null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extract = (data: any): { displayName: string; location: string; jobTitle: string } | null => {
+      if (!data || !data.DisplayName) return null;
+      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+      const getProp = (keys: string[]): string => {
+        for (const k of keys) {
+          const p = props.find(x => x.Key === k);
+          if (p && p.Value) return p.Value;
+        }
+        return '';
+      };
+      return {
+        displayName: data.DisplayName,
+        location: getProp(['Office', 'SPS-Location', 'SPS-City', 'City']),
+        jobTitle: getProp(['Title', 'SPS-JobTitle']),
+      };
+    };
+
+    // 1) Direkter Lookup per SMTP
     try {
-      // Ueber SharePoint People API suchen
-      const response = await this.context.spHttpClient.get(
+      const directResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'&$select=DisplayName,UserProfileProperties`,
         SPHttpClient.configurations.v1
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.DisplayName) {
-          let location = '';
-          let jobTitle = '';
-          if (data.UserProfileProperties) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties;
-            const getProp = (keys: string[]): string => {
-              for (const k of keys) {
-                const p = props.find(x => x.Key === k);
-                if (p && p.Value) return p.Value;
-              }
-              return '';
-            };
-            location = getProp(['Office', 'SPS-Location', 'SPS-City', 'City']);
-            jobTitle = getProp(['Title', 'SPS-JobTitle']);
-          }
-          return { displayName: data.DisplayName, location, jobTitle };
+      if (directResp.ok) {
+        const data = await directResp.json();
+        const hit = extract(data);
+        if (hit && (hit.jobTitle || hit.location)) return hit;
+        // DisplayName ohne Properties? Merken fuer Fallback-Default.
+        if (hit) {
+          // weiter zum LoginName-Pfad - vielleicht bringt der jobTitle
         }
       }
+    } catch { /* weiter */ }
 
-      // Fallback: ueber siteusers suchen (liefert keinen JobTitle)
-      const fallback = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Title`,
+    // 2) Fallback: echten LoginName (UPN-Claim) via siteusers/getbyemail
+    try {
+      const siteUserResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName,Title`,
         SPHttpClient.configurations.v1
       );
-      if (fallback.ok) {
-        const fbData = await fallback.json();
-        if (fbData.Title) {
-          return { displayName: fbData.Title, location: '', jobTitle: '' };
+      if (siteUserResp.ok) {
+        const su = await siteUserResp.json();
+        const loginName: string = su.LoginName || su.d?.LoginName || '';
+        const fallbackDisplayName: string = su.Title || su.d?.Title || '';
+        if (loginName) {
+          try {
+            const profileResp = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'&$select=DisplayName,UserProfileProperties`,
+              SPHttpClient.configurations.v1
+            );
+            if (profileResp.ok) {
+              const pData = await profileResp.json();
+              const hit = extract(pData);
+              if (hit) return hit;
+            }
+          } catch { /* */ }
+        }
+        if (fallbackDisplayName) {
+          return { displayName: fallbackDisplayName, location: '', jobTitle: '' };
         }
       }
     } catch { /* User nicht gefunden */ }

@@ -3266,32 +3266,66 @@ export class EventService {
   }
 
   /**
-   * Profildaten eines bestimmten Users via Email laden (fuer "Register for someone else").
-   * Wird gebraucht weil getCurrentUserProfile() immer den eingeloggten User liefert,
-   * nicht die Person, fuer die registriert wird.
+   * Profildaten eines bestimmten Users via Email laden (fuer "Register for someone else"
+   * und "Profile neu laden"). Robust gegen UPN != SMTP-Mismatches.
+   *
+   * Strategie:
+   *   1. Direkter Lookup mit Claim `i:0#.f|membership|<email>` (funktioniert wenn UPN==SMTP).
+   *   2. Wenn leer: per `siteusers/getbyemail` den echten LoginName aufloesen
+   *      (deckt UPN != SMTP und Guest-Accounts ab) und GetPropertiesFor mit
+   *      diesem LoginName erneut aufrufen.
+   *
+   * Rueckgabe ist gefuellt sobald einer der Wege Properties liefert, sonst leer.
    */
   public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
-    if (!email) return { department: '', location: '', jobTitle: '', phone: '' };
-    try {
-      const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`,
-        SPHttpClient.configurations.v1
-      );
-      if (!response.ok) return { department: '', location: '', jobTitle: '', phone: '' };
-      const data = await response.json();
-      const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+    const empty = { department: '', location: '', jobTitle: '', phone: '' };
+    if (!email) return empty;
+
+    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string } => {
       const get = (key: string): string => {
         const p = props.find(x => x.Key === key);
         return p && p.Value ? p.Value : '';
       };
       return {
         department: get('Department'),
-        location: get('Office'),
-        jobTitle: get('Title'),
+        location: get('Office') || get('SPS-Location'),
+        jobTitle: get('Title') || get('SPS-JobTitle'),
         phone: get('WorkPhone') || get('CellPhone'),
       };
+    };
+
+    // 1) Direkter Claim per SMTP-Email (schnell, funktioniert fuer Standard-Tenants)
+    try {
+      const directUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`;
+      const response = await this.context.spHttpClient.get(directUrl, SPHttpClient.configurations.v1);
+      if (response.ok) {
+        const data = await response.json();
+        const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
+        const profile = extractProfile(props);
+        if (profile.jobTitle || profile.department || profile.location || profile.phone) {
+          return profile;
+        }
+      }
+    } catch { /* weiter zu Fallback */ }
+
+    // 2) Fallback: echten LoginName (UPN-Claim) ueber siteusers/getbyemail aufloesen
+    // Deckt UPN != SMTP, Guest-Accounts und Alias-SMTP-Adressen ab.
+    try {
+      const siteUserUrl = `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName`;
+      const siteUserResp = await this.context.spHttpClient.get(siteUserUrl, SPHttpClient.configurations.v1);
+      if (!siteUserResp.ok) return empty;
+      const siteUserData = await siteUserResp.json();
+      const loginName: string = siteUserData.LoginName || siteUserData.d?.LoginName || '';
+      if (!loginName) return empty;
+
+      const profileUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${encodeURIComponent(loginName)}'`;
+      const profileResp = await this.context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
+      if (!profileResp.ok) return empty;
+      const profileData = await profileResp.json();
+      const props: Array<{ Key: string; Value: string }> = profileData.UserProfileProperties || [];
+      return extractProfile(props);
     } catch {
-      return { department: '', location: '', jobTitle: '', phone: '' };
+      return empty;
     }
   }
 
