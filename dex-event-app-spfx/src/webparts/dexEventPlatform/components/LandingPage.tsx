@@ -69,41 +69,43 @@ export default function LandingPage(): React.ReactElement {
         </button>
       </div>
       <div className="landing__hero">
-        <div className="landing__orb">
-          <div className="landing__orb-inner" />
-        </div>
-        <div className="landing__text">
-          <h1>
-            {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
-          </h1>
-          <p>{t('landing.subtitle')}</p>
-        </div>
-        <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
-          {t('landing.start')}
-        </button>
-        <div style={{ display: 'flex', gap: 16, marginTop: 20, justifyContent: 'center', alignItems: 'center' }}>
-          <button
-            onClick={() => setShowInfo(!showInfo)}
-            style={{
-              background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-              width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
-            }}
-            title={locale === 'de' ? 'Über die App' : 'About the app'}
-          >
-            <Info size={18} />
+        <div className="landing__card">
+          <div className="landing__orb">
+            <div className="landing__orb-inner" />
+          </div>
+          <div className="landing__text">
+            <h1>
+              {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
+            </h1>
+            <p>{t('landing.subtitle')}</p>
+          </div>
+          <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
+            {t('landing.start')}
           </button>
-          <a
-            href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Feedback"
-            style={{
-              background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-              width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
-            }}
-            title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
-          >
-            <Mail size={18} />
-          </a>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowInfo(!showInfo)}
+              style={{
+                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
+                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
+              }}
+              title={locale === 'de' ? 'Über die App' : 'About the app'}
+            >
+              <Info size={18} />
+            </button>
+            <a
+              href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Feedback"
+              style={{
+                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
+                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
+              }}
+              title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
+            >
+              <Mail size={18} />
+            </a>
+          </div>
         </div>
       </div>
       <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
