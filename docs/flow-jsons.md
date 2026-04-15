@@ -1534,11 +1534,12 @@ Der v1-Flow ist deaktiviert aber nicht gelöscht (`DEX_OutlookDeclineHandler_v1_
 
 ---
 
-## 6. DEX_OutlookForwardHandler (NEU — zu bauen)
+## 6. DEX_OutlookForwardHandler
 
 **Trigger:** Neue Mail in `no_reply.events@deloitte.de` mit Subject startend mit `Meeting Forward Notification:` (EN) oder `Terminweiterleitungsbenachrichtigung:` (DE)
-**Zweck:** Wenn ein Teilnehmer einen Outlook-Termin an Dritte weiterleitet, bekommt `no_reply.events@deloitte.de` eine Info-Mail. Der Flow prüft, ob die weitergeleitete Person bereits in der SharePoint-Teilnehmerliste eingetragen ist. Wenn **nein**, geht eine FYI-Mail an den Organizer raus.
-**Status:** Noch nicht gebaut — nur Spezifikation. Soll nach Freigabe manuell in Power Automate angelegt werden.
+**Zweck:** Wenn ein Teilnehmer einen Outlook-Termin an Dritte weiterleitet, bekommt `no_reply.events@deloitte.de` eine Info-Mail. Der Flow prüft, ob die weitergeleitete Person bereits in der SharePoint-Teilnehmerliste eingetragen ist. Wenn **nein**, geht eine FYI-Mail an den Organizer raus (Template `OutlookForwardNotification` aus `DEX_EmailTemplates`, vom Flow gerendert, Body landet in `DEX_Emails`-Queue → DEX_SEND_MAIL versendet).
+**Letztes Update:** 2026-04-15 (initiale Version angelegt)
+**Listen-GUIDs:** DEX_Events `28457815-1163-4e92-8b08-3ae43f477d9e`, DEX_EmailTemplates `2c428d35-e6fb-42f9-8a20-580acd6d05f4`, DEX_Emails `57aa0840-df98-41ae-a39b-323c0b80ae3b`
 
 ### Hintergrund
 
@@ -1791,5 +1792,209 @@ Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates
 1. Manuell in Outlook einen Testtermin aus `no_reply.events@deloitte.de` erstellen, einladen.
 2. Als eingeladener User: **Forward** auf eine andere Person (Deloitte-interne) → Flow sollte die FYI-Mail an den Organizer queuen.
 3. Als eingeladener User: **Forward** auf eine Person, die bereits registriert ist → Flow sollte **keine** FYI schicken.
-4. Als eingeladener User: **Forward** auf einen Externen (keine Azure AD-Identität) → Flow sollte FYI mit "Email nicht aufgelöst" schicken.
+4. Als eingeladener User: **Forward** auf einen Externen (keine Azure AD-Identität) → Email_Resolved-Condition sollte greifen, Flow terminiert sauber (aktuell keine FYI bei nicht-auflösbarer Mail — Verbesserungspotenzial).
 5. Flow-Runs kontrollieren: jeder Schritt sollte `Succeeded` sein, Terminate-Zweige dokumentieren warum keine Mail verschickt wurde.
+
+### Finaler Flow-JSON (Stand 2026-04-15, initiale Version)
+
+TRIGGER:
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": { "mailboxAddress": "no_reply.events@deloitte.de" },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "SharedMailboxOnNewEmailV2"
+    }
+  },
+  "recurrence": { "frequency": "Minute", "interval": 1 },
+  "runtimeConfiguration": { "concurrency": { "runs": 1, "maximumWaitingRuns": 100 } },
+  "splitOn": "@triggerOutputs()?['body/value']"
+}
+```
+
+IS_FORWARDNOTIFICATION (If):
+```json
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      {
+        "equals": [
+          "@or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'meeting forward notification:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'terminweiterleitungsbenachrichtigung:'))",
+          true
+        ]
+      }
+    ]
+  },
+  "actions": {
+    "Cleaned_Subject": {
+      "type": "Compose",
+      "inputs": "@trim(substring(triggerOutputs()?['body/subject'], add(indexOf(triggerOutputs()?['body/subject'], ':'), 1)))"
+    },
+    "Get_DEX_Event": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+          "$filter": "@concat('Title eq ''', replace(outputs('Cleaned_Subject'), '''', ''''''), '''')",
+          "$top": 1
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "GetItems"
+        }
+      },
+      "runAfter": { "Cleaned_Subject": ["Succeeded"] }
+    },
+    "Event_Found": {
+      "type": "If",
+      "expression": {
+        "and": [ { "greater": ["@length(outputs('Get_DEX_Event')?['body/value'])", 0] } ]
+      },
+      "actions": {
+        "Recipient_DisplayName": {
+          "type": "Compose",
+          "inputs": "@if(contains(coalesce(triggerOutputs()?['body/bodyPreview'], ''), 'Recipients'), trim(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'Recipients')), 'All times listed'))), trim(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'Empfänger')), 'Alle aufgeführten Zeiten'))))"
+        },
+        "Resolve_Recipient_Email": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "top": 5,
+              "isSearchTermRequired": true,
+              "searchTerm": "@outputs('Recipient_DisplayName')"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+              "connection": "shared_office365users",
+              "operationId": "SearchUserV2"
+            }
+          },
+          "runAfter": { "Recipient_DisplayName": ["Succeeded"] }
+        },
+        "Filter_Matching_User": {
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Resolve_Recipient_Email')?['value']",
+            "where": "@equals(item()?['displayName'],outputs('Recipient_DisplayName'))"
+          },
+          "runAfter": { "Resolve_Recipient_Email": ["Succeeded"] }
+        },
+        "Recipient_Email": {
+          "type": "Compose",
+          "inputs": "@first(body('Filter_Matching_User'))?['mail']",
+          "runAfter": { "Filter_Matching_User": ["Succeeded"] }
+        },
+        "Email_Resolved": {
+          "type": "If",
+          "expression": {
+            "and": [ { "equals": ["@empty(outputs('Recipient_Email'))", false] } ]
+          },
+          "actions": {
+            "Get_Teilnehmer_Entry": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
+                  "parameters/method": "GET",
+                  "parameters/uri": "_api/web/lists/getbytitle('Teilnehmer')/items?$filter=ParticipantEmail eq '@{outputs('Recipient_Email')}' and Status ne 'Abgemeldet'&$top=1",
+                  "parameters/headers": { "Accept": "application/json;odata=nometadata" }
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connection": "shared_sharepointonline",
+                  "operationId": "HttpRequest"
+                }
+              }
+            },
+            "Already_Registered": {
+              "type": "If",
+              "expression": {
+                "and": [ { "greater": ["@length(body('Get_Teilnehmer_Entry')?['value'])", 0] } ]
+              },
+              "actions": {
+                "Terminate_2": { "type": "Terminate", "inputs": { "runStatus": "Succeeded" } }
+              },
+              "else": {
+                "actions": {
+                  "Get_ForwardTemplate": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+                        "$filter": "@concat('TemplateType eq ''OutlookForwardNotification'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
+                        "$top": 1
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connection": "shared_sharepointonline",
+                        "operationId": "GetItems"
+                      }
+                    }
+                  },
+                  "Rendered_Subject": {
+                    "type": "Compose",
+                    "inputs": "@replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['Subject'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' ')))",
+                    "runAfter": { "Get_ForwardTemplate": ["Succeeded"] }
+                  },
+                  "Rendered_Body": {
+                    "type": "Compose",
+                    "inputs": "@replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')",
+                    "runAfter": { "Rendered_Subject": ["Succeeded"] }
+                  },
+                  "Create_FYI_Email": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                        "item/Title": "@outputs('Rendered_Subject')",
+                        "item/Recipient": "@first(split(first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail'], ';'))",
+                        "item/RecipientName": "@first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';'))",
+                        "item/Body": "@outputs('Rendered_Body')",
+                        "item/EmailType/Value": "Info",
+                        "item/EventTitle": "@outputs('Cleaned_Subject')",
+                        "item/EventId": "@string(first(outputs('Get_DEX_Event')?['body/value'])?['Id'])",
+                        "item/Status/Value": "Pending"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connection": "shared_sharepointonline",
+                        "operationId": "PostItem"
+                      }
+                    },
+                    "runAfter": { "Rendered_Body": ["Succeeded"] }
+                  }
+                }
+              },
+              "runAfter": { "Get_Teilnehmer_Entry": ["Succeeded"] }
+            }
+          },
+          "else": { "actions": {} },
+          "runAfter": { "Recipient_Email": ["Succeeded"] }
+        }
+      },
+      "else": {
+        "actions": { "Terminate_1": { "type": "Terminate", "inputs": { "runStatus": "Succeeded" } } }
+      },
+      "runAfter": { "Get_DEX_Event": ["Succeeded"] }
+    }
+  },
+  "else": {
+    "actions": { "Terminate": { "type": "Terminate", "inputs": { "runStatus": "Succeeded" } } }
+  },
+  "runAfter": {}
+}
+```
+
+### Offenes Verbesserungspotenzial
+
+- **`Email_Resolved`-else-Zweig ist leer:** Wenn die weitergeleitete Person nicht per Graph-Search aufgelöst werden kann (z.B. Externe, Gastaccount mit anderem DisplayName-Format), verliert der Flow sie stumm. Besser wäre ein zweiter `Create_FYI_Email`-Block in diesem Zweig, der eine FYI-Mail mit `RecipientEmail = "nicht aufgelöst — bitte manuell prüfen: <DisplayName>"` an den Organizer schickt.
+- **Mehrere Recipients:** Die `bodyPreview`-Parsing-Logik nimmt aktuell nur den ersten Namen. Wenn jemand den Termin an mehrere Personen gleichzeitig forwarded (z.B. "Mauß, Anna Kristina; Müller, Max"), sollte eine Apply-to-each-Schleife über `split(outputs('Recipient_DisplayName'), ';')` iterieren.
+- **Subject-Parsing bei `:` im Event-Titel:** `Cleaned_Subject` per `substring(..., indexOf(':'))` schneidet nach dem **ersten** `:`. Bei Events wie `DEX: Sommer-Event` landet nur `Sommer-Event` im Cleaned_Subject und `Get_DEX_Event` findet nichts. Robustere Variante: per `add(indexOf('notification:'), 13)` bzw. `add(indexOf('benachrichtigung:'), 17)`.
