@@ -147,6 +147,7 @@ interface CustomFieldInput {
   // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
   options: string[];
   visible: boolean;
+  externalLinks?: Array<{ label: string; url: string }>;
 }
 
 export default function EventCreationPage(): React.ReactElement {
@@ -193,7 +194,8 @@ export default function EventCreationPage(): React.ReactElement {
     setMemberModalGroupName(res.groupName || groupEmail);
     setMemberModalMembers(res.members);
   };
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
@@ -351,22 +353,107 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
-   * Setzt die Custom Fields auf die Deloitte-Standard-Vorschlaege zurueck:
-   * T-Shirt Groesse (mit "Kein T-Shirt benoetigt"), Allergien (Freitext),
-   * Essenspraeferenzen (Vegetarisch/Vegan/Pescetarisch/Keine Praeferenzen).
-   * Ueberschreibt vorhandene Custom Fields (nach Nachfrage, damit kein Doppel-
-   * eintrag entsteht bei mehrfachem Klicken).
+   * Deloitte-Standard-Vorschlaege als Katalog. Der Organizer waehlt ueber ein
+   * Modal mit Checkboxen aus, welche dieser Felder hinzugefuegt werden sollen.
+   * Ausgewaehlte Felder werden ans Ende der aktuellen customFields angehaengt.
    */
-  const applySuggestedFields = (): void => {
-    if (customFields.length > 0 && !confirm('Vorhandene Felder werden durch die Vorschlaege ersetzt. Fortfahren?')) return;
-    setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-      { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
-      { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
-      { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
-      { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
-      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true },
-    ]);
+  // Bilingual: Labels + Optionen der Felder werden in der Event-Sprache (DE/EN)
+  // angelegt, passend zum Locale beim Klick auf 'Vorgeschlagene Felder'.
+  const SUGGESTED_FIELDS_CATALOG: Array<{ key: string; label: string; description: string; build: (now: number) => CustomFieldInput }> = isDe ? [
+    {
+      key: 'tshirt',
+      label: 'T-Shirt Größe',
+      description: 'Dropdown mit Kein T-Shirt / XS–XXL',
+      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+    },
+    {
+      key: 'allergies',
+      label: 'Allergien',
+      description: 'Freitextfeld für Allergien/Unverträglichkeiten',
+      build: (n) => ({ id: `cf-${n}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'diet',
+      label: 'Essenspräferenzen',
+      description: 'Dropdown: Keine Präferenzen / Vegetarisch / Vegan / Pescetarisch',
+      build: (n) => ({ id: `cf-${n}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true }),
+    },
+    {
+      key: 'hotel',
+      label: 'Hotel benötigt',
+      description: 'Checkbox: Teilnehmer benötigt ein Hotel',
+      build: (n) => ({ id: `cf-${n}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'roomtype',
+      label: 'Zimmerart',
+      description: 'Dropdown: Keine Präferenz / Einzelzimmer / Doppelzimmer',
+      build: (n) => ({ id: `cf-${n}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true }),
+    },
+    {
+      key: 'roommate',
+      label: 'Bevorzugter Zimmerpartner',
+      description: 'Personen-Suche; Match-Erkennung im Admin Center',
+      build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true }),
+    },
+  ] : [
+    {
+      key: 'tshirt',
+      label: 'T-Shirt size',
+      description: 'Dropdown: No t-shirt needed / XS–XXL',
+      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['No t-shirt needed', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+    },
+    {
+      key: 'allergies',
+      label: 'Allergies',
+      description: 'Free-text field for allergies / intolerances',
+      build: (n) => ({ id: `cf-${n}`, label: 'Allergies', type: 'text', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'diet',
+      label: 'Dietary preferences',
+      description: 'Dropdown: No preference / Vegetarian / Vegan / Pescetarian',
+      build: (n) => ({ id: `cf-${n}`, label: 'Dietary preferences', type: 'select', required: false, options: ['No preference', 'Vegetarian', 'Vegan', 'Pescetarian'], visible: true }),
+    },
+    {
+      key: 'hotel',
+      label: 'Hotel required',
+      description: 'Checkbox: participant needs a hotel room',
+      build: (n) => ({ id: `cf-${n}`, label: 'Hotel required', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'roomtype',
+      label: 'Room type',
+      description: 'Dropdown: No preference / Single room / Double room',
+      build: (n) => ({ id: `cf-${n}`, label: 'Room type (if hotel needed)', type: 'select', required: false, options: ['No preference', 'Single room', 'Double room'], visible: true }),
+    },
+    {
+      key: 'roommate',
+      label: 'Preferred roommate',
+      description: 'People search; match detection in the admin center',
+      build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'user', required: false, options: [], visible: true }),
+    },
+  ];
+
+  const [showSuggestedModal, setShowSuggestedModal] = React.useState(false);
+  const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
+
+  const openSuggestedModal = (): void => {
+    // Standard: alle ausgewaehlt, User kann dann abwaehlen was er nicht braucht
+    const init: Record<string, boolean> = {};
+    for (const s of SUGGESTED_FIELDS_CATALOG) init[s.key] = true;
+    setSuggestedSelection(init);
+    setShowSuggestedModal(true);
+  };
+
+  const addSelectedSuggestedFields = (): void => {
+    const selected = SUGGESTED_FIELDS_CATALOG.filter(s => suggestedSelection[s.key]);
+    if (selected.length === 0) { setShowSuggestedModal(false); return; }
+    const now = Date.now();
+    const newFields: CustomFieldInput[] = selected.map((s, i) => s.build(now + i));
+    // Haengen ans Ende an (keine Duplikate entfernen; User kann selbst loeschen wenn noetig)
+    setCustomFields([...customFields, ...newFields]);
+    setShowSuggestedModal(false);
   };
 
   const removeCustomField = (id: string): void => {
@@ -398,10 +485,21 @@ export default function EventCreationPage(): React.ReactElement {
         { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
         { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true },
         { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: [], visible: true },
-        { id: 'b2run_infoservice', label: 'Verwendung Infoservice (SMS von B2Run, benoetigt Mobilnummer)', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true },
         { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen', type: 'checkbox', required: true, options: [], visible: true },
+        {
+          id: 'b2run_datenschutz',
+          label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
+          type: 'checkbox',
+          required: true,
+          options: [],
+          visible: true,
+          externalLinks: [
+            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+          ],
+        },
       ];
       setCustomFields(fields);
     }
@@ -1962,11 +2060,11 @@ export default function EventCreationPage(): React.ReactElement {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={applySuggestedFields}
+                      onClick={openSuggestedModal}
                       style={{ fontSize: '0.85rem', padding: '6px 14px' }}
-                      title="T-Shirt, Allergien, Essenspraeferenzen, Hotel"
+                      title={isDe ? 'Felder aus einem Katalog waehlen' : 'Pick fields from a catalog'}
                     >
-                      Vorgeschlagene Felder
+                      {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
                     </button>
                     <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
                       <Plus size={14} /> {t('create.addfield')}
@@ -2802,6 +2900,103 @@ export default function EventCreationPage(): React.ReactElement {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Vorgeschlagene Felder auswaehlen (Multi-Select) */}
+      {showSuggestedModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowSuggestedModal(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, padding: '24px 28px',
+              maxWidth: 540, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+              {isDe
+                ? 'Wähle aus dem Katalog, welche Felder dem Event hinzugefügt werden sollen. Du kannst die Felder danach weiter anpassen.'
+                : 'Pick the fields you want to add to the event. You can still tweak them afterwards.'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+              {SUGGESTED_FIELDS_CATALOG.map(s => (
+                <label
+                  key={s.key}
+                  style={{
+                    display: 'flex', gap: 10, alignItems: 'flex-start',
+                    padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 8, cursor: 'pointer',
+                    background: suggestedSelection[s.key] ? 'var(--dex-gray-50, #fafafa)' : '#fff',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!suggestedSelection[s.key]}
+                    onChange={e => setSuggestedSelection({ ...suggestedSelection, [s.key]: e.target.checked })}
+                    style={{ marginTop: 3, flexShrink: 0 }}
+                  />
+                  <span>
+                    <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{s.label}</strong>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{s.description}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 6 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  onClick={() => {
+                    const all: Record<string, boolean> = {};
+                    for (const s of SUGGESTED_FIELDS_CATALOG) all[s.key] = true;
+                    setSuggestedSelection(all);
+                  }}
+                >
+                  {isDe ? 'Alle' : 'All'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  onClick={() => setSuggestedSelection({})}
+                >
+                  {isDe ? 'Keine' : 'None'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowSuggestedModal(false)}
+                >
+                  {isDe ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={addSelectedSuggestedFields}
+                  disabled={!Object.values(suggestedSelection).some(Boolean)}
+                >
+                  {isDe ? 'Hinzufügen' : 'Add'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

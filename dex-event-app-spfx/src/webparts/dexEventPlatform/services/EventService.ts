@@ -145,6 +145,9 @@ export interface CustomField {
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;
+  /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
+   * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
+  externalLinks?: Array<{ label: string; url: string }>;
 }
 
 export interface SPRegistration {

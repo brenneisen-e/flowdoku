@@ -85,6 +85,8 @@ export interface EventSpecificField {
   options?: string[];
   helpText?: string;
   spInternalName?: string;
+  /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
+  externalLinks?: Array<{ label: string; url: string }>;
 }
 
 export interface Registration {
