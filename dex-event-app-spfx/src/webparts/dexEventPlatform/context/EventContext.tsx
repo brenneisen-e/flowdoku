@@ -24,10 +24,28 @@ import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, bu
  * - Nachname/Vorname-Pairs werden vorgetauscht (SP-Default ist "Nachname, Vorname").
  * - Bei 1 Name: nur der Name. Bei 2: "A und B" / "A and B". Bei 3+: "A, B und C" / "A, B and C".
  */
-function formatOrganizerList(organizers: string[], lang: string): string {
+export function formatOrganizerList(organizers: string[], lang: string): string {
   const names: string[] = [];
   for (const entry of organizers || []) {
-    const pieces = (entry || '').split(';').map(p => p.trim()).filter(Boolean);
+    // Akzeptiere ';' UND ',' als Top-Level-Trenner zwischen Personen.
+    // Wenn die Anzahl der Komma-Tokens gerade und >=2 ist, behandeln wir sie als
+    // Paare ('Lastname, Firstname, Lastname, Firstname, ...'). Sonst fallen wir
+    // zurueck auf Semikolon-Split + 'Lastname, Firstname' pro Stueck.
+    const raw = (entry || '').trim();
+    if (!raw) continue;
+    const semiPieces = raw.split(';').map(p => p.trim()).filter(Boolean);
+    const pieces: string[] = [];
+    for (const sp of semiPieces) {
+      const commaTokens = sp.split(',').map(s => s.trim()).filter(Boolean);
+      if (commaTokens.length >= 4 && commaTokens.length % 2 === 0) {
+        // Paarweise interpretieren: ['Last','First','Last','First',...]
+        for (let i = 0; i < commaTokens.length; i += 2) {
+          pieces.push(`${commaTokens[i]}, ${commaTokens[i + 1]}`);
+        }
+      } else {
+        pieces.push(sp);
+      }
+    }
     for (const piece of pieces) {
       const commaParts = piece.split(',').map(s => s.trim());
       if (commaParts.length === 2 && commaParts[0] && commaParts[1]) {

@@ -2907,19 +2907,29 @@ export class EventService {
       const auditName = cancelledByName || this.context.pageContext.user.displayName || '';
       const auditEmail = (cancelledByEmail || this.context.pageContext.user.email || '').toLowerCase();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
+      const corePayload: Record<string, any> = {
         'Status': 'Abgemeldet',
         'CancellationDate': new Date().toISOString(),
         'TeilnehmerID': null,
       };
-      if (auditName) payload['CancelledByName'] = auditName;
-      if (auditEmail) payload['CancelledByEmail'] = auditEmail;
-      const response = await this._merge(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        payload
-      );
+      // Audit-Felder optional dazu - aeltere Subsites haben die Spalten evtl. noch
+      // nicht (kommt erst mit Commit a10a608). Ein 400 von SP wuerde dann die
+      // ganze Abmeldung blocken. Strategie: erst mit Audit-Feldern versuchen,
+      // bei Misserfolg ohne sie nochmal probieren.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fullPayload: Record<string, any> = { ...corePayload };
+      if (auditName) fullPayload['CancelledByName'] = auditName;
+      if (auditEmail) fullPayload['CancelledByEmail'] = auditEmail;
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+      let response = await this._merge(url, fullPayload);
+      if (!response.ok && (auditName || auditEmail)) {
+        // Fallback ohne Audit-Felder (Subsite-Liste hat die Spalten noch nicht)
+        console.warn('[DEX] cancelRegistration with audit failed (' + response.status + '), retrying without audit fields');
+        response = await this._merge(url, corePayload);
+      }
       return response.ok;
-    } catch {
+    } catch (err) {
+      console.warn('[DEX] cancelRegistration error:', err);
       return false;
     }
   }
