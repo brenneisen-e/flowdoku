@@ -184,10 +184,11 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div
             style={{
-              fontSize: '0.78rem',
+              fontSize: '1.55rem',
               color: 'var(--dex-gray-400)',
               textAlign: 'center',
-              marginTop: 4,
+              marginTop: 8,
+              lineHeight: 1.3,
             }}
           >
             {locale === 'de' ? 'Built by ' : 'Built by '}
