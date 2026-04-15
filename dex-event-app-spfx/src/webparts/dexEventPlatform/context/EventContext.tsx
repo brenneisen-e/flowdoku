@@ -662,8 +662,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       <p style="margin-top:24px;color:#888;font-size:0.85rem;">${escape(requesterName)} ist im Cc und kann direkt geantwortet werden.</p>
     `;
     const body = wrapTemplate('#86bc25', 'Neue DEX-Anfrage', `Event: ${eventName || '-'}`, bodyInner);
+    // EventId muss '0' sein (nicht ''), damit der DEX_SEND_MAIL Flow Get_Event
+    // mit "ID eq 0" als gueltigem OData-Filter aufrufen kann. Bei leerem
+    // EventId baut der Flow "ID eq " was kein gueltiger OData-Ausdruck ist
+    // und der Flow direkt in Get_Event failed (clientRequestId-Fehler).
+    // Get_Event liefert dann 0 Items, Compose_Image faellt automatisch auf
+    // das Default-Bild aus _Config zurueck - die Mail geht trotzdem raus.
     return eventService.queueEmail(
-      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '', requesterEmail
+      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '0', requesterEmail
     );
   }
 

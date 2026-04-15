@@ -110,7 +110,8 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div className="landing__text">
             <h1>
-              {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
+              {t('landing.welcome')}{' '}
+              <strong style={{ whiteSpace: 'nowrap' }}>{t('landing.platform')}.</strong>
             </h1>
             <p>{t('landing.subtitle')}</p>
           </div>
@@ -180,6 +181,19 @@ export default function LandingPage(): React.ReactElement {
                 ? 'Möchtest du die DEX App auch für dein Event nutzen? Melde dich gerne bei uns!'
                 : 'Want to use the DEX App for your event too? Just reach out to us!'}
             </button>
+          </div>
+          <div
+            style={{
+              fontSize: '0.78rem',
+              color: 'var(--dex-gray-400)',
+              textAlign: 'center',
+              marginTop: 4,
+            }}
+          >
+            {locale === 'de' ? 'Built by ' : 'Built by '}
+            <strong style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
+              Eike Brenneisen, Andreas Enk {locale === 'de' ? 'und' : 'and'} Nils Felten
+            </strong>
           </div>
         </div>
       </div>
