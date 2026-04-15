@@ -219,6 +219,12 @@ export class EventService {
         await this.setRecipientFieldPlainText(listName);
       } catch { /* ignore */ }
 
+      // Cc-Feld nachtraeglich anlegen (fuer Anfrage-Mails von der Landing Page).
+      // Bestehende Listen aus aelteren App-Versionen haben das Feld noch nicht.
+      try {
+        await this.ensureCcFieldExists(listName);
+      } catch { /* ignore */ }
+
       // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -248,6 +254,7 @@ export class EventService {
       // Recipient als Plain-Text Note-Feld (RichText=false), damit der Flow
       // die Email-Adresse(n) ohne HTML-Wrapping bekommt.
       { title: 'Recipient', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
+      { title: 'Cc', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
       { title: 'RecipientName', type: 2 },
       { title: 'Body', type: 3 }, // Body darf Rich/HTML bleiben (wird als HTML gerendert)
       { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
@@ -306,6 +313,27 @@ export class EventService {
       {
         '__metadata': { 'type': 'SP.FieldMultiLineText' },
         'FieldTypeKind': 3,
+        'RichText': false,
+        'NumberOfLines': 3,
+      }
+    );
+  }
+
+  /**
+   * Cc-Feld auf DEX_Emails anlegen, falls noch nicht vorhanden.
+   * Multi-line Plain-Text damit auch ;-separierte Mehrfach-Adressen passen.
+   */
+  private async ensureCcFieldExists(listName: string): Promise<void> {
+    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Cc')?$select=Id`;
+    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    if (probe.ok) return;
+    await this._post(
+      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+      {
+        '__metadata': { 'type': 'SP.FieldMultiLineText' },
+        'Title': 'Cc',
+        'FieldTypeKind': 3,
+        'Required': false,
         'RichText': false,
         'NumberOfLines': 3,
       }
@@ -396,22 +424,26 @@ export class EventService {
     body: string,
     emailType: string,
     eventTitle: string,
-    eventId: string
+    eventId: string,
+    cc?: string
   ): Promise<boolean> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailsListItem' },
+        'Title': subject,
+        'Recipient': recipient,
+        'RecipientName': recipientName,
+        'Body': body,
+        'EmailType': emailType,
+        'EventTitle': eventTitle,
+        'EventId': eventId,
+        'Status': 'Pending',
+      };
+      if (cc) payload['Cc'] = cc;
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
-        {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailsListItem' },
-          'Title': subject,
-          'Recipient': recipient,
-          'RecipientName': recipientName,
-          'Body': body,
-          'EmailType': emailType,
-          'EventTitle': eventTitle,
-          'EventId': eventId,
-          'Status': 'Pending',
-        }
+        payload
       );
       return response.ok;
     } catch {
