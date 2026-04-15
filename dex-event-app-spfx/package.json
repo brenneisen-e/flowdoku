@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "3.0.67",
+  "version": "3.0.70",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"
@@ -36,7 +36,8 @@
     "react-datepicker": "^4.25.0",
     "react-dom": "17.0.1",
     "react-pdf": "^6.2.2",
-    "tslib": "2.3.1"
+    "tslib": "2.3.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@microsoft/sp-build-web": "1.22.2",

@@ -14,6 +14,36 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
 import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, buildEmailFromTemplate, loadLogosAsBase64 } from '../services/EmailTemplates';
 
+/**
+ * Organizer-Namen fuer Mail-Anreden sauber formatieren:
+ *   Input:  ['Sathasivam, Philipp', 'Oesterle, Ines']
+ *   Output: 'Philipp Sathasivam und Ines Oesterle'  (bei DE)
+ *           'Philipp Sathasivam and Ines Oesterle'  (bei EN)
+ *
+ * - Namen koennen auch ';'-separiert als Einzel-String kommen, wird gesplittet.
+ * - Nachname/Vorname-Pairs werden vorgetauscht (SP-Default ist "Nachname, Vorname").
+ * - Bei 1 Name: nur der Name. Bei 2: "A und B" / "A and B". Bei 3+: "A, B und C" / "A, B and C".
+ */
+function formatOrganizerList(organizers: string[], lang: string): string {
+  const names: string[] = [];
+  for (const entry of organizers || []) {
+    const pieces = (entry || '').split(';').map(p => p.trim()).filter(Boolean);
+    for (const piece of pieces) {
+      const commaParts = piece.split(',').map(s => s.trim());
+      if (commaParts.length === 2 && commaParts[0] && commaParts[1]) {
+        names.push(`${commaParts[1]} ${commaParts[0]}`);
+      } else {
+        names.push(piece);
+      }
+    }
+  }
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  const conj = (lang || 'EN').toUpperCase() === 'DE' ? ' und ' : ' and ';
+  if (names.length === 2) return `${names[0]}${conj}${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}${conj}${names[names.length - 1]}`;
+}
+
 interface EventContextType {
   events: DeloitteEvent[];
   isEventsLoading: boolean;
@@ -347,7 +377,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Fuer andere registrieren" explizit gesetzt).
-      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: event.organizers.join(', '), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
+      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       if (spTemplate) {
@@ -384,7 +414,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Typ des Abgemeldeten merken (fuer Nachruecker bei B2Run Split-Capacity)
     const cancelledStarterType = myReg.StarterType || '';
 
-    const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id);
+    // Audit: wer klickt gerade 'Abmelden'? = der eingeloggte User. Bei Self-Cancel
+    // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
+    // "Abmeldung fuer andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
+    // dort wird eventService.cancelRegistration direkt aufgerufen).
+    const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id, currentUserName, currentUserEmail);
     if (success) {
       const event = events.find(e => e.id === eventId);
       if (event) {
@@ -442,7 +476,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               const promoteVars = {
                 Name: promotedFirstName,
                 EventTitle: event.title,
-                Organizer: event.organizers.join(', '),
+                Organizer: formatOrganizerList(event.organizers, lang),
                 AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
                 WaitlistPosition: '',
               };

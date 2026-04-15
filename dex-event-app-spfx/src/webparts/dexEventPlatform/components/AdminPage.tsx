@@ -849,7 +849,7 @@ export default function AdminPage(): React.ReactElement {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           if (!confirm(`${name} (${reg.ParticipantEmail}) wirklich abmelden?`)) return;
-                          await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
+                          await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                           // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
                           if (reg.ParticipantEmail) {
                             if (!selectedEvent.disableEmails) {
@@ -921,7 +921,7 @@ export default function AdminPage(): React.ReactElement {
                             if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                             const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                             if (!confirm(`${name} von der Warteliste entfernen?`)) return;
-                            await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id);
+                            await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                             if (reg.ParticipantEmail && !selectedEvent.disableEmails) {
                               const emailData = cancellationEmail(name, selectedEvent.title);
                               eventServiceRef.queueEmail(

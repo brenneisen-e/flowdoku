@@ -12,6 +12,7 @@ interface PermissionRow {
   feature: string;
   description: string;
   user: boolean | string;
+  assistenz: boolean | string;
   organizer: boolean | string;
   admin: boolean | string;
 }
@@ -30,163 +31,163 @@ const PERMISSIONS: PermissionRow[] = [
   // Events ansehen
   { category: 'Events ansehen', feature: 'Events des eigenen Standorts sehen',
     description: 'Events die per Location-/Audience-Filter für den eigenen Standort freigegeben sind in der Event-Liste sehen.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
   { category: 'Events ansehen', feature: 'Alle Events sehen',
     description: 'Sieht auch Events, die per Location- oder Audience-Filter auf andere Standorte/Zielgruppen beschränkt sind.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Events ansehen', feature: 'Prozess-Übersicht (Flowcharts)',
     description: 'Zugriff auf die technischen Prozessdiagramme (Registrierungsflow, E-Mail-Pipeline, Outlook-Flow).',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
 
   // Event-Verwaltung
   { category: 'Event-Verwaltung', feature: 'Events erstellen',
     description: 'Neues Event inkl. Subsite, Teilnehmerliste und Default-E-Mail-Templates anlegen.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
   { category: 'Event-Verwaltung', feature: 'Eigene Events bearbeiten',
     description: 'Metadaten (Titel, Zeiten, Ort, Filter, ...) von Events ändern, bei denen man in OrganizerEmail steht.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
   { category: 'Event-Verwaltung', feature: 'Alle Events bearbeiten',
     description: 'Auch fremde Events bearbeiten, für die man selbst nicht als Organizer hinterlegt ist.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Event-Verwaltung', feature: 'Events löschen',
     description: 'Event unwiderruflich entfernen: Subsite, Teilnehmerliste und DEX_Events-Eintrag weg.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Event-Bild hochladen (Item-Attachment)',
     description: 'Titelbild des Events hochladen/ersetzen — wird als Item-Attachment in DEX_Events gespeichert.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Event-Dokumente hochladen',
     description: 'Zusatzdateien (PDFs, Agenda, Hotelinfo) anhängen — Teilnehmer sehen sie unter "Meine Events".',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Agenda / Transferzeiten / Quiz pflegen',
     description: 'Tages-Agenda, Bus-/Transferzeiten und Quiz-Fragen des Events anlegen und bearbeiten.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'E-Mail-Templates pro Event anpassen',
     description: 'Subject/Heading/BodyHtml der Registrierungs-Mails für dieses eine Event überschreiben.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'E-Mails pro Event deaktivieren',
     description: 'Automatische Bestätigungs-Mails (Anmeldung/Abmeldung/Warteliste) für dieses Event abschalten.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Outlook-Einladungen pro Event deaktivieren',
     description: 'Automatische Outlook-Kalendereinträge für dieses Event abschalten.',
-    user: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene', admin: true },
 
   // Registrierungen
   { category: 'Registrierungen', feature: 'Selbst registrieren',
     description: 'Sich selbst für ein Event anmelden — solange die Anmeldefrist nicht abgelaufen ist.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Angaben bearbeiten',
     description: 'Eigene Registrierungsdaten (Custom Fields, T-Shirt-Größe, Notfallkontakt etc.) nachträglich ändern.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren',
     description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Für andere registrieren',
     description: 'Eine andere Person stellvertretend anmelden. Audit: RegisteredBy wird auf den eingeloggten User gesetzt.',
-    user: 'Assistant: nur Partner/Director ¹', organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: 'Nur Partner/Director ¹', organizer: 'Eigene Events ²', admin: true },
   { category: 'Registrierungen', feature: 'Nach Anmeldefrist registrieren',
     description: 'Registrierungsformular auch nach Ablauf der RegistrationDeadline noch absenden.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Registrierungen', feature: 'Audit-Trail: RegisteredBy wird automatisch gesetzt',
     description: 'RegisteredByName/RegisteredByEmail werden bei jeder Anmeldung automatisch befüllt — unabhängig von der Rolle.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
 
   // Teilnehmerverwaltung (Admin Center)
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmerliste sehen',
     description: 'Alle Teilnehmer des Events im Admin Center als Tabelle (mit Filter, Sortierung, Spaltenauswahl) sehen.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer suchen / sortieren',
     description: 'Freitextsuche + Spaltensortierung in der Admin-Teilnehmertabelle.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer ein-/auschecken',
     description: 'Check-in-Status eines Teilnehmers manuell setzen/zurücksetzen — ohne QR-Scanner.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer abmelden',
     description: 'Fremde Teilnehmer abmelden; löst Outlook-Ausladung und Cancellation-Mail aus.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'QR-Codes versenden',
     description: 'Massen-Versand der persönlichen QR-Codes an alle bestätigten Teilnehmer.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'E-Mail-Adressen kopieren',
     description: 'Semikolon-separierte Liste aller Teilnehmer-Mails in die Zwischenablage kopieren.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Massenmail an Teilnehmer',
     description: 'Freitext-Mail via RichText-Editor an alle Teilnehmer verschicken — im Deloitte-Template-Wrapper.',
-    user: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'IDs neu vergeben (Renummerierung)',
     description: 'TeilnehmerID sequentiell neu durchnummerieren (z.B. nach vielen Abmeldungen); läuft als Power Automate Batch.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Spalten fixen (Schema reparieren)',
     description: 'Fehlende Basis-Spalten nachlegen + View-Reihenfolge korrigieren; entfernt B2Run/Quiz-Spalten auf Events, die sie nicht brauchen.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Profile neu laden',
     description: 'Per Teilnehmer JobTitle/Standort/Department/Phone aus dem SP-User-Profil neu ziehen — inkl. UPN!=SMTP-Fallback.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
 
   // Administration
   { category: 'Administration', feature: 'Admin-Bereich öffnen',
     description: 'Zugriff auf das Admin Center mit Event-Liste und Management-Aktionen.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Rollen verwalten',
     description: 'Rollen von Usern (User / Organizer / Admin) in DEX_Roles hinzufügen, ändern, entfernen.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Rollen-Matrix einsehen',
     description: 'Diese Übersichtsseite öffnen.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'User suchen',
     description: 'Tenant-weite User-Suche (People-Picker) in den Admin-Settings nutzen.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Standort-Filter konfigurieren',
     description: 'Globale Standort-Liste pflegen, die in Event-Filtern (locationAudience) verwendet wird.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Zielgruppen-Filter konfigurieren',
     description: 'Globale Audience-Gruppen (z.B. "M&A", "SR&T") pflegen; werden in Event-Filtern genutzt.',
-    user: false, organizer: true, admin: true },
+    user: false, assistenz: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Globale E-Mail-Templates bearbeiten',
     description: 'Standard-Templates in DEX_EmailTemplates (gilt für alle Events ohne eigene Overrides) anpassen.',
-    user: false, organizer: false, admin: true },
+    user: false, assistenz: false, organizer: false, admin: true },
 
   // SharePoint (Visitors = DEALL, Owners = Admins)
   { category: 'SharePoint', feature: 'DEX_Events: Lesen',
     description: 'Leserechte auf die zentrale Event-Liste.',
-    user: 'Visitors (Read)', organizer: 'Contribute', admin: 'Full Control' },
+    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', organizer: 'Contribute', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Events: Schreiben (inkl. Item-Attachments)',
     description: 'Schreibrechte auf DEX_Events inkl. Bild + Dokumenten-Attachments.',
-    user: false, organizer: 'Contribute', admin: 'Full Control' },
+    user: false, assistenz: false, organizer: 'Contribute', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Lesen',
     description: 'Leserechte auf die Rollen-Liste (für UI-Rollenerkennung).',
-    user: false, organizer: 'Read', admin: 'Full Control' },
+    user: false, assistenz: false, organizer: 'Read', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Schreiben',
     description: 'Schreibrechte auf DEX_Roles (Rollen-Zuweisung).',
-    user: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Emails: Queue (eigene)',
     description: 'Mail-Queue-Liste; mit Item-Level-Security: User sieht nur seine eigenen Einträge.',
-    user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Outlook: Queue (eigene)',
     description: 'Outlook-Termin-Queue; mit Item-Level-Security.',
-    user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_IDReorder: Queue',
     description: 'Queue für TeilnehmerID-Renummerierungen — nur Admin, triggert Power Automate Batch.',
-    user: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_EmailTemplates: Schreiben',
     description: 'Schreibrechte auf die globale Template-Liste.',
-    user: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Participants: eigene Einträge',
     description: 'Participant-Directory mit Item-Level-Security — User sieht/schreibt nur den eigenen Eintrag.',
-    user: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Event-Subsite',
     description: 'Zugriffsrechte auf die Subsite des Events (enthält die Teilnehmerliste).',
-    user: 'Visitors (Read)', organizer: 'Full Control', admin: 'Full Control' },
+    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', organizer: 'Full Control', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Teilnehmerliste: eigener Eintrag',
     description: 'Lese-/Schreibrechte auf den eigenen Teilnehmer-Eintrag über Item-Level-Security.',
-    user: 'Contribute + ILS', organizer: 'Full Control', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Full Control', admin: 'Full Control' },
 
   // Profil
   { category: 'Profil', feature: 'Eigenes Profil ansehen',
     description: 'Eigene Profilseite mit Name, Rolle, Office, JobTitle öffnen.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
   { category: 'Profil', feature: 'Settings-Seite öffnen',
     description: 'Persönliche Einstellungen (Sprache, Profilbild-Refresh) öffnen.',
-    user: true, organizer: true, admin: true },
+    user: true, assistenz: true, organizer: true, admin: true },
 ];
 
 function renderCell(value: boolean | string): React.ReactElement {
@@ -218,18 +219,21 @@ export default function RoleMatrixPage(): React.ReactElement {
           </p>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid var(--dex-gray-300)' }}>
-                <th style={{ ...thStyle, width: '46%' }}>Funktion</th>
-                <th style={{ ...thStyle, textAlign: 'center', width: '18%' }}>
+              <tr>
+                <th style={{ ...thStyle, ...stickyHeaderCell, width: '40%', borderRight: '1px solid var(--dex-gray-300)' }}>Funktion</th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '14%', borderRight: '1px solid var(--dex-gray-300)' }}>
                   <span style={roleBadgeStyle('#3b82f6')}>User</span>
                 </th>
-                <th style={{ ...thStyle, textAlign: 'center', width: '18%' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '16%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                  <span style={roleBadgeStyle('#9333ea')}>Assistenz</span>
+                </th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '15%', borderRight: '1px solid var(--dex-gray-300)' }}>
                   <span style={roleBadgeStyle('#f59e0b')}>Organizer</span>
                 </th>
-                <th style={{ ...thStyle, textAlign: 'center', width: '18%' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '15%' }}>
                   <span style={roleBadgeStyle('#86bc25')}>Admin</span>
                 </th>
               </tr>
@@ -241,7 +245,7 @@ export default function RoleMatrixPage(): React.ReactElement {
                 return (
                   <React.Fragment key={cat}>
                     <tr>
-                      <td colSpan={4} style={{
+                      <td colSpan={5} style={{
                         padding: '14px 20px 10px 16px',
                         fontWeight: 700,
                         fontSize: '0.82rem',
@@ -250,24 +254,24 @@ export default function RoleMatrixPage(): React.ReactElement {
                         color: cc.text,
                         background: cc.bg,
                         borderLeft: `4px solid ${cc.border}`,
-                        borderTop: '1px solid var(--dex-gray-200)',
-                        borderBottom: `1px solid ${cc.border}33`,
+                        borderTop: '1px solid var(--dex-gray-300)',
+                        borderBottom: `2px solid ${cc.border}55`,
                       }}>
                         {cat}
                       </td>
                     </tr>
                     {rows.map((row, idx) => (
                       <tr key={row.feature} style={{
-                        borderBottom: '1px solid var(--dex-gray-200)',
                         background: idx % 2 === 0 ? '#fff' : 'var(--dex-gray-50, #fafafa)',
                       }}>
-                        <td style={{ padding: '12px 20px', color: 'var(--dex-gray-800)', lineHeight: 1.4 }}>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 20px', color: 'var(--dex-gray-800)', lineHeight: 1.4 }}>
                           <div style={{ fontWeight: 600, marginBottom: 3 }}>{row.feature}</div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{row.description}</div>
                         </td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.user)}</td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.organizer)}</td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.admin)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.user)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.assistenz)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.organizer)}</td>
+                        <td style={{ ...dataCellStyle, padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.admin)}</td>
                       </tr>
                     ))}
                   </React.Fragment>
@@ -291,7 +295,10 @@ export default function RoleMatrixPage(): React.ReactElement {
           fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.6,
         }}>
           <div style={{ marginBottom: 6 }}>
-            <strong>¹ Assistant-Ausnahme:</strong> User mit JobTitle <em>&quot;Assistant&quot;</em> oder <em>&quot;Senior Assistant&quot;</em> dürfen &quot;Für andere registrieren&quot; nutzen, aber nur für Personen mit JobTitle <strong>Partner</strong> oder <strong>Director</strong> — und nur solange die Anmeldefrist noch nicht abgelaufen ist.
+            <strong>Rolle &quot;Assistenz&quot;</strong> ist keine DEX_Roles-Rolle, sondern wird automatisch aktiv, wenn der eingeloggte User im Azure-AD-Profil einen <em>JobTitle</em> hat, der &quot;Assistant&quot; enthält (deckt <em>&quot;Assistant&quot;</em> und <em>&quot;Senior Assistant&quot;</em> ab). Sonst verhält sich die Assistenz wie ein normaler User.
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>¹ Nur Partner/Director:</strong> Assistenz darf &quot;Für andere registrieren&quot; nutzen, aber nur für Personen mit JobTitle <strong>Partner</strong> oder <strong>Director</strong>. Die Assistenz muss sich selber für das Event auch anmelden können (d.h. die Anmeldefrist darf nicht abgelaufen sein).
           </div>
           <div>
             <strong>² Eigene Events:</strong> gilt nur wenn der User in <code>OrganizerEmail</code> des jeweiligen Events steht. Tenant-weiter Organizer-Status reicht nicht — Event A-Organizer können keine Admin-Aktionen für Event B ausführen. Admin darf global alles.
@@ -309,7 +316,19 @@ export default function RoleMatrixPage(): React.ReactElement {
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '14px 20px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+  padding: '14px 16px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+};
+
+// Sticky Kopfzeile: bleibt beim Scrollen sichtbar
+const stickyHeaderCell: React.CSSProperties = {
+  position: 'sticky' as const, top: 0, zIndex: 10,
+  background: '#fff',
+  borderBottom: '2px solid var(--dex-gray-400)',
+};
+
+// Zellen-Trenner: horizontale Zeilen-Linie sichtbarer
+const dataCellStyle: React.CSSProperties = {
+  borderBottom: '1px solid var(--dex-gray-200)',
 };
 
 function roleBadgeStyle(color: string): React.CSSProperties {

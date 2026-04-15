@@ -235,7 +235,7 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
       `Event ${eventTitle}`,
       `<p>Dear ${recipientName},</p>
       <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
-      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -291,7 +291,7 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
       `Event ${eventTitle}`,
       `<p>Dear ${recipientName},</p>
       <p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>${eventTitle}</strong>.</p>
-      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;) so the spot might be allocated to another participant.</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;).</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
