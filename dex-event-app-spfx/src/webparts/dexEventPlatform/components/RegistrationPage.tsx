@@ -41,6 +41,21 @@ export default function RegistrationPage(): React.ReactElement {
   const isOrganizer = isEventOrganizer; // alten Namen behalten fuer Referenzen unten
   const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
+  // Assistant-Ausnahme: User mit JobTitle "Assistant" / "Senior Assistant" duerfen
+  // "Register for another person" nutzen, allerdings NUR fuer Director/Partner und
+  // NUR fuer Events fuer die sie sich eh selber anmelden koennten (also nicht nach
+  // Deadline). Der Deadline-Schutz greift automatisch, weil RegistrationPage fuer
+  // normale User nach Deadline komplett die "closed"-Seite zeigt und gar nicht
+  // zum Button-Rendering kommt.
+  const currentJobTitleLc = (currentUser.jobTitle || '').toLowerCase();
+  const isAssistant = currentJobTitleLc.includes('assistant');
+  const ALLOWED_TARGET_TITLES = ['partner', 'director'];
+  const isAllowedTargetForAssistant = (jt: string): boolean => {
+    const lc = (jt || '').toLowerCase();
+    return ALLOWED_TARGET_TITLES.some(t => lc === t || lc.indexOf(t) >= 0);
+  };
+  const canRegisterForOther = canCreateEvents || isAssistant;
+
   // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
   const showLocationBanner = canCreateEvents && event && (() => {
     const locFilters = event.locationAudience;
@@ -149,7 +164,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, [isB2runSplit, event?.subsiteUrl]);
   // Deloitte-Mitarbeitersuche
   const [userSearch, setUserSearch] = React.useState('');
-  const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>([]);
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -224,6 +239,29 @@ export default function RegistrationPage(): React.ReactElement {
     if (isB2runSplit && !preferredStarterType) {
       setError(t('reg.starter.required'));
       return;
+    }
+
+    // Assistant-Ausnahme: defense-in-depth check beim Submit — Target muss
+    // Partner oder Director sein. Der Fall tritt nur ein wenn der User weder
+    // Organizer des Events noch Admin ist, aber via Assistant-Ausnahme fuer
+    // eine andere Person registrieren will. JobTitle entweder aus dem zuletzt
+    // geladenen Search-Result oder per Live-Lookup.
+    if (registerForOther && isAssistant && !canCreateEvents) {
+      try {
+        const emailLc = email.trim().toLowerCase();
+        let targetJobTitle = userResults.find(u => u.email.toLowerCase() === emailLc)?.jobTitle || '';
+        if (!targetJobTitle) {
+          const fresh = await searchUsers(email.trim());
+          targetJobTitle = fresh.find(u => u.email.toLowerCase() === emailLc)?.jobTitle || '';
+        }
+        if (!isAllowedTargetForAssistant(targetJobTitle)) {
+          setError('As an Assistant you can only register Partners or Directors for events.');
+          return;
+        }
+      } catch {
+        setError('Unable to verify job title of selected person. Please select again from the dropdown.');
+        return;
+      }
     }
 
     setError('');
@@ -442,7 +480,7 @@ export default function RegistrationPage(): React.ReactElement {
               <span className="required">*</span> = {t('reg.requiredfield')}
             </p>
 
-            {canCreateEvents && (
+            {canRegisterForOther && (
               <>
                 <button
                   className="btn btn-outline"
@@ -455,6 +493,15 @@ export default function RegistrationPage(): React.ReactElement {
                 >
                   {registerForOther ? t('reg.registerself') : t('reg.registerother')}
                 </button>
+                {registerForOther && isAssistant && !canCreateEvents && (
+                  <div style={{
+                    padding: '8px 12px', marginBottom: 12, borderRadius: 'var(--dex-radius-md)',
+                    background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
+                    color: 'var(--dex-orange)', fontSize: '0.8rem',
+                  }}>
+                    As an Assistant you can only register <strong>Partners</strong> or <strong>Directors</strong> for this event.
+                  </div>
+                )}
                 {registerForOther && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     <label className="form-label">{t('reg.searchemployee') || 'Deloitte Mitarbeiter suchen'}</label>
@@ -501,25 +548,33 @@ export default function RegistrationPage(): React.ReactElement {
                             uFirstName = parts[0] || '';
                             uSurname = parts.slice(1).join(' ') || '';
                           }
+                          // Assistant-Einschraenkung: User darf nur Partner/Director auswaehlen,
+                          // andere Treffer werden grau + nicht-klickbar angezeigt.
+                          const assistantOnly = isAssistant && !canCreateEvents;
+                          const targetAllowed = !assistantOnly || isAllowedTargetForAssistant(u.jobTitle);
                           return (
                             <div
                               key={u.email}
                               style={{
-                                padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
+                                padding: '8px 12px', cursor: targetAllowed ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
                                 borderBottom: '1px solid var(--dex-gray-100)',
+                                opacity: targetAllowed ? 1 : 0.45,
                               }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--dex-gray-50)'; }}
+                              onMouseEnter={e => { if (targetAllowed) (e.currentTarget as HTMLElement).style.background = 'var(--dex-gray-50)'; }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
                               onMouseDown={() => {
+                                if (!targetAllowed) return;
                                 setFirstName(uFirstName);
                                 setSurname(uSurname);
                                 setEmail(u.email);
                                 setUserSearch(u.displayName);
                                 setUserResults([]);
                               }}
+                              title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
                             >
                               <strong>{u.displayName}</strong>
                               <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
+                              {u.jobTitle && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8, fontSize: '0.78rem', fontStyle: 'italic' }}>{u.jobTitle}</span>}
                               {u.location && <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8, fontSize: '0.8rem' }}>({u.location})</span>}
                             </div>
                           );

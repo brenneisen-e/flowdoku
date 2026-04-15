@@ -112,6 +112,7 @@ export interface User {
   isAdmin: boolean;
   role: UserRole;
   location: string;
+  jobTitle?: string; // z.B. "Assistant", "Senior Assistant", "Director", "Partner"
 }
 
 export interface RoleAssignment {

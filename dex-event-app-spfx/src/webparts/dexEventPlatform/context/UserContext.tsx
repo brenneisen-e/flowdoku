@@ -64,12 +64,18 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     });
     setIsLoading(false);
 
-    // Standort ueber SP-Profil nachladen
-    loadUserLocation(props.context).then(location => {
-      if (location) {
-        setCurrentUser(prev => ({ ...prev, location }));
+    // Standort + JobTitle ueber SP-Profil nachladen.
+    // JobTitle brauchen wir fuer die Assistant-Ausnahme in der Registration
+    // ("Assistant" darf fuer "Director"/"Partner" registrieren).
+    loadUserProfile(props.context).then(profile => {
+      if (profile.location || profile.jobTitle) {
+        setCurrentUser(prev => ({
+          ...prev,
+          ...(profile.location ? { location: profile.location } : {}),
+          ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
+        }));
       }
-    }).catch(() => { /* Standort konnte nicht geladen werden */ });
+    }).catch(() => { /* Profil konnte nicht geladen werden */ });
 
     // Profilbild ueber Microsoft Graph laden
     loadUserPhoto(props.context).then(url => {
@@ -93,9 +99,10 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
 }
 
 /**
- * Office-Standort aus dem SP User Profile lesen
+ * Office-Standort + JobTitle aus dem SP User Profile lesen.
+ * JobTitle liegt im Property "Title" (bzw. "SPS-JobTitle" im Fallback).
  */
-async function loadUserLocation(context: WebPartContext): Promise<string> {
+async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string }> {
   try {
     const profileUrl = `${context.pageContext.web.absoluteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`;
     const response = await context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
@@ -104,12 +111,22 @@ async function loadUserLocation(context: WebPartContext): Promise<string> {
       const data = await response.json();
       if (data.UserProfileProperties) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const officeProp = data.UserProfileProperties.find((p: any) => p.Key === 'Office' || p.Key === 'SPS-Location');
-        if (officeProp) return officeProp.Value || '';
+        const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties;
+        const getProp = (keys: string[]): string => {
+          for (const k of keys) {
+            const p = props.find(x => x.Key === k);
+            if (p && p.Value) return p.Value;
+          }
+          return '';
+        };
+        return {
+          location: getProp(['Office', 'SPS-Location']),
+          jobTitle: getProp(['Title', 'SPS-JobTitle']),
+        };
       }
     }
   } catch { /* Profil nicht verfuegbar */ }
-  return '';
+  return { location: '', jobTitle: '' };
 }
 
 /**

@@ -664,11 +664,12 @@ export class SharePointService {
 
   /**
    * User per E-Mail in Microsoft 365 suchen.
-   * Gibt Name und Standort zurueck falls gefunden.
+   * Gibt Name, Standort und JobTitle zurueck falls gefunden.
    */
   public async searchUserByEmail(email: string): Promise<{
     displayName: string;
     location: string;
+    jobTitle: string;
   } | null> {
     try {
       // Ueber SharePoint People API suchen
@@ -681,24 +682,25 @@ export class SharePointService {
         const data = await response.json();
         if (data.DisplayName) {
           let location = '';
+          let jobTitle = '';
           if (data.UserProfileProperties) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            // Versuche verschiedene Properties für den Standort
-            const locationKeys = ['Office', 'SPS-Location', 'SPS-City', 'City'];
-            for (const key of locationKeys) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const prop = data.UserProfileProperties.find((p: any) => p.Key === key);
-              if (prop && prop.Value) {
-                location = prop.Value;
-                break;
+            const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties;
+            const getProp = (keys: string[]): string => {
+              for (const k of keys) {
+                const p = props.find(x => x.Key === k);
+                if (p && p.Value) return p.Value;
               }
-            }
+              return '';
+            };
+            location = getProp(['Office', 'SPS-Location', 'SPS-City', 'City']);
+            jobTitle = getProp(['Title', 'SPS-JobTitle']);
           }
-          return { displayName: data.DisplayName, location };
+          return { displayName: data.DisplayName, location, jobTitle };
         }
       }
 
-      // Fallback: ueber siteusers suchen
+      // Fallback: ueber siteusers suchen (liefert keinen JobTitle)
       const fallback = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(email)}')?$select=Title`,
         SPHttpClient.configurations.v1
@@ -706,7 +708,7 @@ export class SharePointService {
       if (fallback.ok) {
         const fbData = await fallback.json();
         if (fbData.Title) {
-          return { displayName: fbData.Title, location: '' };
+          return { displayName: fbData.Title, location: '', jobTitle: '' };
         }
       }
     } catch { /* User nicht gefunden */ }
@@ -721,6 +723,7 @@ export class SharePointService {
     email: string;
     displayName: string;
     location: string;
+    jobTitle: string;
   }>> {
     if (!query || query.length < 2) return [];
 
@@ -750,7 +753,7 @@ export class SharePointService {
       const results = JSON.parse(resultsStr);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = results
+      const mapped: Array<{ email: string; displayName: string; location: string; jobTitle: string }> = results
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((r: any) => r.EntityData?.Email)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -758,14 +761,17 @@ export class SharePointService {
           email: r.EntityData.Email || '',
           displayName: r.DisplayText || r.EntityData.Title || '',
           location: '', // Wird per User Profile nachgeladen
+          jobTitle: r.EntityData.Title || '', // EntityData.Title ist bei SharePoint manchmal schon JobTitle;
+                                               // Wird unten durch UserProfile-Lookup ueberschrieben.
         }));
 
-      // Location per User Profile nachladen (Office-Standort)
+      // Location + JobTitle per User Profile nachladen
       for (const user of mapped) {
         try {
           const profile = await this.searchUserByEmail(user.email);
-          if (profile && profile.location) {
-            user.location = profile.location;
+          if (profile) {
+            if (profile.location) user.location = profile.location;
+            if (profile.jobTitle) user.jobTitle = profile.jobTitle;
           }
         } catch { /* ignore */ }
       }
