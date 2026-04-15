@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useCurrentUser } from '../context/UserContext';
+import { useEvents } from '../context/EventContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
@@ -10,7 +12,40 @@ import LandingInfoModal from './LandingInfoModal';
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
+  const { currentUser } = useCurrentUser();
+  const { sendAdminInquiry } = useEvents();
   const [showInfo, setShowInfo] = React.useState(false);
+  const [showInquiry, setShowInquiry] = React.useState(false);
+  const userFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
+  const [inquiryName, setInquiryName] = React.useState(userFullName);
+  const [inquiryEvent, setInquiryEvent] = React.useState('');
+  const [inquiryMessage, setInquiryMessage] = React.useState('');
+  const [inquirySending, setInquirySending] = React.useState(false);
+  const [inquiryStatus, setInquiryStatus] = React.useState<'' | 'success' | 'error'>('');
+  React.useEffect(() => {
+    if (showInquiry && !inquiryName && userFullName) setInquiryName(userFullName);
+  }, [showInquiry, userFullName]);
+
+  async function handleInquirySubmit(): Promise<void> {
+    if (!inquiryEvent.trim() || !inquiryMessage.trim() || inquirySending) return;
+    setInquirySending(true);
+    setInquiryStatus('');
+    const ok = await sendAdminInquiry(
+      inquiryName.trim() || userFullName,
+      currentUser.email || '',
+      inquiryEvent.trim(),
+      inquiryMessage.trim(),
+    );
+    setInquirySending(false);
+    if (ok) {
+      setInquiryStatus('success');
+      setInquiryEvent('');
+      setInquiryMessage('');
+      setTimeout(() => { setShowInquiry(false); setInquiryStatus(''); }, 1800);
+    } else {
+      setInquiryStatus('error');
+    }
+  }
 
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
   // @keyframes innerhalb von :global manchmal nicht korrekt emittieren
@@ -69,44 +104,188 @@ export default function LandingPage(): React.ReactElement {
         </button>
       </div>
       <div className="landing__hero">
-        <div className="landing__orb">
-          <div className="landing__orb-inner" />
-        </div>
-        <div className="landing__text">
-          <h1>
-            {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
-          </h1>
-          <p>{t('landing.subtitle')}</p>
-        </div>
-        <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
-          {t('landing.start')}
-        </button>
-        <div style={{ display: 'flex', gap: 16, marginTop: 20, justifyContent: 'center', alignItems: 'center' }}>
-          <button
-            onClick={() => setShowInfo(!showInfo)}
-            style={{
-              background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-              width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
-            }}
-            title={locale === 'de' ? 'Über die App' : 'About the app'}
-          >
-            <Info size={18} />
+        <div className="landing__card">
+          <div className="landing__orb">
+            <div className="landing__orb-inner" />
+          </div>
+          <div className="landing__text">
+            <h1>
+              {t('landing.welcome')} <strong>{t('landing.platform')}</strong>.
+            </h1>
+            <p>{t('landing.subtitle')}</p>
+          </div>
+          <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
+            {t('landing.start')}
           </button>
-          <a
-            href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Feedback"
-            style={{
-              background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-              width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
-            }}
-            title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
-          >
-            <Mail size={18} />
-          </a>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowInfo(!showInfo)}
+              style={{
+                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
+                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
+              }}
+              title={locale === 'de' ? 'Über die App' : 'About the app'}
+            >
+              <Info size={18} />
+            </button>
+            <a
+              href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Feedback"
+              style={{
+                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
+                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
+                flexShrink: 0,
+              }}
+              title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
+            >
+              <Mail size={18} />
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowInquiry(true)}
+              style={{
+                position: 'relative',
+                background: 'var(--dex-green)',
+                color: '#fff',
+                padding: '10px 14px',
+                borderRadius: 12,
+                fontSize: '0.82rem',
+                lineHeight: 1.35,
+                maxWidth: 280,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                marginLeft: 4,
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+              title={locale === 'de' ? 'Anfrage senden' : 'Send inquiry'}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  left: -7,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 0,
+                  height: 0,
+                  borderTop: '7px solid transparent',
+                  borderBottom: '7px solid transparent',
+                  borderRight: '8px solid var(--dex-green)',
+                }}
+              />
+              {locale === 'de'
+                ? 'Möchtest du die DEX App auch für dein Event nutzen? Melde dich gerne bei uns!'
+                : 'Want to use the DEX App for your event too? Just reach out to us!'}
+            </button>
+          </div>
         </div>
       </div>
       <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
+      {showInquiry && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!inquirySending) setShowInquiry(false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, padding: '24px 28px',
+              maxWidth: 480, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--dex-gray-800)' }}>
+              {locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+              {locale === 'de'
+                ? 'Wir melden uns kurz bei dir und besprechen, wie wir dein Event unterstützen können.'
+                : 'We will get back to you and discuss how we can support your event.'}
+            </p>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+              {locale === 'de' ? 'Dein Name' : 'Your name'}
+              <input
+                type="text"
+                value={inquiryName}
+                onChange={e => setInquiryName(e.target.value)}
+                disabled={inquirySending}
+                style={{
+                  padding: '8px 10px', border: '1px solid var(--dex-gray-300)',
+                  borderRadius: 8, fontSize: '0.9rem',
+                }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+              {locale === 'de' ? 'Event-Name' : 'Event name'}
+              <input
+                type="text"
+                value={inquiryEvent}
+                onChange={e => setInquiryEvent(e.target.value)}
+                disabled={inquirySending}
+                placeholder={locale === 'de' ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
+                style={{
+                  padding: '8px 10px', border: '1px solid var(--dex-gray-300)',
+                  borderRadius: 8, fontSize: '0.9rem',
+                }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+              {locale === 'de' ? 'Was brauchst du?' : 'What do you need?'}
+              <textarea
+                value={inquiryMessage}
+                onChange={e => setInquiryMessage(e.target.value)}
+                disabled={inquirySending}
+                rows={5}
+                placeholder={locale === 'de'
+                  ? 'Kurz beschreiben: Anzahl Teilnehmer, Termin, gewünschte Funktionen...'
+                  : 'Briefly describe: number of participants, date, features needed...'}
+                style={{
+                  padding: '8px 10px', border: '1px solid var(--dex-gray-300)',
+                  borderRadius: 8, fontSize: '0.9rem', fontFamily: 'inherit', resize: 'vertical',
+                }}
+              />
+            </label>
+            {inquiryStatus === 'success' && (
+              <div style={{ color: 'var(--dex-green)', fontSize: '0.85rem' }}>
+                {locale === 'de' ? 'Anfrage gesendet — wir melden uns!' : 'Request sent — we will get back to you!'}
+              </div>
+            )}
+            {inquiryStatus === 'error' && (
+              <div style={{ color: 'var(--dex-red)', fontSize: '0.85rem' }}>
+                {locale === 'de' ? 'Senden fehlgeschlagen. Bitte später erneut versuchen.' : 'Sending failed. Please try again later.'}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowInquiry(false)}
+                disabled={inquirySending}
+              >
+                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleInquirySubmit}
+                disabled={inquirySending || !inquiryEvent.trim() || !inquiryMessage.trim()}
+              >
+                {inquirySending
+                  ? (locale === 'de' ? 'Wird gesendet...' : 'Sending...')
+                  : (locale === 'de' ? 'Anfrage senden' : 'Send inquiry')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

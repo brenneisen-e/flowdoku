@@ -213,8 +213,17 @@
       justify-content: center; padding: clamp(16px, 3vh, 48px) 32px; gap: clamp(12px, 2.5vh, 32px); background: var(--dex-gray-100);
       min-height: 0;
     }
+    .landing__card {
+      background: #fff; border-radius: 24px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+      padding: clamp(32px, 5vh, 64px) clamp(24px, 5vw, 72px);
+      display: flex; flex-direction: column; align-items: center;
+      gap: clamp(20px, 3vh, 40px);
+      width: 100%; max-width: 720px;
+    }
     .landing__orb {
-      width: 180px; height: 180px; border-radius: 50%; overflow: hidden;
+      width: clamp(220px, 28vh, 320px); height: clamp(220px, 28vh, 320px);
+      border-radius: 50%; overflow: hidden;
       background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
       display: flex; align-items: center; justify-content: center; user-select: none; cursor: default;
       animation: dexOrbSpin 3s linear infinite;
@@ -223,16 +232,16 @@
       flex-shrink: 0;
     }
     .landing__orb-inner {
-      width: 65%; height: 65%; border-radius: 50%; background: var(--dex-gray-100);
+      width: 65%; height: 65%; border-radius: 50%; background: #fff;
       box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
     }
     // @keyframes sind in LandingPage.tsx als inline <style> injiziert,
     // damit SPFx die Animationsnamen nicht hashed.
     .landing__text { text-align: center; max-width: 640px; }
-    .landing__text h1 { font-size: clamp(1.1rem, 2.5vw, 1.6rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 4px; }
+    .landing__text h1 { font-size: clamp(1.6rem, 3.4vw, 2.4rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 8px; line-height: 1.2; }
     .landing__text h1 strong { font-weight: 700; }
-    .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.85rem, 1.5vw, 1rem); }
-    .landing__hero .btn { max-width: 480px; }
+    .landing__text p { color: var(--dex-gray-600); font-size: clamp(1rem, 1.8vw, 1.25rem); line-height: 1.4; }
+    .landing__card .btn { max-width: 480px; width: 100%; }
 
     /* ========== Start Page ========== */
     .start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; margin: 0 auto; }

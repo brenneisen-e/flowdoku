@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, buildEmailFromTemplate, loadLogosAsBase64 } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate } from '../services/EmailTemplates';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -77,6 +77,7 @@ interface EventContextType {
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
+  sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
 }
 
 export interface CreateEventInput {
@@ -631,6 +632,41 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return n;
   }
 
+  /**
+   * Anfrage von der Landing Page an die DEX-Admins. Verwendet DEX_SEND_MAIL via
+   * der DEX_Emails-Queue, mit dem Anfrager im Cc-Feld. Body wird ins Deloitte-
+   * Template (gruener Header, Footer) gewrappt.
+   */
+  async function sendAdminInquiry(
+    requesterName: string,
+    requesterEmail: string,
+    eventName: string,
+    message: string
+  ): Promise<boolean> {
+    const adminTo = 'ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de';
+    const subject = `DEX-Anfrage: ${eventName || 'Event ohne Titel'} (von ${requesterName || 'unbekannt'})`;
+    const escape = (s: string): string => s
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const messageHtml = escape(message).replace(/\r?\n/g, '<br>');
+    const bodyInner = `
+      <p>Hallo DEX-Team,</p>
+      <p>es gibt eine neue Anfrage zur DEX Event Experience Platform:</p>
+      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin:8px 0;">
+        <tr><td style="color:#555;font-weight:600;vertical-align:top;">Name:</td><td>${escape(requesterName)}</td></tr>
+        <tr><td style="color:#555;font-weight:600;vertical-align:top;">E-Mail:</td><td><a href="mailto:${escape(requesterEmail)}">${escape(requesterEmail)}</a></td></tr>
+        <tr><td style="color:#555;font-weight:600;vertical-align:top;">Event:</td><td>${escape(eventName)}</td></tr>
+      </table>
+      <p style="color:#555;font-weight:600;margin-bottom:4px;">Worum geht es:</p>
+      <p>${messageHtml}</p>
+      <p style="margin-top:24px;color:#888;font-size:0.85rem;">${escape(requesterName)} ist im Cc und kann direkt geantwortet werden.</p>
+    `;
+    const body = wrapTemplate('#86bc25', 'Neue DEX-Anfrage', `Event: ${eventName || '-'}`, bodyInner);
+    return eventService.queueEmail(
+      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '', requesterEmail
+    );
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -638,6 +674,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
         getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        sendAdminInquiry,
       },
     },
     props.children
