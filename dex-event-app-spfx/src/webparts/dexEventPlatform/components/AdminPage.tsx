@@ -44,7 +44,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { events, isEventsLoading, getAllRegistrations, deleteEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl } = useRoles();
+  const { isAdmin, siteUrl, searchUsers } = useRoles();
   const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
@@ -64,6 +64,8 @@ export default function AdminPage(): React.ReactElement {
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
+  const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
+  const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   const [emailSubject, setEmailSubject] = React.useState('');
@@ -247,7 +249,82 @@ export default function AdminPage(): React.ReactElement {
           <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
             <Plus size={16} /> {t('admin.newevent')}
           </button>
+          {isAdmin && (
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+              disabled={isRepairingOrganizers || events.length === 0}
+              title="Fuer jedes Event die Organizer-E-Mail-Adressen aus dem Tenant-Verzeichnis neu aufloesen (anhand der Namen in der Organizer-Spalte). Ueberschreibt bestehende OrganizerEmail-Werte."
+              onClick={async () => {
+                if (!eventServiceRef) return;
+                if (!confirm(
+                  'Organizer-E-Mails fuer ALLE Events neu aus dem Verzeichnis aufloesen?\n\n' +
+                  'Das ueberschreibt den bisherigen Inhalt der OrganizerEmail-Spalte komplett. ' +
+                  'Alle Namen in der Organizer-Spalte werden per People-Picker neu aufgeloest.\n\n' +
+                  'Fortfahren?'
+                )) return;
+                setIsRepairingOrganizers(true);
+                setRepairOrganizersResult(null);
+                let scanned = 0;
+                let fixed = 0;
+                let unchanged = 0;
+                const unresolved: string[] = [];
+                for (const ev of events) {
+                  scanned += 1;
+                  const names = (ev.organizers || []).map(n => (n || '').trim()).filter(Boolean);
+                  if (names.length === 0) { unchanged += 1; continue; }
+                  const newEmails: string[] = [];
+                  const missingForEvent: string[] = [];
+                  for (const name of names) {
+                    try {
+                      const hits = await searchUsers(name);
+                      const firstWithEmail = hits.find(h => h.email && !newEmails.some(e => e.toLowerCase() === h.email.toLowerCase()));
+                      if (firstWithEmail) newEmails.push(firstWithEmail.email);
+                      else missingForEvent.push(name);
+                    } catch { missingForEvent.push(name); }
+                    // leichte Drossel damit der People-Picker-Endpoint nicht rate-limitet
+                    await new Promise(r => setTimeout(r, 150));
+                  }
+                  if (newEmails.length === 0) {
+                    unresolved.push(`${ev.title} (keine Mails aufloesbar)`);
+                    continue;
+                  }
+                  const oldList = (ev.organizerEmails || []).join(';').toLowerCase();
+                  const newList = newEmails.join(';').toLowerCase();
+                  if (oldList === newList) { unchanged += 1; continue; }
+                  try {
+                    const ok = await eventServiceRef.updateEventOrganizerEmails(Number(ev.id), newEmails.join(';'));
+                    if (ok) fixed += 1;
+                    if (missingForEvent.length > 0) unresolved.push(`${ev.title}: ${missingForEvent.join(', ')}`);
+                  } catch { /* Einzel-Event-Fehler ignorieren */ }
+                }
+                const parts = [
+                  `Geprueft: ${scanned}`,
+                  `Korrigiert: ${fixed}`,
+                  `Unveraendert: ${unchanged}`,
+                ];
+                if (unresolved.length > 0) {
+                  parts.push(`Nicht aufloesbar: ${unresolved.slice(0, 5).join(' | ')}${unresolved.length > 5 ? ` ... (+${unresolved.length - 5})` : ''}`);
+                }
+                setRepairOrganizersResult(parts.join(' | '));
+                setIsRepairingOrganizers(false);
+                // Events neu laden, damit die UI den frischen Stand zeigt
+                try { location.reload(); } catch { /* */ }
+              }}
+            >
+              {isRepairingOrganizers ? 'Organizer-Emails werden repariert...' : 'Organizer-Emails reparieren (alle Events)'}
+            </button>
+          )}
         </div>
+        {repairOrganizersResult && (
+          <div style={{
+            padding: '10px 14px', marginBottom: 12, borderRadius: 'var(--dex-radius-md)',
+            background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green-dark)',
+            color: 'var(--dex-gray-800)', fontSize: '0.82rem',
+          }}>
+            <strong>Organizer-Email-Reparatur:</strong> {repairOrganizersResult}
+          </div>
+        )}
 
         {isEventsLoading ? (
           <div className="card text-center" style={{ padding: 48 }}>
