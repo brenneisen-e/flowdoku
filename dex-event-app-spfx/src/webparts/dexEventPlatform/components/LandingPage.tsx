@@ -69,42 +69,42 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
-      {/* Sprachauswahl */}
-      <div style={{
-        position: 'absolute', top: 12, left: 16,
-        display: 'flex', gap: 4,
-      }}>
-        <button
-          onClick={() => setLocale('de')}
-          style={{
-            background: locale === 'de' ? 'var(--dex-green)' : 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
-            color: locale === 'de' ? '#fff' : 'var(--dex-gray-400)',
-            fontWeight: locale === 'de' ? 700 : 500,
-            transition: 'all 0.2s',
-          }}
-          title="Deutsch"
-        >
-          DE
-        </button>
-        <button
-          onClick={() => setLocale('en')}
-          style={{
-            background: locale === 'en' ? 'var(--dex-green)' : 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
-            color: locale === 'en' ? '#fff' : 'var(--dex-gray-400)',
-            fontWeight: locale === 'en' ? 700 : 500,
-            transition: 'all 0.2s',
-          }}
-          title="English"
-        >
-          EN
-        </button>
-      </div>
       <div className="landing__hero">
-        <div className="landing__card">
+        <div className="landing__card" style={{ position: 'relative' }}>
+          {/* Sprachauswahl - oben links in der weissen Card */}
+          <div style={{
+            position: 'absolute', top: 16, left: 16,
+            display: 'flex', gap: 4,
+          }}>
+            <button
+              onClick={() => setLocale('de')}
+              style={{
+                background: locale === 'de' ? 'var(--dex-green)' : 'var(--dex-gray-100)',
+                border: 'none',
+                borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                color: locale === 'de' ? '#fff' : 'var(--dex-gray-500)',
+                fontWeight: locale === 'de' ? 700 : 500,
+                transition: 'all 0.2s',
+              }}
+              title="Deutsch"
+            >
+              DE
+            </button>
+            <button
+              onClick={() => setLocale('en')}
+              style={{
+                background: locale === 'en' ? 'var(--dex-green)' : 'var(--dex-gray-100)',
+                border: 'none',
+                borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                color: locale === 'en' ? '#fff' : 'var(--dex-gray-500)',
+                fontWeight: locale === 'en' ? 700 : 500,
+                transition: 'all 0.2s',
+              }}
+              title="English"
+            >
+              EN
+            </button>
+          </div>
           <div className="landing__orb">
             <div className="landing__orb-inner" />
           </div>
