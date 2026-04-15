@@ -1538,7 +1538,7 @@ Der v1-Flow ist deaktiviert aber nicht gelöscht (`DEX_OutlookDeclineHandler_v1_
 
 **Trigger:** Neue Mail in `no_reply.events@deloitte.de` mit Subject startend mit `Meeting Forward Notification:` (EN) oder `Terminweiterleitungsbenachrichtigung:` (DE)
 **Zweck:** Wenn ein Teilnehmer einen Outlook-Termin an Dritte weiterleitet, bekommt `no_reply.events@deloitte.de` eine Info-Mail. Der Flow prüft, ob die weitergeleitete Person bereits in der SharePoint-Teilnehmerliste eingetragen ist. Wenn **nein**, geht eine FYI-Mail an den Organizer raus (Template `OutlookForwardNotification` aus `DEX_EmailTemplates`, vom Flow gerendert, Body landet in `DEX_Emails`-Queue → DEX_SEND_MAIL versendet).
-**Letztes Update:** 2026-04-15 (initiale Version angelegt)
+**Letztes Update:** 2026-04-15 (FW:/WG:-Varianten abgedeckt, Cleaned_Subject auf `last(split)` umgestellt)
 **Listen-GUIDs:** DEX_Events `28457815-1163-4e92-8b08-3ae43f477d9e`, DEX_EmailTemplates `2c428d35-e6fb-42f9-8a20-580acd6d05f4`, DEX_Emails `57aa0840-df98-41ae-a39b-323c0b80ae3b`
 
 ### Hintergrund
@@ -1781,11 +1781,12 @@ Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates
 |------|-----------|
 | Forwarder hat Outlook auf DE → `Terminweiterleitungsbenachrichtigung:` | ✅ (Condition `Is_ForwardNotification` deckt beide Sprachen ab) |
 | Forwarder hat Outlook auf EN → `Meeting Forward Notification:` | ✅ |
+| Notification wurde nochmal weitergeleitet (`FW:` / `WG:` davor) | ✅ Seit 2026-04-15: Condition kennt alle 6 Varianten (DE/EN × direkt/FW:/WG:). `body/from` ist dann allerdings der Weiterleiter, nicht der originale Forwarder — `{{Forwarder}}` in der FYI-Mail kann deshalb ungenau sein. |
 | Forwarder hat andere Sprache (FR/IT/…) | ❌ Subject wird nicht erkannt — erweitern bei Bedarf |
-| Recipient ist ein externer User (kein Azure AD Account) | ❌ `Resolve_Recipient_Email` findet keinen Treffer → Fallback-FYI mit "Email nicht auflösbar" |
+| Recipient ist ein externer User (kein Azure AD Account) | ❌ `Resolve_Recipient_Email` findet keinen Treffer → `Email_Resolved`-else-Zweig ist leer, Flow terminiert ohne Mail |
 | Recipient-Name steht in uneindeutiger Form (nur Vorname, Firmenkürzel) | ⚠️ Graph-Search kann 0 oder mehrere Treffer liefern → `Filter_Matching_User` per exakter `displayName`-Gleichheit |
 | Mehrere Recipients in einer Forward-Notification | ⚠️ Flow behandelt nur den ersten — für Multi-Recipient Schleife über gesplittete Namen nötig |
-| Event-Titel enthält Doppelpunkt | ⚠️ `Cleaned_Subject` per `substring(..., indexOf(':'))` ist robuster als `split(':')` |
+| Event-Titel enthält Doppelpunkt | ⚠️ `Cleaned_Subject` per `last(split(..., ':'))` nimmt nur das letzte Segment → bei Events wie `DEX: Sommer-Event` landet nur `Sommer-Event` im Cleaned_Subject und `Get_DEX_Event` findet nichts |
 
 ### Teststrategie
 
@@ -1795,7 +1796,7 @@ Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates
 4. Als eingeladener User: **Forward** auf einen Externen (keine Azure AD-Identität) → Email_Resolved-Condition sollte greifen, Flow terminiert sauber (aktuell keine FYI bei nicht-auflösbarer Mail — Verbesserungspotenzial).
 5. Flow-Runs kontrollieren: jeder Schritt sollte `Succeeded` sein, Terminate-Zweige dokumentieren warum keine Mail verschickt wurde.
 
-### Finaler Flow-JSON (Stand 2026-04-15, initiale Version)
+### Finaler Flow-JSON (Stand 2026-04-15, FW:/WG:-Support)
 
 TRIGGER:
 ```json
@@ -1823,7 +1824,7 @@ IS_FORWARDNOTIFICATION (If):
     "and": [
       {
         "equals": [
-          "@or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'meeting forward notification:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'terminweiterleitungsbenachrichtigung:'))",
+          "@or(or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'meeting forward notification:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'terminweiterleitungsbenachrichtigung:')), or(or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'fw: meeting forward notification:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'wg: meeting forward notification:')), or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'fw: terminweiterleitungsbenachrichtigung:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'wg: terminweiterleitungsbenachrichtigung:'))))",
           true
         ]
       }
@@ -1832,7 +1833,7 @@ IS_FORWARDNOTIFICATION (If):
   "actions": {
     "Cleaned_Subject": {
       "type": "Compose",
-      "inputs": "@trim(substring(triggerOutputs()?['body/subject'], add(indexOf(triggerOutputs()?['body/subject'], ':'), 1)))"
+      "inputs": "@trim(last(split(coalesce(triggerOutputs()?['body/subject'], ''), ':')))"
     },
     "Get_DEX_Event": {
       "type": "OpenApiConnection",
