@@ -1757,21 +1757,6 @@ export class EventService {
 
 
   /**
-   * OrganizerEmail-Feld eines einzelnen Events patchen (fuer die Mass-Reparatur).
-   */
-  public async updateEventOrganizerEmails(eventId: number, organizerEmailSemicolonList: string): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        { 'OrganizerEmail': organizerEmailSemicolonList }
-      );
-      return !!(resp && (resp as { ok: boolean }).ok);
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Admin-Cleanup beim App-Start: alle Events mit EventStatus='Active' und EndDate < jetzt
    * werden automatisch auf 'Completed' gesetzt. Liefert die Anzahl der aktualisierten Events.
    */

@@ -142,8 +142,26 @@ export default function RegistrationPage(): React.ReactElement {
   }, [event?.imageUrl]);
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
-  const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
-    && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+  // Split-UI nur wenn BEIDE Starter-Typen verfuegbar sind (>0). Wenn der Admin eine
+  // Kapazitaet auf 0 gesetzt hat, gibt es faktisch nur einen Typ — dann keine Auswahl
+  // anzeigen und den einzig verfuegbaren Typ automatisch setzen (siehe useEffect unten).
+  const durchCap = (event && typeof event.durchstarterCapacity === 'number') ? event.durchstarterCapacity : 0;
+  const funCap = (event && typeof event.funstarterCapacity === 'number') ? event.funstarterCapacity : 0;
+  const isB2runSplit = !!event && durchCap > 0 && funCap > 0;
+  const singleStarterType: string = (!event || (durchCap <= 0 && funCap <= 0))
+    ? '' // kein B2Run-Event ueberhaupt
+    : (durchCap > 0 && funCap <= 0) ? 'Durchstarter'
+    : (funCap > 0 && durchCap <= 0) ? 'Funstarter'
+    : ''; // beide > 0 -> User muss waehlen (Split-UI)
+
+  // Auto-Set: wenn nur ein Starter-Typ verfuegbar ist, direkt diesen Typ als
+  // preferredStarterType speichern — damit registerForEvent ihn trotzdem auf den
+  // Teilnehmer-Eintrag schreiben kann, obwohl das Split-UI nicht angezeigt wird.
+  React.useEffect(() => {
+    if (singleStarterType && preferredStarterType !== singleStarterType) {
+      setPreferredStarterType(singleStarterType);
+    }
+  }, [singleStarterType]);
   React.useEffect(() => {
     if (!isB2runSplit || !event?.subsiteUrl) return;
     (async () => {
@@ -613,61 +631,61 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* B2Run Split-Capacity: Starter-Typ Auswahl */}
-        {isB2runSplit && (
-          <div className="registration-specific" style={{ marginBottom: 16 }}>
-            <div className="section-header">{t('reg.starter.title')}</div>
-            <div style={{ padding: '20px' }}>
-              <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                {t('reg.starter.hint')}
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {([
-                  { id: 'Durchstarter', label: t('reg.starter.durch'), desc: t('reg.starter.durch.desc'), cap: event.durchstarterCapacity || 0, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
-                  { id: 'Funstarter', label: t('reg.starter.fun'), desc: t('reg.starter.fun.desc'), cap: event.funstarterCapacity || 0, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
-                ]).map(opt => {
-                  const free = opt.cap - opt.count;
-                  const isFull = free <= 0;
-                  const isActive = preferredStarterType === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setPreferredStarterType(opt.id)}
-                      style={{
-                        padding: 16, textAlign: 'left',
-                        borderRadius: 'var(--dex-radius, 12px)',
-                        border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
-                        background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
-                        cursor: 'pointer', transition: 'all 0.15s',
-                        position: 'relative',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <strong style={{ color: opt.color, fontSize: '1rem' }}>{opt.label}</strong>
-                        {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>{opt.desc}</div>
-                      <div style={{ fontSize: '0.8rem' }}>
-                        {isFull ? (
-                          <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
-                        ) : (
-                          <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Eventspezifische Felder */}
+        {/* Eventspezifische Felder (inkl. B2Run Starter-Typ-Auswahl wenn beide
+            Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser automatisch
+            gesetzt und gar nicht angezeigt). */}
         <div className="registration-specific">
           <div className="section-header">{t('reg.eventinfo')}</div>
           <div style={{ padding: '24px 20px' }}>
-            {event.eventSpecificFields.length === 0 ? (
+            {isB2runSplit && (
+              <div className="form-group" style={{ marginBottom: 20 }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
+                  <span className="required">*</span> {t('reg.starter.title')}
+                </label>
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
+                  {t('reg.starter.hint')}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {([
+                    { id: 'Durchstarter', label: t('reg.starter.durch'), desc: t('reg.starter.durch.desc'), cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
+                    { id: 'Funstarter', label: t('reg.starter.fun'), desc: t('reg.starter.fun.desc'), cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
+                  ]).map(opt => {
+                    const free = opt.cap - opt.count;
+                    const isFull = free <= 0;
+                    const isActive = preferredStarterType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setPreferredStarterType(opt.id)}
+                        style={{
+                          padding: 14, textAlign: 'left',
+                          borderRadius: 'var(--dex-radius, 12px)',
+                          border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                          background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          position: 'relative',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
+                          {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
+                        <div style={{ fontSize: '0.78rem' }}>
+                          {isFull ? (
+                            <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
+                          ) : (
+                            <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {event.eventSpecificFields.length === 0 && !isB2runSplit ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
               event.eventSpecificFields.map(field => (
