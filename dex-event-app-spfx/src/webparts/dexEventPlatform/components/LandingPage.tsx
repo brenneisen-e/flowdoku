@@ -100,11 +100,43 @@ export default function LandingPage(): React.ReactElement {
                 background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
                 width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: 'var(--dex-gray-400)', textDecoration: 'none', transition: 'all 0.2s',
+                flexShrink: 0,
               }}
               title={locale === 'de' ? 'Kontakt aufnehmen' : 'Get in touch'}
             >
               <Mail size={18} />
             </a>
+            <div
+              style={{
+                position: 'relative',
+                background: 'var(--dex-green)',
+                color: '#fff',
+                padding: '10px 14px',
+                borderRadius: 12,
+                fontSize: '0.82rem',
+                lineHeight: 1.35,
+                maxWidth: 280,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                marginLeft: 4,
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  left: -7,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 0,
+                  height: 0,
+                  borderTop: '7px solid transparent',
+                  borderBottom: '7px solid transparent',
+                  borderRight: '8px solid var(--dex-green)',
+                }}
+              />
+              {locale === 'de'
+                ? 'Möchtest du die DEX App auch für dein Event nutzen? Melde dich gerne bei uns!'
+                : 'Want to use the DEX App for your event too? Just reach out to us!'}
+            </div>
           </div>
         </div>
       </div>
