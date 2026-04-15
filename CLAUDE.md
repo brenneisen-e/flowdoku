@@ -171,10 +171,12 @@ Nie sagen "füge dieses JSON ein" oder "öffne den Code View" — stattdessen je
 3. **Fordere den aktuellen Flow-JSON** vom User an (Code View → kopieren)
 4. **Aktualisiere `docs/flow-jsons.md`** mit dem neuen JSON
 
-Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen aller 4 DEX-Flows:
-- DEX_IDReorder_TeilnehmerIDs
-- DEX_SEND_MAIL
-- DEX_CreateOutlookEvent
-- DEX_Outlook_Einladungen
+Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen aller 6 DEX-Flows:
+- DEX_IDReorder_TeilnehmerIDs — TeilnehmerIDs renummerieren + Warteliste nachrücken
+- DEX_SEND_MAIL — Mail-Versand aus DEX_Emails-Queue
+- DEX_CreateOutlookEvent — Outlook-Termin initial anlegen
+- DEX_Outlook_Einladungen — Teilnehmer hinzufügen/entfernen, Termin aktualisieren/löschen
+- DEX_OutlookDeclineHandler — Decline-Mails abfangen → Reminder-Mail queuen (inkl. weitergeleitete Declines FW:/WG:)
+- DEX_OutlookForwardHandler — Meeting-Forward-Notifications abfangen → FYI-Mail an Organizer wenn weitergeleiteter Empfänger nicht registriert
 
 Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. Sie dient als einzige Referenz für den aktuellen Stand der Flows.
