@@ -2423,13 +2423,20 @@ export class EventService {
       if (starterType) payload['StarterType'] = starterType;
       if (preferredStarterType) payload['PreferredStarterType'] = preferredStarterType;
 
-      // Custom Field Werte in die echten SP-Spalten schreiben
+      // Custom Field Werte in die echten SP-Spalten schreiben.
+      // Wichtig: Wenn spInternalName fehlt (z.B. weil der Admin das Feld spaeter
+      // ergaenzt hat ohne Spalte in der Teilnehmerliste), wuerde der Wert
+      // SILENT VERLOREN GEHEN — deshalb ein console.warn damit der Admin im
+      // Admin Center per "Custom Fields pruefen" das Mapping fixen kann.
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
           if (cfId === 'salutation') continue;
+          if (!customData[cfId]) continue;
           const spFieldName = customFieldMap[cfId];
-          if (spFieldName && customData[cfId]) {
+          if (spFieldName) {
             payload[spFieldName] = customData[cfId];
+          } else {
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
           }
         }
       }
@@ -2499,9 +2506,12 @@ export class EventService {
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
           if (cfId === 'salutation') continue;
+          if (!customData[cfId]) continue;
           const spFieldName = customFieldMap[cfId];
-          if (spFieldName && customData[cfId]) {
+          if (spFieldName) {
             body[spFieldName] = customData[cfId];
+          } else {
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
           }
         }
       }
@@ -2570,9 +2580,12 @@ export class EventService {
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
           if (cfId === 'salutation') continue;
+          if (!customData[cfId]) continue;
           const spFieldName = customFieldMap[cfId];
-          if (spFieldName && customData[cfId]) {
+          if (spFieldName) {
             body[spFieldName] = customData[cfId];
+          } else {
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
           }
         }
       }
@@ -2827,6 +2840,163 @@ export class EventService {
     }
 
     return { added, removed, viewFixed };
+  }
+
+  /**
+   * Prueft die Zuordnung zwischen CustomFields eines Events und den tatsaechlichen
+   * Spalten der Teilnehmerliste auf der Event-Subsite. Findet heraus, bei welchen
+   * CustomFields die Mapping-Information (`spInternalName`) fehlt oder auf eine
+   * nicht existierende Spalte zeigt — das ist die Ursache dafuer, dass Werte aus
+   * der Registrierung nicht in die Liste geschrieben werden (z.B. T-Shirt-Groesse
+   * bei B2Run-Events, die nachtraeglich per "Felder reparieren" ergaenzt wurden
+   * und daher keine SP-Spalte besitzen).
+   *
+   * Vorgehen pro CustomField:
+   *   1. spInternalName gesetzt + Spalte existiert                  -> OK
+   *   2. spInternalName gesetzt, aber Spalte fehlt                  -> Remap per Label, sonst anlegen
+   *   3. spInternalName fehlt, aber Spalte mit passendem Title da   -> spInternalName ergaenzen
+   *   4. spInternalName fehlt, keine passende Spalte                -> Spalte anlegen + spInternalName setzen
+   *
+   * Am Ende:
+   *   - DEX_Events.CustomFields wird mit korrigierten spInternalName-Werten neu geschrieben
+   *   - Neue Spalten werden an die Default-View angehaengt
+   *   - Report mit allen Aktionen wird zurueckgegeben
+   */
+  public async auditCustomFieldColumns(
+    eventId: number,
+    subsiteUrl: string,
+    customFields: CustomField[]
+  ): Promise<{
+    ok: string[];
+    remapped: Array<{ id: string; label: string; oldInternal: string; newInternal: string }>;
+    created: Array<{ id: string; label: string; internalName: string }>;
+    failed: Array<{ id: string; label: string; reason: string }>;
+    customFieldsUpdated: boolean;
+    viewUpdated: boolean;
+  }> {
+    const ok: string[] = [];
+    const remapped: Array<{ id: string; label: string; oldInternal: string; newInternal: string }> = [];
+    const created: Array<{ id: string; label: string; internalName: string }> = [];
+    const failed: Array<{ id: string; label: string; reason: string }> = [];
+
+    // Alle sichtbaren Spalten der Teilnehmerliste einlesen (InternalName + Title)
+    const existing: Array<{ InternalName: string; Title: string }> = [];
+    try {
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      if (fieldsResp.ok) {
+        const data = await fieldsResp.json();
+        const list = data.value || data.d?.results || [];
+        for (const f of list) existing.push({ InternalName: f.InternalName, Title: f.Title });
+      }
+    } catch {
+      failed.push({ id: '*', label: '*', reason: 'Teilnehmerliste-Felder konnten nicht geladen werden' });
+      return { ok, remapped, created, failed, customFieldsUpdated: false, viewUpdated: false };
+    }
+
+    const findByInternal = (name: string): { InternalName: string; Title: string } | undefined =>
+      existing.find(f => f.InternalName === name);
+    const findByTitle = (title: string): { InternalName: string; Title: string } | undefined =>
+      existing.find(f => (f.Title || '').trim().toLowerCase() === (title || '').trim().toLowerCase());
+
+    // Arbeitskopie — hier schreiben wir die korrigierten spInternalName-Werte rein
+    const updated: CustomField[] = customFields.map(cf => ({ ...cf }));
+    const newInternalsForView: string[] = [];
+    let anyChange = false;
+
+    for (const cf of updated) {
+      if (!cf.label) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const currentInternal: string = (cf as any).spInternalName || '';
+
+      // Fall 1: Mapping vorhanden und gueltig
+      if (currentInternal && findByInternal(currentInternal)) {
+        ok.push(`${cf.label} -> ${currentInternal}`);
+        continue;
+      }
+
+      // Fall 2 & 3: Mapping fehlt oder zeigt auf tote Spalte — per Label suchen
+      const byTitle = findByTitle(cf.label);
+      if (byTitle) {
+        if (currentInternal !== byTitle.InternalName) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (cf as any).spInternalName = byTitle.InternalName;
+          remapped.push({ id: cf.id, label: cf.label, oldInternal: currentInternal, newInternal: byTitle.InternalName });
+          anyChange = true;
+        } else {
+          ok.push(`${cf.label} -> ${byTitle.InternalName}`);
+        }
+        continue;
+      }
+
+      // Fall 4: Spalte existiert nicht — anlegen (gleiche Logik wie createRegistrationList)
+      let fieldPayload: Record<string, unknown>;
+      if (cf.type === 'select' && cf.options && cf.options.length > 0) {
+        fieldPayload = {
+          '__metadata': { 'type': 'SP.FieldChoice' },
+          'Title': cf.label,
+          'FieldTypeKind': 6,
+          'Required': false,
+          'Choices': { 'results': cf.options },
+        };
+      } else if (cf.type === 'number') {
+        fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 9, 'Required': false };
+      } else if (cf.type === 'checkbox') {
+        fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 8, 'Required': false };
+      } else {
+        fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 2, 'Required': false };
+      }
+
+      try {
+        const resp = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`,
+          fieldPayload
+        );
+        if (resp.ok) {
+          const result = await resp.json();
+          const internalName: string = result.d?.InternalName || result.InternalName || cf.label;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (cf as any).spInternalName = internalName;
+          existing.push({ InternalName: internalName, Title: cf.label });
+          created.push({ id: cf.id, label: cf.label, internalName });
+          newInternalsForView.push(internalName);
+          anyChange = true;
+        } else {
+          const errText = await resp.text().catch(() => '');
+          failed.push({ id: cf.id, label: cf.label, reason: `HTTP ${resp.status}: ${errText.substring(0, 120)}` });
+        }
+      } catch (err) {
+        failed.push({ id: cf.id, label: cf.label, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    // Event-Datensatz mit korrigierten spInternalName-Werten ueberschreiben
+    let customFieldsUpdated = false;
+    if (anyChange) {
+      try {
+        customFieldsUpdated = await this.updateEvent(eventId, { CustomFields: JSON.stringify(updated) });
+      } catch {
+        customFieldsUpdated = false;
+      }
+    }
+
+    // Neu erstellte Spalten an die Default-View anhaengen (damit sie in der SP-UI sichtbar sind)
+    let viewUpdated = false;
+    if (newInternalsForView.length > 0) {
+      try {
+        for (const name of newInternalsForView) {
+          await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/defaultview/viewfields/addviewfield('${name}')`,
+            {}
+          ).catch(() => { /* Spalte ggf. schon in der View */ });
+        }
+        viewUpdated = true;
+      } catch { /* View-Update optional */ }
+    }
+
+    return { ok, remapped, created, failed, customFieldsUpdated, viewUpdated };
   }
 
   /**

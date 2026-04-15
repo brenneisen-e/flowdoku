@@ -42,7 +42,7 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
+  const { events, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
   const { t } = useLanguage();
@@ -64,6 +64,8 @@ export default function AdminPage(): React.ReactElement {
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
   const [isFixingFields, setIsFixingFields] = React.useState(false);
   const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
+  const [isAuditingFields, setIsAuditingFields] = React.useState(false);
+  const [auditFieldsResult, setAuditFieldsResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Email Compose Modal
@@ -899,6 +901,76 @@ export default function AdminPage(): React.ReactElement {
             {fixFieldsResult && (
               <span style={{ fontSize: '0.75rem', color: fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') ? 'var(--dex-red)' : 'var(--dex-gray-500)' }}>
                 {fixFieldsResult}
+              </span>
+            )}
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isAuditingFields || !selectedEvent?.subsiteUrl}
+                title={'Prueft pro Custom-Field des Events ob die zugehoerige Spalte in der Teilnehmerliste existiert. '
+                  + 'Fehlende Spalten werden angelegt, falsche Mapping-Verweise (spInternalName) werden auf die richtige '
+                  + 'Spalte korrigiert. Notwendig wenn Werte aus der Registrierung (z.B. T-Shirt-Groesse) nicht in der '
+                  + 'Teilnehmerliste landen.'}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const cfs = selectedEvent.eventSpecificFields || [];
+                  if (cfs.length === 0) {
+                    setAuditFieldsResult('Event hat keine Custom Fields — nichts zu pruefen.');
+                    return;
+                  }
+                  setIsAuditingFields(true);
+                  setAuditFieldsResult(null);
+                  try {
+                    // eventSpecificFields aus dem Context hat schon spInternalName. Wir casten
+                    // zur CustomField-Shape (label/type/options etc.) — die Audit-Methode nutzt
+                    // nur id, label, type, options, spInternalName.
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const cfsAsCustomFields: any[] = cfs.map((f: any) => ({
+                      id: f.id,
+                      label: f.label,
+                      type: f.type,
+                      required: !!f.required,
+                      options: f.options || [],
+                      visible: true,
+                      spInternalName: f.spInternalName || '',
+                    }));
+                    const result = await eventServiceRef.auditCustomFieldColumns(
+                      parseInt(selectedEvent.id, 10),
+                      selectedEvent.subsiteUrl,
+                      cfsAsCustomFields
+                    );
+                    const parts: string[] = [];
+                    if (result.created.length > 0) {
+                      parts.push(`Spalten angelegt: ${result.created.map(c => `${c.label}`).join(', ')}`);
+                    }
+                    if (result.remapped.length > 0) {
+                      parts.push(`Mapping korrigiert: ${result.remapped.map(r => `${r.label} (${r.oldInternal || '-'} -> ${r.newInternal})`).join(', ')}`);
+                    }
+                    if (result.failed.length > 0) {
+                      parts.push(`Fehler: ${result.failed.map(f => `${f.label}: ${f.reason}`).join(' | ')}`);
+                    }
+                    if (parts.length === 0) {
+                      setAuditFieldsResult(`Alles OK — ${result.ok.length} Custom Field(s) korrekt gemappt.`);
+                    } else {
+                      setAuditFieldsResult(parts.join(' | '));
+                    }
+                    // Event-Liste neu laden damit die aktualisierten spInternalName-Werte im Context landen
+                    if (result.customFieldsUpdated) {
+                      try { await refreshEvents(); } catch { /* non-blocking */ }
+                    }
+                  } catch (err) {
+                    setAuditFieldsResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsAuditingFields(false);
+                }}
+              >
+                {isAuditingFields ? 'Custom Fields werden geprueft...' : 'Custom Fields pruefen'}
+              </button>
+            )}
+            {auditFieldsResult && (
+              <span style={{ fontSize: '0.75rem', color: auditFieldsResult.indexOf('Fehler') >= 0 ? 'var(--dex-red)' : 'var(--dex-green)' }}>
+                {auditFieldsResult}
               </span>
             )}
             {isAdmin && (
