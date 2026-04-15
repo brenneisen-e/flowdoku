@@ -784,6 +784,13 @@ export default function AdminPage(): React.ReactElement {
                         raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
                         changes.push("Feld ergaenzt: 'Anonym teilnehmen'");
                       }
+                      // Laufshirt: ggf. als b2run_laufshirt anlegen, wenn weder das Feld
+                      // noch ein gleichnamiges existiert
+                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
+                      if (!hasLaufshirt) {
+                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
+                        changes.push("Feld ergaenzt: 'Deloitte-Laufshirt' (Pflicht)");
+                      }
                     }
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const fixed = raw.map((f: any) => {
@@ -842,6 +849,11 @@ export default function AdminPage(): React.ReactElement {
                           ];
                           changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergaenzt');
                         }
+                      }
+                      // Deloitte-Laufshirt / Laufshirt: immer Pflicht
+                      if ((nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label)) && !nf.required) {
+                        nf.required = true;
+                        changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
                       }
                       return nf;
                     });

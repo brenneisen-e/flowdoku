@@ -731,9 +731,28 @@ export default function RegistrationPage(): React.ReactElement {
                 .map(fRaw => {
                   // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
                   // Mobilnummer Pflicht.
-                  const field = fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true'
-                    ? { ...fRaw, required: true }
-                    : fRaw;
+                  let field = fRaw;
+                  // Mobilnummer bei aktiviertem Infoservice dynamisch zur Pflicht
+                  if (fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true') {
+                    field = { ...field, required: true };
+                  }
+                  // Fallback: b2run_datenschutz ohne gespeicherte externalLinks ->
+                  // AGB + Datenschutz-Links zur Laufzeit injizieren, damit aeltere
+                  // Events ohne 'Felder reparieren' trotzdem die Links zeigen.
+                  if (fRaw.id === 'b2run_datenschutz' && (!fRaw.externalLinks || fRaw.externalLinks.length === 0)) {
+                    field = {
+                      ...field,
+                      externalLinks: [
+                        { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+                        { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+                      ],
+                    };
+                  }
+                  // Laufshirt/T-Shirt-Feld bei B2Run ist Pflicht (falls in alten Events
+                  // noch nicht so markiert)
+                  if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
+                    field = { ...field, required: true };
+                  }
                   return (
                 <div className="form-group" key={field.id}>
                   {field.type !== 'checkbox' && (

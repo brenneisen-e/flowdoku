@@ -488,6 +488,7 @@ export default function EventCreationPage(): React.ReactElement {
         { id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true },
         { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true },
         { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
         {
           id: 'b2run_datenschutz',
           label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
