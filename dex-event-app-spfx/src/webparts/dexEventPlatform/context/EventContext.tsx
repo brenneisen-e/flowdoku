@@ -412,6 +412,35 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           templateType, event.title, eventId
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
+      // Roommate-Benachrichtigung: alle Custom-Fields vom Typ 'user' durchsuchen,
+      // deren Wert eine E-Mail enthaelt (Format "Name <email>"). Fuer jede solche
+      // Adresse eine Info-Mail im Deloitte-Template queuen.
+      if (!event.disableEmails) {
+        for (const f of event.eventSpecificFields) {
+          if (f.type !== 'user') continue;
+          const v = customData[f.id];
+          if (!v) continue;
+          const m = v.match(/<([^>]+@[^>]+)>/);
+          const partnerEmail = m ? m[1].trim() : '';
+          if (!partnerEmail || partnerEmail.toLowerCase() === emailToUse.toLowerCase()) continue;
+          const partnerName = v.replace(/<[^>]*>/, '').trim() || partnerEmail;
+          const partnerFirstName = partnerName.includes(',')
+            ? (partnerName.split(',')[1] || '').trim()
+            : (partnerName.split(/\s+/)[0] || '');
+          const registrantFullName = `${firstNameToUse} ${lastNameToUse}`.trim() || nameToUse;
+          const isDe = (lang || 'EN').toUpperCase() === 'DE';
+          const subject = isDe
+            ? `Zimmerpartner-Anfrage: ${event.title}`
+            : `Roommate request: ${event.title}`;
+          const inner = isDe
+            ? `<p>Hallo ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>${event.title}</strong> angegeben.</p><p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>${registrantFullName}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+            : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p><p>If you'd like to confirm the match, please pick <strong>${registrantFullName}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
+          const body = wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner);
+          eventService.queueEmail(
+            subject, partnerEmail, partnerName, body, 'Info', event.title, eventId
+          ).catch(err => console.warn('[DEX] roommate queueEmail failed:', err));
+        }
+      }
       // Outlook-Termin-Einladung in Queue eintragen
       if (status !== 'Warteliste' && !event.disableOutlook) {
         eventService.queueOutlookEvent(

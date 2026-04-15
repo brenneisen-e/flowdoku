@@ -142,7 +142,7 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
   required: boolean;
   // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
   options: string[];
@@ -350,6 +350,25 @@ export default function EventCreationPage(): React.ReactElement {
     }]);
   };
 
+  /**
+   * Setzt die Custom Fields auf die Deloitte-Standard-Vorschlaege zurueck:
+   * T-Shirt Groesse (mit "Kein T-Shirt benoetigt"), Allergien (Freitext),
+   * Essenspraeferenzen (Vegetarisch/Vegan/Pescetarisch/Keine Praeferenzen).
+   * Ueberschreibt vorhandene Custom Fields (nach Nachfrage, damit kein Doppel-
+   * eintrag entsteht bei mehrfachem Klicken).
+   */
+  const applySuggestedFields = (): void => {
+    if (customFields.length > 0 && !confirm('Vorhandene Felder werden durch die Vorschlaege ersetzt. Fortfahren?')) return;
+    setCustomFields([
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+      { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
+      { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
+      { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
+      { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
+      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true },
+    ]);
+  };
+
   const removeCustomField = (id: string): void => {
     setCustomFields(customFields.filter(f => f.id !== id));
   };
@@ -382,7 +401,7 @@ export default function EventCreationPage(): React.ReactElement {
         { id: 'b2run_mobilnummer', label: 'Mobilnummer', type: 'text', required: false, options: [], visible: true },
         { id: 'b2run_infoservice', label: 'Verwendung Infoservice (SMS von B2Run, benoetigt Mobilnummer)', type: 'checkbox', required: false, options: [], visible: true },
         { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen (Pflicht)', type: 'checkbox', required: true, options: [], visible: true },
+        { id: 'b2run_datenschutz', label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen', type: 'checkbox', required: true, options: [], visible: true },
       ];
       setCustomFields(fields);
     }
@@ -474,9 +493,12 @@ export default function EventCreationPage(): React.ReactElement {
     setWaitlistEnabled(true);
     setEventImageUrl('');
     setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: true, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-      { id: `cf-${Date.now() + 1}`, label: 'Notfallkontakt (Name & Telefon)', type: 'text', required: true, options: [], visible: true },
-      { id: `cf-${Date.now() + 2}`, label: 'Ernährungsbesonderheiten', type: 'text', required: false, options: [], visible: true },
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+      { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
+      { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
+      { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
+      { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
+      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true },
     ]);
   };
 
@@ -1936,9 +1958,20 @@ export default function EventCreationPage(): React.ReactElement {
               <div>
                 <div className="flex-between mb-16">
                   <label className="form-label" style={{ marginBottom: 0 }}>{t('create.customfields')}</label>
-                  <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                    <Plus size={14} /> {t('create.addfield')}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={applySuggestedFields}
+                      style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+                      title="T-Shirt, Allergien, Essenspraeferenzen, Hotel"
+                    >
+                      Vorgeschlagene Felder
+                    </button>
+                    <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
+                      <Plus size={14} /> {t('create.addfield')}
+                    </button>
+                  </div>
                 </div>
                 {customFields.map((field, idx) => (
                   <div
@@ -1998,6 +2031,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <option value="select">Dropdown</option>
                         <option value="number">Zahl</option>
                         <option value="checkbox">Checkbox</option>
+                        <option value="user">Person (Suche)</option>
                       </select>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
