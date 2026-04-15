@@ -771,6 +771,7 @@ export default function AdminPage(): React.ReactElement {
                       {label}{sortIcon(col)}
                     </th>
                   ))}
+                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">Registriert von</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                 </tr>
               </thead>
@@ -789,6 +790,21 @@ export default function AdminPage(): React.ReactElement {
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>
+                      {(() => {
+                        const actorEmail = (reg.RegisteredByEmail || '').toLowerCase();
+                        const participantEmail = (reg.ParticipantEmail || '').toLowerCase();
+                        if (!actorEmail) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
+                        if (actorEmail === participantEmail) {
+                          return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
+                        }
+                        return (
+                          <span title={reg.RegisteredByEmail || ''} style={{ color: 'var(--dex-orange)' }}>
+                            {reg.RegisteredByName || reg.RegisteredByEmail}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td style={{ padding: 8, display: 'flex', gap: 4 }}>
                       {reg.Status === 'Eingecheckt' ? (
                         <button

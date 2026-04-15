@@ -124,6 +124,8 @@ export interface SPRegistration {
   ParticipantEmail: string;
   Status: string;
   RegistrationDate: string;
+  RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchfuehrte
+  RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchfuehrte
   CancellationDate: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
@@ -2032,6 +2034,8 @@ export class EventService {
       { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (fuer Statistik)
       { title: 'QuizCompletedAt', type: 4 }, // DateTime
       { title: 'RegistrationDate', type: 4 },
+      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
+      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
       { title: 'CancellationDate', type: 4 },
@@ -2109,7 +2113,7 @@ export class EventService {
 
     // Default View konfigurieren (Basis + Custom Fields)
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'CancellationDate',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate',
       ...customFieldViewNames,
     ], subsiteUrl);
 
@@ -2267,7 +2271,9 @@ export class EventService {
     status: string = 'Angemeldet',
     customFieldMap?: Record<string, string>, // cf.id -> SP InternalName
     starterType?: string, // B2Run: effektiver Typ (nach Fallback)
-    preferredStarterType?: string // B2Run: Wunsch-Typ (was der User eigentlich wollte)
+    preferredStarterType?: string, // B2Run: Wunsch-Typ (was der User eigentlich wollte)
+    registeredByName?: string, // Audit: Name des Users der die Anmeldung ausloest
+    registeredByEmail?: string // Audit: E-Mail des Users der die Anmeldung ausloest
   ): Promise<boolean> {
     try {
       // Naechste TeilnehmerID ermitteln
@@ -2313,6 +2319,14 @@ export class EventService {
         'CustomData': JSON.stringify(customData),
       };
 
+      // Audit: wer hat die Anmeldung ausgeloest?
+      // Bei Self-Registration = der User selbst. Bei "Fuer andere Person registrieren"
+      // = der Organizer/Admin der geklickt hat. Fallback wenn nichts uebergeben: aus pageContext.
+      const auditName = registeredByName || this.context.pageContext.user.displayName || '';
+      const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
+      if (auditName) payload['RegisteredByName'] = auditName;
+      if (auditEmail) payload['RegisteredByEmail'] = auditEmail;
+
       // B2Run: Starter-Typ + Wunsch-Typ schreiben (bei normalen Events null)
       if (starterType) payload['StarterType'] = starterType;
       if (preferredStarterType) payload['PreferredStarterType'] = preferredStarterType;
@@ -2350,7 +2364,9 @@ export class EventService {
     surname: string,
     customData: Record<string, string>,
     status: string = 'Angemeldet',
-    customFieldMap?: Record<string, string>
+    customFieldMap?: Record<string, string>,
+    registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung ausloest
+    registeredByEmail?: string // Audit: E-Mail des Users der die Re-Anmeldung ausloest
   ): Promise<boolean> {
     try {
       // Naechste TeilnehmerID ermitteln
@@ -2380,6 +2396,13 @@ export class EventService {
         'CancellationDate': null,
         'CustomData': JSON.stringify(customData),
       };
+
+      // Audit: wer hat die Re-Anmeldung ausgeloest? (ueberschreibt den Wert von
+      // der urspruenglichen Anmeldung, weil das faktisch eine neue Anmeldung ist)
+      const auditName = registeredByName || this.context.pageContext.user.displayName || '';
+      const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
+      if (auditName) body['RegisteredByName'] = auditName;
+      if (auditEmail) body['RegisteredByEmail'] = auditEmail;
 
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
@@ -2584,6 +2607,8 @@ export class EventService {
       { title: 'QuizScore', type: 9 },
       { title: 'QuizAnswers', type: 3 },
       { title: 'QuizCompletedAt', type: 4 },
+      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
+      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
     ];
 
     for (const f of requiredFields) {
@@ -2618,7 +2643,9 @@ export class EventService {
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
         'Department', 'Location', 'JobTitle', 'Phone',
         'StarterType', 'PreferredStarterType',
-        'Status', 'RegistrationDate', 'CancellationDate',
+        'Status', 'RegistrationDate',
+        'RegisteredByName', 'RegisteredByEmail',
+        'CancellationDate',
       ];
 
       // Auch Custom Fields die auf der Liste existieren
@@ -2826,7 +2853,7 @@ export class EventService {
   ): Promise<SPRegistration | null> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,CancellationDate,CustomData,Department,JobTitle,Location&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CustomData,Department,JobTitle,Location&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;

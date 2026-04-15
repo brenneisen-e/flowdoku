@@ -28,9 +28,18 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents, searchUsers, isOrganizer, isAdmin } = useRoles();
+  const { searchUsers, isAdmin } = useRoles();
   const { t } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
+
+  // Per-Event-Organizer-Check: ist der eingeloggte User in event.organizerEmails?
+  // Nur dann darf er a) nach Deadline registrieren und b) "Register for another
+  // person" nutzen. Ein Organizer von EVENT A darf NICHT fuer EVENT B solche
+  // Admin-Aktionen ausfuehren. Admin darf global alles.
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const isEventOrganizer = !!event && event.organizerEmails.some(e => e.toLowerCase() === currentEmailLc);
+  const isOrganizer = isEventOrganizer; // alten Namen behalten fuer Referenzen unten
+  const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
   // Sichtbarkeits-Check: Würde dieses Event dem User als normaler User angezeigt werden?
   const showLocationBanner = canCreateEvents && event && (() => {
