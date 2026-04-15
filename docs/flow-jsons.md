@@ -1,7 +1,15 @@
 # Power Automate Flow JSONs
 
-Dieses Dokument enthält die vollständigen Flow-Definitionen aller 4 DEX-Flows.
+Dieses Dokument enthält die vollständigen Flow-Definitionen aller **6 DEX-Flows**.
 Wird aktualisiert wenn Flows geändert werden.
+
+Übersicht:
+1. **DEX_IDReorder_TeilnehmerIDs** — TeilnehmerIDs renummerieren + Warteliste nachrücken
+2. **DEX_SEND_MAIL** — Mail-Versand aus DEX_Emails-Queue
+3. **DEX_CreateOutlookEvent** — Outlook-Termin initial anlegen
+4. **DEX_Outlook_Einladungen** — Teilnehmer zum Outlook-Termin hinzufügen/entfernen, Termin aktualisieren/löschen
+5. **DEX_OutlookDeclineHandler** — Decline-Mails abfangen → Reminder-Mail queuen (inkl. weitergeleitete Declines FW:/WG:)
+6. **DEX_OutlookForwardHandler** (NEU) — Meeting-Forward-Notifications abfangen → FYI-Mail an Organizer wenn weitergeleiteter Empfänger nicht registriert
 
 ---
 
@@ -1523,3 +1531,265 @@ Forward-Support (`Real_Sender`) und On-Behalf-Of-Support (`Decliner_Lastname`
 Die erste Version nutzte den `When an event is modified (V3)`-Trigger und filterte `body/attendees[*].status.response == 'declined'`. In der Praxis gibt der Shared-Mailbox-Trigger dieses pro-Attendee-Feld jedoch **nicht** zuverlässig zurück (nur `requiredAttendees`/`optionalAttendees` als Semicolon-String). Der Flow hat daher nie eine Reminder-Mail erzeugt. Die Mail-basierte Variante oben ersetzt diesen Ansatz.
 
 Der v1-Flow ist deaktiviert aber nicht gelöscht (`DEX_OutlookDeclineHandler_v1_old`), kann nach 1 Woche stabiler Mail-Variante endgültig entfernt werden.
+
+---
+
+## 6. DEX_OutlookForwardHandler (NEU — zu bauen)
+
+**Trigger:** Neue Mail in `no_reply.events@deloitte.de` mit Subject startend mit `Meeting Forward Notification:` (EN) oder `Terminweiterleitungsbenachrichtigung:` (DE)
+**Zweck:** Wenn ein Teilnehmer einen Outlook-Termin an Dritte weiterleitet, bekommt `no_reply.events@deloitte.de` eine Info-Mail. Der Flow prüft, ob die weitergeleitete Person bereits in der SharePoint-Teilnehmerliste eingetragen ist. Wenn **nein**, geht eine FYI-Mail an den Organizer raus.
+**Status:** Noch nicht gebaut — nur Spezifikation. Soll nach Freigabe manuell in Power Automate angelegt werden.
+
+### Hintergrund
+
+Beispiel-Mail, die das auslöst:
+
+```
+From: Microsoft Outlook on behalf of von Rueden, Dr. Michael
+Subject: Meeting Forward Notification: E2E M&A Activation Session
+Body:
+  Your meeting was forwarded
+  von Rueden, Dr. Michael has forwarded your meeting request to additional recipients.
+
+  Meeting:       E2E M&A Activation Session
+  Meeting Time:  Thursday, 23 April 2026, 19:00 to Friday, 24 April 2026, 15:30.
+  Recipients:    Mauß, Anna Kristina
+```
+
+Problem: Anna Kristina Mauß ist im Outlook-Termin drin — aber **nicht** in der SharePoint-Teilnehmerliste der Event-Subsite. Sie hat keine TeilnehmerID, keinen QR-Code, und der Organizer sieht sie nicht in der App. Dazu kommt: sie könnte ausserhalb der Audience-Filter (Location/JobTitle) liegen und eigentlich gar nicht teilnehmen dürfen.
+
+### Ablauf
+
+1. Trigger (neue Mail im Inbox von `no_reply.events@deloitte.de`)
+2. **Is_ForwardNotification?** → Subject startet mit `Meeting Forward Notification:` ODER `Terminweiterleitungsbenachrichtigung:`
+3. **Cleaned_Subject** → Event-Titel aus Subject extrahieren (alles nach dem `:`)
+4. **Get_DEX_Event** → SharePoint Get items `DEX_Events` mit `Title eq '<Cleaned_Subject>'`
+5. **Event_Found?** → weiter nur wenn Event existiert
+6. **Parse_Recipients** → Recipient-Namen aus `body/body` extrahieren (alle Namen nach `Recipients` / `Empfänger` bis `All times listed`)
+7. **Resolve_Recipient_Email** → Graph API User-Search per DisplayName (`Nachname, Vorname`) → Email
+8. **Get_Teilnehmer_Entry** → SharePoint HTTP request auf Subsite-Teilnehmerliste: gibt es einen Eintrag mit `ParticipantEmail eq '<resolved_email>'` der nicht `Abgemeldet` ist?
+9. **Already_Registered?** → wenn **ja**: Flow endet (Log-Eintrag "OK, schon eingeladen"). Wenn **nein**: weiter zu 10.
+10. **Get_ForwardTemplate** → Template `OutlookForwardNotification` (DE/EN je nach Event) aus `DEX_EmailTemplates` laden. Das Template wird **von der App automatisch angelegt** (siehe Abschnitt "Template-Seeding durch die App") — inklusive Deloitte-Outlook-Wrapper.
+11. **Rendered_Subject / Rendered_Body** → Platzhalter `{{EventTitle}}`, `{{Forwarder}}`, `{{Recipient}}`, `{{RecipientEmail}}`, `{{OrganizerFirstName}}`, `{{AppUrl}}` per `replace()` ersetzen.
+12. **Create_FYI_Email** → DEX_Emails-Queue-Item anlegen mit den echten Spalten:
+    - `Title` = Rendered Subject
+    - `Recipient` = Organizer-Email (Plain-Text)
+    - `Body` = Rendered HTML-Body (fertig gerendert, kein weiteres Template-Lookup im DEX_SEND_MAIL nötig)
+    - `EmailType` = `Info`, `Status` = `Pending`, `EventId` = Event-ID, `EventTitle` = Cleaned_Subject
+
+### SharePoint-Liste DEX_Outlook (unverändert)
+
+Dieser Flow nutzt **nicht** die DEX_Outlook-Queue (da keine Outlook-Änderung getriggert wird — der Outlook-Termin hat den neuen Empfänger ja schon). Er nutzt die bestehende `DEX_Emails`-Queue für die FYI-Mail.
+
+### UI-Anleitung zum Anlegen (Schritt für Schritt)
+
+**1. Neuer Cloud-Flow anlegen**
+1. https://make.powerautomate.com öffnen
+2. Links **+ Create** → **Automated cloud flow**
+3. **Flow name:** `DEX_OutlookForwardHandler`
+4. Trigger: `When a new email arrives V3` → **Office 365 Outlook — When a new email arrives (V3)** auswählen
+5. **Create**
+
+**2. Trigger konfigurieren**
+- **Folder:** `Inbox`
+- **Show advanced options:**
+  - **Original Mailbox Address:** `no_reply.events@deloitte.de`
+  - **Include Attachments:** `No`
+  - **Subject Filter:** leer lassen (Language-Filter via Condition in Schritt 3)
+- Settings → Concurrency: **1** (sequentiell, maximumWaitingRuns 100)
+
+**3. Condition `Is_ForwardNotification`**
+- Linke Seite: **Expression (fx)** →
+  ```
+  or(
+    startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'meeting forward notification:'),
+    startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'terminweiterleitungsbenachrichtigung:')
+  )
+  ```
+- Operator: `is equal to`
+- Rechte Seite: **Expression (fx)** → `true`
+- Wenn **no** → Terminate (Succeeded). Wenn **yes** → weiter.
+
+**4. `Cleaned_Subject` (Compose)**
+- Expression:
+  ```
+  trim(
+    last(
+      split(triggerOutputs()?['body/subject'], ':')
+    )
+  )
+  ```
+- Achtung: `last(split(...,':'))` kann bei Event-Titeln mit Doppelpunkt falsch sein. Alternativ robuster:
+  ```
+  trim(
+    substring(
+      triggerOutputs()?['body/subject'],
+      add(indexOf(triggerOutputs()?['body/subject'], ':'), 1)
+    )
+  )
+  ```
+- Rename → `Cleaned_Subject`
+
+**5. `Get_DEX_Event` (SharePoint Get items)**
+- Site Address: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+- List Name: `DEX_Events`
+- Filter Query: **Expression (fx)** →
+  ```
+  concat('Title eq ''', replace(outputs('Cleaned_Subject'), '''', ''''''), '''')
+  ```
+- Top Count: `1`
+
+**6. Condition `Event_Found`**
+- Expression: `length(outputs('Get_DEX_Event')?['body/value'])` `is greater than` `0`
+- Wenn **no** → Terminate (Succeeded, Message `Event not found in DEX_Events`)
+- Wenn **yes** → weiter
+
+**7. `Parse_Recipients` (Compose)**
+
+Die Mail enthält die Recipient-Namen im HTML-Body. Der `bodyPreview` (Plaintext) hat das Format:
+```
+... Recipients   Mauß, Anna Kristina   All times listed ...
+```
+Expression zum Extrahieren:
+```
+trim(
+  first(
+    split(
+      last(
+        split(
+          coalesce(triggerOutputs()?['body/bodyPreview'], ''),
+          'Recipients'
+        )
+      ),
+      'All times listed'
+    )
+  )
+)
+```
+Für DE-Mails zusätzlich auch `Empfänger` als Split-Token. Alternative (robuster):
+```
+if(
+  contains(coalesce(triggerOutputs()?['body/bodyPreview'], ''), 'Recipients'),
+  trim(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'Recipients')), 'All times listed'))),
+  trim(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'Empfänger')), 'Alle aufgeführten Zeiten')))
+)
+```
+Rename → `Recipient_DisplayName`.
+
+**8. `Resolve_Recipient_Email` (Office 365 Users — Search for users (V2))**
+- Search Term: `@outputs('Recipient_DisplayName')`
+- Top: `5`
+- Nach der Action: `Filter_Matching_User` (Data Operation — Filter array) über `body('Resolve_Recipient_Email')?['value']` mit `item()?['displayName'] is equal to @outputs('Recipient_DisplayName')` (exakte Match).
+- Compose `Recipient_Email`: `first(body('Filter_Matching_User'))?['mail']`
+
+**9. Condition `Email_Resolved`**
+- Expression: `outputs('Recipient_Email')` `is not equal to` `null`
+- Wenn **no** → FYI-Mail an Organizer mit Hinweis "Recipient-Email konnte nicht aufgelöst werden: <DisplayName>" (siehe Schritt 12, aber mit anderer Nachricht)
+- Wenn **yes** → weiter
+
+**10. `Get_Teilnehmer_Entry` (Send HTTP request to SharePoint)**
+
+Die Teilnehmer-Liste liegt auf der Event-Subsite. `SubsiteUrl` aus `Get_DEX_Event` holen:
+- Site Address: `@{first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']}`
+- Method: `GET`
+- Uri:
+  ```
+  _api/web/lists/getbytitle('Teilnehmer')/items?$filter=ParticipantEmail eq '@{outputs('Recipient_Email')}' and Status ne 'Abgemeldet'&$top=1
+  ```
+- Headers: `Accept: application/json;odata=nometadata`
+
+**11. Condition `Already_Registered`**
+- Expression: `length(body('Get_Teilnehmer_Entry')?['value'])` `is greater than` `0`
+- Wenn **yes** → Terminate (Succeeded, Message `Recipient already registered`)
+- Wenn **no** → weiter zu 12
+
+**12. `Get_ForwardTemplate` (SharePoint Get items auf DEX_EmailTemplates)**
+
+Das Template `OutlookForwardNotification` wird **von der App automatisch angelegt** (siehe unten, Abschnitt "Template-Seeding durch die App"). Der Flow holt es per Filter. Sprache wird vom Event übernommen (`EmailLanguage`-Feld), mit Fallback auf `EN`.
+
+- Site Address: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+- List Name: `DEX_EmailTemplates`
+- Filter Query: **Expression (fx)** →
+  ```
+  concat('TemplateType eq ''OutlookForwardNotification'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')
+  ```
+- Top Count: `1`
+
+**12a. `Rendered_Subject` (Compose)**
+
+Platzhalter im Subject ersetzen. Expression (fx):
+```
+replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['Subject'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' ')))
+```
+
+**12b. `Rendered_Body` (Compose)**
+
+Die gleiche Replace-Kaskade auf dem `BodyHtml`-Feld, zusätzlich noch `{{AppUrl}}`. Expression (fx):
+```
+replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')
+```
+
+**13. `Create_FYI_Email` (SharePoint Create item, Liste DEX_Emails)**
+
+Schreibt den fertigen Mail-Body in die Queue. `DEX_SEND_MAIL` verschickt ihn, ohne selbst Templates laden zu müssen — der komplette, schon gerenderte HTML-Body steht direkt im `Body`-Feld.
+
+Echte Spalten von `DEX_Emails` (siehe `EventService.ts:196`):
+
+| Feld | Typ | Wert für diesen Flow |
+|------|-----|----------------------|
+| `Title` | Text | = Subject (`outputs('Rendered_Subject')`) |
+| `Recipient` | Note, Plain-Text | Organizer-Email (erste aus `;`-Liste) |
+| `Cc` | Note, Plain-Text | leer |
+| `RecipientName` | Text | = `first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';'))` |
+| `Body` | Note (HTML) | = `outputs('Rendered_Body')` |
+| `EmailType` | Choice (Anmeldung, Abmeldung, Warteliste, Nachruecken, **Info**) | `Info` |
+| `EventTitle` | Text | = `outputs('Cleaned_Subject')` |
+| `EventId` | Text | = `string(first(outputs('Get_DEX_Event')?['body/value'])?['Id'])` |
+| `Status` | Choice (**Pending**, Sent, Failed) | `Pending` |
+| `SentDate` | Date | leer (Flow setzt es beim Versand) |
+
+Der `DEX_SEND_MAIL`-Flow pickt das Item auf (`Status eq 'Pending'`) und verschickt es per Office-365-Mail-Action — **keine Anpassung an DEX_SEND_MAIL nötig**, weil der Body schon fertig gerendert ist.
+
+### Template-Seeding durch die App
+
+Das Template `OutlookForwardNotification` (DE + EN) wird **automatisch beim App-Start** in die Liste `DEX_EmailTemplates` geschrieben. Zuständig sind drei Funktionen in `EventService.ts`:
+
+- `ensureEmailTemplatesList()` — erstmaliges Anlegen der Liste mit allen Default-Templates
+- `ensureMissingEmailTemplates()` — Nachlegen auf Tenants, wo die Liste schon existiert, aber `OutlookForwardNotification` noch fehlt
+- `upgradeStandardEmailTemplates()` — Updated den `BodyHtml` wenn das Template in der App-Version verändert wurde (überschreibt User-Customizing)
+
+Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates.ts` gerendert — damit sieht die FYI-Mail exakt wie die anderen DEX-Mails aus (schwarzer Deloitte-Header mit Logo, grüne Trennlinie, DEX-Orb, Content-Block, Footer mit Legal-Text).
+
+**Platzhalter im Body (werden vom Flow per `replace()` ersetzt, siehe 12a/12b):**
+- `{{OrganizerFirstName}}` — Vorname des Organizers
+- `{{Forwarder}}` — Name/Email der Person, die den Termin weitergeleitet hat (aus `body/from`)
+- `{{Recipient}}` — Name der hinzugefügten Person
+- `{{RecipientEmail}}` — Resolved Email oder `nicht aufgelöst`
+- `{{EventTitle}}` — Event-Titel
+- `{{AppUrl}}` — DEX-App-URL (hardcoded im Flow)
+
+**Code-Konstanten:** `OUTLOOK_FORWARD_BODY_DE` / `OUTLOOK_FORWARD_BODY_EN` in `EventService.ts`.
+
+### Änderung in DEX_SEND_MAIL
+
+**Keine Änderung nötig.** Der Flow verschickt einfach das fertige `Body`-Feld aus DEX_Emails per Office-365-Mail-Action — das neue Template wird für DEX_SEND_MAIL transparent behandelt (wie alle `Info`-Mails).
+
+### Bekannte Einschränkungen
+
+| Fall | Verhalten |
+|------|-----------|
+| Forwarder hat Outlook auf DE → `Terminweiterleitungsbenachrichtigung:` | ✅ (Condition `Is_ForwardNotification` deckt beide Sprachen ab) |
+| Forwarder hat Outlook auf EN → `Meeting Forward Notification:` | ✅ |
+| Forwarder hat andere Sprache (FR/IT/…) | ❌ Subject wird nicht erkannt — erweitern bei Bedarf |
+| Recipient ist ein externer User (kein Azure AD Account) | ❌ `Resolve_Recipient_Email` findet keinen Treffer → Fallback-FYI mit "Email nicht auflösbar" |
+| Recipient-Name steht in uneindeutiger Form (nur Vorname, Firmenkürzel) | ⚠️ Graph-Search kann 0 oder mehrere Treffer liefern → `Filter_Matching_User` per exakter `displayName`-Gleichheit |
+| Mehrere Recipients in einer Forward-Notification | ⚠️ Flow behandelt nur den ersten — für Multi-Recipient Schleife über gesplittete Namen nötig |
+| Event-Titel enthält Doppelpunkt | ⚠️ `Cleaned_Subject` per `substring(..., indexOf(':'))` ist robuster als `split(':')` |
+
+### Teststrategie
+
+1. Manuell in Outlook einen Testtermin aus `no_reply.events@deloitte.de` erstellen, einladen.
+2. Als eingeladener User: **Forward** auf eine andere Person (Deloitte-interne) → Flow sollte die FYI-Mail an den Organizer queuen.
+3. Als eingeladener User: **Forward** auf eine Person, die bereits registriert ist → Flow sollte **keine** FYI schicken.
+4. Als eingeladener User: **Forward** auf einen Externen (keine Azure AD-Identität) → Flow sollte FYI mit "Email nicht aufgelöst" schicken.
+5. Flow-Runs kontrollieren: jeder Schritt sollte `Succeeded` sein, Terminate-Zweige dokumentieren warum keine Mail verschickt wurde.
