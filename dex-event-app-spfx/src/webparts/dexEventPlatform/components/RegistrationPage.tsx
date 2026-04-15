@@ -469,6 +469,31 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 );
               })()}
+              {/* Verfuegbare Plaetze anzeigen — nur wenn es eine Obergrenze gibt.
+                  Gilt sowohl fuer normale Deloitte-Events als auch fuer B2Run
+                  (dort ist maxParticipants = durchCap + funCap). */}
+              {event.maxParticipants > 0 && (() => {
+                const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
+                const isFullAll = free <= 0;
+                const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
+                const color = isFullAll
+                  ? 'var(--dex-red, #c00)'
+                  : nearlyFull
+                    ? 'var(--dex-orange, #ff8c00)'
+                    : 'var(--dex-green-dark, #6b9a1e)';
+                return (
+                  <div style={{
+                    fontSize: '0.78rem',
+                    color,
+                    marginTop: 6,
+                    fontWeight: 600,
+                  }}>
+                    {isFullAll
+                      ? t('reg.seats.full') || 'Event voll — Anmeldung geht auf die Warteliste'
+                      : `${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           {showDescription && event.description && (
