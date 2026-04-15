@@ -690,9 +690,18 @@ export default function AdminPage(): React.ReactElement {
                   setIsFixingColumns(true);
                   setFixColumnsResult(null);
                   try {
-                    const result = await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl);
+                    // Feature-Flags fuer das konkrete Event: steuert welche Spalten
+                    // noetig sind und welche aktiv entfernt werden (StarterType auf
+                    // Nicht-B2Run-Event, Quiz-Spalten auf Event ohne Quiz).
+                    const isB2Run = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity);
+                    const hasQuiz = !!(selectedEvent.quiz && selectedEvent.quiz.length > 0);
+                    const result = await eventServiceRef.fixRegistrationListColumns(
+                      selectedEvent.subsiteUrl,
+                      { isB2Run, hasQuiz }
+                    );
                     const msgs: string[] = [];
                     if (result.added.length > 0) msgs.push(`Spalten hinzugefuegt: ${result.added.join(', ')}`);
+                    if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
                     if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
                     setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Aenderungen noetig');
                   } catch {

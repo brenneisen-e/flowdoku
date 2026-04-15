@@ -2584,8 +2584,15 @@ export class EventService {
    * Spalten der Teilnehmerliste fixen: fehlende Spalten anlegen, View-Reihenfolge korrigieren.
    * Kann auf bestehenden Events ausgefuehrt werden um die Liste nachtraeglich zu aktualisieren.
    */
-  public async fixRegistrationListColumns(subsiteUrl: string): Promise<{ added: string[]; viewFixed: boolean }> {
+  public async fixRegistrationListColumns(
+    subsiteUrl: string,
+    eventContext?: {
+      isB2Run?: boolean;  // Event hat Durchstarter/Funstarter Kapazitaet
+      hasQuiz?: boolean;  // Event hat Quizfragen
+    }
+  ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean }> {
     const added: string[] = [];
+    const removed: string[] = [];
 
     // Bestehende Felder laden
     const fieldsResp = await this.context.spHttpClient.get(
@@ -2599,17 +2606,60 @@ export class EventService {
       for (const f of fields) { existingFieldsList.push(f.InternalName); }
     }
 
-    // Fehlende Basis-Spalten anlegen
+    // Fehlende Basis-Spalten anlegen. StarterType/Quiz-Felder sind feature-spezifisch:
+    // - StarterType/PreferredStarterType: nur fuer B2Run-Events mit Split-Kapazitaet
+    // - QuizScore/QuizAnswers/QuizCompletedAt: nur fuer Events mit Quizfragen
+    // Wird das Event ohne eventContext gefixt (kein Aufrufer-seitiger Flag), lassen wir
+    // feature-spezifische Spalten raus, damit sie nicht unbegruendet auf jedem
+    // Teilnehmerlisten-Schema auftauchen.
     const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
-      { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
-      { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
-      { title: 'QuizScore', type: 9 },
-      { title: 'QuizAnswers', type: 3 },
-      { title: 'QuizCompletedAt', type: 4 },
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
     ];
+    if (eventContext?.isB2Run) {
+      requiredFields.push(
+        { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
+        { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }
+      );
+    }
+    if (eventContext?.hasQuiz) {
+      requiredFields.push(
+        { title: 'QuizScore', type: 9 },
+        { title: 'QuizAnswers', type: 3 },
+        { title: 'QuizCompletedAt', type: 4 }
+      );
+    }
+
+    // Feature-spezifische Spalten, die auf diesem Event NICHT gebraucht werden,
+    // aktiv loeschen (z.B. StarterType auf einem Nicht-B2Run-Event). Das ist
+    // irreversibel — eventuelle Daten in diesen Spalten gehen verloren. Ist aber
+    // vom User explizit gewuenscht, damit die Teilnehmerliste pro Event-Typ
+    // sauber bleibt.
+    const deletableFields: string[] = [];
+    if (!eventContext?.isB2Run) {
+      deletableFields.push('StarterType', 'PreferredStarterType');
+    }
+    if (!eventContext?.hasQuiz) {
+      deletableFields.push('QuizScore', 'QuizAnswers', 'QuizCompletedAt');
+    }
+    for (const fieldName of deletableFields) {
+      if (existingFieldsList.indexOf(fieldName) >= 0) {
+        try {
+          const delResp = await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields/getbytitle('${fieldName}')/deleteObject`,
+            {}
+          );
+          if (delResp.ok) {
+            removed.push(fieldName);
+            // aus existingFieldsList rausziehen damit die View-Logik weiter unten
+            // den Feldnamen nicht mehr als "noch vorhanden" betrachtet.
+            const idx = existingFieldsList.indexOf(fieldName);
+            if (idx >= 0) existingFieldsList.splice(idx, 1);
+          }
+        } catch { /* Feld konnte nicht geloescht werden - weitermachen */ }
+      }
+    }
 
     for (const f of requiredFields) {
       if (existingFieldsList.indexOf(f.title) < 0) {
@@ -2638,18 +2688,32 @@ export class EventService {
         {}
       );
 
-      // Felder in gewuenschter Reihenfolge hinzufuegen
-      const viewFields = [
+      // Felder in gewuenschter Reihenfolge hinzufuegen. StarterType/Quiz-Spalten
+      // werden nur eingebaut, wenn sie tatsaechlich auf der Liste existieren —
+      // auf Nicht-B2Run- bzw. Nicht-Quiz-Events sollen sie nicht auftauchen.
+      const viewFieldsCore = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
         'Department', 'Location', 'JobTitle', 'Phone',
+      ];
+      const viewFields: string[] = [...viewFieldsCore];
+      // Post-Fix-Feldliste (bestehende + gerade hinzugefuegte) fuer die Existenz-Checks
+      const postFixFields = existingFieldsList.concat(added);
+      if (postFixFields.indexOf('StarterType') >= 0) viewFields.push('StarterType');
+      if (postFixFields.indexOf('PreferredStarterType') >= 0) viewFields.push('PreferredStarterType');
+      viewFields.push('Status', 'RegistrationDate');
+      if (postFixFields.indexOf('RegisteredByName') >= 0) viewFields.push('RegisteredByName');
+      if (postFixFields.indexOf('RegisteredByEmail') >= 0) viewFields.push('RegisteredByEmail');
+      viewFields.push('CancellationDate');
+
+      // Auch Custom Fields die auf der Liste existieren
+      const knownBase = viewFieldsCore.concat([
         'StarterType', 'PreferredStarterType',
         'Status', 'RegistrationDate',
         'RegisteredByName', 'RegisteredByEmail',
         'CancellationDate',
-      ];
-
-      // Auch Custom Fields die auf der Liste existieren
-      const knownBase = viewFields.concat(['Title', 'ParticipantName', 'CustomData', 'LastModifiedDate', 'ChangeLog']);
+        'Title', 'ParticipantName', 'CustomData', 'LastModifiedDate', 'ChangeLog',
+        'QuizScore', 'QuizAnswers', 'QuizCompletedAt',
+      ]);
       for (let fi = 0; fi < existingFieldsList.length; fi++) {
         const fn = existingFieldsList[fi];
         if (knownBase.indexOf(fn) < 0 && fn.charAt(0) !== '_' && fn !== 'ContentType' && fn !== 'Attachments') {
@@ -2668,7 +2732,7 @@ export class EventService {
       console.warn('[DEX] View-Reihenfolge konnte nicht gesetzt werden');
     }
 
-    return { added, viewFixed };
+    return { added, removed, viewFixed };
   }
 
   /**
