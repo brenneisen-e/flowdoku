@@ -425,6 +425,19 @@ export default function MyEventsPage(): React.ReactElement {
           }
         } catch { /* */ }
       }
+      // Zusatzschleife: abgemeldete Events finden. DEX_Participants haelt nur
+      // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
+      // entfernt. Ohne diese Schleife waeren alte Abmeldungen im "My Events"-Tab
+      // unsichtbar, sobald der User noch fuer mind. ein Event angemeldet ist.
+      const remainingEvents = events.filter(e => !e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0);
+      for (const event of remainingEvents) {
+        try {
+          const reg = await getMyRegistration(event.id);
+          if (reg && reg.Status === 'Abgemeldet') {
+            entries.push({ event, registration: reg });
+          }
+        } catch { /* */ }
+      }
     } else {
       // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag
       for (const event of events) {
@@ -849,14 +862,23 @@ export default function MyEventsPage(): React.ReactElement {
           <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.cancelledevents')}</h3>
           <div className="my-events-list">
             {cancelledEntries.map(({ event, registration }) => (
-              <div key={event.id} className="card my-event-card" style={{ opacity: 0.6 }}>
-                <div className="my-event-card__header">
-                  <h3>{event.title}</h3>
-                  <span className="badge badge-red">{t('status.cancelled')}</span>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
+              <div
+                key={event.id}
+                className="card my-event-card"
+                style={{
+                  opacity: 0.6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 16px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <strong style={{ flex: '1 1 auto', fontSize: '0.95rem', margin: 0 }}>{event.title}</strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                   {t('myevents.cancelledon')}: {registration.CancellationDate ? formatDate(registration.CancellationDate) : '-'}
-                </p>
+                </span>
+                <span className="badge badge-red">{t('status.cancelled')}</span>
               </div>
             ))}
           </div>
