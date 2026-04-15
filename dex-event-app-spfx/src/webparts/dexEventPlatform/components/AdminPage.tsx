@@ -770,7 +770,21 @@ export default function AdminPage(): React.ReactElement {
                     // redundante '(Pflicht)'-Suffix aus Labels, da das rote Sternchen den
                     // Pflicht-Status schon visualisiert.
                     const changes: string[] = [];
-                    const raw = selectedEvent.eventSpecificFields || [];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    let raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
+                    // B2Run: fehlende Infoservice/Anonym-Checkbox-Felder ergaenzen
+                    const hasField = (id: string): boolean => raw.some(f => f.id === id);
+                    const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
+                    if (isB2Run) {
+                      if (!hasField('b2run_infoservice')) {
+                        raw.push({ id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergaenzt: 'Infoservice'");
+                      }
+                      if (!hasField('b2run_anonym')) {
+                        raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergaenzt: 'Anonym teilnehmen'");
+                      }
+                    }
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const fixed = raw.map((f: any) => {
                       const nf = { ...f };
@@ -807,8 +821,37 @@ export default function AdminPage(): React.ReactElement {
                         nf.label = stripped;
                         changes.push(`Label "${label}" -> "${stripped}"`);
                       }
+                      // B2Run-spezifische Korrekturen
+                      if (nf.id === 'b2run_mobilnummer') {
+                        if (nf.required) { nf.required = false; changes.push('Mobilnummer -> optional'); }
+                        if (nf.label === 'Mobilnummer') {
+                          nf.label = 'Mobilnummer (nur bei aktiviertem Infoservice)';
+                          changes.push("Mobilnummer-Label praezisiert");
+                        }
+                      }
+                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benoetigt') >= 0) {
+                        nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
+                        changes.push('Infoservice-Label modernisiert');
+                      }
+                      if (nf.id === 'b2run_datenschutz') {
+                        const needLinks = !Array.isArray(nf.externalLinks) || nf.externalLinks.length === 0;
+                        if (needLinks) {
+                          nf.externalLinks = [
+                            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+                            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+                          ];
+                          changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergaenzt');
+                        }
+                      }
                       return nf;
                     });
+                    // B2Run-Datenschutz-Checkbox ans Ende schieben
+                    const dsIdx = fixed.findIndex((f: { id: string }) => f.id === 'b2run_datenschutz');
+                    if (dsIdx >= 0 && dsIdx !== fixed.length - 1) {
+                      const [ds] = fixed.splice(dsIdx, 1);
+                      fixed.push(ds);
+                      changes.push('Zustimmung-Checkbox ans Ende verschoben');
+                    }
                     // Speichert zurueck in DEX_Events. Die SP-Spalte heisst 'CustomFields'
                     // (PascalCase) und enthaelt die Felder als JSON-String.
                     const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });

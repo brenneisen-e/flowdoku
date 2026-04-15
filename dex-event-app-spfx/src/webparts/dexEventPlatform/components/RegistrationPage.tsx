@@ -247,10 +247,19 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder muessen 'true' sein,
     // alle anderen duerfen nach trim nicht leer sein.
+    // B2Run: Mobilnummer ist nur Pflicht wenn Infoservice aktiviert; ansonsten
+    // gilt das Feld als versteckt und wird uebersprungen.
     const missingRequired = event.eventSpecificFields
-      .filter(f => f.required && (f.type === 'checkbox'
-        ? eventSpecific[f.id] !== 'true'
-        : !eventSpecific[f.id]?.trim()));
+      .filter(f => {
+        if (f.id === 'b2run_mobilnummer') {
+          if (eventSpecific['b2run_infoservice'] !== 'true') return false;
+          return !eventSpecific[f.id]?.trim();
+        }
+        if (!f.required) return false;
+        return f.type === 'checkbox'
+          ? eventSpecific[f.id] !== 'true'
+          : !eventSpecific[f.id]?.trim();
+      });
     if (missingRequired.length > 0) {
       setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
       return;
@@ -716,11 +725,20 @@ export default function RegistrationPage(): React.ReactElement {
             {event.eventSpecificFields.length === 0 && !isB2runSplit ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
-              event.eventSpecificFields.map(field => (
+              event.eventSpecificFields
+                // B2Run-Sonderregel: Mobilnummer nur zeigen wenn Infoservice aktiviert
+                .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+                .map(fRaw => {
+                  // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
+                  // Mobilnummer Pflicht.
+                  const field = fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true'
+                    ? { ...fRaw, required: true }
+                    : fRaw;
+                  return (
                 <div className="form-group" key={field.id}>
                   {field.type !== 'checkbox' && (
                     <label className="form-label">
-                      {field.required && <span className="required">*</span>}
+                      {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
                       {field.label}
                       {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
                     </label>
@@ -755,16 +773,35 @@ export default function RegistrationPage(): React.ReactElement {
                         style={{ marginTop: 3, flexShrink: 0 }}
                       />
                       <span>
-                        {field.required && <span className="required">*</span>}
+                        {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
                         {field.label}
                         {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+                        {field.externalLinks && field.externalLinks.length > 0 && (
+                          <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
+                            {field.externalLinks.map((l, i) => (
+                              <span key={l.url}>
+                                {i > 0 && <span style={{ color: 'var(--dex-gray-300)', margin: '0 6px' }}>|</span>}
+                                <a
+                                  href={l.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}
+                                >
+                                  {l.label}
+                                </a>
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     </label>
                   ) : (
                     <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
                   )}
                 </div>
-              ))
+                  );
+                })
             )}
           </div>
         </div>
