@@ -771,7 +771,7 @@ export default function AdminPage(): React.ReactElement {
                     // Pflicht-Status schon visualisiert.
                     const changes: string[] = [];
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    let raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
+                    const raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
                     // B2Run: fehlende Infoservice/Anonym-Checkbox-Felder ergaenzen
                     const hasField = (id: string): boolean => raw.some(f => f.id === id);
                     const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
@@ -783,6 +783,13 @@ export default function AdminPage(): React.ReactElement {
                       if (!hasField('b2run_anonym')) {
                         raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
                         changes.push("Feld ergaenzt: 'Anonym teilnehmen'");
+                      }
+                      // Laufshirt: ggf. als b2run_laufshirt anlegen, wenn weder das Feld
+                      // noch ein gleichnamiges existiert
+                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
+                      if (!hasLaufshirt) {
+                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
+                        changes.push("Feld ergaenzt: 'Deloitte-Laufshirt' (Pflicht)");
                       }
                     }
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -806,9 +813,9 @@ export default function AdminPage(): React.ReactElement {
                         const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
                         const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
                         if (!hasNo) {
-                          opts.unshift('Kein T-Shirt benötigt');
+                          opts.unshift('Ohne T-Shirt');
                           nf.options = opts;
-                          changes.push(`${label} -> 'Kein T-Shirt benötigt'-Option`);
+                          changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
                         }
                         if (nf.required) {
                           nf.required = false;
@@ -841,6 +848,24 @@ export default function AdminPage(): React.ReactElement {
                             { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
                           ];
                           changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergaenzt');
+                        }
+                      }
+                      // Deloitte-Laufshirt / Laufshirt: immer Pflicht + 'Kein Laufshirt benoetigt'
+                      // als Option, damit man explizit keines waehlen kann ohne das
+                      // Pflichtfeld leer zu lassen.
+                      if (nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label)) {
+                        if (!nf.required) {
+                          nf.required = true;
+                          changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
+                        }
+                        if (nf.type === 'select') {
+                          const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                          const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
+                          if (!hasNo) {
+                            opts.unshift('Habe bereits ein Laufshirt');
+                            nf.options = opts;
+                            changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefuegt`);
+                          }
                         }
                       }
                       return nf;

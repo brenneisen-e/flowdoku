@@ -359,12 +359,12 @@ export default function EventCreationPage(): React.ReactElement {
    */
   // Bilingual: Labels + Optionen der Felder werden in der Event-Sprache (DE/EN)
   // angelegt, passend zum Locale beim Klick auf 'Vorgeschlagene Felder'.
-  const SUGGESTED_FIELDS_CATALOG: Array<{ key: string; label: string; description: string; build: (now: number) => CustomFieldInput }> = isDe ? [
+  const SUGGESTED_FIELDS_CATALOG: Array<{ key: string; label: string; description: string; build: (_now: number) => CustomFieldInput }> = isDe ? [
     {
       key: 'tshirt',
       label: 'T-Shirt Größe',
       description: 'Dropdown mit Kein T-Shirt / XS–XXL',
-      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
       key: 'allergies',
@@ -401,7 +401,7 @@ export default function EventCreationPage(): React.ReactElement {
       key: 'tshirt',
       label: 'T-Shirt size',
       description: 'Dropdown: No t-shirt needed / XS–XXL',
-      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['No t-shirt needed', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+      build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
       key: 'allergies',
@@ -481,13 +481,17 @@ export default function EventCreationPage(): React.ReactElement {
       setEventType('B2Run');
       // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
       // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
-      const fields: CustomFieldInput[] = [
+      // Locale-abhaengige Labels/Optionen. IDs bleiben konstant, damit die
+      // B2Run-Logik (Infoservice -> Mobilnummer, CSV-Export etc.) unabhaengig
+      // von der Sprache funktioniert.
+      const fields: CustomFieldInput[] = isDe ? [
         { id: 'b2run_startblock', label: 'Startblock', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
         { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true },
         { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
         { id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true },
         { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true },
         { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
         {
           id: 'b2run_datenschutz',
           label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
@@ -498,6 +502,26 @@ export default function EventCreationPage(): React.ReactElement {
           externalLinks: [
             { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
             { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+          ],
+        },
+      ] : [
+        { id: 'b2run_startblock', label: 'Start block', type: 'select', required: true, options: [...b2runStartblocks], visible: true },
+        { id: 'b2run_gruppe', label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true },
+        { id: 'b2run_altersklasse', label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
+        { id: 'b2run_infoservice', label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobile number (only if info service is enabled)', type: 'text', required: false, options: [], visible: true },
+        { id: 'b2run_anonym', label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true },
+        { id: 'b2run_laufshirt', label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+        {
+          id: 'b2run_datenschutz',
+          label: 'I agree to the terms, privacy policy and photo/video recordings',
+          type: 'checkbox',
+          required: true,
+          options: [],
+          visible: true,
+          externalLinks: [
+            { label: 'Terms (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+            { label: 'Privacy (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
           ],
         },
       ];
@@ -591,7 +615,7 @@ export default function EventCreationPage(): React.ReactElement {
     setWaitlistEnabled(true);
     setEventImageUrl('');
     setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Kein T-Shirt benötigt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
       { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
       { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
       { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
