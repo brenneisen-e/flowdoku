@@ -1569,11 +1569,13 @@ Problem: Anna Kristina Mauß ist im Outlook-Termin drin — aber **nicht** in de
 7. **Resolve_Recipient_Email** → Graph API User-Search per DisplayName (`Nachname, Vorname`) → Email
 8. **Get_Teilnehmer_Entry** → SharePoint HTTP request auf Subsite-Teilnehmerliste: gibt es einen Eintrag mit `ParticipantEmail eq '<resolved_email>'` der nicht `Abgemeldet` ist?
 9. **Already_Registered?** → wenn **ja**: Flow endet (Log-Eintrag "OK, schon eingeladen"). Wenn **nein**: weiter zu 10.
-10. **Create_FYI_Email** → DEX_Emails-Queue-Item anlegen mit:
-    - `EventId = <DEX_Event.Id>`
-    - `To = <Organizer.OrganizerEmail>` (Split falls mehrere)
-    - `TemplateType = ForwardNotification` (neues Template in DEX_EmailTemplates)
-    - Variablen: `Forwarder` (Dr. von Rueden), `Recipient` (Anna Kristina Mauß), `RecipientEmail`, `EventTitle`, `EventStart`
+10. **Get_ForwardTemplate** → Template `OutlookForwardNotification` (DE/EN je nach Event) aus `DEX_EmailTemplates` laden. Das Template wird **von der App automatisch angelegt** (siehe Abschnitt "Template-Seeding durch die App") — inklusive Deloitte-Outlook-Wrapper.
+11. **Rendered_Subject / Rendered_Body** → Platzhalter `{{EventTitle}}`, `{{Forwarder}}`, `{{Recipient}}`, `{{RecipientEmail}}`, `{{OrganizerFirstName}}`, `{{AppUrl}}` per `replace()` ersetzen.
+12. **Create_FYI_Email** → DEX_Emails-Queue-Item anlegen mit den echten Spalten:
+    - `Title` = Rendered Subject
+    - `Recipient` = Organizer-Email (Plain-Text)
+    - `Body` = Rendered HTML-Body (fertig gerendert, kein weiteres Template-Lookup im DEX_SEND_MAIL nötig)
+    - `EmailType` = `Info`, `Status` = `Pending`, `EventId` = Event-ID, `EventTitle` = Cleaned_Subject
 
 ### SharePoint-Liste DEX_Outlook (unverändert)
 
@@ -1701,72 +1703,76 @@ Die Teilnehmer-Liste liegt auf der Event-Subsite. `SubsiteUrl` aus `Get_DEX_Even
 - Wenn **yes** → Terminate (Succeeded, Message `Recipient already registered`)
 - Wenn **no** → weiter zu 12
 
-**12. `Create_FYI_Email` (SharePoint Create item, Liste DEX_Emails)**
+**12. `Get_ForwardTemplate` (SharePoint Get items auf DEX_EmailTemplates)**
 
-Organizer-Email aus Event holen (nur erste, falls mehrere). Payload:
-- `Title`: `FYI: Meeting Forwarded — @{outputs('Cleaned_Subject')}`
-- `EventId`: `@{first(outputs('Get_DEX_Event')?['body/value'])?['Id']}`
-- `To`: `@{first(split(first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail'], ';'))}`
-- `Subject`: `FYI: Termin wurde weitergeleitet — @{outputs('Cleaned_Subject')}`
-- `TemplateType / Value`: `ForwardNotification`
-- `TemplateVars` (JSON-String):
+Das Template `OutlookForwardNotification` wird **von der App automatisch angelegt** (siehe unten, Abschnitt "Template-Seeding durch die App"). Der Flow holt es per Filter. Sprache wird vom Event übernommen (`EmailLanguage`-Feld), mit Fallback auf `EN`.
+
+- Site Address: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+- List Name: `DEX_EmailTemplates`
+- Filter Query: **Expression (fx)** →
   ```
-  @{concat(
-    '{"Forwarder":"', triggerOutputs()?['body/from'],
-    '","Recipient":"', outputs('Recipient_DisplayName'),
-    '","RecipientEmail":"', coalesce(outputs('Recipient_Email'), 'nicht aufgeloest'),
-    '","EventTitle":"', outputs('Cleaned_Subject'),
-    '","RegistrationUrl":"https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView"}'
-  )}
+  concat('TemplateType eq ''OutlookForwardNotification'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')
   ```
-- `Status / Value`: `Queued`
+- Top Count: `1`
 
-Der `DEX_SEND_MAIL`-Flow picks das DEX_Emails-Item auf und versendet die FYI-Mail per Template `ForwardNotification`.
+**12a. `Rendered_Subject` (Compose)**
 
-### Neues Template in DEX_EmailTemplates (Outlook-Style, Deloitte-Branding)
-
-Das Template wird wie alle anderen DEX-Templates in der SharePoint-Liste `DEX_EmailTemplates` gepflegt und nutzt die **Deloitte-Outlook-Mail-Vorlage** (gleiche HTML-Struktur wie `Anmeldung`, `Warteliste`, `Reminder` etc., damit die FYI-Mail optisch zu den anderen Flow-Mails passt).
-
-**DE-Variante:**
+Platzhalter im Subject ersetzen. Expression (fx):
 ```
-TemplateType: ForwardNotification
-Language:     DE
-Subject:      FYI: Termin wurde weitergeleitet — {{EventTitle}}
-Body (HTML, Deloitte-Template):
-  Hallo {{OrganizerFirstName}},
-
-  zur Info: {{Forwarder}} hat die Outlook-Einladung für
-  <strong>{{EventTitle}}</strong> an <strong>{{Recipient}}</strong>
-  ({{RecipientEmail}}) weitergeleitet.
-
-  <strong>{{Recipient}} ist aktuell NICHT in der DEX-Teilnehmerliste registriert.</strong>
-  Die Person muss sich ggf. noch selbst über die App anmelden, damit sie eine
-  TeilnehmerID und einen QR-Code bekommt und in der offiziellen Teilnehmerliste
-  erscheint.
-
-  <a href="{{RegistrationUrl}}">Zur DEX-App</a>
-
-  ---
-  Diese Mail wurde automatisch erzeugt (Microsoft Outlook Meeting Forward Notification).
-  Handlungsoptionen:
-  • {{Recipient}} bitten, sich selbst über die App zu registrieren
-  • Oder: Du registrierst {{Recipient}} als Organizer manuell über "Für andere Person registrieren"
-  • Oder: {{Recipient}} aus dem Outlook-Termin entfernen, falls nicht gewünscht
+replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['Subject'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' ')))
 ```
 
-**EN-Variante:** gleicher `TemplateType = ForwardNotification`, `Language = EN`, analoger Text.
+**12b. `Rendered_Body` (Compose)**
 
-**Variablen:**
-- `{{OrganizerFirstName}}` — Vorname des Organizers (aus DEX_Events.Organizer split)
-- `{{Forwarder}}` — Absender aus `triggerOutputs()?['body/from']`
-- `{{Recipient}}` — Recipient-Name aus Parse_Recipients
+Die gleiche Replace-Kaskade auf dem `BodyHtml`-Feld, zusätzlich noch `{{AppUrl}}`. Expression (fx):
+```
+replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')
+```
+
+**13. `Create_FYI_Email` (SharePoint Create item, Liste DEX_Emails)**
+
+Schreibt den fertigen Mail-Body in die Queue. `DEX_SEND_MAIL` verschickt ihn, ohne selbst Templates laden zu müssen — der komplette, schon gerenderte HTML-Body steht direkt im `Body`-Feld.
+
+Echte Spalten von `DEX_Emails` (siehe `EventService.ts:196`):
+
+| Feld | Typ | Wert für diesen Flow |
+|------|-----|----------------------|
+| `Title` | Text | = Subject (`outputs('Rendered_Subject')`) |
+| `Recipient` | Note, Plain-Text | Organizer-Email (erste aus `;`-Liste) |
+| `Cc` | Note, Plain-Text | leer |
+| `RecipientName` | Text | = `first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';'))` |
+| `Body` | Note (HTML) | = `outputs('Rendered_Body')` |
+| `EmailType` | Choice (Anmeldung, Abmeldung, Warteliste, Nachruecken, **Info**) | `Info` |
+| `EventTitle` | Text | = `outputs('Cleaned_Subject')` |
+| `EventId` | Text | = `string(first(outputs('Get_DEX_Event')?['body/value'])?['Id'])` |
+| `Status` | Choice (**Pending**, Sent, Failed) | `Pending` |
+| `SentDate` | Date | leer (Flow setzt es beim Versand) |
+
+Der `DEX_SEND_MAIL`-Flow pickt das Item auf (`Status eq 'Pending'`) und verschickt es per Office-365-Mail-Action — **keine Anpassung an DEX_SEND_MAIL nötig**, weil der Body schon fertig gerendert ist.
+
+### Template-Seeding durch die App
+
+Das Template `OutlookForwardNotification` (DE + EN) wird **automatisch beim App-Start** in die Liste `DEX_EmailTemplates` geschrieben. Zuständig sind drei Funktionen in `EventService.ts`:
+
+- `ensureEmailTemplatesList()` — erstmaliges Anlegen der Liste mit allen Default-Templates
+- `ensureMissingEmailTemplates()` — Nachlegen auf Tenants, wo die Liste schon existiert, aber `OutlookForwardNotification` noch fehlt
+- `upgradeStandardEmailTemplates()` — Updated den `BodyHtml` wenn das Template in der App-Version verändert wurde (überschreibt User-Customizing)
+
+Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates.ts` gerendert — damit sieht die FYI-Mail exakt wie die anderen DEX-Mails aus (schwarzer Deloitte-Header mit Logo, grüne Trennlinie, DEX-Orb, Content-Block, Footer mit Legal-Text).
+
+**Platzhalter im Body (werden vom Flow per `replace()` ersetzt, siehe 12a/12b):**
+- `{{OrganizerFirstName}}` — Vorname des Organizers
+- `{{Forwarder}}` — Name/Email der Person, die den Termin weitergeleitet hat (aus `body/from`)
+- `{{Recipient}}` — Name der hinzugefügten Person
 - `{{RecipientEmail}}` — Resolved Email oder `nicht aufgelöst`
-- `{{EventTitle}}` — aus Cleaned_Subject
-- `{{RegistrationUrl}}` — DEX-App-URL
+- `{{EventTitle}}` — Event-Titel
+- `{{AppUrl}}` — DEX-App-URL (hardcoded im Flow)
+
+**Code-Konstanten:** `OUTLOOK_FORWARD_BODY_DE` / `OUTLOOK_FORWARD_BODY_EN` in `EventService.ts`.
 
 ### Änderung in DEX_SEND_MAIL
 
-Der bestehende Flow `DEX_SEND_MAIL` muss `ForwardNotification` als neuen Template-Type kennen. Aktuell werden Template-Lookups per `TemplateType eq '<val>'` gemacht, daher reicht es, einfach das Template in DEX_EmailTemplates anzulegen — **kein Code-Change am Flow nötig**, solange die existierende Generic-Template-Logik die Variablen `{{Forwarder}}`, `{{Recipient}}`, `{{RecipientEmail}}`, `{{EventTitle}}`, `{{RegistrationUrl}}` per `replace()` ersetzt.
+**Keine Änderung nötig.** Der Flow verschickt einfach das fertige `Body`-Feld aus DEX_Emails per Office-365-Mail-Action — das neue Template wird für DEX_SEND_MAIL transparent behandelt (wie alle `Info`-Mails).
 
 ### Bekannte Einschränkungen
 

@@ -94,6 +94,51 @@ const OUTLOOK_DECLINE_BODY_ONBEHALF_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
+// Meeting-Forward-Notification-FYI: Ein Teilnehmer hat den Outlook-Termin an eine
+// dritte Person weitergeleitet, die NICHT in der SharePoint-Teilnehmerliste steht.
+// Die Mail geht an den Organizer. Platzhalter:
+//   {{OrganizerFirstName}} — Vorname des Organizers (Anrede)
+//   {{Forwarder}}          — Person, die den Termin weitergeleitet hat
+//   {{Recipient}}          — Name der hinzugefuegten Person
+//   {{RecipientEmail}}     — Email der hinzugefuegten Person ('nicht aufgeloest' bei Externen)
+//   {{EventTitle}}         — Event-Titel
+//   {{AppUrl}}             — DEX-App-URL (Organizer kann dort manuell registrieren)
+const OUTLOOK_FORWARD_BODY_EN = wrapTemplateForStorage(
+  '#0d6efd',
+  'Meeting was forwarded',
+  'Event {{EventTitle}}',
+  `<p>Hi {{OrganizerFirstName}},</p>
+<p>FYI: <strong>{{Forwarder}}</strong> forwarded the Outlook invitation for <strong>{{EventTitle}}</strong> to <strong>{{Recipient}}</strong> ({{RecipientEmail}}).</p>
+<p><strong>{{Recipient}} is currently NOT registered in the DEX participant list.</strong> This person still needs to register via the app in order to get a ParticipantID and QR code and to appear in the official participant list.</p>
+<p style="margin:24px 0;text-align:center;"><a href="{{AppUrl}}" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Open DEX App</a></p>
+<p style="font-size:13px;color:#555;margin-top:24px;">Possible next steps:</p>
+<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
+<li>Ask {{Recipient}} to register themselves via the app.</li>
+<li>Or: register {{Recipient}} manually as organizer via "Register for another person".</li>
+<li>Or: remove {{Recipient}} from the Outlook meeting if they should not attend.</li>
+</ul>
+<p style="font-size:12px;color:#999;">This message was generated automatically (Microsoft Outlook Meeting Forward Notification).</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+
+const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
+  '#0d6efd',
+  'Termin wurde weitergeleitet',
+  'Event {{EventTitle}}',
+  `<p>Hallo {{OrganizerFirstName}},</p>
+<p>zur Info: <strong>{{Forwarder}}</strong> hat die Outlook-Einladung f\u00FCr <strong>{{EventTitle}}</strong> an <strong>{{Recipient}}</strong> ({{RecipientEmail}}) weitergeleitet.</p>
+<p><strong>{{Recipient}} ist aktuell NICHT in der DEX-Teilnehmerliste registriert.</strong> Die Person muss sich ggf. noch selbst \u00FCber die App anmelden, damit sie eine TeilnehmerID und einen QR-Code bekommt und in der offiziellen Teilnehmerliste erscheint.</p>
+<p style="margin:24px 0;text-align:center;"><a href="{{AppUrl}}" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">DEX-App \u00F6ffnen</a></p>
+<p style="font-size:13px;color:#555;margin-top:24px;">M\u00F6gliche Handlungsoptionen:</p>
+<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
+<li>{{Recipient}} bitten, sich selbst \u00FCber die App zu registrieren.</li>
+<li>Oder: {{Recipient}} als Organizer manuell \u00FCber "F\u00FCr andere Person registrieren" eintragen.</li>
+<li>Oder: {{Recipient}} aus dem Outlook-Termin entfernen, falls nicht gew\u00FCnscht.</li>
+</ul>
+<p style="font-size:12px;color:#999;">Diese Mail wurde automatisch erzeugt (Microsoft Outlook Meeting Forward Notification).</p>
+<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
@@ -757,6 +802,11 @@ export class EventService {
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
       { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
+      // Meeting-Forward-Notification: FYI an Organizer wenn weitergeleitete Person nicht registriert ist
+      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
+        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
+      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
+        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -817,6 +867,10 @@ export class EventService {
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
       { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
+      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
+        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
+      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
+        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -903,6 +957,10 @@ export class EventService {
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
       { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
         BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
+      { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
+        BodyHtml: OUTLOOK_FORWARD_BODY_EN },
+      { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
+        BodyHtml: OUTLOOK_FORWARD_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
