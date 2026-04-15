@@ -184,10 +184,10 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div
             style={{
-              fontSize: '1.55rem',
+              fontSize: '0.95rem',
               color: 'var(--dex-gray-400)',
               textAlign: 'center',
-              marginTop: 8,
+              marginTop: 6,
               lineHeight: 1.3,
             }}
           >
