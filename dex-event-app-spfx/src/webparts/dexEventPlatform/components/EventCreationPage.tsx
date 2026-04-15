@@ -226,7 +226,60 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.organizers.join('; ') : `${currentUser.firstName} ${currentUser.surname}`
   );
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
-  const [organizerEmails, setOrganizerEmails] = React.useState<string[]>([currentUser.email]);
+  // Beim Edit: organizerEmails aus dem gespeicherten Event uebernehmen, nicht auf currentUser
+  // zuruecksetzen. Sonst ueberschreibt ein Edit+Save die gesamte Organizer-Email-Liste mit
+  // nur der Mail des aktuellen Editors — alle anderen Organizer wuerden stumm aus der
+  // Late-Cancel- / Organizer-Mail-Verteilung rausfallen.
+  const [organizerEmails, setOrganizerEmails] = React.useState<string[]>(
+    editEvent && editEvent.organizerEmails && editEvent.organizerEmails.length > 0
+      ? editEvent.organizerEmails.slice()
+      : [currentUser.email]
+  );
+  const [organizerReconcileInfo, setOrganizerReconcileInfo] = React.useState<string>('');
+
+  // Auto-Reparatur beim Edit: wenn das Event weniger Emails als Namen hat
+  // (alter Bug: Edit+Save hat OrganizerEmail mit nur der Editor-Mail ueberschrieben),
+  // versuchen wir die fehlenden Mails per Name-Suche aus dem Tenant aufzuloesen.
+  // Der User muss nur noch Save klicken, dann ist der Datensatz repariert.
+  React.useEffect(() => {
+    if (!editEvent) return;
+    const names = (editEvent.organizers || []).map(n => (n || '').trim()).filter(Boolean);
+    const emails = (editEvent.organizerEmails || []).map(e => (e || '').trim().toLowerCase()).filter(Boolean);
+    if (names.length <= emails.length) return; // OK oder sonderfall - nichts zu tun
+    let cancelled = false;
+    (async () => {
+      const resolved: string[] = emails.slice();
+      const missingNames: string[] = [];
+      for (const name of names) {
+        if (cancelled) return;
+        try {
+          // Deloitte-Namensformat haeufig "Nachname, Vorname" — picker matcht beide.
+          const hits = await searchUsers(name);
+          const firstWithEmail = hits.find(h => h.email && !resolved.some(e => e === h.email.toLowerCase()));
+          if (firstWithEmail) {
+            resolved.push(firstWithEmail.email.toLowerCase());
+          } else {
+            missingNames.push(name);
+          }
+        } catch { missingNames.push(name); }
+      }
+      if (cancelled) return;
+      if (resolved.length > emails.length) {
+        setOrganizerEmails(resolved);
+        setOrganizerReconcileInfo(
+          missingNames.length === 0
+            ? `Auto-Reparatur: ${resolved.length - emails.length} fehlende Organizer-E-Mail-Adresse(n) aus dem Verzeichnis nachgetragen. Bitte speichern, um den Datensatz zu reparieren.`
+            : `Auto-Reparatur: ${resolved.length - emails.length} Organizer-Mail(s) nachgetragen, fuer ${missingNames.length} Name(n) keine Mail im Verzeichnis gefunden: ${missingNames.join(', ')}. Bitte manuell ueber die Suche auswaehlen.`
+        );
+      } else if (missingNames.length > 0) {
+        setOrganizerReconcileInfo(
+          `Achtung: ${missingNames.length} Organizer-Name(n) haben keine E-Mail (${missingNames.join(', ')}). Bitte manuell aus der Suche auswaehlen damit Late-Cancel-Mails alle erreichen.`
+        );
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
@@ -1072,6 +1125,16 @@ export default function EventCreationPage(): React.ReactElement {
                 {isSearchingOrganizer && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
                 )}
+                {organizerReconcileInfo && (
+                  <div style={{
+                    marginTop: 8, padding: '8px 12px',
+                    fontSize: '0.8rem', color: 'var(--dex-gray-800)',
+                    background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green-dark)',
+                    borderRadius: 'var(--dex-radius-md)',
+                  }}>
+                    {organizerReconcileInfo}
+                  </div>
+                )}
                 {organizerResults.length > 0 && (
                   <div style={{
                     position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
@@ -1106,16 +1169,26 @@ export default function EventCreationPage(): React.ReactElement {
                 {(() => {
                   const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
                   if (orgList.length < 2) return null;
+                  // Namen- und Email-Liste parallel halten: jede Chip-Aktion muss auf BEIDEN
+                  // Listen wirken, sonst wird OrganizerEmail desynchronisiert und Late-Cancel-
+                  // / Event-Mails gehen nur an eine Teilmenge der Organizer.
                   const move = (idx: number, dir: -1 | 1): void => {
-                    const next = [...orgList];
+                    const nextNames = [...orgList];
                     const target = idx + dir;
-                    if (target < 0 || target >= next.length) return;
-                    [next[idx], next[target]] = [next[target], next[idx]];
-                    setOrganizer(next.join('; '));
+                    if (target < 0 || target >= nextNames.length) return;
+                    [nextNames[idx], nextNames[target]] = [nextNames[target], nextNames[idx]];
+                    setOrganizer(nextNames.join('; '));
+                    setOrganizerEmails(prev => {
+                      if (idx >= prev.length || target >= prev.length) return prev;
+                      const nextEmails = [...prev];
+                      [nextEmails[idx], nextEmails[target]] = [nextEmails[target], nextEmails[idx]];
+                      return nextEmails;
+                    });
                   };
                   const remove = (idx: number): void => {
-                    const next = orgList.filter((_, i) => i !== idx);
-                    setOrganizer(next.join('; '));
+                    const nextNames = orgList.filter((_, i) => i !== idx);
+                    setOrganizer(nextNames.join('; '));
+                    setOrganizerEmails(prev => prev.filter((_, i) => i !== idx));
                   };
                   return (
                     <div style={{ marginTop: 10 }}>
