@@ -2426,14 +2426,34 @@ export class EventService {
     registeredByEmail?: string // Audit: E-Mail des Users der die Anmeldung ausloest
   ): Promise<boolean> {
     try {
-      // ---- Permission-Check (v3.9.2) ----
-      // Wenn der angemeldete User NICHT fuer sich selbst registriert, muss er
-      // berechtigt sein. Das Frontend (RegistrationPage) filtert zwar den UI-Button,
-      // aber ein Angreifer koennte mit F12 den Service direkt aufrufen. Hier noch
-      // eine serverseitige Pruefung — nicht perfekt (weil der SPFx-Code clientseitig
-      // laeuft), aber fangt naiven App-Bypass ab.
+      // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
+      // Serverseitige Pruefungen — nicht perfekt (SPFx laeuft im Browser),
+      // aber fangt naiven App-Bypass (F12, direkter Service-Aufruf) ab.
       const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
       const targetEmail = (participantEmail || '').toLowerCase();
+
+      // Event-Metadaten laden (Deadline + OrganizerEmail) ueber SubsiteUrl.
+      // Beide Checks nutzen die gleiche Abfrage — einmal laden, mehrfach pruefen.
+      let eventDeadline = '';
+      let eventOrganizerEmails: string[] = [];
+      try {
+        const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
+        const evResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail`,
+          SPHttpClient.configurations.v1
+        );
+        if (evResp.ok) {
+          const evData = await evResp.json();
+          const items = evData.value || evData.d?.results || [];
+          if (items.length > 0) {
+            eventDeadline = items[0].RegistrationDeadline || '';
+            const orgStr: string = items[0].OrganizerEmail || '';
+            eventOrganizerEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
+          }
+        }
+      } catch { /* Bei Load-Fehler konservativ weitermachen — andere Checks greifen */ }
+
+      // Check A: Darf der User fuer eine andere Person registrieren?
       if (targetEmail && targetEmail !== sessionEmail) {
         const allowed = await this.canRegisterForOthers(subsiteUrl, participantEmail);
         if (!allowed) {
@@ -2441,7 +2461,35 @@ export class EventService {
           return false;
         }
       }
-      // ---- Ende Permission-Check ----
+
+      // Check B: Deadline abgelaufen? Nur Event-Organizer + Admin duerfen nach
+      // Deadline registrieren (auch fuer sich selbst). Assistant NICHT — das ist
+      // wie ein normaler User.
+      if (eventDeadline) {
+        const deadlineDate = new Date(eventDeadline);
+        if (!isNaN(deadlineDate.getTime()) && deadlineDate < new Date()) {
+          const isEventOrganizer = eventOrganizerEmails.indexOf(sessionEmail) >= 0;
+          let isAdmin = false;
+          try {
+            const esc = sessionEmail.replace(/'/g, "''");
+            const roleResp = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
+              SPHttpClient.configurations.v1
+            );
+            if (roleResp.ok) {
+              const rd = await roleResp.json();
+              const rItems = rd.value || rd.d?.results || [];
+              if (rItems.length > 0 && rItems[0].Role === 'Admin') isAdmin = true;
+            }
+          } catch { /* ignore */ }
+
+          if (!isEventOrganizer && !isAdmin) {
+            console.warn(`[DEX] registerForEvent DENIED (deadline): ${sessionEmail} versuchte nach Deadline ${eventDeadline} zu registrieren — weder Event-Organizer noch Admin.`);
+            return false;
+          }
+        }
+      }
+      // ---- Ende Permission-Checks ----
 
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
@@ -2543,28 +2591,70 @@ export class EventService {
     registeredByEmail?: string // Audit: E-Mail des Users der die Re-Anmeldung ausloest
   ): Promise<boolean> {
     try {
-      // ---- Permission-Check (v3.9.2) ----
+      // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
       // Lade die ParticipantEmail aus dem zu reaktivierenden Item und pruefe,
-      // ob der aktuelle User dafuer berechtigt ist.
+      // ob der aktuelle User dafuer berechtigt ist. Plus Deadline-Check.
       try {
         const itemResp = await this.context.spHttpClient.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail`,
           SPHttpClient.configurations.v1
         );
+        const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
+        let targetEmail = '';
         if (itemResp.ok) {
           const itemData = await itemResp.json();
-          const targetEmail: string = (itemData.ParticipantEmail || itemData.d?.ParticipantEmail || '').toLowerCase();
-          const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
-          if (targetEmail && targetEmail !== sessionEmail) {
-            const allowed = await this.canRegisterForOthers(subsiteUrl, targetEmail);
-            if (!allowed) {
-              console.warn(`[DEX] reactivateRegistration DENIED: ${sessionEmail} versuchte ${targetEmail} zu reaktivieren — nicht berechtigt.`);
-              return false;
+          targetEmail = (itemData.ParticipantEmail || itemData.d?.ParticipantEmail || '').toLowerCase();
+        }
+
+        // Check A: fuer andere Person registrieren?
+        if (targetEmail && targetEmail !== sessionEmail) {
+          const allowed = await this.canRegisterForOthers(subsiteUrl, targetEmail);
+          if (!allowed) {
+            console.warn(`[DEX] reactivateRegistration DENIED: ${sessionEmail} versuchte ${targetEmail} zu reaktivieren — nicht berechtigt.`);
+            return false;
+          }
+        }
+
+        // Check B: Deadline-Check (Event ueber SubsiteUrl finden)
+        const subsiteEsc = encodeURIComponent(subsiteUrl.replace(/'/g, "''"));
+        const evResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${subsiteEsc}'&$top=1&$select=RegistrationDeadline,OrganizerEmail`,
+          SPHttpClient.configurations.v1
+        );
+        if (evResp.ok) {
+          const evData = await evResp.json();
+          const items = evData.value || evData.d?.results || [];
+          if (items.length > 0) {
+            const deadline = items[0].RegistrationDeadline || '';
+            const orgStr: string = items[0].OrganizerEmail || '';
+            const orgEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
+            if (deadline) {
+              const deadlineDate = new Date(deadline);
+              if (!isNaN(deadlineDate.getTime()) && deadlineDate < new Date()) {
+                const isEventOrganizer = orgEmails.indexOf(sessionEmail) >= 0;
+                let isAdmin = false;
+                try {
+                  const esc = sessionEmail.replace(/'/g, "''");
+                  const roleResp = await this.context.spHttpClient.get(
+                    `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
+                    SPHttpClient.configurations.v1
+                  );
+                  if (roleResp.ok) {
+                    const rd = await roleResp.json();
+                    const rItems = rd.value || rd.d?.results || [];
+                    if (rItems.length > 0 && rItems[0].Role === 'Admin') isAdmin = true;
+                  }
+                } catch { /* ignore */ }
+                if (!isEventOrganizer && !isAdmin) {
+                  console.warn(`[DEX] reactivateRegistration DENIED (deadline): ${sessionEmail} versuchte nach Deadline ${deadline} zu reaktivieren.`);
+                  return false;
+                }
+              }
             }
           }
         }
-      } catch { /* bei Load-Fehler konservativ: weitermachen, weil Reactivation fuer eigene User nicht blockiert werden darf */ }
-      // ---- Ende Permission-Check ----
+      } catch { /* bei Load-Fehler konservativ: weitermachen */ }
+      // ---- Ende Permission-Checks ----
 
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
