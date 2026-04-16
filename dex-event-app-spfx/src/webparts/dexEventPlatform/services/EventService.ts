@@ -1681,20 +1681,7 @@ export class EventService {
         return;
       }
 
-      // 5. Werte zurueckschreiben
-      // ListItemEntityTypeFullName fuer MERGE
-      let listItemType = 'SP.Data.DEX_x005f_EventsListItem';
-      try {
-        const tr = await this.context.spHttpClient.get(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
-          SPHttpClient.configurations.v1
-        );
-        if (tr.ok) {
-          const td = await tr.json();
-          listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
-        }
-      } catch { /* Fallback */ }
-
+      // 5. Werte zurueckschreiben per _merge (odata=nometadata, daher kein __metadata im Body noetig)
       let restored = 0;
       let failed = 0;
       for (const idStr of Object.keys(backup)) {
@@ -1702,7 +1689,7 @@ export class EventService {
         try {
           const resp = await this._merge(
             `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${id})`,
-            { '__metadata': { 'type': listItemType }, 'Audience': backup[id] }
+            { 'Audience': backup[id] }
           );
           if (resp.ok) restored += 1;
           else failed += 1;
@@ -3386,18 +3373,8 @@ export class EventService {
       return { scanned, updated, fieldUpdates, skippedNoMapping, failed };
     }
 
-    // ListItemEntityTypeFullName fuer den MERGE-PATCH
-    let listItemType = REG_LIST_ITEM_TYPE;
-    try {
-      const tr = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ListItemEntityTypeFullName`,
-        SPHttpClient.configurations.v1
-      );
-      if (tr.ok) {
-        const td = await tr.json();
-        listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
-      }
-    } catch { /* Fallback */ }
+    // _merge (odata=nometadata) benoetigt kein __metadata im Body, also auch
+    // keinen ListItemEntityTypeFullName-Lookup.
 
     for (const it of items) {
       scanned += 1;
@@ -3436,12 +3413,11 @@ export class EventService {
 
       if (Object.keys(patch).length === 0) continue;
 
-      // MERGE-PATCH schicken
+      // MERGE-PATCH schicken. _merge nutzt odata=nometadata — daher KEIN __metadata im Body.
       try {
-        const body = { '__metadata': { 'type': listItemType }, ...patch };
         const resp = await this._merge(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-          body
+          patch
         );
         if (resp.ok) {
           updated += 1;
@@ -3557,18 +3533,7 @@ export class EventService {
       return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
     }
 
-    // ListItemEntityTypeFullName
-    let listItemType = REG_LIST_ITEM_TYPE;
-    try {
-      const tr = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ListItemEntityTypeFullName`,
-        SPHttpClient.configurations.v1
-      );
-      if (tr.ok) {
-        const td = await tr.json();
-        listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
-      }
-    } catch { /* Fallback */ }
+    // _merge (odata=nometadata) benoetigt kein __metadata im Body — kein ListItemEntityTypeFullName-Lookup noetig.
 
     for (const it of items) {
       scanned += 1;
@@ -3604,10 +3569,11 @@ export class EventService {
       if (Object.keys(patch).length === 0) continue;
 
       try {
-        const body = { '__metadata': { 'type': listItemType }, ...patch };
+        // _merge nutzt odata=nometadata — daher KEIN __metadata im Body.
+        // Analog zu updateRegistrationData().
         const resp = await this._merge(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${it['Id']})`,
-          body
+          patch
         );
         if (resp.ok) {
           updated += 1;
@@ -3615,8 +3581,7 @@ export class EventService {
           if (patch[menuField]) menuSet += 1;
         } else {
           const errText = await resp.text().catch(() => '');
-          // Voll-Detail in der Browser-Konsole, gekuerzte Version im Report
-          console.warn(`[DEX] seedE2E MERGE failed for item ${it['Id']}:`, { status: resp.status, body: errText, payload: body, listItemType });
+          console.warn(`[DEX] seedE2E MERGE failed for item ${it['Id']}:`, { status: resp.status, body: errText, payload: patch });
           failed.push({ itemId: it['Id'], reason: `HTTP ${resp.status}: ${errText.substring(0, 400)}` });
         }
       } catch (err) {
