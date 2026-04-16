@@ -143,6 +143,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function initEvents(): Promise<void> {
     // ensure-Aufrufe koennen fehlschlagen wenn User nur Read-Rechte hat
     try { await eventService.ensureEventsList(); } catch { /* */ }
+    // v4.2.0 Migration: Audience-Feld von Text auf Note umstellen (falls noch Text).
+    // Idempotent: skipt wenn Feld bereits Note ist. Nur Admin hat Write-Rechte,
+    // fuer normale User faellt der Call still durch.
+    try { await eventService.upgradeAudienceFieldToNote(); } catch { /* */ }
     try { await eventService.ensureEmailsList(); } catch { /* */ }
     try { await eventService.ensureOutlookList(); } catch { /* */ }
     try { await eventService.ensureParticipantsList(); } catch { /* */ }

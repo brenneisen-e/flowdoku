@@ -1510,7 +1510,7 @@ export class EventService {
   /**
    * Feld-Definitionen fuer DEX_Events Liste
    */
-  private getEventsFieldDefinitions(): Array<{ title: string; type: number; choices?: string[]; metaType?: string }> {
+  private getEventsFieldDefinitions(): Array<{ title: string; type: number; choices?: string[]; metaType?: string; richText?: boolean; numberOfLines?: number }> {
     return [
       { title: 'EventStatus', type: 6, choices: ['Under Construction', 'Active', 'Completed', 'Cancelled'], metaType: 'SP.FieldChoice' },
       { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
@@ -1518,7 +1518,11 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'LocationAddress', type: 2 }, // JSON-String: { street, houseNo, zip, city }
       { title: 'LocationFilter', type: 2 },
-      { title: 'Audience', type: 2 },
+      // Audience ist Multi-Line-Text (Note) damit es auch bei 100+ E-Mail-Adressen
+      // nicht abgeschnitten wird (Single-Line-Text ist auf 255 Zeichen limitiert).
+      // Fuer bestehende Events siehe upgradeAudienceFieldToNote() — migriert die
+      // alte Text-Spalte zu Note ohne Datenverlust.
+      { title: 'Audience', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
       { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
       { title: 'StartDate', type: 4 },
       { title: 'EndDate', type: 4 },
@@ -1580,6 +1584,10 @@ export class EventService {
           if (f.choices) {
             payload['Choices'] = { 'results': f.choices };
           }
+          if (f.metaType === 'SP.FieldMultiLineText') {
+            payload['RichText'] = !!f.richText;
+            if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
+          }
           try {
             await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
           } catch {
@@ -1589,6 +1597,120 @@ export class EventService {
       }
     } catch (e) {
       console.warn('[DEX] ensureMissingFields Error:', e);
+    }
+  }
+
+  /**
+   * Migration: alte Audience-Spalte (Type 2, Single-Line-Text, 255 Zeichen Limit)
+   * auf Multi-Line-Text (Type 3, Plain-Text, 63.999 Zeichen) umstellen.
+   *
+   * Noetig weil bei Zielgruppen mit vielen Email-Adressen (~10+) der 255-Zeichen-
+   * Cutoff schon griff und Adressen stumm abgeschnitten wurden.
+   *
+   * Ablauf (idempotent):
+   *   1. Check TypeAsString der Audience-Spalte. Wenn schon 'Note' -> skip.
+   *   2. Backup aller Event-Werte (id -> audience) im Speicher.
+   *   3. Alte Spalte loeschen.
+   *   4. Neue Spalte als SP.FieldMultiLineText (RichText=false, NumberOfLines=4) anlegen.
+   *   5. Werte aus dem Backup zurueckschreiben (MERGE pro Event).
+   *
+   * Laeuft beim App-Start (nur fuer Admins, weil wir Write-Rechte auf DEX_Events brauchen).
+   */
+  public async upgradeAudienceFieldToNote(): Promise<void> {
+    const listName = 'DEX_Events';
+    try {
+      // 1. TypeAsString abfragen
+      const fieldResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Audience')?$select=TypeAsString,FieldTypeKind`,
+        SPHttpClient.configurations.v1
+      );
+      if (!fieldResp.ok) return;
+      const fieldData = await fieldResp.json();
+      const typeAsString: string = fieldData.TypeAsString || fieldData.d?.TypeAsString || '';
+      const fieldTypeKind: number = fieldData.FieldTypeKind ?? fieldData.d?.FieldTypeKind ?? 0;
+      if (typeAsString === 'Note' || fieldTypeKind === 3) {
+        // Schon migriert
+        return;
+      }
+      if (typeAsString !== 'Text' && fieldTypeKind !== 2) {
+        // Unerwarteter Typ - nicht anfassen
+        console.warn(`[DEX] upgradeAudienceFieldToNote: Audience hat unerwarteten Typ '${typeAsString}' (kind=${fieldTypeKind}) - skip.`);
+        return;
+      }
+
+      // 2. Alle Event-Werte laden und backuppen
+      const itemsResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$select=Id,Audience&$top=2000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!itemsResp.ok) return;
+      const itemsData = await itemsResp.json();
+      const items: Array<{ Id: number; Audience: string }> = itemsData.value || itemsData.d?.results || [];
+      const backup: Record<number, string> = {};
+      for (const it of items) {
+        if (it.Audience) backup[it.Id] = it.Audience;
+      }
+      console.warn(`[DEX] upgradeAudienceFieldToNote: Backup ${Object.keys(backup).length} von ${items.length} Event-Audience-Werten.`);
+
+      // 3. Alte Spalte loeschen
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Audience')/deleteObject`,
+          {}
+        );
+      } catch (e) {
+        console.warn('[DEX] upgradeAudienceFieldToNote: Delete alte Audience-Spalte fehlgeschlagen, Migration abgebrochen:', e);
+        return;
+      }
+
+      // 4. Neue Spalte als Multi-Line-Text anlegen
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+          {
+            '__metadata': { 'type': 'SP.FieldMultiLineText' },
+            'Title': 'Audience',
+            'FieldTypeKind': 3,
+            'Required': false,
+            'RichText': false,
+            'NumberOfLines': 4,
+          }
+        );
+      } catch (e) {
+        console.error('[DEX] upgradeAudienceFieldToNote: Konnte neue Audience-Note-Spalte nicht anlegen - Daten koennten verloren gehen:', e, backup);
+        return;
+      }
+
+      // 5. Werte zurueckschreiben
+      // ListItemEntityTypeFullName fuer MERGE
+      let listItemType = 'SP.Data.DEX_x005f_EventsListItem';
+      try {
+        const tr = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ListItemEntityTypeFullName`,
+          SPHttpClient.configurations.v1
+        );
+        if (tr.ok) {
+          const td = await tr.json();
+          listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
+        }
+      } catch { /* Fallback */ }
+
+      let restored = 0;
+      let failed = 0;
+      for (const idStr of Object.keys(backup)) {
+        const id = Number(idStr);
+        try {
+          const resp = await this._merge(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${id})`,
+            { '__metadata': { 'type': listItemType }, 'Audience': backup[id] }
+          );
+          if (resp.ok) restored += 1;
+          else failed += 1;
+        } catch { failed += 1; }
+      }
+      console.warn(`[DEX] upgradeAudienceFieldToNote: Migration fertig — ${restored} Werte zurueckgeschrieben, ${failed} Fehler.`);
+    } catch (e) {
+      console.warn('[DEX] upgradeAudienceFieldToNote Error:', e);
     }
   }
 
