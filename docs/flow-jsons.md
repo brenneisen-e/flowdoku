@@ -1796,7 +1796,18 @@ Der HTML-Body wird über `wrapTemplateForStorage()` aus `services/EmailTemplates
 4. Als eingeladener User: **Forward** auf einen Externen (keine Azure AD-Identität) → Email_Resolved-Condition sollte greifen, Flow terminiert sauber (aktuell keine FYI bei nicht-auflösbarer Mail — Verbesserungspotenzial).
 5. Flow-Runs kontrollieren: jeder Schritt sollte `Succeeded` sein, Terminate-Zweige dokumentieren warum keine Mail verschickt wurde.
 
-### Finaler Flow-JSON (Stand 2026-04-15, FW:/WG:-Support)
+### Finaler Flow-JSON (Stand 2026-04-15, HTML-Parser für Name + Email, ohne Graph-Search)
+
+**Key Changes vs. initiale Version:**
+- `Recipient_DisplayName` extrahiert jetzt den Namen **direkt aus dem HTML-Body** (via `mailto:...">Name</a>`-Muster), nicht mehr über Graph-API-Search
+- `Recipient_Email` ebenfalls direkt aus dem HTML — keine Office-365-User-Search mehr nötig
+- Dadurch: `Resolve_Recipient_Email` (Office 365 Users) und `Filter_Matching_User` (Filter array) **entfernt** — Flow ist schneller und robuster bei Externen
+- `Cleaned_Subject` auf `last(split(subject, ':'))` umgestellt (robust gegen FW:/WG:-Prefixes)
+- `Get_DEX_Event` auf `substringof(subject, Title)` statt `eq` (matcht Events mit längerem Titel wie `E2E M&A Activation Session Munich`)
+- `Email_Resolved` nutzt `empty()` statt `null`-Vergleich
+- `Rendered_Subject`/`Rendered_Body`: 3 Platzhalter-Fixes (OrganizerFirstName aus `Nachname, Vorname`, Forwarder aus `bodyPreview`, Recipient-Fallback auf Email)
+
+
 
 TRIGGER:
 ```json
