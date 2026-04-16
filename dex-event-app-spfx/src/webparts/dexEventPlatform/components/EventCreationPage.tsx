@@ -459,6 +459,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
+  // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
+  // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
+  // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
+  // muss die Checkbox aktiv setzen wenn er moechte dass Titel/Start/Ende im
+  // Outlook-Termin aktualisiert werden.
+  const [triggerOutlookUpdate, setTriggerOutlookUpdate] = React.useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
   const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
@@ -960,8 +966,12 @@ export default function EventCreationPage(): React.ReactElement {
             setImageUploadError('Bild-Upload fehlgeschlagen.');
           }
         }
-        // Outlook-Termin Update triggern (wenn CalendarLink vorhanden, nicht wenn Outlook deaktiviert)
-        if (!disableOutlook) {
+        // Outlook-Termin Update triggern — NUR wenn der Organizer das explizit
+        // per Checkbox angefordert hat. Grund: auch kleine Aenderungen (z.B.
+        // Description-Tippfix) loesen sonst eine "Updated meeting"-Mail an ALLE
+        // Teilnehmer aus, weil der Flow DEX_Outlook_Einladungen PATCH auf den
+        // Outlook-Termin macht und Outlook automatisch benachrichtigt.
+        if (!disableOutlook && triggerOutlookUpdate) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const ctx = (window as any).__dexSpfxContext;
@@ -2519,6 +2529,26 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </span>
                   </label>
+                  {/* Nur im Edit-Modus: explizite Bestaetigung dass Outlook-Termin aktualisiert werden soll */}
+                  {isEditMode && !disableOutlook && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
+                      <input
+                        type="checkbox"
+                        checked={triggerOutlookUpdate}
+                        onChange={e => setTriggerOutlookUpdate(e.target.checked)}
+                        style={{ width: 18, height: 18, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.9rem' }}>
+                        <strong>Outlook-Termin aktualisieren (Titel/Start/Ende)</strong>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
+                          Nur aktivieren wenn Titel, Startzeit oder Endzeit wirklich geändert wurden.
+                          Bei Aktivierung erhalten <strong>alle angemeldeten Teilnehmer</strong> automatisch eine
+                          &bdquo;Updated meeting&ldquo;-Benachrichtigung von Outlook.
+                          Standardmäßig ausgeschaltet, damit Tippfixes in Description/Agenda keine Update-Mails auslösen.
+                        </span>
+                      </span>
+                    </label>
+                  )}
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>
