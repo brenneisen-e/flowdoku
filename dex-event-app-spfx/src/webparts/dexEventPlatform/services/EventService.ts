@@ -3493,9 +3493,12 @@ export class EventService {
           if (patch[menuField]) menuSet += 1;
         } else {
           const errText = await resp.text().catch(() => '');
-          failed.push({ itemId: it['Id'], reason: `HTTP ${resp.status}: ${errText.substring(0, 120)}` });
+          // Voll-Detail in der Browser-Konsole, gekuerzte Version im Report
+          console.warn(`[DEX] seedE2E MERGE failed for item ${it['Id']}:`, { status: resp.status, body: errText, payload: body, listItemType });
+          failed.push({ itemId: it['Id'], reason: `HTTP ${resp.status}: ${errText.substring(0, 400)}` });
         }
       } catch (err) {
+        console.warn(`[DEX] seedE2E MERGE threw for item ${it['Id']}:`, err);
         failed.push({ itemId: it['Id'], reason: err instanceof Error ? err.message : String(err) });
       }
     }

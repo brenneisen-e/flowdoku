@@ -1075,7 +1075,10 @@ export default function AdminPage(): React.ReactElement {
                     if (r.menuSet > 0) parts.push(`Menu: ${r.menuSet}`);
                     if (r.fieldMissing.length > 0) parts.push(`Spalten fehlen: ${r.fieldMissing.join(', ')} — erst "Custom Fields pruefen"`);
                     if (r.notFoundInSeed.length > 0) parts.push(`Nicht in Seed: ${r.notFoundInSeed.length} (${r.notFoundInSeed.slice(0, 3).join(', ')}${r.notFoundInSeed.length > 3 ? '...' : ''})`);
-                    if (r.failed.length > 0) parts.push(`${r.failed.length} Fehler`);
+                    if (r.failed.length > 0) {
+                      const firstErr = r.failed[0];
+                      parts.push(`${r.failed.length} Fehler (erster: item ${firstErr.itemId} → ${firstErr.reason})`);
+                    }
                     setE2ESeedResult(parts.join(' | '));
                     if (r.updated > 0) {
                       try {
