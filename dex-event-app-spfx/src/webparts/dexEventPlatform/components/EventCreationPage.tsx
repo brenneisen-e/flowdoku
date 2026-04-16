@@ -16,6 +16,8 @@ import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates'
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
+import { HtmlEditorModal } from './HtmlEditorModal';
+import { InfoTooltip } from './InfoTooltip';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -154,7 +156,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, createEvent, updateEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers, searchGroups, getGroupMembers } = useRoles();
+  const { searchUsers, searchGroups, getGroupMembers, roles } = useRoles();
   // Audience-Suche (Personen + Verteiler/Security-Groups)
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
@@ -467,7 +469,9 @@ export default function EventCreationPage(): React.ReactElement {
       ? editEvent.organizerEmails.slice()
       : [currentUser.email]
   );
-  const [isSearchingOrganizer, setIsSearchingOrganizer] = React.useState(false);
+  // isSearchingOrganizer entfaellt seit v4.8.0 — Filter laeuft sync gegen den
+  // bereits geladenen DEX_Roles-State, kein Async-Spinner mehr noetig.
+  const isSearchingOrganizer = false;
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
@@ -506,6 +510,10 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
+  // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
+  const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
+  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
+  const [htmlEditorTemplateType, setHtmlEditorTemplateType] = React.useState<string>('');
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
@@ -520,7 +528,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
     editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
   );
-  const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
+  // editingTemplate state entfaellt seit Modal-Migration v4.7.0
   const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
     if (!editEvent?.emailTemplateOverrides) return '';
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
@@ -1397,7 +1405,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.template')}
-                    <span className="info-icon" title={t('create.template.hint')} style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text={t('create.template.hint')} />
                   </label>
                   <select
                     className="form-select"
@@ -1415,7 +1423,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtitle')}
-                  <span className="info-icon" title="Name des Events, z.B. 'B2Run Frankfurt 2026'" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Name des Events, z.B. 'B2Run Frankfurt 2026'" />
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1424,7 +1432,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtype')}
-                  <span className="info-icon" title="Kategorie des Events – bestimmt das Design der Event-Karte" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Kategorie des Events – bestimmt das Design der Event-Karte" />
                 </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
                   <option value="Other">Sonstiges Deloitte Event</option>
@@ -1436,7 +1444,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
                   <span className="required">*</span> {t('create.organizer')}
-                  <span className="info-icon" title="Name der Person, die das Event organisiert" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Name der Person, die das Event organisiert" />
                 </label>
                 <input
                   className="form-input"
@@ -1448,17 +1456,21 @@ export default function EventCreationPage(): React.ReactElement {
                     // Nur den Teil nach dem letzten Semikolon fuer die Suche nutzen
                     const lastPart = val.split(';').pop()?.trim() || '';
                     if (lastPart.length >= 2) {
-                      organizerTimerRef.current = setTimeout(async () => {
-                        setIsSearchingOrganizer(true);
-                        const results = await searchUsers(lastPart);
-                        setOrganizerResults(results);
-                        setIsSearchingOrganizer(false);
-                      }, 300);
+                      // Suche AUSSCHLIESSLICH in DEX_Roles (nur User mit Rolle Organizer
+                      // oder Admin koennen als Event-Organizer hinzugefuegt werden).
+                      // Kein Async-Call noetig — Roles sind im Context schon geladen.
+                      const lp = lastPart.toLowerCase();
+                      const filtered = roles
+                        .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                        .filter(r => r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
+                        .slice(0, 12)
+                        .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                      setOrganizerResults(filtered);
                     } else {
                       setOrganizerResults([]);
                     }
                   }}
-                  placeholder="Name oder E-Mail eingeben zum Suchen..."
+                  placeholder="Name oder E-Mail eingeben — nur Organizer/Admins aus dem Admin Center"
                   style={errorBorderStyle('organizer')}
                 />
                 {isSearchingOrganizer && (
@@ -1824,7 +1836,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.description')}
-                  <span className="info-icon" title="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" />
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
                 {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1833,7 +1845,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Event-Bild
-                  <span className="info-icon" title="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." />
                 </label>
                 {imagePreview && (
                   <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
@@ -1902,14 +1914,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   {t('create.location')}
-                  <span className="info-icon" title="Adresse oder Name des Veranstaltungsortes" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Adresse oder Name des Veranstaltungsortes" />
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
               <div className="form-group">
                 <label className="form-label">
                   Adresse
-                  <span className="info-icon" title="Strukturierte Adresse - wird auf der Registrierungsseite angezeigt" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Strukturierte Adresse - wird auf der Registrierungsseite angezeigt" />
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
                   <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
@@ -1925,7 +1937,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.startdate')}
-                    <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
                   </label>
                   <DatePicker
                     selected={startDate ? new Date(startDate) : null}
@@ -1949,7 +1961,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
-                    <span className="info-icon" title="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
                   </label>
                   <DatePicker
                     selected={endDate ? new Date(endDate) : null}
@@ -1981,7 +1993,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.agenda')}
-                  <span className="info-icon" title="Programmablauf / Timeline des Events" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Programmablauf / Timeline des Events" />
                 </label>
                 {agenda
                   .slice()
@@ -2111,7 +2123,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.transfers')}
-                  <span className="info-icon" title="Abfahrtszeiten pro Standort" style={{ marginLeft: 8 }}>i</span>
+                  <InfoTooltip text="Abfahrtszeiten pro Standort" />
                 </label>
                 {transferTimes.map((tt) => (
                   <div key={tt.id} style={{
@@ -2178,7 +2190,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.deadline')}
-                    <span className="info-icon" title="Bis wann können sich Teilnehmer anmelden?" style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text="Bis wann können sich Teilnehmer anmelden?" />
                   </label>
                   <DatePicker
                     selected={registrationDeadline ? new Date(registrationDeadline) : null}
@@ -2195,7 +2207,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.lastcancel')}
-                    <span className="info-icon" title="Bis wann können sich Teilnehmer wieder abmelden?" style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text="Bis wann können sich Teilnehmer wieder abmelden?" />
                   </label>
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
@@ -2218,7 +2230,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.b2runcap')}
-                    <span className="info-icon" title={t('create.b2runcap.hint')} style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text={t('create.b2runcap.hint')} />
                   </label>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.b2runcap.desc')}
@@ -2259,7 +2271,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginTop: 12 }}>
                     <label className="form-label" style={{ marginBottom: 4 }}>
                       {t('create.waitlist')}
-                      <span className="info-icon" title={t('create.b2runcap.waitlist.hint')} style={{ marginLeft: 8 }}>i</span>
+                      <InfoTooltip text={t('create.b2runcap.waitlist.hint')} />
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4 }}>
                       <label className="toggle">
@@ -2291,7 +2303,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <div className="form-group">
                       <label className="form-label">
                         {t('create.waitlist')}
-                        <span className="info-icon" title="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" style={{ marginLeft: 8 }}>i</span>
+                        <InfoTooltip text="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" />
                       </label>
                       <div className="toggle-wrapper" style={{ marginTop: 8 }}>
                         <label className="toggle">
@@ -2314,7 +2326,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.startblocks')}
-                    <span className="info-icon" title={t('create.startblocks.hint')} style={{ marginLeft: 8 }}>i</span>
+                    <InfoTooltip text={t('create.startblocks.hint')} />
                   </label>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.startblocks.hint')}
@@ -2635,13 +2647,21 @@ export default function EventCreationPage(): React.ReactElement {
 
                 <div className="form-group" style={{ marginTop: 24 }}>
                   <label className="form-label">{t('create.outlookdesc')}</label>
-                  <textarea
-                    className="form-input"
-                    rows={4}
-                    value={outlookBody}
-                    onChange={e => setOutlookBody(e.target.value)}
-                    placeholder={t('create.outlookdesc.placeholder')}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setHtmlEditorMode('outlook'); setHtmlEditorOpen(true); }}
+                      style={{ fontSize: '0.85rem' }}
+                    >
+                      Bearbeiten & Vorschau
+                    </button>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
+                      {outlookBody
+                        ? `${outlookBody.replace(/<[^>]+>/g, '').substring(0, 80)}${outlookBody.length > 80 ? '…' : ''}`
+                        : t('create.outlookdesc.placeholder')}
+                    </span>
+                  </div>
                 </div>
 
                 <h4 style={{ marginTop: 24, marginBottom: 12 }}>{t('create.templates.title')} ({emailLanguage})</h4>
@@ -2653,7 +2673,6 @@ export default function EventCreationPage(): React.ReactElement {
                 {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
-                  const isEditing = editingTemplate === tType;
                   const currentSubject = override?.subject || defaultTpl?.subject || '';
                   const currentBody = override?.bodyHtml || defaultTpl?.bodyHtml || '';
                   const currentHeading = override?.heading || defaultTpl?.heading || '';
@@ -2672,9 +2691,13 @@ export default function EventCreationPage(): React.ReactElement {
                           <button
                             className="btn btn-secondary"
                             style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                            onClick={() => setEditingTemplate(isEditing ? null : tType)}
+                            onClick={() => {
+                              setHtmlEditorMode('email');
+                              setHtmlEditorTemplateType(tType);
+                              setHtmlEditorOpen(true);
+                            }}
                           >
-                            {isEditing ? t('create.templates.close') : t('create.templates.edit')}
+                            {t('create.templates.edit')} & Vorschau
                           </button>
                           {override && (
                             <button
@@ -2691,60 +2714,12 @@ export default function EventCreationPage(): React.ReactElement {
                           )}
                         </div>
                       </div>
-                      {!isEditing && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                          {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
-                        </div>
-                      )}
-                      {isEditing && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
+                      </div>
+                      {/* Inline-Editor entfaellt — Edit oeffnet jetzt das HtmlEditorModal mit Live-Preview */}
+                      {false && (
                         <div style={{ marginTop: 8 }}>
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.subject')}</label>
-                          <input
-                            className="form-input"
-                            value={currentSubject}
-                            onChange={e => setEmailTemplateOverrides({
-                              ...emailTemplateOverrides,
-                              [tType]: { subject: e.target.value, heading: currentHeading, bodyHtml: currentBody },
-                            })}
-                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
-                          />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.heading')}</label>
-                          <input
-                            className="form-input"
-                            value={currentHeading}
-                            onChange={e => setEmailTemplateOverrides({
-                              ...emailTemplateOverrides,
-                              [tType]: { subject: currentSubject, heading: e.target.value, bodyHtml: currentBody },
-                            })}
-                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
-                          />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>{t('create.templates.content')}</label>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', marginRight: 4, lineHeight: '24px' }}>
-                              {t('create.templates.content') === 'Content' ? 'Insert variable:' : 'Variable einfügen:'}
-                            </span>
-                            {[
-                              { key: '{{Name}}', label: 'Name' },
-                              { key: '{{EventTitle}}', label: 'Event' },
-                              { key: '{{Organizer}}', label: 'Organizer' },
-                              { key: '{{AppUrl}}', label: 'App Link' },
-                              { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
-                            ].map(v => (
-                              <button
-                                key={v.key}
-                                type="button"
-                                onClick={() => { navigator.clipboard.writeText(v.key); }}
-                                style={{
-                                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10,
-                                  border: '1px solid var(--dex-green)', background: 'rgba(134,188,37,0.08)',
-                                  color: 'var(--dex-green-dark)', cursor: 'pointer', fontFamily: 'monospace',
-                                }}
-                                title={t('create.templates.content') === 'Content' ? `Click to copy ${v.key}` : `Klicken um ${v.key} zu kopieren`}
-                              >
-                                {v.label}
-                              </button>
-                            ))}
-                          </div>
                           <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, minHeight: 150, padding: '0 4px' }}>
                             <RichText
                               value={currentBody}
@@ -3067,6 +3042,66 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin oder E-Mail-Template) */}
+      {(() => {
+        if (!htmlEditorOpen) return null;
+        const isOutlook = htmlEditorMode === 'outlook';
+        const tType = htmlEditorTemplateType;
+        const defaultTpl = !isOutlook ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
+        const override = !isOutlook ? emailTemplateOverrides[tType] : undefined;
+        const currentSubject = override?.subject || defaultTpl?.subject || '';
+        const currentHeading = override?.heading || defaultTpl?.heading || '';
+        const currentBody = isOutlook
+          ? outlookBody
+          : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
+        return (
+          <HtmlEditorModal
+            open={htmlEditorOpen}
+            onClose={() => setHtmlEditorOpen(false)}
+            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : `E-Mail-Template: ${tType}`}
+            value={currentBody}
+            onChange={(html) => {
+              if (isOutlook) {
+                setOutlookBody(html);
+              } else {
+                setEmailTemplateOverrides({
+                  ...emailTemplateOverrides,
+                  [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: html },
+                });
+              }
+            }}
+            previewMode={isOutlook ? 'outlook' : 'email'}
+            emailSubject={!isOutlook ? currentSubject : undefined}
+            onEmailSubjectChange={!isOutlook ? (s) => setEmailTemplateOverrides({
+              ...emailTemplateOverrides,
+              [tType]: { subject: s, heading: currentHeading, bodyHtml: currentBody },
+            }) : undefined}
+            emailHeading={!isOutlook ? currentHeading : undefined}
+            onEmailHeadingChange={!isOutlook ? (h) => setEmailTemplateOverrides({
+              ...emailTemplateOverrides,
+              [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
+            }) : undefined}
+            emailHeadingColor={!isOutlook ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            previewVars={{
+              EventTitle: title || 'Event Title',
+              Name: 'Max Mustermann',
+              Organizer: organizer || 'Organisator',
+              AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
+              WaitlistPosition: '1',
+              EventDate: startDate ? new Date(startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+            }}
+            insertableVars={[
+              { key: '{{Name}}', label: 'Name' },
+              { key: '{{EventTitle}}', label: 'Event' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+              { key: '{{AppUrl}}', label: 'App Link' },
+              { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
+            ]}
+            imageBase64={imagePreview || ''}
+          />
+        );
+      })()}
 
       {/* Massenimport-Modal fuer Audience */}
       {bulkImportOpen && (
