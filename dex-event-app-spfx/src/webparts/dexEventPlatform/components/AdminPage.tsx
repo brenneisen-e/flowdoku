@@ -66,6 +66,8 @@ export default function AdminPage(): React.ReactElement {
   const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
   const [isAuditingFields, setIsAuditingFields] = React.useState(false);
   const [auditFieldsResult, setAuditFieldsResult] = React.useState<string | null>(null);
+  const [isBackfilling, setIsBackfilling] = React.useState(false);
+  const [backfillResult, setBackfillResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Email Compose Modal
@@ -971,6 +973,80 @@ export default function AdminPage(): React.ReactElement {
             {auditFieldsResult && (
               <span style={{ fontSize: '0.75rem', color: auditFieldsResult.indexOf('Fehler') >= 0 ? 'var(--dex-red)' : 'var(--dex-green)' }}>
                 {auditFieldsResult}
+              </span>
+            )}
+            {isAdmin && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isBackfilling || !selectedEvent?.subsiteUrl}
+                title={'Trägt Custom-Field-Werte aus dem CustomData-JSON der Teilnehmer in die echten '
+                  + 'SharePoint-Spalten nach. Noetig wenn eine alte Seed-Migration die Werte nur im '
+                  + 'CustomData-Feld gespeichert hat (z.B. Attendance + MenuPreference bei der E2E '
+                  + 'M&A Session). Idempotent: bereits gefuellte Zellen werden NICHT ueberschrieben. '
+                  + 'Voraussetzung: "Custom Fields pruefen" wurde vorher ausgefuehrt, damit die Spalten '
+                  + 'existieren und das spInternalName-Mapping korrekt ist.'}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const cfs = selectedEvent.eventSpecificFields || [];
+                  if (cfs.length === 0) {
+                    setBackfillResult('Event hat keine Custom Fields — nichts nachzutragen.');
+                    return;
+                  }
+                  if (!confirm('Werte aus CustomData in die echten Teilnehmer-Spalten nachtragen?\n\n'
+                    + 'Leere Spalten werden mit dem Wert aus dem CustomData-JSON gefuellt. Bestehende '
+                    + 'Werte werden NICHT ueberschrieben. Idempotent — kann mehrfach ausgefuehrt werden.')) return;
+                  setIsBackfilling(true);
+                  setBackfillResult(null);
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const cfsAsCustomFields: any[] = cfs.map((f: any) => ({
+                      id: f.id,
+                      label: f.label,
+                      type: f.type,
+                      required: !!f.required,
+                      options: f.options || [],
+                      visible: true,
+                      spInternalName: f.spInternalName || '',
+                    }));
+                    const result = await eventServiceRef.backfillCustomFieldValues(
+                      selectedEvent.subsiteUrl,
+                      cfsAsCustomFields
+                    );
+                    const parts: string[] = [];
+                    parts.push(`${result.scanned} Teilnehmer geprueft`);
+                    parts.push(`${result.updated} aktualisiert`);
+                    const fieldCounts = Object.entries(result.fieldUpdates);
+                    if (fieldCounts.length > 0) {
+                      const detail = fieldCounts.map(([label, n]) => `${label}: ${n}`).join(', ');
+                      parts.push(`Felder: ${detail}`);
+                    }
+                    if (result.skippedNoMapping.length > 0) {
+                      parts.push(`Ohne Mapping: ${result.skippedNoMapping.join(', ')} (zuerst "Custom Fields pruefen" ausfuehren)`);
+                    }
+                    if (result.failed.length > 0) {
+                      parts.push(`${result.failed.length} Fehler`);
+                    }
+                    setBackfillResult(parts.join(' | '));
+                    // Teilnehmer-Liste in der UI neu laden, damit der Admin die neuen Werte sofort sieht
+                    if (result.updated > 0) {
+                      try {
+                        const regs = await getAllRegistrations(selectedEvent.id);
+                        setRegistrations(regs);
+                      } catch { /* Refresh optional */ }
+                    }
+                  } catch (err) {
+                    setBackfillResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsBackfilling(false);
+                }}
+              >
+                {isBackfilling ? 'Werte werden nachgetragen...' : 'Werte aus CustomData nachtragen'}
+              </button>
+            )}
+            {backfillResult && (
+              <span style={{ fontSize: '0.75rem', color: backfillResult.indexOf('Fehler') >= 0 ? 'var(--dex-red)' : 'var(--dex-green)' }}>
+                {backfillResult}
               </span>
             )}
             {isAdmin && (
