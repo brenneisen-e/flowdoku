@@ -16,6 +16,7 @@ import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates'
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
+import { HtmlEditorModal } from './HtmlEditorModal';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -506,6 +507,10 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
+  // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
+  const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
+  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
+  const [htmlEditorTemplateType, setHtmlEditorTemplateType] = React.useState<string>('');
   const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
@@ -520,7 +525,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
     editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
   );
-  const [editingTemplate, setEditingTemplate] = React.useState<string | null>(null);
+  // editingTemplate state entfaellt seit Modal-Migration v4.7.0
   const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
     if (!editEvent?.emailTemplateOverrides) return '';
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
@@ -2635,13 +2640,21 @@ export default function EventCreationPage(): React.ReactElement {
 
                 <div className="form-group" style={{ marginTop: 24 }}>
                   <label className="form-label">{t('create.outlookdesc')}</label>
-                  <textarea
-                    className="form-input"
-                    rows={4}
-                    value={outlookBody}
-                    onChange={e => setOutlookBody(e.target.value)}
-                    placeholder={t('create.outlookdesc.placeholder')}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setHtmlEditorMode('outlook'); setHtmlEditorOpen(true); }}
+                      style={{ fontSize: '0.85rem' }}
+                    >
+                      Bearbeiten & Vorschau
+                    </button>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
+                      {outlookBody
+                        ? `${outlookBody.replace(/<[^>]+>/g, '').substring(0, 80)}${outlookBody.length > 80 ? '…' : ''}`
+                        : t('create.outlookdesc.placeholder')}
+                    </span>
+                  </div>
                 </div>
 
                 <h4 style={{ marginTop: 24, marginBottom: 12 }}>{t('create.templates.title')} ({emailLanguage})</h4>
@@ -2653,7 +2666,6 @@ export default function EventCreationPage(): React.ReactElement {
                 {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
-                  const isEditing = editingTemplate === tType;
                   const currentSubject = override?.subject || defaultTpl?.subject || '';
                   const currentBody = override?.bodyHtml || defaultTpl?.bodyHtml || '';
                   const currentHeading = override?.heading || defaultTpl?.heading || '';
@@ -2672,9 +2684,13 @@ export default function EventCreationPage(): React.ReactElement {
                           <button
                             className="btn btn-secondary"
                             style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                            onClick={() => setEditingTemplate(isEditing ? null : tType)}
+                            onClick={() => {
+                              setHtmlEditorMode('email');
+                              setHtmlEditorTemplateType(tType);
+                              setHtmlEditorOpen(true);
+                            }}
                           >
-                            {isEditing ? t('create.templates.close') : t('create.templates.edit')}
+                            {t('create.templates.edit')} & Vorschau
                           </button>
                           {override && (
                             <button
@@ -2691,60 +2707,12 @@ export default function EventCreationPage(): React.ReactElement {
                           )}
                         </div>
                       </div>
-                      {!isEditing && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                          {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
-                        </div>
-                      )}
-                      {isEditing && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
+                      </div>
+                      {/* Inline-Editor entfaellt — Edit oeffnet jetzt das HtmlEditorModal mit Live-Preview */}
+                      {false && (
                         <div style={{ marginTop: 8 }}>
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.subject')}</label>
-                          <input
-                            className="form-input"
-                            value={currentSubject}
-                            onChange={e => setEmailTemplateOverrides({
-                              ...emailTemplateOverrides,
-                              [tType]: { subject: e.target.value, heading: currentHeading, bodyHtml: currentBody },
-                            })}
-                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
-                          />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{t('create.templates.heading')}</label>
-                          <input
-                            className="form-input"
-                            value={currentHeading}
-                            onChange={e => setEmailTemplateOverrides({
-                              ...emailTemplateOverrides,
-                              [tType]: { subject: currentSubject, heading: e.target.value, bodyHtml: currentBody },
-                            })}
-                            style={{ fontSize: '0.8rem', marginBottom: 8 }}
-                          />
-                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>{t('create.templates.content')}</label>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', marginRight: 4, lineHeight: '24px' }}>
-                              {t('create.templates.content') === 'Content' ? 'Insert variable:' : 'Variable einfügen:'}
-                            </span>
-                            {[
-                              { key: '{{Name}}', label: 'Name' },
-                              { key: '{{EventTitle}}', label: 'Event' },
-                              { key: '{{Organizer}}', label: 'Organizer' },
-                              { key: '{{AppUrl}}', label: 'App Link' },
-                              { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
-                            ].map(v => (
-                              <button
-                                key={v.key}
-                                type="button"
-                                onClick={() => { navigator.clipboard.writeText(v.key); }}
-                                style={{
-                                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10,
-                                  border: '1px solid var(--dex-green)', background: 'rgba(134,188,37,0.08)',
-                                  color: 'var(--dex-green-dark)', cursor: 'pointer', fontFamily: 'monospace',
-                                }}
-                                title={t('create.templates.content') === 'Content' ? `Click to copy ${v.key}` : `Klicken um ${v.key} zu kopieren`}
-                              >
-                                {v.label}
-                              </button>
-                            ))}
-                          </div>
                           <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, minHeight: 150, padding: '0 4px' }}>
                             <RichText
                               value={currentBody}
@@ -3067,6 +3035,66 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin oder E-Mail-Template) */}
+      {(() => {
+        if (!htmlEditorOpen) return null;
+        const isOutlook = htmlEditorMode === 'outlook';
+        const tType = htmlEditorTemplateType;
+        const defaultTpl = !isOutlook ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
+        const override = !isOutlook ? emailTemplateOverrides[tType] : undefined;
+        const currentSubject = override?.subject || defaultTpl?.subject || '';
+        const currentHeading = override?.heading || defaultTpl?.heading || '';
+        const currentBody = isOutlook
+          ? outlookBody
+          : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
+        return (
+          <HtmlEditorModal
+            open={htmlEditorOpen}
+            onClose={() => setHtmlEditorOpen(false)}
+            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : `E-Mail-Template: ${tType}`}
+            value={currentBody}
+            onChange={(html) => {
+              if (isOutlook) {
+                setOutlookBody(html);
+              } else {
+                setEmailTemplateOverrides({
+                  ...emailTemplateOverrides,
+                  [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: html },
+                });
+              }
+            }}
+            previewMode={isOutlook ? 'outlook' : 'email'}
+            emailSubject={!isOutlook ? currentSubject : undefined}
+            onEmailSubjectChange={!isOutlook ? (s) => setEmailTemplateOverrides({
+              ...emailTemplateOverrides,
+              [tType]: { subject: s, heading: currentHeading, bodyHtml: currentBody },
+            }) : undefined}
+            emailHeading={!isOutlook ? currentHeading : undefined}
+            onEmailHeadingChange={!isOutlook ? (h) => setEmailTemplateOverrides({
+              ...emailTemplateOverrides,
+              [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
+            }) : undefined}
+            emailHeadingColor={!isOutlook ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            previewVars={{
+              EventTitle: title || 'Event Title',
+              Name: 'Max Mustermann',
+              Organizer: organizer || 'Organisator',
+              AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
+              WaitlistPosition: '1',
+              EventDate: startDate ? new Date(startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+            }}
+            insertableVars={[
+              { key: '{{Name}}', label: 'Name' },
+              { key: '{{EventTitle}}', label: 'Event' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+              { key: '{{AppUrl}}', label: 'App Link' },
+              { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
+            ]}
+            imageBase64={imagePreview || ''}
+          />
+        );
+      })()}
 
       {/* Massenimport-Modal fuer Audience */}
       {bulkImportOpen && (
