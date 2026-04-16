@@ -167,6 +167,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [memberModalLoading, setMemberModalLoading] = React.useState(false);
   const [memberModalMembers, setMemberModalMembers] = React.useState<Array<{ email: string; displayName: string }>>([]);
   const [memberModalError, setMemberModalError] = React.useState('');
+  // Modal: Massenimport fuer Audience
+  const [bulkImportOpen, setBulkImportOpen] = React.useState(false);
+  const [bulkImportText, setBulkImportText] = React.useState('');
+  const [bulkImportRunning, setBulkImportRunning] = React.useState(false);
+  const [bulkImportReport, setBulkImportReport] = React.useState<{
+    added: string[];
+    notFound: string[];
+    alreadyIn: string[];
+    ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }>;
+  } | null>(null);
 
   const addAudienceItem = (value: string): void => {
     const list = audience.split(',').map(s => s.trim()).filter(Boolean);
@@ -178,6 +188,100 @@ export default function EventCreationPage(): React.ReactElement {
     const list = audience.split(',').map(s => s.trim()).filter(Boolean).filter(x => x !== value);
     setAudience(list.join(', '));
   };
+
+  /**
+   * Massenimport: Text parsen (getrennt mit ',', ';' oder Zeilenumbruch, plus
+   * Tab als Fallback fuer Excel-Copy-Paste). Fuer jedes Fragment:
+   *   - Wenn schon eine Email (x@y.z): direkt als Audience uebernehmen
+   *   - Sonst: searchUsers(fragment) → bei genau 1 Treffer: uebernehmen; bei
+   *     mehreren Treffern: in 'ambiguous' zwischenspeichern (User entscheidet
+   *     per Modal manuell); bei 0 Treffern: in 'notFound'.
+   * Sequenziell + mit kleinen Pausen, um die Graph-API nicht zu hammer.
+   */
+  const runBulkImport = async (): Promise<void> => {
+    const raw = bulkImportText;
+    if (!raw || !raw.trim()) return;
+    setBulkImportRunning(true);
+    setBulkImportReport(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existing = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
+    const existingLc = new Set(existing.map(e => e.toLowerCase()));
+    // Split auf ',', ';', Zeilenumbruch und Tab
+    const fragments = raw
+      .split(/[,;\n\r\t]/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const added: string[] = [];
+    const notFound: string[] = [];
+    const alreadyIn: string[] = [];
+    const ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }> = [];
+    const newEntries = existing.slice();
+
+    for (const f of fragments) {
+      // Schon drin?
+      if (existingLc.has(f.toLowerCase())) {
+        alreadyIn.push(f);
+        continue;
+      }
+      // Direkt-Email
+      if (emailRegex.test(f)) {
+        newEntries.push(f);
+        existingLc.add(f.toLowerCase());
+        added.push(f);
+        continue;
+      }
+      // Name / Teilstring → searchUsers
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const hits: any[] = await searchUsers(f);
+        if (!hits || hits.length === 0) {
+          notFound.push(f);
+          continue;
+        }
+        if (hits.length === 1) {
+          const em = hits[0].email;
+          if (em && !existingLc.has(em.toLowerCase())) {
+            newEntries.push(em);
+            existingLc.add(em.toLowerCase());
+            added.push(`${f} → ${hits[0].displayName} (${em})`);
+          } else {
+            alreadyIn.push(f);
+          }
+          continue;
+        }
+        // Mehrere Treffer: User muss manuell entscheiden
+        ambiguous.push({
+          input: f,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          matches: hits.slice(0, 5).map((h: any) => ({ email: h.email, displayName: h.displayName })),
+        });
+      } catch {
+        notFound.push(f);
+      }
+      // kleine Pause um Rate-Limit zu vermeiden
+      await new Promise(res => setTimeout(res, 120));
+    }
+
+    setAudience(newEntries.join(', '));
+    setBulkImportReport({ added, notFound, alreadyIn, ambiguous });
+    setBulkImportRunning(false);
+  };
+
+  /** Ambiguous-Eintrag manuell aufloesen: pickt eine Match-Email aus. */
+  const resolveAmbiguous = (input: string, email: string): void => {
+    const list = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
+    if (list.indexOf(email) < 0) list.push(email);
+    setAudience(list.join(', '));
+    if (bulkImportReport) {
+      setBulkImportReport({
+        ...bulkImportReport,
+        ambiguous: bulkImportReport.ambiguous.filter(a => a.input !== input),
+        added: [...bulkImportReport.added, `${input} → ${email}`],
+      });
+    }
+  };
+
   const openMembersModal = async (groupEmail: string): Promise<void> => {
     setMemberModalOpen(true);
     setMemberModalGroupEmail(groupEmail);
@@ -1490,10 +1594,20 @@ export default function EventCreationPage(): React.ReactElement {
                     ))}
                   </div>
                 )}
-                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
-                  Klicke einen Treffer an um ihn hinzuzufügen. Bei Gruppen kannst du im Chip per <Users size={11} /> die Mitglieder einsehen.
-                  Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    onClick={() => { setBulkImportText(''); setBulkImportReport(null); setBulkImportOpen(true); }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Users size={12} /> Massenimport (Liste einfügen)</span>
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', margin: 0, flex: 1 }}>
+                    Klicke einen Treffer an um ihn hinzuzufügen. Bei Gruppen kannst du im Chip per <Users size={11} /> die Mitglieder einsehen.
+                    Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
+                  </p>
+                </div>
               </div>
 
               {/* UND/ODER Verknüpfung */}
@@ -2743,6 +2857,117 @@ export default function EventCreationPage(): React.ReactElement {
                 onClick={() => { setShowPreview(false); handleSubmit(); }}
               >
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Massenimport-Modal fuer Audience */}
+      {bulkImportOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}>
+          <div className="card" style={{ width: '90%', maxWidth: 720, maxHeight: '85vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0 }}>Massenimport Zielgruppe</h3>
+              <button
+                type="button"
+                onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                aria-label="Schließen"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0 }}>
+              Füge eine Liste aus Namen und/oder Email-Adressen ein, getrennt mit
+              <code style={{ margin: '0 4px' }}>,</code>
+              <code style={{ margin: '0 4px' }}>;</code>
+              <code style={{ margin: '0 4px' }}>Tab</code>
+              oder <code style={{ marginLeft: 4 }}>Zeilenumbruch</code>.
+              Email-Adressen werden direkt übernommen. Bei Namen wird per People-Picker gesucht — eindeutige
+              Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.
+            </p>
+            <textarea
+              className="form-input"
+              style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.8rem' }}
+              placeholder="z.B.:&#10;max.mustermann@deloitte.de; erika.mustermann@deloitte.de&#10;Schmitz, Alexander, Kraus, Annika&#10;oder aus Excel kopiert (Tab-getrennt)"
+              value={bulkImportText}
+              onChange={e => setBulkImportText(e.target.value)}
+              disabled={bulkImportRunning}
+            />
+
+            {bulkImportReport && (
+              <div style={{ marginTop: 16, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 'var(--dex-radius)', fontSize: '0.8rem' }}>
+                {bulkImportReport.added.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <strong style={{ color: 'var(--dex-green-dark)' }}>✓ Hinzugefügt ({bulkImportReport.added.length}):</strong>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                      {bulkImportReport.added.map((a, i) => <li key={`a-${i}`}>{a}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {bulkImportReport.alreadyIn.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits in Zielgruppe ({bulkImportReport.alreadyIn.length}):</strong>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
+                      {bulkImportReport.alreadyIn.map((a, i) => <li key={`w-${i}`}>{a}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {bulkImportReport.notFound.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <strong style={{ color: 'var(--dex-red)' }}>✗ Nicht gefunden ({bulkImportReport.notFound.length}):</strong>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-red)' }}>
+                      {bulkImportReport.notFound.map((a, i) => <li key={`n-${i}`}>{a} — bitte manuell suchen oder als Email eintragen</li>)}
+                    </ul>
+                  </div>
+                )}
+                {bulkImportReport.ambiguous.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>? Mehrdeutig — bitte auswählen ({bulkImportReport.ambiguous.length}):</strong>
+                    {bulkImportReport.ambiguous.map((a, i) => (
+                      <div key={`m-${i}`} style={{ marginTop: 6, padding: 8, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 4 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>&bdquo;{a.input}&ldquo;</div>
+                        {a.matches.map((m, j) => (
+                          <button
+                            key={`mm-${i}-${j}`}
+                            type="button"
+                            onClick={() => resolveAmbiguous(a.input, m.email)}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
+                              marginTop: 4, background: '#fff', border: '1px solid var(--dex-gray-200)',
+                              borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem',
+                            }}
+                          >
+                            <strong>{m.displayName}</strong> <span style={{ color: 'var(--dex-gray-400)' }}>{m.email}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
+                disabled={bulkImportRunning}
+              >
+                Schließen
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={runBulkImport}
+                disabled={bulkImportRunning || !bulkImportText.trim()}
+              >
+                {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
               </button>
             </div>
           </div>

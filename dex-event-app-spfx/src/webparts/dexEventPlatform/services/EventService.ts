@@ -3338,6 +3338,172 @@ export class EventService {
   }
 
   /**
+   * Spezial-Backfill fuer E2E M&A Activation Session Munich: Attendance
+   * (Dropdownfeld1) und MenuPreference (Dropdownfeld2) per E-Mail matchen
+   * und in die echten SP-Spalten schreiben.
+   *
+   * Quelle: data/e2eAttendanceMenuSeed.ts (Export aus der alten App vom
+   * 2026-04-15). Matching-Key: ParticipantEmail (case-insensitive).
+   *
+   * Der Match findet die SP-Spalten automatisch ueber Titel-Match (Title
+   * enthaelt 'attendance' bzw. 'menu'), unabhaengig vom internalName. Wenn
+   * keine Spalte existiert: in skipped-Liste zurueckgeben.
+   *
+   * Idempotent: bereits gefuellte Zellen werden NICHT ueberschrieben.
+   */
+  public async seedE2EAttendanceMenuByEmail(subsiteUrl: string): Promise<{
+    scanned: number;
+    updated: number;
+    attendanceSet: number;
+    menuSet: number;
+    notFoundInSeed: string[];
+    fieldMissing: string[];
+    failed: Array<{ itemId: number; reason: string }>;
+  }> {
+    const failed: Array<{ itemId: number; reason: string }> = [];
+    const notFoundInSeed: string[] = [];
+    const fieldMissing: string[] = [];
+    let scanned = 0;
+    let updated = 0;
+    let attendanceSet = 0;
+    let menuSet = 0;
+
+    // Seed-Daten laden
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let seed: Array<{ email: string; attendance: string; menuPreference: string }> = [];
+    try {
+      const mod = await import('../data/e2eAttendanceMenuSeed');
+      seed = mod.E2E_ATTENDANCE_MENU_BY_EMAIL;
+    } catch {
+      failed.push({ itemId: 0, reason: 'Seed-Daten konnten nicht geladen werden (e2eAttendanceMenuSeed.ts)' });
+      return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
+    }
+    const seedByEmail: Record<string, { attendance: string; menuPreference: string }> = {};
+    for (const s of seed) {
+      seedByEmail[s.email.toLowerCase()] = { attendance: s.attendance, menuPreference: s.menuPreference };
+    }
+
+    // SP-Spalten finden: Attendance / Menu preference per Title-Match
+    let attendanceField = '';
+    let menuField = '';
+    try {
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
+        SPHttpClient.configurations.v1
+      );
+      if (fieldsResp.ok) {
+        const fd = await fieldsResp.json();
+        const fields = fd.value || fd.d?.results || [];
+        for (const f of fields) {
+          const title = (f.Title || '').toLowerCase();
+          if (!attendanceField && (title === 'attendance' || title.indexOf('attendance') >= 0)) {
+            attendanceField = f.InternalName;
+          }
+          if (!menuField && (title.indexOf('menu') >= 0 || title === 'menu preference' || title === 'menupreference')) {
+            menuField = f.InternalName;
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!attendanceField) fieldMissing.push('Attendance');
+    if (!menuField) fieldMissing.push('Menu preference');
+    if (!attendanceField && !menuField) {
+      return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
+    }
+
+    // Teilnehmer laden
+    const selectFields = ['Id', 'ParticipantEmail'];
+    if (attendanceField) selectFields.push(attendanceField);
+    if (menuField) selectFields.push(menuField);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let items: Array<Record<string, any>> = [];
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=${selectFields.join(',')}&$top=2000`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        items = data.value || data.d?.results || [];
+      } else {
+        failed.push({ itemId: 0, reason: `Teilnehmer-Liste konnte nicht geladen werden (HTTP ${resp.status})` });
+        return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
+      }
+    } catch (err) {
+      failed.push({ itemId: 0, reason: err instanceof Error ? err.message : String(err) });
+      return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
+    }
+
+    // ListItemEntityTypeFullName
+    let listItemType = REG_LIST_ITEM_TYPE;
+    try {
+      const tr = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1
+      );
+      if (tr.ok) {
+        const td = await tr.json();
+        listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback */ }
+
+    for (const it of items) {
+      scanned += 1;
+      const email = (it['ParticipantEmail'] || '').toLowerCase();
+      if (!email) continue;
+      const seedEntry = seedByEmail[email];
+      if (!seedEntry) {
+        notFoundInSeed.push(email);
+        continue;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+
+      // Attendance: schreiben wenn Zelle leer
+      if (attendanceField && seedEntry.attendance) {
+        const cur = it[attendanceField];
+        const curStr = cur === undefined || cur === null ? '' : String(cur).trim();
+        if (curStr === '' || curStr === 'N/A') {
+          patch[attendanceField] = seedEntry.attendance;
+        }
+      }
+
+      // MenuPreference: schreiben wenn Zelle leer
+      if (menuField && seedEntry.menuPreference) {
+        const cur = it[menuField];
+        const curStr = cur === undefined || cur === null ? '' : String(cur).trim();
+        if (curStr === '' || curStr === 'N/A') {
+          patch[menuField] = seedEntry.menuPreference;
+        }
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+
+      try {
+        const body = { '__metadata': { 'type': listItemType }, ...patch };
+        const resp = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${it['Id']})`,
+          body
+        );
+        if (resp.ok) {
+          updated += 1;
+          if (patch[attendanceField]) attendanceSet += 1;
+          if (patch[menuField]) menuSet += 1;
+        } else {
+          const errText = await resp.text().catch(() => '');
+          failed.push({ itemId: it['Id'], reason: `HTTP ${resp.status}: ${errText.substring(0, 120)}` });
+        }
+      } catch (err) {
+        failed.push({ itemId: it['Id'], reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    return { scanned, updated, attendanceSet, menuSet, notFoundInSeed, fieldMissing, failed };
+  }
+
+  /**
    * Quiz-Ergebnis in die Registrierung eines Teilnehmers schreiben.
    * answers ist ein Array von ausgewaehlten Antwort-Indices (arrays,
    * weil Fragen mehrere richtige Antworten haben koennen).
