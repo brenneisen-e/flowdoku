@@ -55,6 +55,35 @@ Fall ist — im Zweifel immer Minor-Bump).
 - Per-Event: Subsite with "Teilnehmer" registration list
 - Shared Mailbox: `no_reply.events@deloitte.de`
 
+### SharePoint REST API — MERGE-Requests (WICHTIG)
+
+Bei allen SharePoint-List-Item-Updates per `this._merge(url, body)`:
+
+- `_merge` sendet mit Header `Content-Type: application/json;odata=nometadata`.
+- **Bei `odata=nometadata` darf KEIN `__metadata: { type: '...' }` im Body stehen.**
+- SharePoint lehnt das sonst mit HTTP 400 ab:
+  `The property '__metadata' does not exist on type 'SP.Data.XxxListItem'.`
+- Der Body muss **nur die echten Feld-Werte** enthalten, z.B. `{ Vorname: 'Max', Status: 'Angemeldet' }`.
+
+**Gegenbeispiel (falsch):**
+```ts
+const body = { '__metadata': { 'type': 'SP.Data.TeilnehmerListItem' }, ...patch };
+await this._merge(url, body);  // → HTTP 400
+```
+
+**Korrekt:**
+```ts
+await this._merge(url, patch);  // nur Felder
+```
+
+Referenz-Pattern siehe `updateRegistrationData()` in `EventService.ts` — verlaesslich seit Jahren im Produktivbetrieb.
+
+**Ausnahme: `odata=verbose`** — andere Funktionen wie `updateEvent()` nutzen direkt `this.context.spHttpClient.post()` mit `Content-Type: application/json;odata=verbose`. Dort ist `__metadata` **Pflicht**. Diese Funktionen nutzen NICHT `_merge` sondern bauen Header manuell.
+
+Merksatz:
+- `_merge(...)` = `nometadata` → KEIN `__metadata`
+- Manueller POST mit `odata=verbose` → `__metadata` ist Pflicht
+
 ### Key Architecture
 
 - SPFx WebPart with React (no browser routing, context-based navigation)
