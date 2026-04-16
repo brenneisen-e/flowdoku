@@ -172,11 +172,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [bulkImportText, setBulkImportText] = React.useState('');
   const [bulkImportRunning, setBulkImportRunning] = React.useState(false);
   const [bulkImportReport, setBulkImportReport] = React.useState<{
-    added: string[];
+    added: Array<{ lastname: string; firstname: string; email: string; originalInput?: string }>;
     notFound: string[];
-    alreadyIn: string[];
+    alreadyIn: Array<{ lastname: string; firstname: string; email: string }>;
     ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }>;
   } | null>(null);
+  // Audience-Chip-Pagination + Inline-Suche
+  const [audienceShowAll, setAudienceShowAll] = React.useState(false);
+  const [audienceChipSearch, setAudienceChipSearch] = React.useState('');
 
   const addAudienceItem = (value: string): void => {
     const list = audience.split(',').map(s => s.trim()).filter(Boolean);
@@ -203,7 +206,6 @@ export default function EventCreationPage(): React.ReactElement {
     if (!raw || !raw.trim()) return;
     setBulkImportRunning(true);
     setBulkImportReport(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existing = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
     const existingLc = new Set(existing.map(e => e.toLowerCase()));
     // Split auf ',', ';', Zeilenumbruch und Tab
@@ -212,23 +214,66 @@ export default function EventCreationPage(): React.ReactElement {
       .map(s => s.trim())
       .filter(Boolean);
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const added: string[] = [];
+
+    // Hilfs-Parser: 'Nachname, Vorname' oder 'Vorname Nachname' -> {lastname, firstname}
+    const parseDisplayName = (displayName: string, fallbackEmail: string): { lastname: string; firstname: string } => {
+      const dn = (displayName || '').trim();
+      if (!dn) return { lastname: fallbackEmail || '', firstname: '' };
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        return { lastname: parts[0] || dn, firstname: parts[1] || '' };
+      }
+      // Space-separiert: letztes Wort = Nachname
+      const words = dn.split(/\s+/);
+      if (words.length >= 2) {
+        return { lastname: words[words.length - 1], firstname: words.slice(0, -1).join(' ') };
+      }
+      return { lastname: dn, firstname: '' };
+    };
+
+    const added: Array<{ lastname: string; firstname: string; email: string; originalInput?: string }> = [];
     const notFound: string[] = [];
-    const alreadyIn: string[] = [];
+    const alreadyIn: Array<{ lastname: string; firstname: string; email: string }> = [];
     const ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }> = [];
     const newEntries = existing.slice();
 
     for (const f of fragments) {
       // Schon drin?
       if (existingLc.has(f.toLowerCase())) {
-        alreadyIn.push(f);
+        // Versuch Name-Lookup auch fuer 'alreadyIn', damit Report lesbar ist
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hits: any[] = emailRegex.test(f) ? await searchUsers(f) : [];
+          if (hits.length > 0) {
+            const { lastname, firstname } = parseDisplayName(hits[0].displayName, f);
+            alreadyIn.push({ lastname, firstname, email: f });
+          } else {
+            alreadyIn.push({ lastname: f, firstname: '', email: f });
+          }
+        } catch {
+          alreadyIn.push({ lastname: f, firstname: '', email: f });
+        }
         continue;
       }
-      // Direkt-Email
+      // Direkt-Email: Name per searchUsers(email) nachladen
       if (emailRegex.test(f)) {
         newEntries.push(f);
         existingLc.add(f.toLowerCase());
-        added.push(f);
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hits: any[] = await searchUsers(f);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const exact = hits.find((h: any) => h.email && h.email.toLowerCase() === f.toLowerCase());
+          if (exact) {
+            const { lastname, firstname } = parseDisplayName(exact.displayName, f);
+            added.push({ lastname, firstname, email: exact.email });
+          } else {
+            added.push({ lastname: f, firstname: '', email: f });
+          }
+        } catch {
+          added.push({ lastname: f, firstname: '', email: f });
+        }
+        await new Promise(res => setTimeout(res, 80));
         continue;
       }
       // Name / Teilstring → searchUsers
@@ -244,9 +289,11 @@ export default function EventCreationPage(): React.ReactElement {
           if (em && !existingLc.has(em.toLowerCase())) {
             newEntries.push(em);
             existingLc.add(em.toLowerCase());
-            added.push(`${f} → ${hits[0].displayName} (${em})`);
+            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em);
+            added.push({ lastname, firstname, email: em, originalInput: f });
           } else {
-            alreadyIn.push(f);
+            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em || f);
+            alreadyIn.push({ lastname, firstname, email: em || f });
           }
           continue;
         }
@@ -259,9 +306,18 @@ export default function EventCreationPage(): React.ReactElement {
       } catch {
         notFound.push(f);
       }
-      // kleine Pause um Rate-Limit zu vermeiden
       await new Promise(res => setTimeout(res, 120));
     }
+
+    // Alphabetisch sortieren: Nachname, dann Vorname
+    const sortFn = (a: { lastname: string; firstname: string }, b: { lastname: string; firstname: string }): number => {
+      const ln = a.lastname.localeCompare(b.lastname, 'de', { sensitivity: 'base' });
+      if (ln !== 0) return ln;
+      return a.firstname.localeCompare(b.firstname, 'de', { sensitivity: 'base' });
+    };
+    added.sort(sortFn);
+    alreadyIn.sort(sortFn);
+    notFound.sort();
 
     setAudience(newEntries.join(', '));
     setBulkImportReport({ added, notFound, alreadyIn, ambiguous });
@@ -269,15 +325,35 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /** Ambiguous-Eintrag manuell aufloesen: pickt eine Match-Email aus. */
-  const resolveAmbiguous = (input: string, email: string): void => {
+  const resolveAmbiguous = (input: string, email: string, displayName: string): void => {
     const list = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
     if (list.indexOf(email) < 0) list.push(email);
     setAudience(list.join(', '));
     if (bulkImportReport) {
+      const dn = (displayName || '').trim();
+      let lastname = email;
+      let firstname = '';
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        lastname = parts[0] || email;
+        firstname = parts[1] || '';
+      } else if (dn.indexOf(' ') >= 0) {
+        const words = dn.split(/\s+/);
+        lastname = words[words.length - 1];
+        firstname = words.slice(0, -1).join(' ');
+      } else if (dn) {
+        lastname = dn;
+      }
+      const newAdded = [...bulkImportReport.added, { lastname, firstname, email, originalInput: input }];
+      newAdded.sort((a, b) => {
+        const ln = a.lastname.localeCompare(b.lastname, 'de', { sensitivity: 'base' });
+        if (ln !== 0) return ln;
+        return a.firstname.localeCompare(b.firstname, 'de', { sensitivity: 'base' });
+      });
       setBulkImportReport({
         ...bulkImportReport,
         ambiguous: bulkImportReport.ambiguous.filter(a => a.input !== input),
-        added: [...bulkImportReport.added, `${input} → ${email}`],
+        added: newAdded,
       });
     }
   };
@@ -1487,45 +1563,94 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   Suche nach <strong>Personen oder Gruppen</strong> (Verteilerlisten / Security Groups aus Entra) — diese sehen das Event zusätzlich, unabhängig vom Standort.
                 </p>
-                {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege */}
-                {audience.trim().length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {audience.split(',').map(s => s.trim()).filter(Boolean).map((entry, i) => {
-                      const isEmail = entry.indexOf('@') >= 0;
-                      return (
-                        <span key={i} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          padding: '4px 10px', borderRadius: 999,
-                          background: isEmail ? 'rgba(0,118,168,0.10)' : 'rgba(134,188,37,0.12)',
-                          color: isEmail ? 'var(--dex-blue, #0076a8)' : 'var(--dex-green-dark)',
-                          fontSize: '0.8rem', fontWeight: 600,
-                        }}>
-                          {entry}
-                          {isEmail && entry.indexOf('@') > 0 && /^[A-Z]/.test(entry) === false && (
-                            // Kleine Heuristik: wenn es sehr nach Verteiler aussieht (z.B. SAPAlliance643@), Mitglieder-Button anbieten
-                            null
+                {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
+                    Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
+                {audience.trim().length > 0 && (() => {
+                  const allEntries = audience.split(',').map(s => s.trim()).filter(Boolean);
+                  const chipSearchLc = audienceChipSearch.trim().toLowerCase();
+                  const filtered = chipSearchLc
+                    ? allEntries.filter(e => e.toLowerCase().indexOf(chipSearchLc) >= 0)
+                    : allEntries;
+                  const visibleLimit = 10;
+                  const visible = audienceShowAll || chipSearchLc ? filtered : filtered.slice(0, visibleLimit);
+                  const hiddenCount = filtered.length - visible.length;
+                  return (
+                    <div style={{ marginBottom: 8 }}>
+                      {/* Meta-Zeile mit Anzahl + Such-Input (nur wenn viele Eintraege) */}
+                      {allEntries.length > visibleLimit && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                          <span>{allEntries.length} Einträge{chipSearchLc && ` — ${filtered.length} Treffer`}</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={audienceChipSearch}
+                            onChange={e => setAudienceChipSearch(e.target.value)}
+                            placeholder="In Zielgruppe suchen..."
+                            style={{ flex: 1, maxWidth: 260, fontSize: '0.75rem', padding: '4px 8px' }}
+                          />
+                          {audienceChipSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setAudienceChipSearch('')}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--dex-gray-400)' }}
+                              title="Suche löschen"
+                            >
+                              <X size={14} />
+                            </button>
                           )}
-                          <button
-                            type="button"
-                            title="Mitglieder anzeigen"
-                            onClick={() => openMembersModal(entry)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: isEmail ? 'inline-flex' : 'none', color: 'inherit' }}
-                          >
-                            <Users size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeAudienceItem(entry)}
-                            title="Entfernen"
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', fontWeight: 700 }}
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {visible.map((entry, i) => {
+                          const isEmail = entry.indexOf('@') >= 0;
+                          return (
+                            <span key={`${entry}-${i}`} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '4px 10px', borderRadius: 999,
+                              background: isEmail ? 'rgba(0,118,168,0.10)' : 'rgba(134,188,37,0.12)',
+                              color: isEmail ? 'var(--dex-blue, #0076a8)' : 'var(--dex-green-dark)',
+                              fontSize: '0.8rem', fontWeight: 600,
+                            }}>
+                              {entry}
+                              <button
+                                type="button"
+                                title="Mitglieder anzeigen"
+                                onClick={() => openMembersModal(entry)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: isEmail ? 'inline-flex' : 'none', color: 'inherit' }}
+                              >
+                                <Users size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeAudienceItem(entry)}
+                                title="Entfernen"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', fontWeight: 700 }}
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {/* Mehr / Weniger Button */}
+                      {!chipSearchLc && allEntries.length > visibleLimit && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px', marginTop: 6 }}
+                          onClick={() => setAudienceShowAll(!audienceShowAll)}
+                        >
+                          {audienceShowAll ? `Weniger anzeigen (${allEntries.length - visibleLimit} ausblenden)` : `Alle anzeigen (+${hiddenCount} weitere)`}
+                        </button>
+                      )}
+                      {chipSearchLc && filtered.length === 0 && (
+                        <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4, fontStyle: 'italic' }}>
+                          Kein Treffer für &bdquo;{audienceChipSearch}&ldquo; in der Zielgruppe.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Such-Input */}
                 <input
                   className="form-input"
@@ -2905,7 +3030,11 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginBottom: 10 }}>
                     <strong style={{ color: 'var(--dex-green-dark)' }}>✓ Hinzugefügt ({bulkImportReport.added.length}):</strong>
                     <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                      {bulkImportReport.added.map((a, i) => <li key={`a-${i}`}>{a}</li>)}
+                      {bulkImportReport.added.map((a, i) => (
+                        <li key={`a-${i}`}>
+                          <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ color: 'var(--dex-gray-400)' }}>— {a.email}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
@@ -2913,7 +3042,11 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginBottom: 10 }}>
                     <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits in Zielgruppe ({bulkImportReport.alreadyIn.length}):</strong>
                     <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
-                      {bulkImportReport.alreadyIn.map((a, i) => <li key={`w-${i}`}>{a}</li>)}
+                      {bulkImportReport.alreadyIn.map((a, i) => (
+                        <li key={`w-${i}`}>
+                          <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span>— {a.email}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
@@ -2935,7 +3068,7 @@ export default function EventCreationPage(): React.ReactElement {
                           <button
                             key={`mm-${i}-${j}`}
                             type="button"
-                            onClick={() => resolveAmbiguous(a.input, m.email)}
+                            onClick={() => resolveAmbiguous(a.input, m.email, m.displayName)}
                             style={{
                               display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
                               marginTop: 4, background: '#fff', border: '1px solid var(--dex-gray-200)',

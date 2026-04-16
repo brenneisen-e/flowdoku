@@ -27,14 +27,26 @@ The `dist/dex-event-platform.sppkg` must always reflect the latest build so it c
 
 ### Versioning Strategy
 
-- **Patch (1.0.x):** Bug fixes, UI tweaks, small improvements. Bumped automatically by `npm run package`.
-- **Minor (1.x.0):** New user-facing feature completed and working end-to-end (e.g. event creation with subsites, registration flow, role management). Bump manually in `package.json` and `config/package-solution.json`.
-- **Major (x.0.0):** Breaking changes, major architectural shifts, or official production release. Bump manually.
+**WICHTIG (Stand 2026-04-16): Jede Build-Iteration muss um +0.1 (Minor) hochgezaehlt werden.**
+SharePoint erkennt Patch-Updates (z.B. 4.1.0 → 4.1.1) **nicht** zuverlaessig als neue
+Version und ignoriert den Upload — die App laeuft dann weiterhin mit der alten Version.
+Deshalb IMMER Minor-Bump (x.y.0 → x.(y+1).0).
 
-When to bump minor/major (update `package.json` version + `config/package-solution.json` solution.version):
-- **1.1.0** — First fully working version: event creation (subsites), registration, cancellation, admin page, role management all functional on SharePoint
-- **1.2.0** — Power Automate integration (waitlist promotion, ID reassignment)
-- **2.0.0** — Production release / go-live after pilot phase
+**Vorgehen pro Build:**
+- `package.json`: `version` manuell auf naechsten Minor-Wert setzen (z.B. `4.1.0` → `4.2.0`)
+- `config/package-solution.json`: `solution.version` und `features[*].version` auf `x.y.0.0` (z.B. `4.2.0.0`)
+- `src/webparts/dexEventPlatform/version.ts`: `APP_VERSION` auf `x.y.0`
+- Dann: `rm -rf dist release temp sharepoint/solution/debug && npx gulp bundle --ship && npx gulp package-solution --ship`
+  (direkt gulp aufrufen, nicht `npm run package` — das bump-Script zaehlt nur Patch und wuerde daraus `4.2.1` machen)
+- `dist/dex-event-platform.sppkg` kopieren und committen
+
+**Major-Bump (x.0.0)** nur bei echten Breaking-Changes oder offiziellem Release-Marker
+(z.B. `4.x.0` → `5.0.0`). Nicht fuer normale Iterationen.
+
+**Patch-Bump (x.y.z mit z > 0)** ist seit v4.1.x deprecated fuer neue Deployments — nur
+noch fuer Hotfixes auf einer bereits deployten Version nutzen, wenn der Tenant
+SharePoint-seitig bereit ist, Patch-Updates zu akzeptieren (was meistens NICHT der
+Fall ist — im Zweifel immer Minor-Bump).
 
 ### SharePoint Site
 
