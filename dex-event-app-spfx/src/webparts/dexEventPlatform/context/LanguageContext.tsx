@@ -59,6 +59,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'event.waitlist': 'Warteliste',
     'events.until': 'bis',
     'events.regopen': 'Anmeldung bis:',
+    'events.deadlinepassed': 'Frist abgelaufen',
+    'events.deadlinepassed.hint': 'Bitte wende dich an den Organizer, wenn du dich noch anmelden möchtest.',
 
     // Registration Page
     'reg.selectedevent': 'Ausgewähltes Event',
@@ -373,6 +375,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'event.waitlist': 'Waitlist',
     'events.until': 'until',
     'events.regopen': 'Registration open until:',
+    'events.deadlinepassed': 'Registration closed',
+    'events.deadlinepassed.hint': 'Please contact the organizer if you still want to register.',
 
     // Registration Page
     'reg.selectedevent': 'Selected Event',

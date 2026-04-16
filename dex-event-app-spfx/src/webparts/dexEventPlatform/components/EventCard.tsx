@@ -63,9 +63,30 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
   const freePlaces = isUnlimited ? Infinity : event.maxParticipants - event.currentParticipants;
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
+  const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+  // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins duerfen
+  // trotzdem reinklicken, um ggf. manuell zu registrieren.
+  const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !alreadySignedUp;
 
   return (
-    <div className="event-card" style={{ position: 'relative' }} onClick={() => !alreadySignedUp ? navigate('registration', event.id) : undefined}>
+    <div className="event-card" style={{ position: 'relative', cursor: showDeadlineOverlay ? 'not-allowed' : 'pointer' }} onClick={() => (!alreadySignedUp && !showDeadlineOverlay) ? navigate('registration', event.id) : undefined}>
+      {showDeadlineOverlay && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
+          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+            {t('events.deadlinepassed')}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginBottom: 4, maxWidth: 320, lineHeight: 1.4 }}>
+            {t('events.deadlinepassed.hint')}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
+            {event.title}
+          </div>
+        </div>
+      )}
       {alreadySignedUp && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
@@ -135,6 +156,20 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
         {event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
           <div className="event-card__deadline">
             {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
+          </div>
+        )}
+        {event.registrationDeadline && new Date(event.registrationDeadline) < new Date() && (
+          <div style={{
+            marginTop: 6,
+            padding: '6px 10px',
+            background: 'rgba(218,41,28,0.10)',
+            color: 'var(--dex-red)',
+            borderRadius: 6,
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            lineHeight: 1.35,
+          }}>
+            {t('events.deadlinepassed')}
           </div>
         )}
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>

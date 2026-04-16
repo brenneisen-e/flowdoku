@@ -68,6 +68,8 @@ export default function AdminPage(): React.ReactElement {
   const [auditFieldsResult, setAuditFieldsResult] = React.useState<string | null>(null);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
   const [backfillResult, setBackfillResult] = React.useState<string | null>(null);
+  const [isE2ESeeding, setIsE2ESeeding] = React.useState(false);
+  const [e2eSeedResult, setE2ESeedResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Email Compose Modal
@@ -1047,6 +1049,52 @@ export default function AdminPage(): React.ReactElement {
             {backfillResult && (
               <span style={{ fontSize: '0.75rem', color: backfillResult.indexOf('Fehler') >= 0 ? 'var(--dex-red)' : 'var(--dex-green)' }}>
                 {backfillResult}
+              </span>
+            )}
+            {isAdmin && selectedEvent && /e2e/i.test(selectedEvent.title || '') && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                disabled={isE2ESeeding || !selectedEvent?.subsiteUrl}
+                title={'E2E M&A-spezifisch: Attendance + Menu preference per E-Mail-Match aus Seed-Daten '
+                  + '(Stand 2026-04-15) in die SharePoint-Spalten nachtragen. Idempotent: bereits gefuellte '
+                  + 'Zellen werden NICHT ueberschrieben. Voraussetzung: "Custom Fields pruefen" wurde ausgefuehrt, '
+                  + 'damit die Spalten existieren.'}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm('Attendance + Menu preference per E-Mail-Match aus Seed-Daten nachtragen?\n\n'
+                    + 'Nur leere Zellen werden gefuellt. Idempotent.')) return;
+                  setIsE2ESeeding(true);
+                  setE2ESeedResult(null);
+                  try {
+                    const r = await eventServiceRef.seedE2EAttendanceMenuByEmail(selectedEvent.subsiteUrl);
+                    const parts: string[] = [];
+                    parts.push(`${r.scanned} Teilnehmer geprueft`);
+                    parts.push(`${r.updated} aktualisiert`);
+                    if (r.attendanceSet > 0) parts.push(`Attendance: ${r.attendanceSet}`);
+                    if (r.menuSet > 0) parts.push(`Menu: ${r.menuSet}`);
+                    if (r.fieldMissing.length > 0) parts.push(`Spalten fehlen: ${r.fieldMissing.join(', ')} — erst "Custom Fields pruefen"`);
+                    if (r.notFoundInSeed.length > 0) parts.push(`Nicht in Seed: ${r.notFoundInSeed.length} (${r.notFoundInSeed.slice(0, 3).join(', ')}${r.notFoundInSeed.length > 3 ? '...' : ''})`);
+                    if (r.failed.length > 0) parts.push(`${r.failed.length} Fehler`);
+                    setE2ESeedResult(parts.join(' | '));
+                    if (r.updated > 0) {
+                      try {
+                        const regs = await getAllRegistrations(selectedEvent.id);
+                        setRegistrations(regs);
+                      } catch { /* Refresh optional */ }
+                    }
+                  } catch (err) {
+                    setE2ESeedResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsE2ESeeding(false);
+                }}
+              >
+                {isE2ESeeding ? 'E2E-Seed laeuft...' : 'E2E: Attendance + Menu per E-Mail nachtragen'}
+              </button>
+            )}
+            {e2eSeedResult && (
+              <span style={{ fontSize: '0.75rem', color: e2eSeedResult.indexOf('Fehler') >= 0 ? 'var(--dex-red)' : 'var(--dex-green)' }}>
+                {e2eSeedResult}
               </span>
             )}
             {isAdmin && (
