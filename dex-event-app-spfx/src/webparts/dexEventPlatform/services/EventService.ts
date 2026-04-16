@@ -2426,6 +2426,23 @@ export class EventService {
     registeredByEmail?: string // Audit: E-Mail des Users der die Anmeldung ausloest
   ): Promise<boolean> {
     try {
+      // ---- Permission-Check (v3.9.2) ----
+      // Wenn der angemeldete User NICHT fuer sich selbst registriert, muss er
+      // berechtigt sein. Das Frontend (RegistrationPage) filtert zwar den UI-Button,
+      // aber ein Angreifer koennte mit F12 den Service direkt aufrufen. Hier noch
+      // eine serverseitige Pruefung — nicht perfekt (weil der SPFx-Code clientseitig
+      // laeuft), aber fangt naiven App-Bypass ab.
+      const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
+      const targetEmail = (participantEmail || '').toLowerCase();
+      if (targetEmail && targetEmail !== sessionEmail) {
+        const allowed = await this.canRegisterForOthers(subsiteUrl, participantEmail);
+        if (!allowed) {
+          console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
+          return false;
+        }
+      }
+      // ---- Ende Permission-Check ----
+
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
@@ -2526,6 +2543,29 @@ export class EventService {
     registeredByEmail?: string // Audit: E-Mail des Users der die Re-Anmeldung ausloest
   ): Promise<boolean> {
     try {
+      // ---- Permission-Check (v3.9.2) ----
+      // Lade die ParticipantEmail aus dem zu reaktivierenden Item und pruefe,
+      // ob der aktuelle User dafuer berechtigt ist.
+      try {
+        const itemResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail`,
+          SPHttpClient.configurations.v1
+        );
+        if (itemResp.ok) {
+          const itemData = await itemResp.json();
+          const targetEmail: string = (itemData.ParticipantEmail || itemData.d?.ParticipantEmail || '').toLowerCase();
+          const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
+          if (targetEmail && targetEmail !== sessionEmail) {
+            const allowed = await this.canRegisterForOthers(subsiteUrl, targetEmail);
+            if (!allowed) {
+              console.warn(`[DEX] reactivateRegistration DENIED: ${sessionEmail} versuchte ${targetEmail} zu reaktivieren — nicht berechtigt.`);
+              return false;
+            }
+          }
+        }
+      } catch { /* bei Load-Fehler konservativ: weitermachen, weil Reactivation fuer eigene User nicht blockiert werden darf */ }
+      // ---- Ende Permission-Check ----
+
       // Naechste TeilnehmerID ermitteln
       let nextId = 1;
       try {
@@ -3655,6 +3695,73 @@ export class EventService {
   }
 
   // ==================== Profil-Daten ====================
+
+  /**
+   * Permission-Check: Darf der aktuell eingeloggte User einen anderen Teilnehmer
+   * registrieren? Wird in registerForEvent() und reactivateRegistration() aufgerufen,
+   * wenn ParticipantEmail !== session-Email.
+   *
+   * Erlaubt wenn (OR):
+   *   - DEX_Roles enthaelt den User als 'Admin'
+   *   - Der User ist in event.OrganizerEmail fuer das Event auf der zugehoerigen
+   *     Subsite eingetragen (Event-scope Organizer)
+   *   - Der User ist Assistant (JobTitle enthaelt 'assistant') UND der Target
+   *     ist Partner oder Director (JobTitle enthaelt 'partner' oder 'director')
+   *
+   * Bei Fehlern lieber konservativ `false` zurueckgeben statt durchlassen.
+   */
+  private async canRegisterForOthers(subsiteUrl: string, targetParticipantEmail: string): Promise<boolean> {
+    const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
+    if (!sessionEmail) return false;
+
+    // 1. DEX_Roles pruefen: Admin-Rolle haben?
+    try {
+      const esc = sessionEmail.replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Title eq '${encodeURIComponent(esc)}'&$top=1&$select=Role`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        if (items.length > 0 && items[0].Role === 'Admin') return true;
+      }
+    } catch { /* ignore - fallback auf weitere Checks */ }
+
+    // 2. Event-Organizer? OrganizerEmail aus DEX_Events finden ueber SubsiteUrl-Match
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        if (items.length > 0) {
+          const orgStr: string = items[0].OrganizerEmail || '';
+          const orgEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
+          if (orgEmails.indexOf(sessionEmail) >= 0) return true;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 3. Assistant-Ausnahme: User-JobTitle enthaelt 'assistant' UND Target ist Partner/Director
+    try {
+      const sessionProfile = await this.getCurrentUserProfile();
+      const sessionJt = (sessionProfile.jobTitle || '').toLowerCase();
+      if (sessionJt.indexOf('assistant') >= 0) {
+        const targetProfile = await this.getUserProfileByEmail(targetParticipantEmail);
+        const targetJt = (targetProfile.jobTitle || '').toLowerCase();
+        if (targetJt.indexOf('partner') >= 0 || targetJt.indexOf('director') >= 0) {
+          return true;
+        }
+        // Assistant darf nicht fuer Non-Partner/Director registrieren
+        return false;
+      }
+    } catch { /* ignore */ }
+
+    return false;
+  }
 
   /**
    * Profildaten des aktuellen Users laden fuer die Teilnehmerliste.
