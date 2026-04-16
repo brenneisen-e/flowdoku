@@ -3058,6 +3058,156 @@ export class EventService {
   }
 
   /**
+   * Backfill: Custom-Field-Werte aus dem `CustomData`-JSON in die echten
+   * SP-Spalten der Teilnehmerliste nachtragen.
+   *
+   * Hintergrund: Bei einer frueheren Seed-Migration wurden einige Custom-Field-
+   * Werte (z.B. `dropdown1`=Attendance, `dropdown2`=MenuPreference bei der
+   * E2E M&A-Session) NUR im `CustomData`-JSON des Teilnehmer-Eintrags gespeichert,
+   * aber nicht in die zugehoerige SP-Spalte geschrieben. Dadurch sind die Werte
+   * in der SharePoint-UI, im Admin-Center und fuer Power-Automate-Flows unsichtbar.
+   *
+   * Diese Funktion geht durch alle Teilnehmer und fuellt jede leere SP-Spalte
+   * mit dem passenden Wert aus `CustomData`, sofern:
+   *   - das CustomField einen `spInternalName` hat (sonst zuerst `auditCustomFieldColumns`
+   *     ausfuehren, damit die Spalte existiert und das Mapping korrekt ist)
+   *   - der Eintrag in `CustomData` unter der `field.id` einen Wert hat
+   *   - die SP-Spalte aktuell leer/null/undefined ist (bestehende Werte werden
+   *     NICHT ueberschrieben — idempotent)
+   *
+   * Wird vom Admin im Admin-Center per Button "Werte aus CustomData nachtragen"
+   * ausgefuehrt (pro Event / pro Subsite).
+   */
+  public async backfillCustomFieldValues(
+    subsiteUrl: string,
+    customFields: CustomField[]
+  ): Promise<{
+    scanned: number;
+    updated: number;
+    fieldUpdates: Record<string, number>;
+    skippedNoMapping: string[];
+    failed: Array<{ itemId: number; reason: string }>;
+  }> {
+    const fieldUpdates: Record<string, number> = {};
+    const skippedNoMapping: string[] = [];
+    const failed: Array<{ itemId: number; reason: string }> = [];
+    let scanned = 0;
+    let updated = 0;
+
+    // Nur CustomFields mit spInternalName sind relevant (die anderen kann
+    // backfillCustomFieldValues nicht zielen — Admin muss zuerst auditCustomFieldColumns
+    // laufen lassen).
+    const fieldsWithMapping: Array<{ id: string; label: string; spInternalName: string }> = [];
+    for (const cf of customFields) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sp = (cf as any).spInternalName as string | undefined;
+      if (sp && cf.id) {
+        fieldsWithMapping.push({ id: cf.id, label: cf.label, spInternalName: sp });
+      } else if (cf.id) {
+        skippedNoMapping.push(cf.label || cf.id);
+      }
+    }
+
+    if (fieldsWithMapping.length === 0) {
+      return { scanned, updated, fieldUpdates, skippedNoMapping, failed };
+    }
+
+    // Teilnehmer laden — select auf Id, CustomData und alle relevanten
+    // Custom-Field-Spalten (damit wir wissen welche Zellen schon gefuellt sind).
+    const selectFields = ['Id', 'CustomData', ...fieldsWithMapping.map(f => f.spInternalName)].join(',');
+    let items: Array<Record<string, unknown>> = [];
+    try {
+      // Pagination: SharePoint liefert max 5000, aber wir nehmen die ersten 2000
+      // (bei groesseren Events muss das per $skiptoken nachgezogen werden).
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=${selectFields}&$top=2000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) {
+        failed.push({ itemId: 0, reason: `Teilnehmer-Liste konnte nicht geladen werden (HTTP ${resp.status})` });
+        return { scanned, updated, fieldUpdates, skippedNoMapping, failed };
+      }
+      const data = await resp.json();
+      items = data.value || data.d?.results || [];
+    } catch (err) {
+      failed.push({ itemId: 0, reason: err instanceof Error ? err.message : String(err) });
+      return { scanned, updated, fieldUpdates, skippedNoMapping, failed };
+    }
+
+    // ListItemEntityTypeFullName fuer den MERGE-PATCH
+    let listItemType = REG_LIST_ITEM_TYPE;
+    try {
+      const tr = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ListItemEntityTypeFullName`,
+        SPHttpClient.configurations.v1
+      );
+      if (tr.ok) {
+        const td = await tr.json();
+        listItemType = td.d?.ListItemEntityTypeFullName || td.ListItemEntityTypeFullName || listItemType;
+      }
+    } catch { /* Fallback */ }
+
+    for (const it of items) {
+      scanned += 1;
+      const itemId = Number(it['Id']);
+      if (!itemId) continue;
+
+      // CustomData JSON parsen
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let customData: Record<string, any> = {};
+      try {
+        const raw = it['CustomData'];
+        if (typeof raw === 'string' && raw.trim().length > 0) {
+          customData = JSON.parse(raw);
+        }
+      } catch { /* ungueltiges JSON ueberspringen */ }
+      if (!customData || Object.keys(customData).length === 0) continue;
+
+      // Pro Field pruefen ob SP-Spalte leer und CustomData Wert hat
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+      for (const f of fieldsWithMapping) {
+        const cdValue = customData[f.id];
+        if (cdValue === undefined || cdValue === null) continue;
+        const cdStr = String(cdValue).trim();
+        if (!cdStr) continue;
+        // N/A = Platzhalter aus der alten Seed-Migration - nicht schreiben
+        if (cdStr === 'N/A') continue;
+        const currentSpValue = it[f.spInternalName];
+        const currentStr = currentSpValue === undefined || currentSpValue === null ? '' : String(currentSpValue).trim();
+        // Nur schreiben wenn Zelle leer ist (idempotent, keine Ueberschreibung
+        // von bereits per Hand korrigierten Werten)
+        if (currentStr !== '' && currentStr !== 'N/A') continue;
+        patch[f.spInternalName] = cdStr;
+        fieldUpdates[f.label] = (fieldUpdates[f.label] || 0) + 1;
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+
+      // MERGE-PATCH schicken
+      try {
+        const body = { '__metadata': { 'type': listItemType }, ...patch };
+        const resp = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+          body
+        );
+        if (resp.ok) {
+          updated += 1;
+        } else {
+          // Fehler einsammeln — Zaehler der Fieldupdates rueckgaengig machen waere
+          // aufwendig, wir akzeptieren kleine Ungenauigkeit im Report.
+          const errText = await resp.text().catch(() => '');
+          failed.push({ itemId, reason: `HTTP ${resp.status}: ${errText.substring(0, 120)}` });
+        }
+      } catch (err) {
+        failed.push({ itemId, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    return { scanned, updated, fieldUpdates, skippedNoMapping, failed };
+  }
+
+  /**
    * Quiz-Ergebnis in die Registrierung eines Teilnehmers schreiben.
    * answers ist ein Array von ausgewaehlten Antwort-Indices (arrays,
    * weil Fragen mehrere richtige Antworten haben koennen).
