@@ -1861,11 +1861,10 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
-              {/* UND/ODER Verknüpfung */}
+              {/* UND/ODER Verknüpfung (kein Step-Badge — ist Zusatz von Section 4+5) */}
               {locationFilter && audience && (
-                <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={6} />
+                <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', paddingLeft: 30 }}>
+                  <label className="form-label">
                     Filterverknüpfung
                   </label>
                   <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -1890,7 +1889,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
+                  <StepBadge n={6} />
                   <span className="required">*</span> {t('create.description')}
                   <InfoTooltip text={t('create.description.hint')} />
                 </label>
@@ -1900,7 +1899,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={8} />
+                  <StepBadge n={7} />
                   Event-Bild
                   <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>
