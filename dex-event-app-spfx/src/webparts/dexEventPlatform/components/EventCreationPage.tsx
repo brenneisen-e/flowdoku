@@ -14,7 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
-import { Trash2, Send, Plus, X, Users } from './Icons';
+import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
@@ -460,6 +460,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.organizers.join('; ') : `${currentUser.firstName} ${currentUser.surname}`
   );
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [organizerSearch, setOrganizerSearch] = React.useState('');
   // Beim Edit: organizerEmails aus dem gespeicherten Event uebernehmen, nicht auf currentUser
   // zuruecksetzen. Sonst ueberschreibt ein Edit+Save die gesamte Organizer-Email-Liste mit
   // nur der Mail des aktuellen Editors — alle anderen Organizer wuerden stumm aus der
@@ -499,6 +500,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
+  const [unlimitedParticipants, setUnlimitedParticipants] = React.useState(
+    !editEvent || !editEvent.maxParticipants || editEvent.maxParticipants === 0
+  );
   const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
@@ -514,7 +518,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
   const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
   const [htmlEditorTemplateType, setHtmlEditorTemplateType] = React.useState<string>('');
-  const [emailLanguage, setEmailLanguage] = React.useState(editEvent ? (editEvent.emailLanguage || 'EN') : 'EN');
+  const [emailLanguage, setEmailLanguage] = React.useState(
+    editEvent
+      ? (editEvent.emailLanguage || (locale === 'de' ? 'DE' : 'EN'))
+      : (locale === 'de' ? 'DE' : 'EN')
+  );
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
@@ -587,7 +595,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [iconSearch, setIconSearch] = React.useState('');
   const [showAllIcons, setShowAllIcons] = React.useState(false);
 
-  const locationOptions = ['Berlin', 'Düsseldorf', 'Frankfurt', 'Hamburg', 'Hannover', 'Köln', 'München', 'Nürnberg', 'Stuttgart', 'All'];
+  const locationOptions = ['Berlin', 'Dresden', 'Düsseldorf', 'Frankfurt', 'Görlitz', 'Halle', 'Hamburg', 'Hannover', 'Köln', 'Leipzig', 'Magdeburg', 'Mannheim', 'München', 'Nürnberg', 'Stuttgart', 'Walldorf', 'All'];
 
   const addCustomField = (): void => {
     setCustomFields([...customFields, {
@@ -940,13 +948,15 @@ export default function EventCreationPage(): React.ReactElement {
         'StartDate': startDate ? berlinLocalToUtcIso(startDate) : null,
         'EndDate': endDate ? berlinLocalToUtcIso(endDate) : null,
         'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
-        'MaxParticipants': Number(maxParticipants) || 0,
+        'MaxParticipants': unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         'EventImageUrl': imageUrl,
         'Organizer': organizer,
-        'CustomFields': JSON.stringify(customFields.map(f => ({
-          id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
-          ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
-        }))),
+        'CustomFields': JSON.stringify(customFields
+          .filter(f => f.label && f.label.trim().length > 0)
+          .map(f => ({
+            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
+            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+          }))),
       };
 
       // Optionale Felder - immer senden damit Loeschungen wirken
@@ -1084,7 +1094,7 @@ export default function EventCreationPage(): React.ReactElement {
         endDate: endDate ? berlinLocalToUtcIso(endDate) : '',
         registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
         lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
-        maxParticipants: Number(maxParticipants) || 0,
+        maxParticipants: unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         waitlistEnabled,
         eventImageUrl: imageUrl,
         organizer,
@@ -1103,10 +1113,12 @@ export default function EventCreationPage(): React.ReactElement {
         disableOutlook,
         durchstarterCapacity: isB2runTemplate ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
         funstarterCapacity: isB2runTemplate ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
-        customFields: customFields.map(f => ({
-          id: f.id, label: f.label, type: f.type, required: f.required, visible: f.visible,
-          ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
-        })),
+        customFields: customFields
+          .filter(f => f.label && f.label.trim().length > 0)
+          .map(f => ({
+            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
+            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+          })),
       });
 
       clearInterval(progressTimer);
@@ -1322,6 +1334,7 @@ export default function EventCreationPage(): React.ReactElement {
       case 2:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
         if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
+        if (!unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
         break;
     }
     return errors;
@@ -1423,7 +1436,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtitle')}
-                  <InfoTooltip text="Name des Events, z.B. 'B2Run Frankfurt 2026'" />
+                  <InfoTooltip text={t('create.eventtitle.hint')} />
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1432,7 +1445,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtype')}
-                  <InfoTooltip text="Kategorie des Events – bestimmt das Design der Event-Karte" />
+                  <InfoTooltip text={t('create.eventtype.hint')} />
                 </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
                   <option value="Other">Sonstiges Deloitte Event</option>
@@ -1444,75 +1457,12 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
                   <span className="required">*</span> {t('create.organizer')}
-                  <InfoTooltip text="Name der Person, die das Event organisiert" />
+                  <InfoTooltip text={t('create.organizer.hint')} />
                 </label>
-                <input
-                  className="form-input"
-                  value={organizer}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setOrganizer(val);
-                    if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
-                    // Nur den Teil nach dem letzten Semikolon fuer die Suche nutzen
-                    const lastPart = val.split(';').pop()?.trim() || '';
-                    if (lastPart.length >= 2) {
-                      // Suche AUSSCHLIESSLICH in DEX_Roles (nur User mit Rolle Organizer
-                      // oder Admin koennen als Event-Organizer hinzugefuegt werden).
-                      // Kein Async-Call noetig — Roles sind im Context schon geladen.
-                      const lp = lastPart.toLowerCase();
-                      const filtered = roles
-                        .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                        .filter(r => r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
-                        .slice(0, 12)
-                        .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                      setOrganizerResults(filtered);
-                    } else {
-                      setOrganizerResults([]);
-                    }
-                  }}
-                  placeholder="Name oder E-Mail eingeben — nur Organizer/Admins aus dem Admin Center"
-                  style={errorBorderStyle('organizer')}
-                />
-                {isSearchingOrganizer && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
-                )}
-                {organizerResults.length > 0 && (
-                  <div style={{
-                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
-                    background: '#fff', border: '1px solid var(--dex-gray-200)',
-                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    maxHeight: 200, overflowY: 'auto',
-                  }}>
-                    {organizerResults.map(u => (
-                      <div
-                        key={u.email}
-                        style={{
-                          padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
-                          borderBottom: '1px solid var(--dex-gray-100)',
-                        }}
-                        onMouseDown={() => {
-                          // Letzten Teil (Suchbegriff) durch ausgewaehlten Namen ersetzen
-                          const parts = organizer.split(';').map(s => s.trim());
-                          parts.pop();
-                          parts.push(u.displayName);
-                          setOrganizer(parts.filter(Boolean).join('; '));
-                          setOrganizerEmails(prev => [...prev.filter(e => e !== u.email), u.email]);
-                          setOrganizerResults([]);
-                        }}
-                      >
-                        <strong>{u.displayName}</strong>
-                        <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Organizer-Reihenfolge (Chips mit Reorder + Remove), nur wenn 2+ Organizer */}
+                {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
                 {(() => {
                   const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
-                  if (orgList.length < 2) return null;
-                  // Namen- und Email-Liste parallel halten: jede Chip-Aktion muss auf BEIDEN
-                  // Listen wirken, sonst wird OrganizerEmail desynchronisiert und Late-Cancel-
-                  // / Event-Mails gehen nur an eine Teilmenge der Organizer.
+                  if (orgList.length === 0) return null;
                   const move = (idx: number, dir: -1 | 1): void => {
                     const nextNames = [...orgList];
                     const target = idx + dir;
@@ -1532,59 +1482,109 @@ export default function EventCreationPage(): React.ReactElement {
                     setOrganizerEmails(prev => prev.filter((_, i) => i !== idx));
                   };
                   return (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>
-                        Reihenfolge (per Pfeil ändern, X zum Entfernen):
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {orgList.map((name, i) => (
-                          <div
-                            key={`${name}-${i}`}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              padding: '6px 10px', background: 'var(--dex-gray-100)',
-                              borderRadius: 'var(--dex-radius)', fontSize: '0.85rem',
-                            }}
-                          >
-                            <span style={{ flex: 1 }}>{i + 1}. {name}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {orgList.map((name, i) => (
+                        <span
+                          key={`${name}-${i}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '4px 4px 4px 12px',
+                            background: 'var(--dex-green)', color: '#fff',
+                            borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                          }}
+                        >
+                          <span>{name}</span>
+                          {orgList.length > 1 && i > 0 && (
                             <button
                               type="button"
                               onClick={() => move(i, -1)}
-                              disabled={i === 0}
-                              style={{
-                                background: 'none', border: '1px solid var(--dex-gray-300)',
-                                borderRadius: 4, width: 24, height: 24, cursor: i === 0 ? 'not-allowed' : 'pointer',
-                                opacity: i === 0 ? 0.4 : 1, color: 'var(--dex-gray-700)', fontSize: '0.85rem', lineHeight: 1,
-                              }}
-                              title="Nach oben"
-                            >▲</button>
+                              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                              title="Nach vorne"
+                            >◀</button>
+                          )}
+                          {orgList.length > 1 && i < orgList.length - 1 && (
                             <button
                               type="button"
                               onClick={() => move(i, 1)}
-                              disabled={i === orgList.length - 1}
-                              style={{
-                                background: 'none', border: '1px solid var(--dex-gray-300)',
-                                borderRadius: 4, width: 24, height: 24, cursor: i === orgList.length - 1 ? 'not-allowed' : 'pointer',
-                                opacity: i === orgList.length - 1 ? 0.4 : 1, color: 'var(--dex-gray-700)', fontSize: '0.85rem', lineHeight: 1,
-                              }}
-                              title="Nach unten"
-                            >▼</button>
-                            <button
-                              type="button"
-                              onClick={() => remove(i)}
-                              style={{
-                                background: 'none', border: '1px solid var(--dex-red, #da291c)',
-                                borderRadius: 4, width: 24, height: 24, cursor: 'pointer',
-                                color: 'var(--dex-red, #da291c)', fontSize: '0.85rem', lineHeight: 1,
-                              }}
-                              title="Entfernen"
-                            >×</button>
-                          </div>
-                        ))}
-                      </div>
+                              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                              title="Nach hinten"
+                            >▶</button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => remove(i)}
+                            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Entfernen"
+                          >×</button>
+                        </span>
+                      ))}
                     </div>
                   );
                 })()}
+                <input
+                  className="form-input"
+                  value={organizerSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setOrganizerSearch(val);
+                    if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
+                    if (val.trim().length >= 2) {
+                      const lp = val.trim().toLowerCase();
+                      const filtered = roles
+                        .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                        .filter(r => r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
+                        .slice(0, 12)
+                        .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                      setOrganizerResults(filtered);
+                    } else {
+                      setOrganizerResults([]);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Freitext verwerfen — nur per Dropdown ausgewaehlte Organizer zaehlen.
+                    setTimeout(() => { setOrganizerSearch(''); setOrganizerResults([]); }, 150);
+                  }}
+                  placeholder={t('create.organizer.placeholder')}
+                  style={errorBorderStyle('organizer')}
+                />
+                {isSearchingOrganizer && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+                )}
+                {organizerResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 200, overflowY: 'auto',
+                  }}>
+                    {organizerResults.map(u => {
+                      const alreadyAdded = organizerEmails.indexOf(u.email) >= 0;
+                      return (
+                        <div
+                          key={u.email}
+                          style={{
+                            padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                            borderBottom: '1px solid var(--dex-gray-100)',
+                            opacity: alreadyAdded ? 0.45 : 1,
+                          }}
+                          onMouseDown={() => {
+                            if (alreadyAdded) return;
+                            const existing = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                            const nextNames = [...existing, u.displayName];
+                            setOrganizer(nextNames.join('; '));
+                            setOrganizerEmails(prev => [...prev, u.email]);
+                            setOrganizerSearch('');
+                            setOrganizerResults([]);
+                          }}
+                        >
+                          <strong>{u.displayName}</strong>
+                          <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', marginLeft: 8, fontSize: '0.75rem' }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -1596,20 +1596,38 @@ export default function EventCreationPage(): React.ReactElement {
                   <em>Beispiel: Du wählst &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {locationOptions.map(loc => (
-                    <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.9rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={locationFilter.split(',').map(s => s.trim()).indexOf(loc) >= 0}
-                        onChange={e => {
-                          const current = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
-                          if (e.target.checked) setLocationFilter([...current, loc].join(', '));
-                          else setLocationFilter(current.filter(l => l !== loc).join(', '));
+                  {locationOptions.map(loc => {
+                    const isChecked = locationFilter.split(',').map(s => s.trim()).indexOf(loc) >= 0;
+                    const toggle = (): void => {
+                      const current = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
+                      if (!isChecked) setLocationFilter([...current, loc].join(', '));
+                      else setLocationFilter(current.filter(l => l !== loc).join(', '));
+                    };
+                    return (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={toggle}
+                        aria-pressed={isChecked}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '6px 14px',
+                          borderRadius: 999,
+                          border: `1.5px solid ${isChecked ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+                          background: isChecked ? 'var(--dex-green)' : '#fff',
+                          color: isChecked ? '#fff' : 'var(--dex-gray-700)',
+                          fontSize: '0.85rem',
+                          fontWeight: isChecked ? 500 : 400,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          boxShadow: isChecked ? '0 1px 3px rgba(134,188,37,0.25)' : 'none',
                         }}
-                      />
-                      {loc}
-                    </label>
-                  ))}
+                      >
+                        {isChecked && <Check size={14} />}
+                        {loc}
+                      </button>
+                    );
+                  })}
                 </div>
                 {!locationFilter && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-green)', marginTop: 8 }}>
@@ -1836,7 +1854,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.description')}
-                  <InfoTooltip text="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" />
+                  <InfoTooltip text={t('create.description.hint')} />
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
                 {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1845,7 +1863,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Event-Bild
-                  <InfoTooltip text="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." />
+                  <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>
                 {imagePreview && (
                   <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
@@ -1914,14 +1932,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   {t('create.location')}
-                  <InfoTooltip text="Adresse oder Name des Veranstaltungsortes" />
+                  <InfoTooltip text={t('create.location.hint')} />
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
               <div className="form-group">
                 <label className="form-label">
                   Adresse
-                  <InfoTooltip text="Strukturierte Adresse - wird auf der Registrierungsseite angezeigt" />
+                  <InfoTooltip text={t('create.address.hint')} />
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
                   <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
@@ -1937,7 +1955,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.startdate')}
-                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
+                    <InfoTooltip text={t('create.startdate.hint')} />
                   </label>
                   <DatePicker
                     selected={startDate ? new Date(startDate) : null}
@@ -1953,6 +1971,7 @@ export default function EventCreationPage(): React.ReactElement {
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
+                    maxDate={endDate ? new Date(endDate) : undefined}
                     isClearable
                     autoComplete="off"
                   />
@@ -1961,7 +1980,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
-                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
+                    <InfoTooltip text={t('create.enddate.hint')} />
                   </label>
                   <DatePicker
                     selected={endDate ? new Date(endDate) : null}
@@ -1993,7 +2012,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.agenda')}
-                  <InfoTooltip text="Programmablauf / Timeline des Events" />
+                  <InfoTooltip text={t('create.agenda.hint')} />
                 </label>
                 {agenda
                   .slice()
@@ -2123,7 +2142,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.transfers')}
-                  <InfoTooltip text="Abfahrtszeiten pro Standort" />
+                  <InfoTooltip text={t('create.transfers.hint')} />
                 </label>
                 {transferTimes.map((tt) => (
                   <div key={tt.id} style={{
@@ -2190,15 +2209,22 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.deadline')}
-                    <InfoTooltip text="Bis wann können sich Teilnehmer anmelden?" />
+                    <InfoTooltip text={t('create.deadline.hint')} />
                   </label>
                   <DatePicker
                     selected={registrationDeadline ? new Date(registrationDeadline) : null}
-                    onChange={(date: Date | null) => setRegistrationDeadline(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '')}
-                    dateFormat="dd.MM.yyyy"
+                    onChange={(date: Date | null) => setRegistrationDeadline(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
                     placeholderText="Anmelde-Deadline"
                     className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
                     isClearable
                     autoComplete="off"
                     maxDate={startDate ? new Date(startDate) : undefined}
@@ -2207,15 +2233,22 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.lastcancel')}
-                    <InfoTooltip text="Bis wann können sich Teilnehmer wieder abmelden?" />
+                    <InfoTooltip text={t('create.lastcancel.hint')} />
                   </label>
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
-                    onChange={(date: Date | null) => setLastDeregisterDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '')}
-                    dateFormat="dd.MM.yyyy"
+                    onChange={(date: Date | null) => setLastDeregisterDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
                     placeholderText="Abmeldefrist"
                     className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
                     isClearable
                     autoComplete="off"
                     maxDate={startDate ? new Date(startDate) : undefined}
@@ -2290,20 +2323,42 @@ export default function EventCreationPage(): React.ReactElement {
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
                       <label className="toggle">
-                        <input type="checkbox" checked={!maxParticipants || maxParticipants === '0'} onChange={e => { setMaxParticipants(e.target.checked ? '0' : '50'); if (e.target.checked) setWaitlistEnabled(false); }} />
+                        <input
+                          type="checkbox"
+                          checked={unlimitedParticipants}
+                          onChange={e => {
+                            const unlimited = e.target.checked;
+                            setUnlimitedParticipants(unlimited);
+                            if (unlimited) {
+                              setMaxParticipants('');
+                              setWaitlistEnabled(false);
+                            }
+                          }}
+                        />
                         <span className="toggle-slider" />
                       </label>
-                      <span style={{ fontSize: '0.9rem' }}>{!maxParticipants || maxParticipants === '0' ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : maxParticipants + ' Plätze'}</span>
+                      <span style={{ fontSize: '0.9rem' }}>{unlimitedParticipants ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : (maxParticipants ? `${maxParticipants} Plätze` : 'Anzahl eingeben')}</span>
                     </div>
-                    {maxParticipants && maxParticipants !== '0' && (
-                      <input className="form-input" type="number" min={1} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value)} placeholder="Anzahl" />
+                    {!unlimitedParticipants && (
+                      <>
+                        <input
+                          className="form-input"
+                          type="number"
+                          min={0}
+                          value={maxParticipants}
+                          onChange={e => setMaxParticipants(e.target.value.replace(/[^0-9]/g, ''))}
+                          placeholder="Anzahl"
+                          style={errorBorderStyle('maxParticipants')}
+                        />
+                        {fieldHasError('maxParticipants') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                      </>
                     )}
                   </div>
-                  {maxParticipants && maxParticipants !== '0' && (
+                  {!unlimitedParticipants && (
                     <div className="form-group">
                       <label className="form-label">
                         {t('create.waitlist')}
-                        <InfoTooltip text="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" />
+                        <InfoTooltip text={t('create.waitlist.hint')} />
                       </label>
                       <div className="toggle-wrapper" style={{ marginTop: 8 }}>
                         <label className="toggle">

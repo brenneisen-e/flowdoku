@@ -26,7 +26,7 @@ function formatDate(iso: string): string {
 
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent } = useEvents();
+  const { events, registerForEvent, checkRegistrationByEmail } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, isAdmin } = useRoles();
   const { t } = useLanguage();
@@ -129,6 +129,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(true);
+  const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean } | null>(null);
 
   // Bild-Orientierung erkennen (Hochkant -> links | Querformat -> oben)
   const [imgOrientation, setImgOrientation] = React.useState<'portrait' | 'landscape'>('landscape');
@@ -542,6 +543,7 @@ export default function RegistrationPage(): React.ReactElement {
                   style={{ marginBottom: 20, fontSize: '0.85rem' }}
                   onClick={() => {
                     setRegisterForOther(!registerForOther);
+                    setThirdPartyCheck(null);
                     if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                     else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                   }}
@@ -624,6 +626,55 @@ export default function RegistrationPage(): React.ReactElement {
                                 setEmail(u.email);
                                 setUserSearch(u.displayName);
                                 setUserResults([]);
+                                // Frueh-Check: bereits angemeldet? Im Verteiler?
+                                setThirdPartyCheck(null);
+                                if (event) {
+                                  (async () => {
+                                    const existing = await checkRegistrationByEmail(event.id, u.email).catch(() => null);
+                                    const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
+                                    const locFilters = event.locationAudience || [];
+                                    const audFilters = (event.audienceFilter || [])
+                                      .map(s => s.trim())
+                                      .filter(s => s && s.toLowerCase() !== 'all' && s.toLowerCase() !== 'deall');
+                                    const hasAnyFilter = locFilters.length > 0 || audFilters.length > 0;
+                                    let notInAudience = false;
+                                    if (hasAnyFilter) {
+                                      const loc = (u.location || '').toLowerCase();
+                                      const uEmail = u.email.toLowerCase();
+                                      const locMatch = locFilters.length === 0 || locFilters.some(f => {
+                                        const fl = f.trim().toLowerCase();
+                                        if (fl === 'all') return true;
+                                        const norm = fl.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
+                                        return loc.indexOf(fl) >= 0 || loc.indexOf(norm) >= 0;
+                                      });
+                                      const audMatch = audFilters.length === 0 || audFilters.some(f => {
+                                        const fl = f.trim().toLowerCase();
+                                        if (fl.indexOf('@') >= 0) return uEmail === fl;
+                                        if (fl.startsWith('de')) {
+                                          const city = fl.substring(2);
+                                          const norm = city.replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/ae/g, 'ä');
+                                          return loc.indexOf(city) >= 0 || loc.indexOf(norm) >= 0;
+                                        }
+                                        return false;
+                                      });
+                                      const mode = event.filterMode || 'AND';
+                                      const hasLoc = locFilters.length > 0;
+                                      const hasAud = audFilters.length > 0;
+                                      let visible: boolean;
+                                      if (mode === 'OR') {
+                                        if (hasLoc && hasAud) visible = locMatch || audMatch;
+                                        else if (hasLoc) visible = locMatch;
+                                        else visible = audMatch;
+                                      } else {
+                                        if (hasLoc && hasAud) visible = locMatch && audMatch;
+                                        else if (hasLoc) visible = locMatch;
+                                        else visible = audMatch;
+                                      }
+                                      notInAudience = !visible;
+                                    }
+                                    setThirdPartyCheck({ alreadyRegistered, notInAudience });
+                                  })();
+                                }
                               }}
                               title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
                             >
@@ -634,6 +685,24 @@ export default function RegistrationPage(): React.ReactElement {
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {registerForOther && thirdPartyCheck && (thirdPartyCheck.alreadyRegistered || thirdPartyCheck.notInAudience) && (
+                  <div style={{
+                    padding: '10px 14px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
+                    background: thirdPartyCheck.alreadyRegistered ? 'rgba(200,30,30,0.07)' : 'rgba(237,139,0,0.08)',
+                    border: `1px solid ${thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)'}`,
+                    color: thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)',
+                    fontSize: '0.85rem',
+                  }}>
+                    {thirdPartyCheck.alreadyRegistered && (
+                      <div><strong>{t('reg.thirdparty.alreadyregistered')}</strong></div>
+                    )}
+                    {thirdPartyCheck.notInAudience && (
+                      <div style={{ marginTop: thirdPartyCheck.alreadyRegistered ? 6 : 0 }}>
+                        <strong>{t('reg.thirdparty.notinaudience')}</strong>
                       </div>
                     )}
                   </div>
@@ -774,6 +843,7 @@ export default function RegistrationPage(): React.ReactElement {
                       searchUsers={searchUsers}
                       placeholder={field.label + ' (Name oder E-Mail suchen)'}
                       errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
+                      hint={t('reg.userfield.notifyhint')}
                     />
                   ) : field.type === 'checkbox' ? (
                     <label
@@ -861,12 +931,17 @@ function UserFieldPicker(props: {
   searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string }>>;
   placeholder: string;
   errorStyle: React.CSSProperties;
+  hint?: string;
 }): React.ReactElement {
   const [query, setQuery] = React.useState(props.value);
   const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string }>>([]);
   const [isSearching, setIsSearching] = React.useState(false);
+  const [hasSelection, setHasSelection] = React.useState(/.+ <.+@.+>/.test(props.value));
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(() => { setQuery(props.value); }, [props.value]);
+  React.useEffect(() => {
+    setQuery(props.value);
+    setHasSelection(/.+ <.+@.+>/.test(props.value));
+  }, [props.value]);
   return (
     <div style={{ position: 'relative' }}>
       <input
@@ -875,7 +950,9 @@ function UserFieldPicker(props: {
         onChange={e => {
           const val = e.target.value;
           setQuery(val);
-          props.onChange(val);
+          // Freitext ist kein gueltiger Wert; erst nach Dropdown-Auswahl.
+          setHasSelection(false);
+          props.onChange('');
           if (timerRef.current) clearTimeout(timerRef.current);
           if (val.length >= 2) {
             timerRef.current = setTimeout(async () => {
@@ -888,11 +965,26 @@ function UserFieldPicker(props: {
             setResults([]);
           }
         }}
+        onBlur={() => {
+          // Wenn keine gueltige Person ausgewaehlt wurde, Feld leeren.
+          setTimeout(() => {
+            if (!hasSelection) {
+              setQuery('');
+              props.onChange('');
+              setResults([]);
+            }
+          }, 150);
+        }}
         placeholder={props.placeholder}
         style={props.errorStyle}
       />
       {isSearching && (
         <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+      )}
+      {props.hint && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4, marginBottom: 0, fontStyle: 'italic' }}>
+          {props.hint}
+        </p>
       )}
       {results.length > 0 && (
         <div style={{
@@ -912,6 +1004,7 @@ function UserFieldPicker(props: {
                 const formatted = `${u.displayName} <${u.email}>`;
                 setQuery(formatted);
                 props.onChange(formatted);
+                setHasSelection(true);
                 setResults([]);
               }}
             >
