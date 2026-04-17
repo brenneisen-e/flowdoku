@@ -147,7 +147,7 @@ export interface SPEvent {
   Id: number;
   Title: string;
   EventStatus: string;
-  EventType: string;
+  EventType?: string; // @deprecated seit v5.2 — wird aus CustomFields abgeleitet; Spalte kann aus DEX_Events entfernt werden.
   EventNumber: number;
   Description: string;
   Location: string;
@@ -1443,7 +1443,7 @@ export class EventService {
       } catch { /* ignore */ }
       await this.configureDefaultView(listName, [
         'ID', 'LinkTitle', 'EventImageUrl',
-        'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
+        'EventNumber', 'EventStatus', 'Location', 'LocationFilter',
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
         'WaitlistEnabled', 'Organizer', 'DisableEmails', 'DisableOutlook',
         'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
@@ -1494,7 +1494,7 @@ export class EventService {
     }
 
     await this.configureDefaultView(listName, [
-      'EventNumber', 'EventStatus', 'EventType', 'Location', 'LocationFilter',
+      'EventNumber', 'EventStatus', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
       'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
     ]);
@@ -1514,7 +1514,9 @@ export class EventService {
   private getEventsFieldDefinitions(): Array<{ title: string; type: number; choices?: string[]; metaType?: string; richText?: boolean; numberOfLines?: number }> {
     return [
       { title: 'EventStatus', type: 6, choices: ['Under Construction', 'Active', 'Completed', 'Cancelled'], metaType: 'SP.FieldChoice' },
-      { title: 'EventType', type: 6, choices: ['B2Run', 'JPMorgan', 'Other'], metaType: 'SP.FieldChoice' },
+      // EventType-Spalte ab v5.2 deprecated (Feld wird nicht mehr angelegt/aktualisiert).
+      // Typ wird beim Laden aus CustomFields abgeleitet. Bestehende Spalte in DEX_Events
+      // kann manuell entfernt werden.
       { title: 'Description', type: 3 },
       { title: 'Location', type: 2 },
       { title: 'LocationAddress', type: 2 }, // JSON-String: { street, houseNo, zip, city }
@@ -1802,7 +1804,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1966,7 +1968,6 @@ export class EventService {
         'Title': event.title,
         'EventNumber': nextEventNumber,
         'EventStatus': event.status,
-        'EventType': event.type,
         'Description': event.description,
         'Location': event.location,
         'LocationAddress': event.locationAddress || '',
