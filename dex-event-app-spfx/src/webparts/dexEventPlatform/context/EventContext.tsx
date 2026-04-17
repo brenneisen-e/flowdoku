@@ -69,6 +69,7 @@ interface EventContextType {
   registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
+  checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
@@ -581,6 +582,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getMyRegistration(subsiteUrl, currentUserEmail);
   }
 
+  async function checkRegistrationByEmail(eventId: string, email: string): Promise<SPRegistration | null> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !email) return null;
+    return eventService.getMyRegistration(subsiteUrl, email);
+  }
+
   async function getAllRegistrations(eventId: string): Promise<SPRegistration[]> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return [];
@@ -712,7 +719,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
       },
     },
