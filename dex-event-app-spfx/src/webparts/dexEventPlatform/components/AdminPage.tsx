@@ -18,9 +18,9 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send } from './Icons';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail, wrapTemplate } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail, wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
+import { HtmlEditorModal } from './HtmlEditorModal';
 import * as QRCode from 'qrcode';
-import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -72,7 +72,6 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
-  const [emailShowPreview, setEmailShowPreview] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -561,7 +560,6 @@ export default function AdminPage(): React.ReactElement {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
-                setEmailShowPreview(false);
                 setShowEmailModal(true);
               }}
             >
@@ -1311,137 +1309,72 @@ export default function AdminPage(): React.ReactElement {
         );
       })()}
 
-      {/* ===== EMAIL COMPOSE MODAL ===== */}
-      {showEmailModal && selectedEvent && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.5)', padding: 20,
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget && !emailSending) setShowEmailModal(false); }}
-        >
-          <div style={{
-            background: '#fff', borderRadius: 'var(--dex-radius-lg, 16px)', width: '100%', maxWidth: 800, maxHeight: '90vh',
-            overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          }}>
-            {/* Header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>
-                <Mail size={20} /> E-Mail an alle Teilnehmer
-              </h3>
-              <button onClick={() => !emailSending && setShowEmailModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--dex-gray-400)' }}>&times;</button>
-            </div>
-
-            {emailShowPreview ? (
-              /* ===== PREVIEW ===== */
-              <div style={{ padding: 24 }}>
-                <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-                  <button className="btn btn-secondary" onClick={() => setEmailShowPreview(false)}>
-                    Bearbeiten
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={emailSending}
-                    onClick={async () => {
-                      if (!eventServiceRef || !selectedEvent) return;
-                      const recipients = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-                      if (recipients.length === 0) return;
-                      if (!confirm(`E-Mail an ${recipients.length} Teilnehmer senden?`)) return;
-                      setEmailSending(true);
-                      const fullBody = wrapTemplate('#86bc25', emailHeading, `Event ${selectedEvent.title}`, emailBody);
-                      const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
-                      try {
-                        await eventServiceRef.queueEmail(
-                          emailSubject, allEmails, 'Alle Teilnehmer', fullBody,
-                          'Massenmail', selectedEvent.title, selectedEvent.id
-                        );
-                        setEmailSending(false);
-                        alert(`E-Mail an ${recipients.length} Teilnehmer in die Warteschlange eingetragen.`);
-                        setShowEmailModal(false);
-                      } catch {
-                        setEmailSending(false);
-                        alert('Fehler beim Eintragen der E-Mail.');
-                      }
-                    }}
-                  >
-                    <Send size={16} /> {emailSending ? 'Wird eingetragen...' : `An ${registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length} Teilnehmer senden`}
-                  </button>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
-                  Betreff: <strong>{emailSubject}</strong>
-                </div>
-                <div style={{
-                  border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden', maxHeight: 500, overflowY: 'auto',
-                }}>
-                  <iframe
-                    srcDoc={wrapTemplate('var(--dex-green, #86bc25)', emailHeading, `Event ${selectedEvent.title}`, emailBody)}
-                    style={{ width: '100%', height: 500, border: 'none' }}
-                    title="E-Mail Vorschau"
-                  />
-                </div>
-              </div>
-            ) : (
-              /* ===== EDITOR ===== */
-              <div style={{ padding: 24 }}>
-                {/* Betreff */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Betreff</label>
-                  <input
-                    className="form-input"
-                    value={emailSubject}
-                    onChange={e => setEmailSubject(e.target.value)}
-                    placeholder="E-Mail Betreff..."
-                    style={{ width: '100%' }}
-                  />
-                </div>
-
-                {/* Heading */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Titel (im E-Mail-Header)</label>
-                  <input
-                    className="form-input"
-                    value={emailHeading}
-                    onChange={e => setEmailHeading(e.target.value)}
-                    placeholder="z.B. Wichtige Information"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-
-                {/* Body - RichText */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: '0.85rem' }}>Nachricht</label>
-                  <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 'var(--dex-radius, 12px)', minHeight: 200, padding: '0 4px' }}>
-                    <RichText
-                      value={emailBody}
-                      onChange={(text: string) => { setEmailBody(text); return text; }}
-                    />
-                  </div>
-                </div>
-
-                {/* Info */}
-                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
-                  Die E-Mail wird im Deloitte-Design versendet (Logo, grüner Header, Footer) über das Gruppenpostfach <strong>no_reply.events@deloitte.de</strong>.
-                  Empfänger: <strong>{registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}</strong> aktive Teilnehmer.
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary" onClick={() => setShowEmailModal(false)}>
-                    Abbrechen
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={!emailSubject.trim() || !emailBody.trim()}
-                    onClick={() => setEmailShowPreview(true)}
-                  >
-                    Vorschau anzeigen
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
+      {showEmailModal && selectedEvent && (() => {
+        const recipients = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const orgNames = (selectedEvent.organizers || []).join(', ');
+        const previewVars: Record<string, string> = {
+          EventTitle: selectedEvent.title,
+          Organizer: orgNames,
+        };
+        const customLogo = (() => {
+          try {
+            const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+            return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
+          } catch { return ''; }
+        })();
+        const sendAction = async (): Promise<void> => {
+          if (!eventServiceRef || !selectedEvent) return;
+          if (recipients.length === 0) { alert('Keine aktiven Teilnehmer.'); return; }
+          if (!confirm(`E-Mail an ${recipients.length} Teilnehmer senden?`)) return;
+          setEmailSending(true);
+          // Variablen einmalig aufloesen (Massenmail geht an alle zusammen)
+          const resolvedSubject = replacePlaceholders(emailSubject, previewVars);
+          const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
+          const resolvedBody = replacePlaceholders(emailBody, previewVars);
+          const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+          const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
+          try {
+            await eventServiceRef.queueEmail(
+              resolvedSubject, allEmails, 'Alle Teilnehmer', fullBody,
+              'Massenmail', selectedEvent.title, selectedEvent.id
+            );
+            setEmailSending(false);
+            alert(`E-Mail an ${recipients.length} Teilnehmer in die Warteschlange eingetragen.`);
+            setShowEmailModal(false);
+          } catch {
+            setEmailSending(false);
+            alert('Fehler beim Eintragen der E-Mail.');
+          }
+        };
+        return (
+          <HtmlEditorModal
+            open={showEmailModal}
+            onClose={() => !emailSending && setShowEmailModal(false)}
+            title={`Massenmail an ${recipients.length} Teilnehmer: ${selectedEvent.title}`}
+            value={emailBody}
+            onChange={setEmailBody}
+            previewMode="email"
+            emailSubject={emailSubject}
+            onEmailSubjectChange={setEmailSubject}
+            emailHeading={emailHeading}
+            onEmailHeadingChange={setEmailHeading}
+            emailHeadingColor="#86bc25"
+            previewVars={previewVars}
+            insertableVars={[
+              { key: '{{EventTitle}}', label: 'Event' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+            ]}
+            imageBase64={customLogo}
+            extraAction={{
+              label: emailSending ? 'Wird eingetragen…' : `An ${recipients.length} Teilnehmer senden`,
+              onClick: sendAction,
+              disabled: emailSending || !emailSubject.trim() || !emailBody.trim() || recipients.length === 0,
+              icon: <Send size={16} />,
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

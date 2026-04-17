@@ -39,6 +39,13 @@ export interface HtmlEditorModalProps {
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
   imageBase64?: string;
+  /** Optional: zusaetzlicher primaerer Button im Footer (z.B. "Senden") */
+  extraAction?: {
+    label: string;
+    onClick: () => void | Promise<void>;
+    disabled?: boolean;
+    icon?: React.ReactNode;
+  };
 }
 
 const FONT_SIZES: Array<{ label: string; px: number }> = [
@@ -63,6 +70,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     outlookSubheading, onOutlookSubheadingChange,
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
+    extraAction,
   } = props;
 
   const editorRef = React.useRef<HTMLDivElement>(null);
@@ -378,7 +386,19 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
         </div>
 
         <div style={{ padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
-          <button type="button" className="btn btn-primary" onClick={onClose}>Fertig</button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>{extraAction ? 'Abbrechen' : 'Fertig'}</button>
+          {extraAction && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={extraAction.disabled}
+              onClick={() => { void extraAction.onClick(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              {extraAction.icon}
+              {extraAction.label}
+            </button>
+          )}
         </div>
       </div>
     </div>
