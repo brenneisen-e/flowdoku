@@ -146,6 +146,13 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 </td>
 </tr>
 
+<!-- ===== "Made with DEX App" ===== -->
+<tr>
+<td style="padding:0 30px 24px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:12px;color:#999999;">
+  <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:${GREEN};text-decoration:none;">Made with DEX App</a>
+</td>
+</tr>
+
 <!-- ===== FOOTER: Legal ===== -->
 <tr>
 <td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">

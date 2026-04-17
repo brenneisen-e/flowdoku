@@ -994,6 +994,10 @@ export default function EventCreationPage(): React.ReactElement {
       updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
         ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
         : '';
+      // Custom-Event-Logo in EmailImageBase64 spiegeln — der Power-Automate-Flow ersetzt
+      // {{ORB_URL}} damit in Mail + Outlook-Termin. Wenn leer: Flow faellt auf _Config
+      // DefaultImageBase64 (DEX-Orb) zurueck.
+      updates['EmailImageBase64'] = emailLogoPreview || '';
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
       updates['IsFictive'] = isFictive;
@@ -1917,7 +1921,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={7} />
-                  Event-Bild
+                  {t('create.eventimage')}
                   <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>
                 {imagePreview && (
@@ -2704,9 +2708,9 @@ export default function EventCreationPage(): React.ReactElement {
 
                 {/* Benachrichtigungen abschalten */}
                 <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8 }}>Benachrichtigungen</label>
+                  <label className="form-label" style={{ marginBottom: 8 }}>{t('create.notifications')}</label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                    Bei deaktivierten Optionen werden bei An- oder Abmeldungen keine Eintraege in die DEX_Emails- bzw. DEX_Outlook-Warteschlange geschrieben.
+                    {t('create.notifications.hint')}
                   </p>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 8 }}>
                     <input
@@ -2716,9 +2720,9 @@ export default function EventCreationPage(): React.ReactElement {
                       style={{ width: 18, height: 18, cursor: 'pointer' }}
                     />
                     <span style={{ fontSize: '0.9rem' }}>
-                      <strong>E-Mails versenden</strong>
+                      <strong>{t('create.notifications.email')}</strong>
                       <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-                        Anmelde-, Abmelde-, Warteliste- und Nachrueck-E-Mails
+                        {t('create.notifications.email.desc')}
                       </span>
                     </span>
                   </label>
@@ -2730,9 +2734,9 @@ export default function EventCreationPage(): React.ReactElement {
                       style={{ width: 18, height: 18, cursor: 'pointer' }}
                     />
                     <span style={{ fontSize: '0.9rem' }}>
-                      <strong>Outlook-Kalendereintrag senden</strong>
+                      <strong>{t('create.notifications.outlook')}</strong>
                       <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-                        Einladung bei Anmeldung, Ausladung bei Abmeldung
+                        {t('create.notifications.outlook.desc')}
                       </span>
                     </span>
                   </label>
@@ -2746,12 +2750,9 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ width: 18, height: 18, cursor: 'pointer' }}
                       />
                       <span style={{ fontSize: '0.9rem' }}>
-                        <strong>Outlook-Termin aktualisieren (Titel/Start/Ende)</strong>
+                        <strong>{t('create.notifications.triggerupdate')}</strong>
                         <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
-                          Nur aktivieren wenn Titel, Startzeit oder Endzeit wirklich geändert wurden.
-                          Bei Aktivierung erhalten <strong>alle angemeldeten Teilnehmer</strong> automatisch eine
-                          &bdquo;Updated meeting&ldquo;-Benachrichtigung von Outlook.
-                          Standardmäßig ausgeschaltet, damit Tippfixes in Description/Agenda keine Update-Mails auslösen.
+                          {t('create.notifications.triggerupdate.desc')}
                         </span>
                       </span>
                     </label>
@@ -2799,7 +2800,7 @@ export default function EventCreationPage(): React.ReactElement {
                       onClick={() => { setHtmlEditorMode('outlook'); setHtmlEditorOpen(true); }}
                       style={{ fontSize: '0.85rem' }}
                     >
-                      Bearbeiten & Vorschau
+                      {t('create.outlookdesc.edit')}
                     </button>
                     <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
                       {outlookBody

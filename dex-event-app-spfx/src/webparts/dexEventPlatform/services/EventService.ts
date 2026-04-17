@@ -1981,7 +1981,15 @@ export class EventService {
         'MaxParticipants': event.maxParticipants,
         'WaitlistEnabled': event.waitlistEnabled,
         'EventImageUrl': event.eventImageUrl,
-        'EmailImageBase64': '', // Wird ggf. separat gesetzt, Flow nutzt Default aus Config
+        // Custom-Event-Logo aus emailTemplateOverrides._eventLogo extrahieren (falls
+        // vorhanden) und als EmailImageBase64 persistieren — damit der Power-Automate-Flow
+        // es als {{ORB_URL}} in Mail + Outlook-Termin einsetzt.
+        'EmailImageBase64': (() => {
+          try {
+            const o = JSON.parse(event.emailTemplateOverrides || '{}');
+            return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
+          } catch { return ''; }
+        })(),
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
