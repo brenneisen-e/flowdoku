@@ -17,6 +17,7 @@ import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
+import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
@@ -626,6 +627,7 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent && typeof editEvent.funstarterCapacity === 'number' ? String(editEvent.funstarterCapacity) : ''
   );
   const [showPreview, setShowPreview] = React.useState(false);
+  const [showRegisterPreview, setShowRegisterPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
     { id: 'event', label: 'Event-Karte' },
@@ -3135,6 +3137,33 @@ export default function EventCreationPage(): React.ReactElement {
           )}
 
           {!isSubmitting && (
+            <>
+            {/* Auffaelliger Register-Preview-Button — auf jedem Step sichtbar. */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, marginBottom: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowRegisterPreview(true)}
+                disabled={!title}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 10,
+                  padding: '12px 28px', borderRadius: 999,
+                  border: '2px solid var(--dex-green)',
+                  background: 'linear-gradient(135deg, rgba(134,188,37,0.12), rgba(0,118,168,0.08))',
+                  color: 'var(--dex-green-dark, #4a7c1f)',
+                  fontSize: '0.95rem', fontWeight: 700, letterSpacing: 0.3,
+                  cursor: title ? 'pointer' : 'not-allowed',
+                  opacity: title ? 1 : 0.5,
+                  boxShadow: title ? '0 2px 8px rgba(134,188,37,0.25)' : 'none',
+                  transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+                }}
+                onMouseEnter={e => { if (title) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'; }}
+                title={title ? 'So sehen Teilnehmer die Registrierungsseite' : 'Event-Titel eingeben, um die Vorschau zu öffnen'}
+              >
+                👁 {t('create.registerpreview')}
+              </button>
+            </div>
+
             <div className="registration-actions mt-24">
               {currentStep === 0 ? (
                 <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> {t('create.cancel')}</button>
@@ -3191,6 +3220,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </>
               )}
             </div>
+            </>
           )}
         </div>
       </div>
@@ -3358,6 +3388,34 @@ export default function EventCreationPage(): React.ReactElement {
           />
         );
       })()}
+
+      {/* Register-Page-Preview-Modal (zeigt, was Teilnehmer sehen wuerden) */}
+      <RegisterPreviewModal
+        open={showRegisterPreview}
+        onClose={() => setShowRegisterPreview(false)}
+        data={{
+          title,
+          description,
+          location,
+          locationAddress: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
+          startDate,
+          endDate,
+          imagePreview,
+          organizers: organizer.split(';').map(s => s.trim()).filter(Boolean),
+          organizerEmails,
+          maxParticipants: Number(maxParticipants) || 0,
+          unlimitedParticipants,
+          customFields: customFields.map(f => ({
+            id: f.id,
+            label: f.label,
+            type: f.type,
+            required: f.required,
+            visible: f.visible !== false,
+            options: f.type === 'select' ? f.options : undefined,
+          })),
+          isFictive,
+        }}
+      />
 
       {/* Massenimport-Modal fuer Audience */}
       {bulkImportOpen && (
