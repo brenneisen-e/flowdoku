@@ -19,7 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
-import { buildOutlookBody, wrapTemplateForStorage } from './EmailTemplates';
+import { wrapTemplateForStorage } from './EmailTemplates';
 
 /**
  * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -1993,7 +1993,9 @@ export class EventService {
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
         'OutlookEventId': event.outlookEventId,
-        'OutlookBody': event.outlookBody ? buildOutlookBody(event.title, event.outlookBody) : '',
+        // outlookBody kommt bereits vollstaendig gewickelt + mit aufgeloesten Variablen
+        // aus EventCreationPage — hier nur durchreichen.
+        'OutlookBody': event.outlookBody || '',
         'EmailLanguage': event.emailLanguage || 'EN',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'DisableEmails': !!event.disableEmails,

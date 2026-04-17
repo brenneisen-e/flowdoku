@@ -12,7 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, replacePlaceholders } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -529,6 +529,23 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
+  // Outlook-Termin-Header: beide Ueberschriften sind pro Event editierbar.
+  // Default: eventTitle + formatiertes Startdatum. Parsed aus bestehendem
+  // OutlookBody, falls der User sie schon angepasst hat.
+  const [outlookHeading, setOutlookHeading] = React.useState(() => {
+    if (editEvent) {
+      const p = parseOutlookHeadings(editEvent.outlookBody || '');
+      if (p.heading) return p.heading;
+    }
+    return editEvent ? (editEvent.title || '') : '';
+  });
+  const [outlookSubheading, setOutlookSubheading] = React.useState(() => {
+    if (editEvent) {
+      const p = parseOutlookHeadings(editEvent.outlookBody || '');
+      if (p.subheading && p.subheading !== 'Event Details') return p.subheading;
+    }
+    return '';
+  });
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
   const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
@@ -550,12 +567,30 @@ export default function EventCreationPage(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
   const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
-    editEvent?.emailTemplateOverrides ? (() => { try { return JSON.parse(editEvent.emailTemplateOverrides); } catch { return {}; } })() : {}
+    editEvent?.emailTemplateOverrides ? (() => {
+      try {
+        const parsed = JSON.parse(editEvent.emailTemplateOverrides);
+        // _eventLogo wird separat ueber emailLogoPreview-State verwaltet —
+        // nicht in emailTemplateOverrides doppelt halten (sonst laesst sich das
+        // Custom-Logo nach Remove nicht mehr aus SP entfernen).
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { _eventLogo, ...rest } = parsed;
+        return rest;
+      } catch { return {}; }
+    })() : {}
   );
   // editingTemplate state entfaellt seit Modal-Migration v4.7.0
+  // Custom Event-Logo fuer E-Mails (ersetzt das DEX-Orb in E-Mails).
   const [emailLogoPreview, setEmailLogoPreview] = React.useState(() => {
     if (!editEvent?.emailTemplateOverrides) return '';
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._eventLogo || ''; } catch { return ''; }
+  });
+  // Custom Event-Logo fuer Outlook-Termin (ersetzt das DEX-Orb im Termin-Body).
+  // Separat vom Mail-Logo, damit man z.B. in Mails das neutrale DEX-Logo lassen
+  // und im Outlook-Termin ein event-spezifisches Bild anzeigen kann.
+  const [outlookLogoPreview, setOutlookLogoPreview] = React.useState(() => {
+    if (!editEvent?.emailTemplateOverrides) return '';
+    try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._outlookLogo || ''; } catch { return ''; }
   });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
@@ -986,16 +1021,28 @@ export default function EventCreationPage(): React.ReactElement {
         EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
       };
       const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, outlookVars) : '';
-      updates['OutlookBody'] = resolvedBody ? buildOutlookBody(title, resolvedBody) : '';
+      const resolvedOlHeading = outlookHeading ? replacePlaceholders(outlookHeading, outlookVars) : title;
+      const resolvedOlSub = outlookSubheading ? replacePlaceholders(outlookSubheading, outlookVars) : undefined;
+      const wrappedOutlook = resolvedBody ? buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub) : '';
+      // Outlook-spezifisches Logo direkt in den Body einbetten (Flow ersetzt {{ORB_URL}}
+      // nur mit EmailImageBase64 — das ist fuer Mails. Fuer Outlook haben wir ein eigenes
+      // Logo, also hier resolven).
+      updates['OutlookBody'] = wrappedOutlook
+        ? wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '')
+        : '';
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
       updates['EmailLanguage'] = emailLanguage;
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
-        ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
+        ? JSON.stringify({
+            ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
+            ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+            ...emailTemplateOverrides,
+          })
         : '';
-      // Custom-Event-Logo in EmailImageBase64 spiegeln — der Power-Automate-Flow ersetzt
-      // {{ORB_URL}} damit in Mail + Outlook-Termin. Wenn leer: Flow faellt auf _Config
+      // Custom-Mail-Logo in EmailImageBase64 (SP-Spalte) — der Flow ersetzt
+      // {{ORB_URL}} in Mails damit. Wenn leer: Flow faellt auf _Config
       // DefaultImageBase64 (DEX-Orb) zurueck.
       updates['EmailImageBase64'] = emailLogoPreview || '';
       updates['DisableEmails'] = disableEmails;
@@ -1130,21 +1177,33 @@ export default function EventCreationPage(): React.ReactElement {
         organizer,
         organizerEmail: organizerEmails.join(';'),
         outlookEventId: '',
-        outlookBody: outlookBody ? replacePlaceholders(outlookBody, {
-          EventTitle: title,
-          Organizer: organizer,
-          Location: location,
-          Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
-          StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
-          EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
-        }) : '',
+        outlookBody: (() => {
+          if (!outlookBody) return '';
+          const vars = {
+            EventTitle: title,
+            Organizer: organizer,
+            Location: location,
+            Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
+            StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+            EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          };
+          const resolvedBody = replacePlaceholders(outlookBody, vars);
+          const resolvedHeading = outlookHeading ? replacePlaceholders(outlookHeading, vars) : title;
+          const resolvedSub = outlookSubheading ? replacePlaceholders(outlookSubheading, vars) : undefined;
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub);
+          return wrapped.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '');
+        })(),
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
         funZone: JSON.stringify(quiz),
         emailLanguage,
-        emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview)
-          ? JSON.stringify({ ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}), ...emailTemplateOverrides })
+        emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
+          ? JSON.stringify({
+              ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
+              ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+              ...emailTemplateOverrides,
+            })
           : '',
         disableEmails,
         disableOutlook,
@@ -2759,14 +2818,15 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                 </div>
 
+                {/* Custom-Logo fuer E-Mails */}
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">{t('create.eventlogo')}</label>
+                  <label className="form-label">{t('create.eventlogo.mail')}</label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
-                    {t('create.eventlogo.hint')}
+                    {t('create.eventlogo.mail.hint')}
                   </p>
                   {emailLogoPreview && (
                     <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <img src={emailLogoPreview} alt="Event-Logo" style={{ maxWidth: 180, maxHeight: 80, borderRadius: 4 }} />
+                      <img src={emailLogoPreview} alt="Event-Logo fuer Mails" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
                       <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
                         onClick={() => setEmailLogoPreview('')}>{t('create.eventlogo.remove')}</button>
                     </div>
@@ -2783,9 +2843,42 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const compressed = await compressImage(file, 200, 0.85);
+                      const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
                       reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
+                      reader.readAsDataURL(compressed);
+                    }} />
+                  </label>
+                </div>
+
+                {/* Custom-Logo fuer Outlook-Termin */}
+                <div className="form-group" style={{ marginTop: 24 }}>
+                  <label className="form-label">{t('create.outlooklogo')}</label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
+                    {t('create.outlooklogo.hint')}
+                  </p>
+                  {outlookLogoPreview && (
+                    <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <img src={outlookLogoPreview} alt="Event-Logo fuer Outlook" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
+                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => setOutlookLogoPreview('')}>{t('create.eventlogo.remove')}</button>
+                    </div>
+                  )}
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                    border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                    transition: 'border-color 0.2s, background 0.2s',
+                  }}>
+                    <Plus size={16} />
+                    {t('create.eventlogo.select')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const compressed = await compressImage(file, 600, 0.9);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setOutlookLogoPreview(ev.target?.result as string || '');
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
@@ -3229,6 +3322,10 @@ export default function EventCreationPage(): React.ReactElement {
               [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
             }) : undefined}
             emailHeadingColor={!isOutlook ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            outlookHeading={isOutlook ? outlookHeading : undefined}
+            onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
+            outlookSubheading={isOutlook ? outlookSubheading : undefined}
+            onOutlookSubheadingChange={isOutlook ? setOutlookSubheading : undefined}
             previewVars={{
               EventTitle: title || 'Event Title',
               Name: 'Max Mustermann',
@@ -3257,7 +3354,7 @@ export default function EventCreationPage(): React.ReactElement {
               { key: '{{AppUrl}}', label: 'App Link' },
               { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
             ]}
-            imageBase64={imagePreview || ''}
+            imageBase64={(isOutlook ? outlookLogoPreview : emailLogoPreview) || ''}
           />
         );
       })()}

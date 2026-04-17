@@ -29,6 +29,12 @@ export interface HtmlEditorModalProps {
   emailHeading?: string;
   onEmailHeadingChange?: (s: string) => void;
   emailHeadingColor?: string;
+  /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
+  outlookHeading?: string;
+  onOutlookHeadingChange?: (s: string) => void;
+  /** Outlook-Termin: editierbare Unter-Ueberschrift (<h2>) */
+  outlookSubheading?: string;
+  onOutlookSubheadingChange?: (s: string) => void;
   previewVars?: Record<string, string>;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
@@ -53,6 +59,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     previewMode,
     emailSubject, onEmailSubjectChange,
     emailHeading, onEmailHeadingChange, emailHeadingColor = '#86bc25',
+    outlookHeading, onOutlookHeadingChange,
+    outlookSubheading, onOutlookSubheadingChange,
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
   } = props;
@@ -149,15 +157,15 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     // Outlook-Termin-Vorschau: gleicher wrapTemplate() wie beim echten Versand,
     // damit der User in der Vorschau genau das sieht, was nachher im Termin steht
     // (inkl. Deloitte-Signatur + Legal-Disclaimer im Footer).
-    const outlookHeading = previewVars.EventTitle || 'Event Title';
-    const outlookSubheading = previewVars.EventDate || 'Event Details';
+    const olHeading = replacePlaceholdersPlain(outlookHeading || '', previewVars) || previewVars.EventTitle || 'Event Title';
+    const olSub = replacePlaceholdersPlain(outlookSubheading || '', previewVars) || previewVars.EventDate || 'Event Details';
     const bodyForOutlook = bodyWithVars || '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>';
     // Wenn der Body bereits ein kompletter wrapTemplate-Output ist (z.B. aus editEvent
     // ohne Strip), 1:1 anzeigen — sonst doppelt wickeln.
     const isAlreadyWrapped = /<!doctype|<html/i.test(bodyForOutlook);
     const wrapped = isAlreadyWrapped
       ? bodyForOutlook
-      : wrapTemplate('#86bc25', outlookHeading, outlookSubheading, bodyForOutlook);
+      : wrapTemplate('#86bc25', olHeading, olSub, bodyForOutlook);
     return wrapped
       .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
       .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
@@ -222,6 +230,31 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       className="form-input"
                       value={emailHeading || ''}
                       onChange={e => onEmailHeadingChange && onEmailHeadingChange(e.target.value)}
+                      style={{ fontSize: '0.85rem' }}
+                    />
+                  </div>
+                </>
+              )}
+
+              {previewMode === 'outlook' && (
+                <>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün)</label>
+                    <input
+                      className="form-input"
+                      value={outlookHeading || ''}
+                      onChange={e => onOutlookHeadingChange && onOutlookHeadingChange(e.target.value)}
+                      placeholder={previewVars.EventTitle || 'Event-Titel'}
+                      style={{ fontSize: '0.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Unter-Überschrift (schwarz)</label>
+                    <input
+                      className="form-input"
+                      value={outlookSubheading || ''}
+                      onChange={e => onOutlookSubheadingChange && onOutlookSubheadingChange(e.target.value)}
+                      placeholder={previewVars.EventDate || 'Event Details'}
                       style={{ fontSize: '0.85rem' }}
                     />
                   </div>
