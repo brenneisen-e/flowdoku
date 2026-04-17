@@ -1420,31 +1420,13 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 0: Grundlagen ===== */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
-              {!isEditMode && (
-                <div className="form-group">
-                  <label className="form-label">
-                    {t('create.template')}
-                    <InfoTooltip text={t('create.template.hint')} />
-                  </label>
-                  <select
-                    className="form-select"
-                    value={selectedTemplate}
-                    onChange={e => applyTemplate(e.target.value as 'blank' | 'b2run')}
-                    style={{ maxWidth: 320 }}
-                  >
-                    <option value="blank">{t('create.template.blank')}</option>
-                    <option value="b2run">{t('create.template.b2run')}</option>
-                    {/* Weitere Vorlagen können hier einfach ergänzt werden */}
-                  </select>
-                </div>
-              )}
 
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtitle')}
                   <InfoTooltip text={t('create.eventtitle.hint')} />
                 </label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" style={errorBorderStyle('title')} />
+                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
               </div>
 
@@ -1495,16 +1477,26 @@ export default function EventCreationPage(): React.ReactElement {
                   };
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                      {orgList.map((name, i) => (
+                      {orgList.map((name, i) => {
+                        const email = organizerEmails[i] || '';
+                        return (
                         <span
                           key={`${name}-${i}`}
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
-                            padding: '4px 4px 4px 12px',
+                            padding: '3px 6px 3px 4px',
                             background: 'var(--dex-green)', color: '#fff',
                             borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
                           }}
                         >
+                          {email ? (
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
+                              alt={name}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                            />
+                          ) : null}
                           <span>{name}</span>
                           {orgList.length > 1 && i > 0 && (
                             <button
@@ -1529,7 +1521,8 @@ export default function EventCreationPage(): React.ReactElement {
                             title="Entfernen"
                           >×</button>
                         </span>
-                      ))}
+                      );
+                      })}
                     </div>
                   );
                 })()}
@@ -1540,17 +1533,21 @@ export default function EventCreationPage(): React.ReactElement {
                     const val = e.target.value;
                     setOrganizerSearch(val);
                     if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
-                    if (val.trim().length >= 2) {
-                      const lp = val.trim().toLowerCase();
-                      const filtered = roles
-                        .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                        .filter(r => r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
-                        .slice(0, 12)
-                        .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                      setOrganizerResults(filtered);
-                    } else {
-                      setOrganizerResults([]);
-                    }
+                    const lp = val.trim().toLowerCase();
+                    const filtered = roles
+                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                      .filter(r => !lp || r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
+                      .slice(0, 50)
+                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                    setOrganizerResults(filtered);
+                  }}
+                  onFocus={() => {
+                    // Bei Fokus direkt alle verfuegbaren Organizer/Admins anzeigen.
+                    const filtered = roles
+                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                      .slice(0, 50)
+                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                    setOrganizerResults(filtered);
                   }}
                   onBlur={() => {
                     // Freitext verwerfen — nur per Dropdown ausgewaehlte Organizer zaehlen.
@@ -1567,7 +1564,7 @@ export default function EventCreationPage(): React.ReactElement {
                     position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
                     background: '#fff', border: '1px solid var(--dex-gray-200)',
                     borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    maxHeight: 200, overflowY: 'auto',
+                    maxHeight: 280, overflowY: 'auto',
                   }}>
                     {organizerResults.map(u => {
                       const alreadyAdded = organizerEmails.indexOf(u.email) >= 0;
@@ -1578,6 +1575,7 @@ export default function EventCreationPage(): React.ReactElement {
                             padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
                             borderBottom: '1px solid var(--dex-gray-100)',
                             opacity: alreadyAdded ? 0.45 : 1,
+                            display: 'flex', alignItems: 'center', gap: 10,
                           }}
                           onMouseDown={() => {
                             if (alreadyAdded) return;
@@ -1589,9 +1587,19 @@ export default function EventCreationPage(): React.ReactElement {
                             setOrganizerResults([]);
                           }}
                         >
-                          <strong>{u.displayName}</strong>
-                          <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
-                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', marginLeft: 8, fontSize: '0.75rem' }}>✓</span>}
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                            alt={u.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.email}{u.location ? ` · ${u.location}` : ''}
+                            </div>
+                          </div>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
                         </div>
                       );
                     })}
@@ -2388,6 +2396,41 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 3: Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+
+              {/* Vorlage: B2Run-Felder automatisch befuellen (als moderne Checkbox) */}
+              {!isEditMode && (
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                  <label className="form-label" style={{ marginBottom: 8 }}>
+                    {t('create.template')}
+                    <InfoTooltip text={t('create.template.hint')} />
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 12,
+                      padding: 14, borderRadius: 'var(--dex-radius, 12px)',
+                      border: `2px solid ${selectedTemplate === 'b2run' ? 'var(--dex-green)' : 'var(--dex-gray-200)'}`,
+                      background: selectedTemplate === 'b2run' ? 'rgba(134,188,37,0.08)' : '#fff',
+                      cursor: 'pointer', transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTemplate === 'b2run'}
+                      onChange={e => applyTemplate(e.target.checked ? 'b2run' : 'blank')}
+                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, accentColor: '#86bc25' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>
+                        {t('create.template.b2run')}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginTop: 3 }}>
+                        {t('create.template.b2run.desc')}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
               {/* B2Run Startbloecke - moderne Liste mit + Button */}
               {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
                 <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
