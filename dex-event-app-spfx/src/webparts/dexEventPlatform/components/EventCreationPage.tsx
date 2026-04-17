@@ -525,6 +525,7 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
+  const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -971,6 +972,7 @@ export default function EventCreationPage(): React.ReactElement {
         : '';
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
+      updates['IsFictive'] = isFictive;
       if (isB2runTemplate) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
         updates['FunstarterCapacity'] = parseInt(funstarterCapacity, 10) || 0;
@@ -1111,6 +1113,7 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         disableEmails,
         disableOutlook,
+        isFictive,
         durchstarterCapacity: isB2runTemplate ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
         funstarterCapacity: isB2runTemplate ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
         customFields: customFields
@@ -2666,6 +2669,24 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
+                </div>
+
+                {/* Test-Event-Flag */}
+                <div className="form-group" style={{ marginTop: 16, padding: 16, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={isFictive}
+                      onChange={e => setIsFictive(e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 3 }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <strong>{t('create.fictive')}</strong>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.5, marginTop: 4 }}>
+                        {t('create.fictive.hint')}
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>

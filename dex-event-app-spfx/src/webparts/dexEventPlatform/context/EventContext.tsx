@@ -110,6 +110,7 @@ export interface CreateEventInput {
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
+  isFictive?: boolean;
   durchstarterCapacity?: number;
   funstarterCapacity?: number;
   customFields: CustomField[];
@@ -261,6 +262,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
+      isFictive: !!e.IsFictive,
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
