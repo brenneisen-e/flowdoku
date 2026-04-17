@@ -1423,7 +1423,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtitle')}
-                  <InfoTooltip text="Name des Events, z.B. 'B2Run Frankfurt 2026'" />
+                  <InfoTooltip text={t('create.eventtitle.hint')} />
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. B2Run Frankfurt 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1432,7 +1432,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.eventtype')}
-                  <InfoTooltip text="Kategorie des Events – bestimmt das Design der Event-Karte" />
+                  <InfoTooltip text={t('create.eventtype.hint')} />
                 </label>
                 <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
                   <option value="Other">Sonstiges Deloitte Event</option>
@@ -1444,7 +1444,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">
                   <span className="required">*</span> {t('create.organizer')}
-                  <InfoTooltip text="Name der Person, die das Event organisiert" />
+                  <InfoTooltip text={t('create.organizer.hint')} />
                 </label>
                 <input
                   className="form-input"
@@ -1836,7 +1836,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   <span className="required">*</span> {t('create.description')}
-                  <InfoTooltip text="Beschreibung des Events – wird den Teilnehmern auf der Registrierungsseite angezeigt" />
+                  <InfoTooltip text={t('create.description.hint')} />
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
                 {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -1845,7 +1845,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   Event-Bild
-                  <InfoTooltip text="Wird als Hintergrundbild auf der Event-Karte angezeigt. Empfohlen: 800x400px, max. 5MB." />
+                  <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>
                 {imagePreview && (
                   <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
@@ -1914,14 +1914,14 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group">
                 <label className="form-label">
                   {t('create.location')}
-                  <InfoTooltip text="Adresse oder Name des Veranstaltungsortes" />
+                  <InfoTooltip text={t('create.location.hint')} />
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
               <div className="form-group">
                 <label className="form-label">
                   Adresse
-                  <InfoTooltip text="Strukturierte Adresse - wird auf der Registrierungsseite angezeigt" />
+                  <InfoTooltip text={t('create.address.hint')} />
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
                   <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
@@ -1937,7 +1937,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.startdate')}
-                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
+                    <InfoTooltip text={t('create.startdate.hint')} />
                   </label>
                   <DatePicker
                     selected={startDate ? new Date(startDate) : null}
@@ -1961,7 +1961,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
-                    <InfoTooltip text="Datum und Uhrzeit werden für den Outlook-Kalendereintrag verwendet" />
+                    <InfoTooltip text={t('create.enddate.hint')} />
                   </label>
                   <DatePicker
                     selected={endDate ? new Date(endDate) : null}
@@ -1993,7 +1993,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.agenda')}
-                  <InfoTooltip text="Programmablauf / Timeline des Events" />
+                  <InfoTooltip text={t('create.agenda.hint')} />
                 </label>
                 {agenda
                   .slice()
@@ -2123,7 +2123,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
                   {t('create.transfers')}
-                  <InfoTooltip text="Abfahrtszeiten pro Standort" />
+                  <InfoTooltip text={t('create.transfers.hint')} />
                 </label>
                 {transferTimes.map((tt) => (
                   <div key={tt.id} style={{
@@ -2190,7 +2190,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.deadline')}
-                    <InfoTooltip text="Bis wann können sich Teilnehmer anmelden?" />
+                    <InfoTooltip text={t('create.deadline.hint')} />
                   </label>
                   <DatePicker
                     selected={registrationDeadline ? new Date(registrationDeadline) : null}
@@ -2207,7 +2207,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group">
                   <label className="form-label">
                     {t('create.lastcancel')}
-                    <InfoTooltip text="Bis wann können sich Teilnehmer wieder abmelden?" />
+                    <InfoTooltip text={t('create.lastcancel.hint')} />
                   </label>
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
@@ -2303,7 +2303,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <div className="form-group">
                       <label className="form-label">
                         {t('create.waitlist')}
-                        <InfoTooltip text="Wenn aktiviert, können sich Teilnehmer auch nach Erreichen der Max-Teilnehmer anmelden (Status: Warteliste)" />
+                        <InfoTooltip text={t('create.waitlist.hint')} />
                       </label>
                       <div className="toggle-wrapper" style={{ marginTop: 8 }}>
                         <label className="toggle">
