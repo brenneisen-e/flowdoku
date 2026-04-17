@@ -16,7 +16,8 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download } from './Icons';
+import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
 import { HtmlEditorModal } from './HtmlEditorModal';
@@ -72,6 +73,7 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
+  const [showExportMenu, setShowExportMenu] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -190,20 +192,24 @@ export default function AdminPage(): React.ReactElement {
       });
     }
 
-    // CSV zusammenbauen (UTF-8 BOM fuer Excel-Umlaute + Semikolon-Separator fuer deutsche Excel)
-    const csvBody = [headers, ...rows].map(row => row.map(esc).join(';')).join('\r\n');
-    const csv = '\ufeff' + csvBody;
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     const safeName = (selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
-    a.download = `${mode === 'b2run' ? 'B2Run' : 'Deloitte'}_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+    // XLSX Export — natives Excel-Format, automatische Spalten-Breiten, keine
+    // CSV-Escaping-Quirks. Gilt fuer beide Modi (Teilnehmerliste + B2Run).
+    const aoa: (string | number)[][] = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const colWidths = headers.map((h, ci) => {
+      const maxLen = Math.max(h.length, ...rows.map(r => String(r[ci] || '').length));
+      return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (ws as any)['!cols'] = colWidths;
+    const wb = XLSX.utils.book_new();
+    const sheetName = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const filePrefix = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
+    XLSX.writeFile(wb, `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    // esc wird nicht mehr gebraucht; Hinweis an eslint
+    void esc;
   };
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
@@ -618,24 +624,68 @@ export default function AdminPage(): React.ReactElement {
             >
               <Mail size={16} /> {t('admin.emailall')}
             </button>
-            {/* Deloitte-Export: alle Teilnehmer mit internen Feldern */}
-            <button
-              className="btn btn-secondary btn-block"
-              onClick={() => exportCsv('deloitte')}
-              title="CSV mit allen Teilnehmerdaten (Abteilung, Position, Location, ...)"
-            >
-              <FileText size={16} /> Deloitte View (CSV)
-            </button>
-            {/* B2Run-Export: nur bei B2Run Events */}
-            {selectedEvent && selectedEvent.type === 'B2Run' && (
+            {/* Excel-Export-Dropdown: Deloitte-View oder B2Run-View */}
+            <div style={{ position: 'relative' }}>
               <button
-                className="btn btn-secondary btn-block"
-                onClick={() => exportCsv('b2run')}
-                title="CSV im B2Run-Format fuer die Anmeldung bei b2run.com"
+                className="btn btn-block"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                title="Teilnehmerliste als Excel herunterladen"
+                style={{
+                  background: 'var(--dex-green-dark, #4a7c1f)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
               >
-                <FileText size={16} /> B2Run View (CSV)
+                <Download size={16} /> Download als Excel
+                <span style={{ fontSize: '0.7rem', marginLeft: 4 }}>{showExportMenu ? '▴' : '▾'}</span>
               </button>
-            )}
+              {showExportMenu && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  background: '#fff', border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 'var(--dex-radius, 8px)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                  marginTop: 4, padding: 6, zIndex: 100,
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => { setShowExportMenu(false); exportCsv('deloitte'); }}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '10px 12px', border: 'none', background: 'transparent',
+                      cursor: 'pointer', borderRadius: 6,
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-50)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>Deloitte Felder</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
+                      Alle internen Felder: Name, E-Mail, Department, Location, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.
+                    </div>
+                  </button>
+                  {selectedEvent && selectedEvent.type === 'B2Run' && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowExportMenu(false); exportCsv('b2run'); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '10px 12px', border: 'none', background: 'transparent',
+                        cursor: 'pointer', borderRadius: 6,
+                        borderTop: '1px solid var(--dex-gray-100)',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-50)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>B2Run View</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
+                        Spaltenformat exakt wie das B2Run-Excel-Template (Nr, Anrede, Name, E-Mail, Startblock, AGB, Gruppe, Mobilnummer, Altersklasse, …) — direkt importierbar in b2run.com.
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
