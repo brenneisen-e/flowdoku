@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
+import OrganizerList from './OrganizerList';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -459,26 +460,18 @@ export default function RegistrationPage(): React.ReactElement {
                 </div>
               )}
               {(() => {
-                // Organizer: bei einem einzelnen einfach inline, sonst Liste mit Bullets
+                // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
+                // in "Vorname Nachname" normalisiert.
                 const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
                   const trimmed = o.trim();
                   const parts = trimmed.split(',').map(s => s.trim());
                   return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
                 }).filter(Boolean);
                 if (orgs.length === 0) return null;
-                if (orgs.length === 1) {
-                  return (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                      Organizer: <strong style={{ fontWeight: 600 }}>{orgs[0]}</strong>
-                    </div>
-                  );
-                }
                 return (
-                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                    Organizer:
-                    <ul style={{ margin: '2px 0 0 16px', padding: 0, listStyle: 'disc' }}>
-                      {orgs.map((name, i) => <li key={i}>{name}</li>)}
-                    </ul>
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
+                    <OrganizerList names={orgs} emails={event.organizerEmails} size="sm" />
                   </div>
                 );
               })()}

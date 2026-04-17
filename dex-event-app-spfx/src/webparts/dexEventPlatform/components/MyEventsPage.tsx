@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+import OrganizerList from './OrganizerList';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -653,6 +654,22 @@ export default function MyEventsPage(): React.ReactElement {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
+
+                    {/* Organizer mit Foto (Hover vergroessert) */}
+                    {event.organizers.length > 0 && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
+                        <OrganizerList
+                          names={event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+                            const trimmed = o.trim();
+                            const parts = trimmed.split(',').map(s => s.trim());
+                            return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                          }).filter(Boolean)}
+                          emails={event.organizerEmails}
+                          size="sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
