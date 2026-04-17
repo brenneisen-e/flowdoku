@@ -584,23 +584,31 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 
 **Trigger:** Neuer Eintrag in DEX_Outlook
 **Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin loeschen (via Graph API)
-**Letztes Update:** 2026-04-14 (DeleteEvent-Branch hinzugefuegt)
+**Letztes Update:** 2026-04-17 (UpdateEvent patcht jetzt auch den Body, nicht nur Titel/Start/Ende)
 
 Ablauf:
 1. Trigger (neues DEX_Outlook-Item)
 2. **Is_DeleteEvent?** → Ja: Outlook-Termin per `triggerBody()?['CalendarLink']` finden (iCalUId) → DELETE → Status=Sent. Nein: weiter.
 3. Event-Details laden (DEX_Events via EventId) → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden?
-4. Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende → Nein: Einladen/Ausladen → Status=Sent
+4. Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende **+ Body** → Nein: Einladen/Ausladen → Status=Sent
 
 **ActionTypes:**
 - `Einladen` — einzelnen Teilnehmer zum Outlook-Termin hinzufuegen
 - `Ausladen` — einzelnen Teilnehmer aus dem Outlook-Termin entfernen
-- `UpdateEvent` — Titel/Start/Ende des Outlook-Termins aktualisieren
+- `UpdateEvent` — Titel, Start, Ende **und Body** des Outlook-Termins aktualisieren
+  (seit 2026-04-17 wird `OutlookBody` aus DEX_Events mit aufgeloestem
+  `{{ORB_URL}}` per Graph PATCH gesetzt — vorher blieb der Body vom
+  initialen Create unveraendert)
 - `DeleteEvent` — kompletten Outlook-Termin loeschen. Das DEX_Outlook-Queue-Item
   enthaelt `CalendarLink` (iCalUId) direkt, weil das zugehoerige DEX_Events-Item
   bereits geloescht ist, wenn der Flow laeuft.
 
 **Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
+
+**UpdateEvent-Body-Expression** (im PATCH zur Graph API):
+```
+@json(concat('{"subject":', json(string(first(outputs('Get_Event_Details')?['body/value'])?['Title'])), ',"start":{"dateTime":"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '","timeZone":"W. Europe Standard Time"},"end":{"dateTime":"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '","timeZone":"W. Europe Standard Time"},"body":{"contentType":"html","content":', json(string(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')))), '}}'))
+```
 
 ### Is_DeleteEvent-Branch (ganz am Anfang, vor Get_Event_Details)
 

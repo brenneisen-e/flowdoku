@@ -15,6 +15,10 @@ const APP_URL = `${SITE_URL}/SitePages/DEX.aspx?env=WebView`;
 // Gecachtes Logo Base64 aus DEX_EmailTemplates (_Config)
 // ORB/Event-Bild wird NICHT gecacht - der Flow setzt das event-spezifische Bild ein
 let cachedLogoBase64 = '';
+let cachedOrbBase64 = '';
+
+export function getCachedOrbBase64(): string { return cachedOrbBase64; }
+export function getCachedLogoBase64(): string { return cachedLogoBase64; }
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -395,24 +399,30 @@ export function stripOutlookWrapper(html: string): string {
  * Schreibt NICHT zurueck - das macht EventService.ensureLogosInConfig().
  */
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
-  if (cachedLogoBase64) return;
+  if (cachedLogoBase64 && cachedOrbBase64) return;
 
   try {
     // 1. Aus _Config Zeile lesen (falls bereits befuellt)
-    const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1`;
+    const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=LogoBase64,DefaultImageBase64`;
     const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
     if (response.ok) {
       const data = await response.json();
       const items = data.value || data.d?.results || [];
-      if (items[0]?.LogoBase64 && items[0].LogoBase64.startsWith('data:image/')) {
-        cachedLogoBase64 = items[0].LogoBase64;
-        return;
-      }
+      const it = items[0];
+      if (it?.LogoBase64 && it.LogoBase64.startsWith('data:image/')) cachedLogoBase64 = it.LogoBase64;
+      if (it?.DefaultImageBase64 && it.DefaultImageBase64.startsWith('data:image/')) cachedOrbBase64 = it.DefaultImageBase64;
+      if (cachedLogoBase64 && cachedOrbBase64) return;
     }
 
     // 2. Fallback: direkt aus SiteAssets laden (nur Memory-Cache)
-    const logo = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
-    if (logo) cachedLogoBase64 = logo;
+    if (!cachedLogoBase64) {
+      const logo = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/Deloitte_Logo.png');
+      if (logo) cachedLogoBase64 = logo;
+    }
+    if (!cachedOrbBase64) {
+      const orb = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/dex-orb.png');
+      if (orb) cachedOrbBase64 = orb;
+    }
   } catch { /* Logo nicht verfuegbar - Flow ersetzt Platzhalter als Fallback */ }
 }
 

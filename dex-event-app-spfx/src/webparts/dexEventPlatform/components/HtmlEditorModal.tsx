@@ -13,7 +13,7 @@
  */
 import * as React from 'react';
 import { X } from './Icons';
-import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain } from '../services/EmailTemplates';
+import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
 
 type PreviewMode = 'outlook' | 'email';
 
@@ -138,9 +138,14 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
       const subheading = `Event ${previewVars.EventTitle || ''}`;
       const wrapped = wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars);
+      // Fallback: das offizielle DEX-Orb-Logo aus dem Cache (gleicher Pfad wie
+      // bei realen Mails); falls noch nicht geladen, zeige nichts statt
+      // broken-image-Icon.
+      const orbDefault = getCachedOrbBase64();
+      const logoDefault = getCachedLogoBase64();
       return wrapped
-        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || '')
-        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || '');
+        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || logoDefault || '')
+        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || orbDefault || '');
     }
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body { margin:0; padding:0; font-family: Aptos, Arial, Helvetica, sans-serif; color:#333; background:#f5f5f5; }
@@ -313,6 +318,16 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   onBlur={() => { saveSelection(); fireChange(); }}
                   onMouseUp={saveSelection}
                   onKeyUp={saveSelection}
+                  onKeyDown={e => {
+                    // Enter = <br> (E-Mail-konform); Shift+Enter = neuer Absatz
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      try { document.execCommand('insertLineBreak'); } catch {
+                        try { document.execCommand('insertHTML', false, '<br>'); } catch { /* ignore */ }
+                      }
+                      fireChange();
+                    }
+                  }}
                   style={{
                     minHeight: 280, padding: '10px 12px',
                     border: '1px solid var(--dex-gray-300)',
