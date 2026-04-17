@@ -85,6 +85,17 @@ export default function AdminPage(): React.ReactElement {
       return e.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
     });
 
+  // Fuer Admins: vergangene Events in eine einklappbare Sektion auslagern
+  // (Organizer sehen nur ihre eigenen Events — dort bleiben auch abgelaufene
+  // sichtbar, weil der Organizer sie fuer den Abschluss / CSV-Export etc.
+  // evtl. direkt griffbereit braucht).
+  const now = Date.now();
+  const isPastEvent = (e: DeloitteEvent): boolean =>
+    !!e.endDate && new Date(e.endDate).getTime() < now;
+  const currentEvents = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
+  const pastEvents = isAdmin ? adminEvents.filter(isPastEvent) : [];
+  const [showPastEvents, setShowPastEvents] = React.useState(false);
+
   /**
    * CSV Export fuer Teilnehmerlisten.
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
@@ -269,12 +280,13 @@ export default function AdminPage(): React.ReactElement {
             </button>
           </div>
         ) : (
-          <div className="my-events-list">
-            {adminEvents.map(event => (
+          <>
+          {(() => {
+            const renderEventCard = (event: DeloitteEvent, opts?: { muted?: boolean }): React.ReactElement => (
               <div
                 key={event.id}
                 className="card card-clickable"
-                style={{ padding: '20px 24px', cursor: 'pointer' }}
+                style={{ padding: '20px 24px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1 }}
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
@@ -282,6 +294,7 @@ export default function AdminPage(): React.ReactElement {
                       <div style={{
                         width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
                         background: `url(${event.imageUrl}) center/cover no-repeat`,
+                        filter: opts?.muted ? 'grayscale(0.4)' : 'none',
                       }} />
                     )}
                     <div>
@@ -338,8 +351,48 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+            return (
+              <>
+                <div className="my-events-list">
+                  {currentEvents.map(ev => renderEventCard(ev))}
+                </div>
+                {isAdmin && pastEvents.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowPastEvents(!showPastEvents)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        width: '100%', padding: '12px 20px',
+                        background: 'var(--dex-gray-50, #f8f9fa)',
+                        border: '1px dashed var(--dex-gray-300)',
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem', fontWeight: 600,
+                        color: 'var(--dex-gray-700)',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ fontSize: '1rem' }}>{showPastEvents ? '▾' : '▸'}</span>
+                      <span style={{ flex: 1 }}>
+                        Vergangene Events ({pastEvents.length})
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                        Klicken zum {showPastEvents ? 'Einklappen' : 'Ausklappen'}
+                      </span>
+                    </button>
+                    {showPastEvents && (
+                      <div className="my-events-list" style={{ marginTop: 12 }}>
+                        {pastEvents.map(ev => renderEventCard(ev, { muted: true }))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+          </>
         )}
       </div>
     );
