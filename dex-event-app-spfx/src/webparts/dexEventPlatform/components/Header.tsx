@@ -11,7 +11,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Mail } from './Icons';
+import { ChevronLeft, Settings, Book } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
@@ -70,11 +70,14 @@ export default function Header(): React.ReactElement {
         )}
       </div>
       <div className="header-right">
-        {isLanding && (
-          <button className="header-icon-btn" onClick={() => navigate('start')}>
-            <Mail size={20} />
-          </button>
-        )}
+        <button
+          className="header-icon-btn"
+          onClick={() => navigate('manual')}
+          title={t('header.manual')}
+          style={currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : {}}
+        >
+          <Book size={20} />
+        </button>
         {!isLanding && (
           <button
             className="header-icon-btn"
@@ -151,13 +154,6 @@ export default function Header(): React.ReactElement {
                   onClick={() => { setShowPopup(false); navigate('profile'); }}
                 >
                   {t('profile.viewfull')}
-                </button>
-                <button
-                  className="btn btn-secondary btn-block"
-                  style={{ fontSize: '0.85rem' }}
-                  onClick={() => { setShowPopup(false); navigate('manual'); }}
-                >
-                  {t('header.manual')}
                 </button>
                 {isAdmin && (
                   <button

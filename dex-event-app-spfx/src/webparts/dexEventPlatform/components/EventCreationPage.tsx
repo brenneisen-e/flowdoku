@@ -490,7 +490,11 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.filterMode : 'AND'
   );
   const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
-  const [eventType, setEventType] = React.useState<EventType>(editEvent ? editEvent.type : 'Other');
+  // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
+  // aus Template abgeleitet (b2run → 'B2Run', sonst → 'Other'). Bei Edit:
+  // den gespeicherten Wert beibehalten. Die Variable wird weiterhin fuer
+  // Card-Gradient + B2Run-spezifische Admin-Funktionen gebraucht.
+  const [storedEventType] = React.useState<EventType>(editEvent ? editEvent.type : 'Other');
   const [startDate, setStartDate] = React.useState(editEvent ? isoToLocal(editEvent.startDate) : '');
   const [endDate, setEndDate] = React.useState(editEvent ? isoToLocal(editEvent.endDate) : '');
   const [registrationDeadline, setRegistrationDeadline] = React.useState(
@@ -564,6 +568,9 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [currentStep, setCurrentStep] = React.useState(0);
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
+  // EventType wird bei neuen Events aus dem Template abgeleitet; bei Edit
+  // bleibt der gespeicherte Wert erhalten.
+  const eventType: EventType = editEvent ? storedEventType : (selectedTemplate === 'b2run' ? 'B2Run' : 'Other');
   const [b2runStartblocks, setB2runStartblocks] = React.useState<string[]>([]);
   const [newStartblock, setNewStartblock] = React.useState<string>('');
   const [durchstarterCapacity, setDurchstarterCapacity] = React.useState<string>(
@@ -725,13 +732,11 @@ export default function EventCreationPage(): React.ReactElement {
   const applyTemplate = (template: 'blank' | 'b2run'): void => {
     setSelectedTemplate(template);
     if (template === 'blank') {
-      setEventType('Other');
       setCustomFields([]);
       setB2runStartblocks([]);
       return;
     }
     if (template === 'b2run') {
-      setEventType('B2Run');
       // Custom Fields in der Reihenfolge der B2Run-Excel-Spalten
       // Hinweis: Strasse/PLZ/Stadt werden NICHT abgefragt (werden leer in der Excel stehen)
       // Locale-abhaengige Labels/Optionen. IDs bleiben konstant, damit die
@@ -855,7 +860,6 @@ export default function EventCreationPage(): React.ReactElement {
 
     const dateStr = toDate(eventStart).replace(/-/g, '');
     setTitle(`Test_${dateStr}`);
-    setEventType('Other');
     setDescription('Testbeschreibung für ein Demo-Event.');
     setLocation('Köln, Testort');
     setLocationFilter('');
@@ -937,7 +941,6 @@ export default function EventCreationPage(): React.ReactElement {
       // Event aktualisieren - nur bekannte Felder senden
       const updates: Record<string, unknown> = {
         'Title': title,
-        'EventType': eventType,
         'Description': description,
         'Location': location,
         'LocationAddress': (addrStreet || addrHouseNo || addrZip || addrCity)
@@ -1445,16 +1448,22 @@ export default function EventCreationPage(): React.ReactElement {
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
               </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  <span className="required">*</span> {t('create.eventtype')}
-                  <InfoTooltip text={t('create.eventtype.hint')} />
+              {/* Test-Event-Flag */}
+              <div className="form-group" style={{ marginTop: 0, padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isFictive}
+                    onChange={e => setIsFictive(e.target.checked)}
+                    style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 3 }}
+                  />
+                  <span style={{ fontSize: '0.9rem' }}>
+                    <strong>{t('create.fictive')}</strong>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.5, marginTop: 4 }}>
+                      {t('create.fictive.hint')}
+                    </span>
+                  </span>
                 </label>
-                <select className="form-select" value={eventType} onChange={e => setEventType(e.target.value as EventType)}>
-                  <option value="Other">Sonstiges Deloitte Event</option>
-                  <option value="B2Run">B2Run</option>
-                  <option value="JPMorgan">JP Morgan Run</option>
-                </select>
               </div>
 
               <div className="form-group" style={{ position: 'relative' }}>
@@ -2669,24 +2678,6 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
-                </div>
-
-                {/* Test-Event-Flag */}
-                <div className="form-group" style={{ marginTop: 16, padding: 16, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={isFictive}
-                      onChange={e => setIsFictive(e.target.checked)}
-                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 3 }}
-                    />
-                    <span style={{ fontSize: '0.9rem' }}>
-                      <strong>{t('create.fictive')}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.5, marginTop: 4 }}>
-                        {t('create.fictive.hint')}
-                      </span>
-                    </span>
-                  </label>
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>

@@ -29,7 +29,7 @@ const CATEGORY_LABEL: Record<string, { de: string; en: string }> = {
 
 export default function ManualPage(): React.ReactElement {
   const { currentUserRole } = useRoles();
-  const { locale } = useLanguage();
+  const { locale, setLocale } = useLanguage();
   const isDe = locale === 'de';
 
   const allSections = React.useMemo(() => getManualSections(locale), [locale]);
@@ -71,9 +71,31 @@ export default function ManualPage(): React.ReactElement {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', gap: 24, padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Sidebar */}
       <aside style={{ position: 'sticky', top: 72, alignSelf: 'start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
-        <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginTop: 0, marginBottom: 10 }}>
-          {isDe ? 'Handbuch' : 'Handbook'}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
+            {isDe ? 'Handbuch' : 'Handbook'}
+          </h2>
+          <div style={{ display: 'inline-flex', border: '1px solid var(--dex-gray-300)', borderRadius: 999, overflow: 'hidden', fontSize: '0.72rem' }}>
+            <button
+              onClick={() => setLocale('de')}
+              style={{
+                padding: '3px 10px', border: 'none',
+                background: isDe ? 'var(--dex-green)' : '#fff',
+                color: isDe ? '#fff' : 'var(--dex-gray-600)',
+                fontWeight: isDe ? 600 : 400, cursor: 'pointer',
+              }}
+            >DE</button>
+            <button
+              onClick={() => setLocale('en')}
+              style={{
+                padding: '3px 10px', border: 'none',
+                background: !isDe ? 'var(--dex-green)' : '#fff',
+                color: !isDe ? '#fff' : 'var(--dex-gray-600)',
+                fontWeight: !isDe ? 600 : 400, cursor: 'pointer',
+              }}
+            >EN</button>
+          </div>
+        </div>
         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 14 }}>
           {isDe
             ? `Rolle: ${currentUserRole} · ${visibleSections.length} Kapitel`

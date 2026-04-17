@@ -232,7 +232,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       id: e.Id.toString(),
       eventNumber: e.EventNumber || 0,
       title: e.Title || '',
-      type: (e.EventType as DeloitteEvent['type']) || 'Other',
+      // v5.2: EventType-Spalte deprecated. Typ aus CustomFields ableiten
+      // (Fallback auf alten SP-Wert wenn noch vorhanden).
+      type: (e.EventType as DeloitteEvent['type'])
+        || (customFields.some(f => f.id === 'b2run_startblock') ? 'B2Run' : 'Other'),
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
       organizers: (e.Organizer || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       organizerEmails: (e.OrganizerEmail || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),

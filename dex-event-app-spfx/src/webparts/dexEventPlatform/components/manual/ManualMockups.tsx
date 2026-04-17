@@ -674,6 +674,147 @@ export const DemoDateTimePicker: React.FC<{ label: string; value?: string; after
 );
 
 // ============================================================================
+// DemoQuizEditor — Editor fuer eine Quiz-Frage (Form-View)
+// ============================================================================
+
+export const DemoQuizEditor: React.FC = () => (
+  <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 16, background: '#fff', maxWidth: 540 }}>
+    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, marginBottom: 10 }}>Quiz-Editor · Frage 1</div>
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>Fragetext</label>
+      <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85rem', background: '#fff' }}>
+        In welcher Stadt findet das Event statt?
+      </div>
+    </div>
+    <div style={{ marginBottom: 8, fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+      Antwortoptionen (eine als richtig markieren)
+    </div>
+    {[
+      { text: 'München', correct: false },
+      { text: 'Frankfurt', correct: true },
+      { text: 'Berlin', correct: false },
+      { text: 'Köln', correct: false },
+    ].map((o, idx) => (
+      <div key={o.text} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{
+          width: 22, height: 22, borderRadius: '50%',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          border: `2px solid ${o.correct ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+          background: o.correct ? 'var(--dex-green)' : '#fff',
+          color: '#fff', fontSize: '0.7rem',
+        }}>{o.correct ? '✓' : ''}</span>
+        <div style={{ flex: 1, border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', background: '#fff' }}>
+          <span style={{ color: 'var(--dex-gray-400)', marginRight: 8, fontSize: '0.7rem' }}>{String.fromCharCode(65 + idx)}</span>
+          {o.text}
+        </div>
+        <span style={{ cursor: 'pointer', color: 'var(--dex-gray-400)', fontSize: '0.85rem' }}>×</span>
+      </div>
+    ))}
+    <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+      <span style={{ padding: '4px 10px', border: '1px dashed var(--dex-gray-300)', borderRadius: 6, fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>+ Option hinzufügen</span>
+      <span style={{ padding: '4px 10px', border: '1px dashed var(--dex-gray-300)', borderRadius: 6, fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>+ Nächste Frage</span>
+    </div>
+  </div>
+);
+
+// ============================================================================
+// DemoQuizResult — End-Screen nach Quiz-Abschluss
+// ============================================================================
+
+export const DemoQuizResult: React.FC<{ score?: number; total?: number }> = ({ score = 4, total = 5 }) => {
+  const percent = Math.round((score / total) * 100);
+  return (
+    <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 24, background: '#fff', maxWidth: 420, textAlign: 'center' }}>
+      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, marginBottom: 14 }}>
+        Dein Ergebnis
+      </div>
+      <div style={{
+        width: 120, height: 120, margin: '0 auto 16px', borderRadius: '50%',
+        background: `conic-gradient(var(--dex-green) ${percent * 3.6}deg, var(--dex-gray-100) 0deg)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
+      }}>
+        <div style={{ width: 96, height: 96, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark)' }}>{score}/{total}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{percent}%</div>
+        </div>
+      </div>
+      <div style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 4 }}>Super gemacht, Max!</div>
+      <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 14 }}>
+        Nur dein bester Versuch zählt — du kannst das Quiz beliebig oft wiederholen.
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+        <span style={{ padding: '6px 16px', background: 'var(--dex-green)', color: '#fff', borderRadius: 6, fontSize: '0.82rem', fontWeight: 600 }}>Noch mal</span>
+        <span style={{ padding: '6px 16px', background: 'var(--dex-gray-100)', color: 'var(--dex-gray-700)', borderRadius: 6, fontSize: '0.82rem' }}>Zurück zum Event</span>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// DemoQuizScoreboard — Admin-Uebersicht der Quiz-Ergebnisse
+// ============================================================================
+
+export const DemoQuizScoreboard: React.FC = () => {
+  const rows = [
+    { rank: 1, name: 'Erika Musterfrau', score: 5, time: '48s' },
+    { rank: 2, name: 'Max Mustermann', score: 4, time: '1:12' },
+    { rank: 3, name: 'Marie Musterfrau', score: 4, time: '1:54' },
+    { rank: 4, name: 'Otto Mustermann', score: 3, time: '2:03' },
+  ];
+  return (
+    <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, overflow: 'hidden', background: '#fff', maxWidth: 520 }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--dex-gray-100)', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>Quiz-Ranking</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>67 Teilnehmer · Ø 3,8 Punkte</span>
+      </div>
+      <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+        <thead style={{ background: 'var(--dex-gray-50)', textAlign: 'left' }}>
+          <tr>
+            <th style={{ padding: '8px 12px' }}>#</th>
+            <th style={{ padding: '8px 12px' }}>Name</th>
+            <th style={{ padding: '8px 12px' }}>Punkte</th>
+            <th style={{ padding: '8px 12px' }}>Zeit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.name}>
+              <td style={{ padding: '8px 12px', borderTop: '1px solid var(--dex-gray-100)', fontWeight: 700, color: r.rank === 1 ? 'var(--dex-green-dark)' : 'var(--dex-gray-700)' }}>
+                {r.rank === 1 ? '🏆' : r.rank}
+              </td>
+              <td style={{ padding: '8px 12px', borderTop: '1px solid var(--dex-gray-100)' }}>{r.name}</td>
+              <td style={{ padding: '8px 12px', borderTop: '1px solid var(--dex-gray-100)' }}>
+                <span style={{ padding: '2px 10px', borderRadius: 12, background: r.score === 5 ? 'rgba(134,188,37,0.18)' : 'var(--dex-gray-100)', color: r.score === 5 ? 'var(--dex-green-dark)' : 'var(--dex-gray-700)', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {r.score}/5
+                </span>
+              </td>
+              <td style={{ padding: '8px 12px', borderTop: '1px solid var(--dex-gray-100)', color: 'var(--dex-gray-500)', fontFamily: 'monospace', fontSize: '0.78rem' }}>{r.time}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// ============================================================================
+// DemoQuizStart — Einstiegs-Screen vor Quiz-Start
+// ============================================================================
+
+export const DemoQuizStart: React.FC = () => (
+  <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: 24, background: 'linear-gradient(135deg, rgba(134,188,37,0.08), rgba(0,118,168,0.06))', maxWidth: 420, textAlign: 'center' }}>
+    <div style={{ fontSize: '2.4rem', marginBottom: 6 }}>🎯</div>
+    <div style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 4 }}>Bereit für das Quiz?</div>
+    <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginBottom: 16 }}>
+      5 Fragen · keine Zeitbegrenzung · beliebig oft wiederholbar · nur dein bester Versuch wird gezählt
+    </div>
+    <div style={{ display: 'inline-block', padding: '10px 24px', background: 'var(--dex-green)', color: '#fff', borderRadius: 8, fontSize: '0.9rem', fontWeight: 600 }}>
+      Quiz starten
+    </div>
+  </div>
+);
+
+// ============================================================================
 // NumberedList — strukturierte nummerierte Schritte
 // ============================================================================
 
