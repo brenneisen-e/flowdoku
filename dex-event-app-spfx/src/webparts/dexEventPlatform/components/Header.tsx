@@ -38,6 +38,7 @@ export default function Header(): React.ReactElement {
       case 'participants': return t('header.participants');
       case 'flowcharts': return t('header.flowcharts');
       case 'check-in': return t('header.checkin');
+      case 'manual': return t('header.manual');
       default: return '';
     }
   };
@@ -150,6 +151,13 @@ export default function Header(): React.ReactElement {
                   onClick={() => { setShowPopup(false); navigate('profile'); }}
                 >
                   {t('profile.viewfull')}
+                </button>
+                <button
+                  className="btn btn-secondary btn-block"
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => { setShowPopup(false); navigate('manual'); }}
+                >
+                  {t('header.manual')}
                 </button>
                 {isAdmin && (
                   <button

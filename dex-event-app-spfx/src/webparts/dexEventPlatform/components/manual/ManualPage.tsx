@@ -1,0 +1,212 @@
+/**
+ * Handbuch-Seite (In-App-Manual)
+ *
+ * Layout: Sidebar mit Sektionsliste (gefiltert nach Rolle) + Content-Bereich
+ * mit ausgewaehlter Sektion. Pro Sektion werden die Perspektiven (User /
+ * Organizer / Admin) als Tabs dargestellt, innerhalb einer Perspektive die
+ * nummerierten Schritte mit Text + Visual.
+ */
+
+import * as React from 'react';
+import { useRoles } from '../../context/RoleContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { ManualSection, ManualPerspectiveBlock, ManualStep, ManualPerspective } from './types';
+import { PlaceholderShot } from './ManualMockups';
+import { getManualSections } from './handbookContent';
+
+const PERSPECTIVE_LABEL: Record<ManualPerspective, { de: string; en: string }> = {
+  user: { de: 'Als User:in', en: 'As User' },
+  organizer: { de: 'Als Organizer:in', en: 'As Organizer' },
+  admin: { de: 'Als Admin:in', en: 'As Admin' },
+};
+
+const CATEGORY_LABEL: Record<string, { de: string; en: string }> = {
+  general: { de: 'Grundlagen', en: 'Basics' },
+  organizer: { de: 'Für Organizer', en: 'For Organizers' },
+  admin: { de: 'Administration', en: 'Administration' },
+  architecture: { de: 'Architektur & Technik', en: 'Architecture & Tech' },
+};
+
+export default function ManualPage(): React.ReactElement {
+  const { currentUserRole } = useRoles();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+
+  const allSections = React.useMemo(() => getManualSections(locale), [locale]);
+  const visibleSections = React.useMemo(() => {
+    // Admin sieht alles, Organizer sieht User+Organizer, User sieht nur User-Sektionen.
+    return allSections.filter(s => s.visibleFor.indexOf(currentUserRole as 'User' | 'Organizer' | 'Admin') >= 0);
+  }, [allSections, currentUserRole]);
+
+  const [activeId, setActiveId] = React.useState<string>(visibleSections[0]?.id || '');
+  const [search, setSearch] = React.useState('');
+  const activeSection = visibleSections.find(s => s.id === activeId) || visibleSections[0];
+
+  const [activePerspective, setActivePerspective] = React.useState<ManualPerspective | null>(null);
+  React.useEffect(() => {
+    if (activeSection) setActivePerspective(activeSection.perspectives[0]?.perspective || null);
+  }, [activeSection?.id]);
+
+  const grouped = React.useMemo(() => {
+    const out: Record<string, ManualSection[]> = {};
+    const q = search.trim().toLowerCase();
+    for (const s of visibleSections) {
+      if (q && s.title.toLowerCase().indexOf(q) < 0 && s.description.toLowerCase().indexOf(q) < 0) continue;
+      (out[s.category] = out[s.category] || []).push(s);
+    }
+    return out;
+  }, [visibleSections, search]);
+
+  const label = (pair: { de: string; en: string }): string => isDe ? pair.de : pair.en;
+
+  if (!activeSection) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-600)' }}>
+        {isDe ? 'Keine Handbuch-Sektionen verfügbar.' : 'No manual sections available.'}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', gap: 24, padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
+      {/* Sidebar */}
+      <aside style={{ position: 'sticky', top: 72, alignSelf: 'start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginTop: 0, marginBottom: 10 }}>
+          {isDe ? 'Handbuch' : 'Handbook'}
+        </h2>
+        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 14 }}>
+          {isDe
+            ? `Rolle: ${currentUserRole} · ${visibleSections.length} Kapitel`
+            : `Role: ${currentUserRole} · ${visibleSections.length} chapters`}
+        </div>
+        <input
+          className="form-input"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={isDe ? 'Kapitel durchsuchen…' : 'Search chapters…'}
+          style={{ marginBottom: 14 }}
+        />
+        {Object.keys(grouped).map(cat => (
+          <div key={cat} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--dex-gray-500)', marginBottom: 6 }}>
+              {label(CATEGORY_LABEL[cat] || { de: cat, en: cat })}
+            </div>
+            {grouped[cat].map(s => (
+              <button
+                key={s.id}
+                onClick={() => setActiveId(s.id)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '8px 12px', marginBottom: 3,
+                  background: s.id === activeSection.id ? 'var(--dex-green)' : 'transparent',
+                  color: s.id === activeSection.id ? '#fff' : 'var(--dex-gray-800)',
+                  border: 'none', borderRadius: 6, cursor: 'pointer',
+                  fontSize: '0.86rem', fontWeight: s.id === activeSection.id ? 600 : 400,
+                  lineHeight: 1.35,
+                }}
+              >
+                {s.title}
+              </button>
+            ))}
+          </div>
+        ))}
+      </aside>
+
+      {/* Content */}
+      <section style={{ maxWidth: 920, minWidth: 0 }}>
+        <header style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            {label(CATEGORY_LABEL[activeSection.category] || { de: activeSection.category, en: activeSection.category })}
+          </div>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0 }}>{activeSection.title}</h1>
+          <p style={{ fontSize: '0.95rem', color: 'var(--dex-gray-600)', marginTop: 6, lineHeight: 1.5 }}>{activeSection.description}</p>
+        </header>
+
+        {activeSection.perspectives.length > 1 && (
+          <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--dex-gray-200)', marginBottom: 20 }}>
+            {activeSection.perspectives.map(p => (
+              <button
+                key={p.perspective}
+                onClick={() => setActivePerspective(p.perspective)}
+                style={{
+                  padding: '8px 14px',
+                  background: 'transparent', border: 'none',
+                  borderBottom: activePerspective === p.perspective ? '2px solid var(--dex-green)' : '2px solid transparent',
+                  fontSize: '0.88rem', fontWeight: activePerspective === p.perspective ? 600 : 400,
+                  color: activePerspective === p.perspective ? 'var(--dex-green-dark)' : 'var(--dex-gray-600)',
+                  cursor: 'pointer', marginBottom: -1,
+                }}
+              >
+                {p.title || label(PERSPECTIVE_LABEL[p.perspective])}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeSection.perspectives
+          .filter(p => !activePerspective || p.perspective === activePerspective)
+          .map(p => (
+            <PerspectiveView key={p.perspective} block={p} />
+          ))}
+
+        <footer style={{ marginTop: 40, padding: '14px 0', borderTop: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-400)', fontSize: '0.78rem', textAlign: 'center' }}>
+          {isDe
+            ? 'Handbuch v5.0 · Fragen zur Plattform? Rollen-Info im Admin Center.'
+            : 'Handbook v5.0 · Questions? See the Admin Center for support.'}
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function PerspectiveView({ block }: { block: ManualPerspectiveBlock }): React.ReactElement {
+  return (
+    <div>
+      {block.intro && (
+        <div style={{ background: 'var(--dex-gray-50)', borderRadius: 8, padding: '14px 16px', marginBottom: 20, fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--dex-gray-700)' }}>
+          {block.intro}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {block.steps.map(step => (
+          <StepView key={step.number} step={step} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StepView({ step }: { step: ManualStep }): React.ReactElement {
+  const visual = step.liveDemo || step.mockup
+    || (step.screenshotPath ? <img src={step.screenshotPath} alt="" style={{ width: '100%', borderRadius: 8 }} /> : null)
+    || (step.visualHint ? <PlaceholderShot caption={step.visualHint} /> : null);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 20, alignItems: 'start', padding: '18px 0', borderBottom: '1px solid var(--dex-gray-100)' }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36, borderRadius: '50%', background: 'var(--dex-green)',
+            color: '#fff', fontWeight: 700, fontSize: '1rem', flexShrink: 0,
+          }}>{step.number}</span>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0 }}>{step.title}</h3>
+        </div>
+        <div style={{ fontSize: '0.92rem', lineHeight: 1.6, color: 'var(--dex-gray-700)' }}>{step.description}</div>
+        {step.tip && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(255,193,7,0.08)', borderLeft: '3px solid #f0ad2e', borderRadius: 4, fontSize: '0.82rem', color: '#8a5d00' }}>
+            💡 <strong>Tipp:</strong> {step.tip}
+          </div>
+        )}
+        {step.warning && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(200,30,30,0.06)', borderLeft: '3px solid #c9302c', borderRadius: 4, fontSize: '0.82rem', color: '#7a1b1b' }}>
+            ⚠ <strong>Achtung:</strong> {step.warning}
+          </div>
+        )}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        {visual}
+      </div>
+    </div>
+  );
+}
