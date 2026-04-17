@@ -134,59 +134,33 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   const renderPreviewHtml = (): string => {
     const bodyWithVars = replacePlaceholders(value || '', previewVars);
+    const cachedLogo = getCachedLogoBase64();
+    const cachedOrb = getCachedOrbBase64();
+
     if (previewMode === 'email') {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
       const subheading = `Event ${previewVars.EventTitle || ''}`;
       const wrapped = wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars);
-      // Fallback: das offizielle DEX-Orb-Logo aus dem Cache (gleicher Pfad wie
-      // bei realen Mails); falls noch nicht geladen, zeige nichts statt
-      // broken-image-Icon.
-      const orbDefault = getCachedOrbBase64();
-      const logoDefault = getCachedLogoBase64();
       return wrapped
-        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || logoDefault || '')
-        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || orbDefault || '');
+        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
+        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
     }
-    // Outlook-Termin-Preview: wenn der OutlookBody bereits gewrappt ist (kommt aus
-    // editEvent), zeige ihn 1:1 (mit ORB-/LOGO-Replace) — sonst nutze den schlanken
-    // Outlook-Wrapper mit Cache-Logo + Cache-Orb als Default.
-    const outlookOrbDefault = getCachedOrbBase64();
-    const outlookLogoDefault = getCachedLogoBase64();
-    const isAlreadyWrapped = /<!doctype|<html/i.test(value || '');
-    if (isAlreadyWrapped) {
-      return (value || '')
-        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || outlookLogoDefault || '')
-        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || outlookOrbDefault || '');
-    }
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      body { margin:0; padding:0; font-family: Aptos, Arial, Helvetica, sans-serif; color:#333; background:#f5f5f5; }
-      .container { max-width: 600px; margin: 0 auto; background:#fff; }
-      .hdr { background:#000; padding:16px 24px; border-bottom:2px solid #86bc25; }
-      .hdr img { max-width: 160px; height: auto; display:block; }
-      .hero { text-align:center; padding:24px; background:#fff; }
-      .hero img { max-width:140px; height:auto; }
-      .ttl { padding:24px 24px 0; }
-      .ttl h1 { margin:0; font-size:22px; color:#86bc25; font-weight:400; }
-      .ttl h2 { margin:0 0 16px; font-size:16px; color:#000; font-weight:700; }
-      .body { padding: 0 24px 24px; font-size: 14px; line-height: 1.6; }
-      .body p { margin: 0 0 12px; }
-      .ftr { padding:12px 24px; font-size:11px; color:#999; border-top:1px solid #eee; }
-    </style></head><body>
-      <div class="container">
-        <div class="hdr">${(logoBase64 || outlookLogoDefault)
-          ? `<img src="${logoBase64 || outlookLogoDefault}" alt="Deloitte" />`
-          : '<span style="color:#fff;font-weight:700;">Deloitte.</span>'}</div>
-        ${(imageBase64 || outlookOrbDefault)
-          ? `<div class="hero"><img src="${imageBase64 || outlookOrbDefault}" alt="DEX Event Experience Platform" /></div>`
-          : ''}
-        <div class="ttl">
-          <h1>${escapeHtml(previewVars.EventTitle || 'Event Title')}</h1>
-          <h2>${escapeHtml(previewVars.EventDate || '')}</h2>
-        </div>
-        <div class="body">${bodyWithVars || '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>'}</div>
-        <div class="ftr">Outlook-Termin-Vorschau · DEX Event Experience Platform</div>
-      </div>
-    </body></html>`;
+
+    // Outlook-Termin-Vorschau: gleicher wrapTemplate() wie beim echten Versand,
+    // damit der User in der Vorschau genau das sieht, was nachher im Termin steht
+    // (inkl. Deloitte-Signatur + Legal-Disclaimer im Footer).
+    const outlookHeading = previewVars.EventTitle || 'Event Title';
+    const outlookSubheading = previewVars.EventDate || 'Event Details';
+    const bodyForOutlook = bodyWithVars || '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>';
+    // Wenn der Body bereits ein kompletter wrapTemplate-Output ist (z.B. aus editEvent
+    // ohne Strip), 1:1 anzeigen — sonst doppelt wickeln.
+    const isAlreadyWrapped = /<!doctype|<html/i.test(bodyForOutlook);
+    const wrapped = isAlreadyWrapped
+      ? bodyForOutlook
+      : wrapTemplate('#86bc25', outlookHeading, outlookSubheading, bodyForOutlook);
+    return wrapped
+      .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
+      .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
   };
 
   const tbBtn: React.CSSProperties = {
@@ -377,12 +351,3 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     </div>
   );
 };
-
-function escapeHtml(s: string): string {
-  return (s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
