@@ -172,6 +172,7 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
+  IsFictive?: boolean; // true = Test-Event (nur Admin + eigene Organizer sichtbar)
   DurchstarterCapacity?: number; // B2Run: getrennte Kapazitaet
   FunstarterCapacity?: number;   // B2Run: getrennte Kapazitaet
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
@@ -1542,6 +1543,7 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'IsFictive', type: 8, metaType: 'SP.Field' }, // Boolean - Test-Event (nur Admin + eigene Organizer sichtbar)
       { title: 'DurchstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Durchstarter (Number)
       { title: 'FunstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Funstarter (Number)
       { title: 'CustomFields', type: 3 },
@@ -1800,7 +1802,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventType,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -1918,6 +1920,7 @@ export class EventService {
     emailTemplateOverrides?: string;
     disableEmails?: boolean;
     disableOutlook?: boolean;
+    isFictive?: boolean;
     durchstarterCapacity?: number;
     funstarterCapacity?: number;
     customFields: CustomField[];
@@ -1986,6 +1989,7 @@ export class EventService {
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'DisableEmails': !!event.disableEmails,
         'DisableOutlook': !!event.disableOutlook,
+        'IsFictive': !!event.isFictive,
         'DurchstarterCapacity': typeof event.durchstarterCapacity === 'number' ? event.durchstarterCapacity : null,
         'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,
         'CustomFields': JSON.stringify(enrichedCustomFields),

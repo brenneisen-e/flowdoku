@@ -139,10 +139,17 @@ export default function EventListPage(): React.ReactElement {
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
   // passen UND (b) Events, bei denen er selbst in organizerEmails steht — NICHT
   // tenant-weit alle Events. User sieht nur Filter-passende Events.
+  // Fictive (Test-)Events sind IMMER nur fuer Admin + Event-eigene Organizer sichtbar,
+  // unabhaengig vom Standort-Filter.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
+    if (!e.isFictive) return true;
+    if (isAdmin) return true;
+    return e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc);
+  });
   const filteredEvents = (isAdmin
-    ? statusFiltered
-    : statusFiltered.filter((e: DeloitteEvent) =>
+    ? fictiveFiltered
+    : fictiveFiltered.filter((e: DeloitteEvent) =>
         isEventVisibleForUser(e, currentUser.email, currentUser.location)
         || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
       )

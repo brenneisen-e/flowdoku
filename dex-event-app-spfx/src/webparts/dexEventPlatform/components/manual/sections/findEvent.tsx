@@ -1,0 +1,99 @@
+import * as React from 'react';
+import { ManualSection } from '../types';
+import { DemoEventCard, DemoFormField, Callout, DemoRoommatePicker, ClickPath } from '../ManualMockups';
+
+export function findEventSection(locale: 'de' | 'en'): ManualSection {
+  const isDe = locale === 'de';
+  return {
+    id: 'find-event',
+    title: isDe ? 'Event finden & anmelden' : 'Find & register for an event',
+    category: 'general',
+    description: isDe
+      ? 'So meldest du dich für ein Event an — mit und ohne zusätzliche Fragen.'
+      : 'How to register for an event — with and without extra questions.',
+    visibleFor: ['User', 'Organizer', 'Admin'],
+    perspectives: [
+      {
+        perspective: 'user',
+        steps: [
+          {
+            number: 1,
+            title: isDe ? 'Event-Kachel auf der Übersicht wählen' : 'Pick an event card from the overview',
+            description: (
+              <>
+                {isDe
+                  ? 'Auf der "Registrierung"-Seite siehst du alle Events, die für dich sichtbar sind. Mit dem Schalter "Nur aktive Events" blendest du vergangene Events aus. Klick auf die Event-Karte, die dich interessiert.'
+                  : 'On the "Registration" page you see every event visible to you. Toggle "Only active events" to hide past events. Click the card you\'re interested in.'}
+              </>
+            ),
+            mockup: <DemoEventCard />,
+          },
+          {
+            number: 2,
+            title: isDe ? 'Persönliche Daten bestätigen' : 'Confirm personal details',
+            description: (
+              <>
+                {isDe
+                  ? 'Vorname, Nachname und E-Mail sind aus deinem Deloitte-Profil vorbelegt und können nicht geändert werden. Die Anrede musst du einmalig auswählen.'
+                  : 'First name, last name and email are pre-filled from your Deloitte profile and cannot be changed. You only need to pick a salutation.'}
+              </>
+            ),
+            mockup: (
+              <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 14 }}>
+                <DemoFormField label={isDe ? 'Anrede' : 'Salutation'} value="Herr" required type="select" />
+                <DemoFormField label={isDe ? 'Vorname' : 'First name'} value="Max" required />
+                <DemoFormField label={isDe ? 'Nachname' : 'Last name'} value="Mustermann" required />
+                <DemoFormField label="E-Mail" value="max.mustermann@deloitte.de" required />
+              </div>
+            ),
+          },
+          {
+            number: 3,
+            title: isDe ? 'Event-spezifische Fragen ausfüllen' : 'Fill in event-specific questions',
+            description: (
+              <>
+                {isDe
+                  ? 'Pro Event können unterschiedliche Zusatzfragen vorhanden sein: T-Shirt-Größe, Ernährungsweise, Zimmerpartner, Einverständniserklärungen usw. Felder mit * sind Pflichtfelder.'
+                  : 'Each event can have different custom questions: t-shirt size, diet, roommate, consents, etc. Fields marked with * are required.'}
+              </>
+            ),
+            mockup: <DemoRoommatePicker />,
+            tip: isDe
+              ? 'Wenn du eine:n Zimmerpartner:in angibst, wird diese Person automatisch per E-Mail über deine Auswahl informiert.'
+              : 'If you pick a preferred roommate, that person will automatically be notified by email.',
+          },
+          {
+            number: 4,
+            title: isDe ? 'Anmeldung absenden' : 'Submit your registration',
+            description: (
+              <>
+                {isDe
+                  ? 'Mit Klick auf "Anmelden" wird deine Registrierung gespeichert. Du bekommst eine Bestätigungs-E-Mail und — falls für das Event aktiviert — einen Outlook-Kalendereintrag.'
+                  : 'Clicking "Register" saves your registration. You\'ll receive a confirmation email and — if enabled for the event — an Outlook calendar invite.'}
+              </>
+            ),
+            mockup: <ClickPath label={isDe ? 'Anmelden' : 'Register'} hint={isDe ? 'E-Mail + Kalendereintrag kommen meist innerhalb weniger Minuten an.' : 'Email + calendar invite usually arrive within minutes.'} />,
+          },
+          {
+            number: 5,
+            title: isDe ? 'Wenn das Event ausgebucht ist' : 'When the event is full',
+            description: (
+              <>
+                {isDe
+                  ? 'Ist die maximale Teilnehmerzahl erreicht, landest du automatisch auf der Warteliste (sofern diese aktiviert ist). Sobald sich jemand abmeldet, rutschst du nach und bekommst automatisch eine Bestätigungsmail.'
+                  : 'If the max capacity is reached you automatically go to the waitlist (if enabled). When someone cancels, you move up and receive a confirmation email automatically.'}
+              </>
+            ),
+            mockup: (
+              <Callout variant="info" title={isDe ? 'Warteliste' : 'Waitlist'}>
+                {isDe
+                  ? 'Du musst nichts weiter tun. Das Nachrücken läuft vollautomatisch über einen Power-Automate-Flow.'
+                  : 'You don\'t have to do anything. Promotion from waitlist to attendee runs automatically via a Power Automate flow.'}
+              </Callout>
+            ),
+          },
+        ],
+      },
+    ],
+  };
+}

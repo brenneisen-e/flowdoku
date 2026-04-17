@@ -70,6 +70,17 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
 
   return (
     <div className="event-card" style={{ position: 'relative', cursor: showDeadlineOverlay ? 'not-allowed' : 'pointer' }} onClick={() => (!alreadySignedUp && !showDeadlineOverlay) ? navigate('registration', event.id) : undefined}>
+      {event.isFictive && (
+        <div style={{
+          position: 'absolute', top: 10, right: 10, zIndex: 5,
+          padding: '3px 10px', borderRadius: 999,
+          background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+          fontSize: '0.68rem', fontWeight: 700, letterSpacing: 0.5,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        }}>
+          {t('create.fictive.badge')}
+        </div>
+      )}
       {showDeadlineOverlay && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
