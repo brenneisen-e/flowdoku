@@ -1088,6 +1088,39 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // Custom-Fields-Columns auf der Teilnehmerliste auto-sync: falls
+        // neue Custom-Fields ohne spInternalName hinzugekommen sind oder
+        // SP-Spalten fehlen, jetzt anlegen + spInternalName ins Event
+        // zurueckschreiben.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctx = (window as any).__dexSpfxContext;
+          if (ctx && editEvent?.subsiteUrl) {
+            const svc = new EventService(ctx);
+            const cfForFix = customFields
+              .filter(f => f.label && f.label.trim().length > 0)
+              .map(f => ({
+                id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                spInternalName: (f as any).spInternalName || '',
+                ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+              }));
+            const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
+              isB2Run: isB2runTemplate,
+              hasQuiz: quiz.length > 0,
+              customFields: cfForFix,
+            });
+            if (fixResult.customFieldMap && Object.keys(fixResult.customFieldMap).length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const merged = cfForFix.map((f: any) => {
+                const sp = fixResult.customFieldMap![f.id] || f.spInternalName || '';
+                return { ...f, spInternalName: sp };
+              });
+              await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) });
+            }
+          }
+        } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
+
         // Bild als Attachment hochladen (falls neues Bild gewaehlt wurde)
         if (imageFile) {
           try {

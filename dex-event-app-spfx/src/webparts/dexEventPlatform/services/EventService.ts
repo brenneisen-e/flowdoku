@@ -3006,8 +3006,9 @@ export class EventService {
     eventContext?: {
       isB2Run?: boolean;  // Event hat Durchstarter/Funstarter Kapazitaet
       hasQuiz?: boolean;  // Event hat Quizfragen
+      customFields?: CustomField[]; // Event-spezifische Custom-Fields — fehlende SP-Spalten werden angelegt
     }
-  ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean }> {
+  ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean; customFieldMap?: Record<string, string> }> {
     const added: string[] = [];
     const removed: string[] = [];
 
@@ -3098,6 +3099,53 @@ export class EventService {
       }
     }
 
+    // Custom Fields pro Event: wenn spInternalName leer oder die Spalte fehlt,
+    // jetzt anlegen. Der Aufrufer bekommt customFieldMap zurueck und kann das
+    // Event-Item persistieren (spInternalName fuer jede cf.id).
+    const customFieldMap: Record<string, string> = {};
+    if (eventContext?.customFields && eventContext.customFields.length > 0) {
+      // Post-Fix Felder-Snapshot nach Basis-Anlage
+      let currentFields = [...existingFieldsList, ...added];
+      for (const cf of eventContext.customFields) {
+        if (!cf.label || !cf.label.trim()) continue;
+        // Wenn spInternalName schon gesetzt und Feld existiert: uebernehmen.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existingSp: string = String((cf as any).spInternalName || '');
+        if (existingSp && currentFields.indexOf(existingSp) >= 0) {
+          customFieldMap[cf.id] = existingSp;
+          continue;
+        }
+        // Feld-Payload je nach Typ
+        let fieldPayload: Record<string, unknown>;
+        if (cf.type === 'select' && cf.options && cf.options.length > 0) {
+          fieldPayload = { '__metadata': { 'type': 'SP.FieldChoice' }, 'Title': cf.label, 'FieldTypeKind': 6, 'Required': false, 'Choices': { 'results': cf.options } };
+        } else if (cf.type === 'number') {
+          fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 9, 'Required': false };
+        } else if (cf.type === 'checkbox') {
+          fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 8, 'Required': false };
+        } else if (cf.type === 'user') {
+          // user-Picker wird als Text gespeichert ("Name <email>").
+          fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 3, 'Required': false };
+        } else {
+          fieldPayload = { '__metadata': { 'type': 'SP.Field' }, 'Title': cf.label, 'FieldTypeKind': 2, 'Required': false };
+        }
+        try {
+          const resp = await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`, fieldPayload
+          );
+          if (resp.ok) {
+            const createdField = await resp.json().catch(() => null);
+            const internalName = createdField?.InternalName || createdField?.d?.InternalName || '';
+            if (internalName) {
+              customFieldMap[cf.id] = internalName;
+              added.push(internalName);
+              currentFields = currentFields.concat([internalName]);
+            }
+          }
+        } catch { /* naechstes Feld */ }
+      }
+    }
+
     // Default View komplett neu aufbauen (Reihenfolge: TeilnehmerID, Anrede, Vorname, Nachname, ...)
     let viewFixed = false;
     try {
@@ -3151,7 +3199,7 @@ export class EventService {
       console.warn('[DEX] View-Reihenfolge konnte nicht gesetzt werden');
     }
 
-    return { added, removed, viewFixed };
+    return { added, removed, viewFixed, customFieldMap: Object.keys(customFieldMap).length > 0 ? customFieldMap : undefined };
   }
 
 
