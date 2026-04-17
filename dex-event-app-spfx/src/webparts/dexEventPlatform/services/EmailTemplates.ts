@@ -376,13 +376,13 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
  * Tags ist, wird er als HTML behandelt; wenn es Plain-Text ist, wird jede Zeile
  * in `<p>`-Tags gewickelt + escaped.
  */
-export function buildOutlookBody(eventTitle: string, bodyText: string): string {
+export function buildOutlookBody(eventTitle: string, bodyText: string, subheading?: string): string {
   const inner = stripOutlookWrapper(bodyText || '');
   const isHtml = /<[a-z][\s\S]*>/i.test(inner);
   const bodyHtml = inner
     ? (isHtml ? inner : inner.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  '))
     : '';
-  return wrapTemplate(GREEN, eventTitle, 'Event Details', bodyHtml);
+  return wrapTemplate(GREEN, eventTitle, subheading || 'Event Details', bodyHtml);
 }
 
 /**
@@ -401,6 +401,20 @@ export function stripOutlookWrapper(html: string): string {
   const m = html.match(/<td style="padding:0 30px 30px;[^"]*">([\s\S]*?)<\/td>/i);
   if (m && m[1]) return m[1].trim();
   return html;
+}
+
+/**
+ * Extrahiert Heading (<h1>) und Subheading (<h2>) aus einer bereits gewickelten
+ * Outlook-Body. Gibt leere Strings zurueck wenn keine vorhanden.
+ */
+export function parseOutlookHeadings(html: string): { heading: string; subheading: string } {
+  if (!html || !/<!doctype|<html/i.test(html)) return { heading: '', subheading: '' };
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const h2 = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+  return {
+    heading: h1 && h1[1] ? h1[1].replace(/<[^>]+>/g, '').trim() : '',
+    subheading: h2 && h2[1] ? h2[1].replace(/<[^>]+>/g, '').trim() : '',
+  };
 }
 
 /**
