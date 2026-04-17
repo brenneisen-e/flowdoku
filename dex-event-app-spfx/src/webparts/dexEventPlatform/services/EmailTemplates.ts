@@ -388,7 +388,10 @@ export function stripOutlookWrapper(html: string): string {
   if (!html) return '';
   if (!/<!doctype|<html/i.test(html)) return html;
   // wrapTemplate fuegt den Body in <td style="padding:0 30px 30px;...color:#333333;">CONTENT</td>
-  const m = html.match(/<td style="padding:0 30px 30px;[^"]*">([\s\S]*?)<\/td>\s*<\/tr>\s*(?:<\/table>|<tr>)/i);
+  // Non-greedy auf </td> reicht — wir brauchen keine trailing-Constraint (HTML-Kommentare
+  // zwischen </tr> und naechstem <tr> wuerden eine engere Pruefung sonst sprengen, wodurch
+  // der Strip fehlschlaegt und beim Re-Save der gesamte Wrapper erneut umwickelt wird).
+  const m = html.match(/<td style="padding:0 30px 30px;[^"]*">([\s\S]*?)<\/td>/i);
   if (m && m[1]) return m[1].trim();
   return html;
 }

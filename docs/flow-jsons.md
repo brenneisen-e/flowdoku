@@ -605,9 +605,33 @@ Ablauf:
 
 **Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
 
-**UpdateEvent-Body-Expression** (im PATCH zur Graph API):
+**UpdateEvent-Pattern** (seit 2026-04-17): String-Concat mit `json()` ist nicht
+robust genug fuer beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen
+das Parsing). Stattdessen wird der Body via Compose-Action vorgebaut und im
+HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
+
+**Compose `Build_Update_Body`** (vor `Send_an_HTTP_request` ausfuehren):
+```json
+{
+  "subject": "@{first(outputs('Get_Event_Details')?['body/value'])?['Title']}",
+  "start": {
+    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "timeZone": "W. Europe Standard Time"
+  },
+  "end": {
+    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "timeZone": "W. Europe Standard Time"
+  },
+  "body": {
+    "contentType": "html",
+    "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+  }
+}
 ```
-@json(concat('{"subject":', json(string(first(outputs('Get_Event_Details')?['body/value'])?['Title'])), ',"start":{"dateTime":"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '","timeZone":"W. Europe Standard Time"},"end":{"dateTime":"', convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'), '","timeZone":"W. Europe Standard Time"},"body":{"contentType":"html","content":', json(string(replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], '')))), '}}'))
+
+**`Send_an_HTTP_request`-Body** (PATCH zur Graph API):
+```
+@outputs('Build_Update_Body')
 ```
 
 ### Is_DeleteEvent-Branch (ganz am Anfang, vor Get_Event_Details)
