@@ -147,11 +147,22 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || logoDefault || '')
         .replace(/\{\{ORB_URL\}\}/g, imageBase64 || orbDefault || '');
     }
+    // Outlook-Termin-Preview: wenn der OutlookBody bereits gewrappt ist (kommt aus
+    // editEvent), zeige ihn 1:1 (mit ORB-/LOGO-Replace) — sonst nutze den schlanken
+    // Outlook-Wrapper mit Cache-Logo + Cache-Orb als Default.
+    const outlookOrbDefault = getCachedOrbBase64();
+    const outlookLogoDefault = getCachedLogoBase64();
+    const isAlreadyWrapped = /<!doctype|<html/i.test(value || '');
+    if (isAlreadyWrapped) {
+      return (value || '')
+        .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || outlookLogoDefault || '')
+        .replace(/\{\{ORB_URL\}\}/g, imageBase64 || outlookOrbDefault || '');
+    }
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body { margin:0; padding:0; font-family: Aptos, Arial, Helvetica, sans-serif; color:#333; background:#f5f5f5; }
       .container { max-width: 600px; margin: 0 auto; background:#fff; }
       .hdr { background:#000; padding:16px 24px; border-bottom:2px solid #86bc25; }
-      .hdr img { max-width: 160px; height: auto; }
+      .hdr img { max-width: 160px; height: auto; display:block; }
       .hero { text-align:center; padding:24px; background:#fff; }
       .hero img { max-width:140px; height:auto; }
       .ttl { padding:24px 24px 0; }
@@ -162,8 +173,12 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       .ftr { padding:12px 24px; font-size:11px; color:#999; border-top:1px solid #eee; }
     </style></head><body>
       <div class="container">
-        <div class="hdr">${logoBase64 ? `<img src="${logoBase64}" alt="Deloitte" />` : '<span style="color:#fff;font-weight:700;">Deloitte.</span>'}</div>
-        ${imageBase64 ? `<div class="hero"><img src="${imageBase64}" alt="Event" /></div>` : ''}
+        <div class="hdr">${(logoBase64 || outlookLogoDefault)
+          ? `<img src="${logoBase64 || outlookLogoDefault}" alt="Deloitte" />`
+          : '<span style="color:#fff;font-weight:700;">Deloitte.</span>'}</div>
+        ${(imageBase64 || outlookOrbDefault)
+          ? `<div class="hero"><img src="${imageBase64 || outlookOrbDefault}" alt="DEX Event Experience Platform" /></div>`
+          : ''}
         <div class="ttl">
           <h1>${escapeHtml(previewVars.EventTitle || 'Event Title')}</h1>
           <h2>${escapeHtml(previewVars.EventDate || '')}</h2>
