@@ -358,14 +358,35 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
 
 /**
  * Outlook-Termin-Body im Deloitte-Design generieren.
- * Erzeugt HTML mit {{LOGO_URL}} und {{ORB_URL}} Platzhaltern,
- * die der Power Automate Flow durch Base64-Bilder ersetzt.
+ *
+ * Idempotent: wenn `bodyText` bereits gewickelte HTML ist (enthält `<!DOCTYPE`
+ * oder `<html`), wird der innere Body extrahiert und neu gewickelt — verhindert
+ * double-wrapping bei Re-Save bestehender Events. Wenn `bodyText` plain HTML mit
+ * Tags ist, wird er als HTML behandelt; wenn es Plain-Text ist, wird jede Zeile
+ * in `<p>`-Tags gewickelt + escaped.
  */
 export function buildOutlookBody(eventTitle: string, bodyText: string): string {
-  const bodyHtml = bodyText
-    ? bodyText.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  ')
+  const inner = stripOutlookWrapper(bodyText || '');
+  const isHtml = /<[a-z][\s\S]*>/i.test(inner);
+  const bodyHtml = inner
+    ? (isHtml ? inner : inner.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  '))
     : '';
   return wrapTemplate(GREEN, eventTitle, 'Event Details', bodyHtml);
+}
+
+/**
+ * Extrahiert den User-Content-Teil aus einem bereits-gewickelten Outlook-Body.
+ * Wenn der Input nicht gewickelt ist, wird er unveraendert zurueckgegeben.
+ * Dadurch koennen wir bestehende Events bearbeiten, ohne dass der Editor das
+ * komplette Wrapper-HTML als rohen Text anzeigt.
+ */
+export function stripOutlookWrapper(html: string): string {
+  if (!html) return '';
+  if (!/<!doctype|<html/i.test(html)) return html;
+  // wrapTemplate fuegt den Body in <td style="padding:0 30px 30px;...color:#333333;">CONTENT</td>
+  const m = html.match(/<td style="padding:0 30px 30px;[^"]*">([\s\S]*?)<\/td>\s*<\/tr>\s*(?:<\/table>|<tr>)/i);
+  if (m && m[1]) return m[1].trim();
+  return html;
 }
 
 /**

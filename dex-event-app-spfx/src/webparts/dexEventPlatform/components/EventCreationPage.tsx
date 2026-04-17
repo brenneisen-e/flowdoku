@@ -12,7 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
-import { eventCreatedEmail, buildOutlookBody } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, replacePlaceholders } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -528,7 +528,7 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? [...f.options] : [], visible: true,
     })) : []
   );
-  const [outlookBody, setOutlookBody] = React.useState(editEvent ? (editEvent.outlookBody || '') : '');
+  const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
   const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
@@ -976,7 +976,17 @@ export default function EventCreationPage(): React.ReactElement {
 
       // Optionale Felder - immer senden damit Loeschungen wirken
       updates['LastDeregisterDate'] = deadlineToEndOfDayIso(lastDeregisterDate);
-      updates['OutlookBody'] = outlookBody ? buildOutlookBody(title, outlookBody) : '';
+      // Outlook-Body: Variablen werden bereits hier aufgeloest (gleicher Body fuer alle Teilnehmer).
+      const outlookVars: Record<string, string> = {
+        EventTitle: title,
+        Organizer: organizer,
+        Location: location,
+        Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
+        StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+      };
+      const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, outlookVars) : '';
+      updates['OutlookBody'] = resolvedBody ? buildOutlookBody(title, resolvedBody) : '';
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -1116,7 +1126,14 @@ export default function EventCreationPage(): React.ReactElement {
         organizer,
         organizerEmail: organizerEmails.join(';'),
         outlookEventId: '',
-        outlookBody,
+        outlookBody: outlookBody ? replacePlaceholders(outlookBody, {
+          EventTitle: title,
+          Organizer: organizer,
+          Location: location,
+          Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
+          StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        }) : '',
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
@@ -3217,9 +3234,22 @@ export default function EventCreationPage(): React.ReactElement {
               Organizer: organizer || 'Organisator',
               AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
               WaitlistPosition: '1',
+              Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
+              Location: location || 'Veranstaltungsort',
+              StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+              EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
               EventDate: startDate ? new Date(startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             }}
-            insertableVars={[
+            insertableVars={isOutlook ? [
+              { key: '{{Name}}', label: 'Name' },
+              { key: '{{EventTitle}}', label: 'Event' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+              { key: '{{Location}}', label: 'Ort' },
+              { key: '{{Address}}', label: 'Adresse' },
+              { key: '{{StartDate}}', label: 'Start' },
+              { key: '{{EndDate}}', label: 'Ende' },
+              { key: '{{AppUrl}}', label: 'App Link' },
+            ] : [
               { key: '{{Name}}', label: 'Name' },
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },

@@ -24,6 +24,36 @@ import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, bu
  * - Nachname/Vorname-Pairs werden vorgetauscht (SP-Default ist "Nachname, Vorname").
  * - Bei 1 Name: nur der Name. Bei 2: "A und B" / "A and B". Bei 3+: "A, B und C" / "A, B and C".
  */
+/**
+ * Wendet Event-spezifische Template-Overrides auf die globale SP-Vorlage an.
+ *
+ * - Override-JSON-Format: { "Anmeldung": { subject, heading, bodyHtml }, ... }
+ * - Pro Feld gilt: Override > globale SP-Vorlage. headingColor bleibt immer
+ *   die globale (Overrides aendern keine Brand-Farben).
+ * - Wenn weder Override noch SP-Template existieren, gibt die Funktion null
+ *   zurueck und der Caller faellt auf das Code-Default zurueck.
+ */
+export function applyEventTemplateOverride(
+  spTemplate: { subject: string; headingColor: string; heading: string; bodyHtml: string } | null,
+  overridesJson: string | undefined,
+  templateType: string
+): { subject: string; headingColor: string; heading: string; bodyHtml: string } | null {
+  if (!overridesJson) return spTemplate;
+  try {
+    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; bodyHtml?: string }>;
+    const o = all[templateType];
+    if (!o || (!o.subject && !o.heading && !o.bodyHtml)) return spTemplate;
+    return {
+      subject: o.subject || spTemplate?.subject || '',
+      heading: o.heading || spTemplate?.heading || '',
+      bodyHtml: o.bodyHtml || spTemplate?.bodyHtml || '',
+      headingColor: spTemplate?.headingColor || '#86bc25',
+    };
+  } catch {
+    return spTemplate;
+  }
+}
+
 export function formatOrganizerList(organizers: string[], lang: string): string {
   const names: string[] = [];
   for (const entry of organizers || []) {
@@ -408,7 +438,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // aus dem displayName gesplittet, bei "Fuer andere registrieren" explizit gesetzt).
       const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
-      const spTemplate = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -494,7 +525,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             // "Nachname, Vorname" -> getFirstName extrahiert den Vornamen).
             const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView` };
             let emailData: { subject: string; body: string };
-            const spTpl = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+            const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+            const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
             if (spTpl) {
               emailData = buildEmailFromTemplate(spTpl, cancelVars);
             } else {
@@ -543,7 +575,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               // (sowohl im SharePoint-Choice-Feld als auch in DEX_EmailTemplates).
               // Die Variante 'Nachrücken' mit Umlaut existiert nicht in der Liste
               // und wuerde das Queuen der Nachrueck-E-Mail fehlschlagen lassen.
-              const spTpl = await eventService.getEmailTemplate('Nachruecken', lang).catch(() => null);
+              const spTplRaw = await eventService.getEmailTemplate('Nachruecken', lang).catch(() => null);
+              const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Nachruecken');
               if (spTpl) {
                 emailData = buildEmailFromTemplate(spTpl, promoteVars);
               } else {
