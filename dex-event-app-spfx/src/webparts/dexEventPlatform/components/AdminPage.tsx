@@ -788,14 +788,39 @@ export default function AdminPage(): React.ReactElement {
                     // Nicht-B2Run-Event, Quiz-Spalten auf Event ohne Quiz).
                     const isB2Run = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity);
                     const hasQuiz = !!(selectedEvent.quiz && selectedEvent.quiz.length > 0);
+                    const customFields = (selectedEvent.eventSpecificFields || []).map(f => ({
+                      id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
+                      // EventSpecificField hat kein `visible` — default true fuer den Fix
+                      visible: true,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      spInternalName: (f as any).spInternalName || '',
+                    }));
                     const result = await eventServiceRef.fixRegistrationListColumns(
                       selectedEvent.subsiteUrl,
-                      { isB2Run, hasQuiz }
+                      { isB2Run, hasQuiz, customFields }
                     );
                     const msgs: string[] = [];
                     if (result.added.length > 0) msgs.push(`Spalten hinzugefuegt: ${result.added.join(', ')}`);
                     if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
                     if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
+
+                    // Wenn neue spInternalNames fuer Custom-Fields angelegt wurden,
+                    // ins DEX_Events-Item zurueckschreiben, damit upsertParticipant
+                    // die Werte in die richtigen SP-Spalten schreiben kann.
+                    if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const updatedCf = (customFields as any[]).map(f => {
+                        const sp = result.customFieldMap![f.id];
+                        return sp ? { ...f, spInternalName: sp } : f;
+                      });
+                      try {
+                        await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(updatedCf) });
+                        msgs.push(`Custom-Field-Zuordnung aktualisiert (${Object.keys(result.customFieldMap).length})`);
+                      } catch {
+                        msgs.push('WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden');
+                      }
+                    }
+
                     setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Aenderungen noetig');
                   } catch {
                     setFixColumnsResult('Fehler beim Fixen der Spalten');
@@ -1023,6 +1048,15 @@ export default function AdminPage(): React.ReactElement {
                   {userFieldIds.length > 0 && (
                     <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Ausgewaehlter Zimmerpartner. Match = beide haben sich gegenseitig ausgewaehlt.">Zimmerpartner</th>
                   )}
+                  {/* Custom Fields (nicht-user-type) als eigene Spalten */}
+                  {(selectedEvent?.eventSpecificFields || [])
+                    .filter(f => f.type !== 'user' && f.label && f.label.trim())
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    .map(f => (
+                      <th key={`cfh-${f.id}`} style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap', fontSize: '0.78rem' }} title={f.label}>
+                        {f.label.length > 22 ? f.label.substring(0, 20) + '…' : f.label}
+                      </th>
+                    ))}
                   <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                 </tr>
               </thead>
@@ -1078,6 +1112,35 @@ export default function AdminPage(): React.ReactElement {
                         })()}
                       </td>
                     )}
+                    {/* Custom-Fields-Werte (nicht-user-type) */}
+                    {(selectedEvent?.eventSpecificFields || [])
+                      .filter(f => f.type !== 'user' && f.label && f.label.trim())
+                      .map(f => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const spName = (f as any).spInternalName || '';
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        let val: any = spName ? (reg as any)[spName] : undefined;
+                        if ((val === undefined || val === null || val === '') && reg.CustomData) {
+                          try {
+                            const cd = JSON.parse(reg.CustomData);
+                            val = cd[f.id];
+                          } catch { /* no-op */ }
+                        }
+                        let display: React.ReactNode = '-';
+                        if (val !== undefined && val !== null && val !== '') {
+                          if (f.type === 'checkbox') {
+                            const truthy = val === true || val === 'true' || val === 1 || val === '1';
+                            display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
+                          } else {
+                            display = String(val);
+                          }
+                        }
+                        return (
+                          <td key={`cfv-${f.id}-${reg.Id}`} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(val || '')}>
+                            {display}
+                          </td>
+                        );
+                      })}
                     <td style={{ padding: 8, display: 'flex', gap: 4 }}>
                       {reg.Status === 'Eingecheckt' ? (
                         <button
