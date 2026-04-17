@@ -33,12 +33,27 @@ function photoUrl(email: string, size: 'S' | 'M' | 'L'): string {
 function OrganizerChip({ name, email, sizeClass }: { name: string; email: string; sizeClass: 'sm' | 'md' }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [coords, setCoords] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
+  const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
+  const popoverHeight = 180; // ungefaehre Popover-Hoehe fuer Flip-Entscheidung
   const initials = getInitials(name);
+
+  const openPopover = (): void => {
+    const r = wrapperRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const above = spaceBelow < popoverHeight + 16;
+    const y = above ? r.top - 8 : r.bottom + 8;
+    const x = r.left + r.width / 2;
+    setCoords({ x, y, above });
+    setHovered(true);
+  };
 
   return (
     <span
+      ref={wrapperRef}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,
         padding: sizeClass === 'sm' ? '2px 10px 2px 2px' : '3px 12px 3px 3px',
@@ -49,8 +64,8 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
         position: 'relative',
         cursor: 'default',
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={openPopover}
+      onMouseLeave={() => { setHovered(false); setCoords(null); }}
     >
       {!failed && email ? (
         <img
@@ -76,12 +91,16 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
       )}
       <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
 
-      {/* Hover-Vergroesserung */}
-      {hovered && email && !failed && (
+      {/* Hover-Vergroesserung: fixed positioning damit Container-Overflow nichts abschneidet */}
+      {hovered && email && !failed && coords && (
         <span
           style={{
-            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-            marginTop: 6, zIndex: 200,
+            position: 'fixed',
+            top: coords.above ? undefined : coords.y,
+            bottom: coords.above ? window.innerHeight - coords.y : undefined,
+            left: coords.x,
+            transform: 'translateX(-50%)',
+            zIndex: 2000,
             background: '#fff', borderRadius: 10, padding: 10,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
             border: '1px solid var(--dex-gray-200)',
