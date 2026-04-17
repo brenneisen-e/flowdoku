@@ -1447,7 +1447,7 @@ export class EventService {
         'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
         'WaitlistEnabled', 'Organizer', 'DisableEmails', 'DisableOutlook',
         'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
-      ]);
+      ], undefined, { rebuild: true });
       await this.setColumnFormatting(listName, 'EventImageUrl', {
         '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
         'elmType': 'img',
@@ -1497,7 +1497,7 @@ export class EventService {
       'EventNumber', 'EventStatus', 'Location', 'LocationFilter',
       'StartDate', 'EndDate', 'RegistrationDeadline', 'MaxParticipants',
       'WaitlistEnabled', 'Organizer', 'EventImageUrl', 'CalendarLink', 'RegistrationListName', 'RegistrationListUrl', 'SubsiteUrl',
-    ]);
+    ], undefined, { rebuild: true });
     await this.setColumnFormatting(listName, 'EventImageUrl', {
       '$schema': 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
       'elmType': 'img',
@@ -1742,25 +1742,30 @@ export class EventService {
   /**
    * Default View einer Liste konfigurieren
    */
-  private async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string): Promise<void> {
+  private async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string, opts?: { rebuild?: boolean }): Promise<void> {
     const url = baseUrl || this.siteUrl;
     try {
-      // Bestehende View-Felder laden um Duplikate zu vermeiden
-      const existingResponse = await this.context.spHttpClient.get(
-        `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
-        SPHttpClient.configurations.v1
-      );
       let existingFields: string[] = [];
-      if (existingResponse.ok) {
-        const existingData = await existingResponse.json();
-        existingFields = existingData.Items || existingData.d?.Items || existingData.SchemaXml ? [] : [];
-        // Fallback: Versuche Items Array
-        if (existingData.Items) {
-          existingFields = existingData.Items;
-        } else if (existingData.d?.Items) {
-          existingFields = existingData.d.Items;
-        } else if (existingData.value) {
-          existingFields = existingData.value;
+      if (opts?.rebuild) {
+        // Komplett neu aufbauen — SP-Defaults (Modified, Created, ID, Type,
+        // Compliance-Tag, App Created By, ...) werden rausgeworfen.
+        try {
+          await this._post(
+            `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/removeallviewfields`,
+            {}
+          );
+        } catch { /* ignore */ }
+      } else {
+        // Nur hinzufuegen (behaelt bestehende SP-Felder bei). Duplikate vermeiden.
+        const existingResponse = await this.context.spHttpClient.get(
+          `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
+          SPHttpClient.configurations.v1
+        );
+        if (existingResponse.ok) {
+          const existingData = await existingResponse.json();
+          if (existingData.Items) existingFields = existingData.Items;
+          else if (existingData.d?.Items) existingFields = existingData.d.Items;
+          else if (existingData.value) existingFields = existingData.value;
         }
       }
 
@@ -2385,11 +2390,13 @@ export class EventService {
 
     // FieldMap wird als Rueckgabewert an den Caller zurueckgegeben
 
-    // Default View konfigurieren (Basis + Custom Fields)
+    // Default View komplett neu aufbauen (Basis + Custom Fields). Mit rebuild:true
+    // werden alle SP-Default-Spalten (Modified, Created, ID, Type, Compliance Asset,
+    // App Created By, ...) aus der View rausgeworfen — nur funktionelle Felder.
     await this.configureDefaultView(REG_LIST_NAME, [
       'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
-    ], subsiteUrl);
+    ], subsiteUrl, { rebuild: true });
 
     // Item-Level Permissions
     await this.setItemLevelPermissions(subsiteUrl);
@@ -3172,20 +3179,40 @@ export class EventService {
       if (postFixFields.indexOf('RegisteredByEmail') >= 0) viewFields.push('RegisteredByEmail');
       viewFields.push('CancellationDate');
 
-      // Auch Custom Fields die auf der Liste existieren
-      const knownBase = viewFieldsCore.concat([
-        'StarterType', 'PreferredStarterType',
-        'Status', 'RegistrationDate',
-        'RegisteredByName', 'RegisteredByEmail',
-        'CancellationDate',
-        'Title', 'ParticipantName', 'CustomData', 'LastModifiedDate', 'ChangeLog',
-        'QuizScore', 'QuizAnswers', 'QuizCompletedAt',
+      // Wir blenden SP-System-Spalten komplett aus (Modified, Created, ID, Type,
+      // Compliance Asset Id, Retention Label, etc.) — nur funktionelle Felder der
+      // App + Custom Fields kommen in die View.
+      const systemBlocklist = new Set([
+        'ID', '_UIVersionString', 'Edit', 'LinkTitle', 'LinkTitleNoMenu',
+        'LinkFilename', 'LinkFilenameNoMenu', 'DocIcon', 'FileLeafRef',
+        'Modified', 'Created', 'Editor', 'Author', 'CreatedBy', 'ModifiedBy',
+        'Title', 'ParticipantName',
+        'ContentType', 'ContentTypeId', 'Attachments',
+        'AppAuthor', 'AppEditor', 'App Created By', 'App Modified By',
+        'Type', 'ItemChildCount', 'FolderChildCount',
+        'ComplianceAssetId', '_ComplianceTag', '_ComplianceTagWrittenTime',
+        '_ComplianceTagUserId', 'TaxCatchAll', 'TaxCatchAllLabel',
+        'SMTotalFileStreamSize', 'SMTotalSize', 'SortBehavior',
+        'OData__UIVersionString', 'OData__HasCopyDestinations',
+        'LastModifiedDate', 'ChangeLog', 'CustomData',
+        '_CopySource', 'owshiddenversion', 'WorkflowVersion', 'WorkflowInstanceID',
+        'ItemIsRecord', '_HasEncryptedContent', '_IsRecord', '_IsRecordApplied',
+        'InstanceID', 'Order', 'GUID', 'FileSizeDisplay', 'MetaInfo',
+        'ParentUniqueId', 'AccessPolicy', 'HasUniqueRoleAssignments',
+        'Restricted', 'Type0', 'ServerUrl', 'EncodedAbsUrl', 'BaseName',
+        'FileType', 'HTML_x0020_File_x0020_Type', '_EditMenuTableStart',
+        '_EditMenuTableStart2', '_EditMenuTableEnd', 'PermMask',
       ]);
-      for (let fi = 0; fi < existingFieldsList.length; fi++) {
-        const fn = existingFieldsList[fi];
-        if (knownBase.indexOf(fn) < 0 && fn.charAt(0) !== '_' && fn !== 'ContentType' && fn !== 'Attachments') {
-          viewFields.push(fn);
-        }
+      // Bereits zur View hinzugefuegt — nicht doppelt anfassen
+      const alreadyAdded = new Set(viewFields);
+      // Kompletter Feld-Stand NACH dem Fix (bestehende + neu angelegte),
+      // damit neu angelegte Custom-Fields auch in die View kommen.
+      for (const fn of postFixFields) {
+        if (alreadyAdded.has(fn)) continue;
+        if (systemBlocklist.has(fn)) continue;
+        if (fn.charAt(0) === '_') continue;
+        viewFields.push(fn);
+        alreadyAdded.add(fn);
       }
 
       for (const fn of viewFields) {
