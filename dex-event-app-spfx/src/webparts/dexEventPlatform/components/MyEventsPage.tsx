@@ -637,8 +637,8 @@ export default function MyEventsPage(): React.ReactElement {
                       </span>
                     </div>
 
-                    {/* Kompakte Info-Zeilen */}
-                    <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                    {/* Kompakte Info-Zeile: Location + Datum inline, umbricht auf schmalen Bildschirmen */}
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                         <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)', marginTop: 2 }} />
                         <div>

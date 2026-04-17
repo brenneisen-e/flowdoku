@@ -152,6 +152,17 @@ interface CustomFieldInput {
   externalLinks?: Array<{ label: string; url: string }>;
 }
 
+function StepBadge({ n }: { n: number }): React.ReactElement {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 22, height: 22, borderRadius: '50%',
+      background: 'var(--dex-green)', color: '#fff',
+      fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+    }}>{n}</span>
+  );
+}
+
 export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, createEvent, updateEvent, refreshEvents } = useEvents();
@@ -1421,8 +1432,9 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Step 0: Grundlagen ===== */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
 
-              <div className="form-group">
-                <label className="form-label">
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={1} />
                   <span className="required">*</span> {t('create.eventtitle')}
                   <InfoTooltip text={t('create.eventtitle.hint')} />
                 </label>
@@ -1431,8 +1443,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               {/* Test-Event-Flag */}
-              <div className="form-group" style={{ marginTop: 0, padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
+                  <StepBadge n={2} />
                   <input
                     type="checkbox"
                     checked={isFictive}
@@ -1448,8 +1461,9 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label className="form-label">
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={3} />
                   <span className="required">*</span> {t('create.organizer')}
                   <InfoTooltip text={t('create.organizer.hint')} />
                 </label>
@@ -1607,8 +1621,9 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              <div className="form-group">
-                <label className="form-label">
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={4} />
                   Standort-Filter
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -1666,8 +1681,9 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label className="form-label">
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={5} />
                   Zielgruppen-Filter
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -1847,8 +1863,9 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* UND/ODER Verknüpfung */}
               {locationFilter && audience && (
-                <div className="form-group">
-                  <label className="form-label">
+                <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={6} />
                     Filterverknüpfung
                   </label>
                   <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -1871,8 +1888,9 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div className="form-group">
-                <label className="form-label">
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
                   <span className="required">*</span> {t('create.description')}
                   <InfoTooltip text={t('create.description.hint')} />
                 </label>
@@ -1881,7 +1899,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={8} />
                   Event-Bild
                   <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>

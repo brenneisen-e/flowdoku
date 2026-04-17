@@ -834,7 +834,7 @@ export default function RegistrationPage(): React.ReactElement {
                       value={eventSpecific[field.id] || ''}
                       onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
                       searchUsers={searchUsers}
-                      placeholder={field.label + ' (Name oder E-Mail suchen)'}
+                      placeholder={t('reg.userfield.placeholder')}
                       errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
                       hint={t('reg.userfield.notifyhint')}
                     />
