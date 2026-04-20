@@ -94,7 +94,7 @@ export default function CheckInPage(): React.ReactElement {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError(
         'Dein Browser stellt keinen Kamera-Zugriff bereit. '
-        + 'Bitte oeffne diese Seite direkt in Edge oder Safari (nicht in der SharePoint-App / Teams).'
+        + 'Bitte öffne diese Seite direkt in Edge oder Safari (nicht in der SharePoint-App / Teams).'
       );
       return;
     }
@@ -117,13 +117,13 @@ export default function CheckInPage(): React.ReactElement {
       let msg: string;
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         msg = 'Kamera-Berechtigung wurde abgelehnt. Bitte in den Browser-Einstellungen '
-          + 'fuer diese Seite die Kamera erlauben und dann erneut versuchen. '
-          + '(iOS Safari: aA-Icon links in der Adresszeile -> Website-Einstellungen -> Kamera: Erlauben. '
-          + 'Android Chrome: Schloss-Icon in der Adresszeile -> Berechtigungen -> Kamera: Zulassen.)';
+          + 'für diese Seite die Kamera erlauben und dann erneut versuchen. '
+          + '(iOS Safari: aA-Icon links in der Adresszeile → Website-Einstellungen → Kamera: Erlauben. '
+          + 'Android Chrome: Schloss-Icon in der Adresszeile → Berechtigungen → Kamera: Zulassen.)';
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        msg = 'Keine Kamera gefunden. Stelle sicher, dass dein Geraet eine Kamera hat und kein anderes Programm sie blockiert.';
+        msg = 'Keine Kamera gefunden. Stelle sicher, dass dein Gerät eine Kamera hat und kein anderes Programm sie blockiert.';
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-        msg = 'Die Kamera ist bereits in Benutzung (z.B. Teams-Anruf oder eine andere App). Bitte schliesse andere Apps und versuche es erneut.';
+        msg = 'Die Kamera ist bereits in Benutzung (z.B. Teams-Anruf oder eine andere App). Bitte schließe andere Apps und versuche es erneut.';
       } else if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
         // Kein Environment-Facing-Camera verfuegbar -> Fallback auf beliebige Kamera
         try {
@@ -136,7 +136,7 @@ export default function CheckInPage(): React.ReactElement {
         // Fallback OK -> weiter mit qr-scanner-Start (ohne early return)
         msg = '';
       } else if (name === 'SecurityError') {
-        msg = 'Kamera-Zugriff vom Browser blockiert (vermutlich unsichere Verbindung oder eingebetteter iframe). Oeffne die Seite direkt in Edge/Safari.';
+        msg = 'Kamera-Zugriff vom Browser blockiert (vermutlich unsichere Verbindung oder eingebetteter iframe). Öffne die Seite direkt in Edge/Safari.';
       } else {
         msg = `Kamera konnte nicht gestartet werden: ${e?.message || String(err) || 'Unbekannter Fehler'}`;
       }
