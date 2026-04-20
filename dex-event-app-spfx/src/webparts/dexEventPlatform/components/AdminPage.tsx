@@ -825,14 +825,17 @@ export default function AdminPage(): React.ReactElement {
             for (const reg of eligible) {
               const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
               const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+              // Vorname fuer die Anrede — fallback auf erstes Token aus ParticipantName
+              const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
               // QR-Code als Base64-Bild generieren
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch { /* Fallback: Text */ }
-              // QR-Code E-Mail im Deloitte-Template queuen
-              const emailData = qrCodeEmail(name, selectedEvent.title, qrImageHtml);
+              // QR-Code E-Mail im Deloitte-Template queuen (Sprache folgt Event.EmailLanguage,
+              // Anrede nutzt nur den Vornamen statt vollem Namen)
+              const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN');
               await eventServiceRef.queueEmail(
                 emailData.subject,
                 reg.ParticipantEmail,

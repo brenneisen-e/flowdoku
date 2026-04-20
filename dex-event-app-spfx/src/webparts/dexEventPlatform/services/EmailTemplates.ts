@@ -226,9 +226,16 @@ export function buildEmailFromTemplate(
   const heading = replacePlaceholdersPlain(template.heading, vars);
   // Body: HTML, daher Werte escapen
   const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
+  // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachruecken) enthalten
+  // bereits das komplette Deloitte-Design via wrapTemplateForStorage(). Nicht
+  // doppelt wrappen — sonst zwei Header/Footer im finalen HTML.
+  const trimmed = (template.bodyHtml || '').trimLeft();
+  const isPreWrapped = /^<!DOCTYPE|^<html/i.test(trimmed);
   return {
     subject,
-    body: wrapTemplate(template.headingColor, heading, `Event ${vars['EventTitle'] || ''}`, bodyHtml),
+    body: isPreWrapped
+      ? bodyHtml
+      : wrapTemplate(template.headingColor, heading, `Event ${vars['EventTitle'] || ''}`, bodyHtml),
   };
 }
 
@@ -331,16 +338,40 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
 }
 
 /**
- * QR-Code E-Mail fuer Check-in
+ * QR-Code E-Mail fuer Check-in.
+ * Subject + Body folgen der Event-Sprache (DE/EN). Anrede nutzt nur den
+ * Vornamen (nicht den vollen Namen).
  */
-export function qrCodeEmail(recipientName: string, eventTitle: string, qrImageHtml: string): { subject: string; body: string } {
+export function qrCodeEmail(
+  firstName: string,
+  eventTitle: string,
+  qrImageHtml: string,
+  lang: string = 'EN'
+): { subject: string; body: string } {
+  const isDe = (lang || 'EN').toUpperCase() === 'DE';
+  if (isDe) {
+    return {
+      subject: `Dein QR-Code f\u00FCr ${eventTitle}`,
+      body: wrapTemplate(
+        GREEN,
+        'Dein QR-Code',
+        `Event ${eventTitle}`,
+        `<p>Hallo ${firstName},</p>
+        <p>hier ist dein pers\u00F6nlicher QR-Code f\u00FCr das Event <strong>${eventTitle}</strong>.</p>
+        <p>Bitte zeige den QR-Code beim Check-in vor.</p>
+        <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
+        <p style="color:#999;font-size:12px;text-align:center;">Der QR-Code ist pers\u00F6nlich und nicht \u00FCbertragbar.</p>
+        <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
+      ),
+    };
+  }
   return {
-    subject: `Dein QR-Code f\u00FCr ${eventTitle}`,
+    subject: `Your QR Code for ${eventTitle}`,
     body: wrapTemplate(
       GREEN,
       'Your QR Code',
       `Event ${eventTitle}`,
-      `<p>Dear ${recipientName},</p>
+      `<p>Dear ${firstName},</p>
       <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
       <p>Please show this QR code at check-in.</p>
       <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
