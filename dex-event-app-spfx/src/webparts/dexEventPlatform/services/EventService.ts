@@ -666,7 +666,7 @@ export class EventService {
   ): Promise<DeclineCheckResult> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ctx = this.context as any;
-    if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfuegbar.' };
+    if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfügbar.' };
 
     // 1. OutlookEventId + CalendarLink aus DEX_Events holen. Nutzt den bewaehrten
     // `getEvent()`-Path (gleiche Abfrage wie der Rest der App). Direktes
@@ -699,7 +699,7 @@ export class EventService {
         attendees: [],
         reason: 'no-pointer',
         message: loadedEvent
-          ? `Event-Item (Id=${eventId}) enthaelt weder OutlookEventId noch CalendarLink.`
+          ? `Event-Item (Id=${eventId}) enthält weder OutlookEventId noch CalendarLink.`
           : `Event-Item (Id=${eventId}) konnte nicht aus DEX_Events geladen werden (403/404?). Details siehe Browser-Console.`,
       };
     }

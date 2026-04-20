@@ -667,15 +667,22 @@ export default function AdminPage(): React.ReactElement {
                       });
                       setShowDeclineModal(true);
                     } else {
-                      let msg = 'Unbekannter Fehler beim Lesen des Outlook-Termins.';
-                      if (result.reason === 'no-pointer') {
-                        msg = 'Fuer dieses Event ist kein Outlook-Termin verknuepft (OutlookEventId / CalendarLink fehlen).';
-                      } else if (result.reason === 'not-found') {
-                        msg = 'Outlook-Termin wurde im Postfach no_reply.events@deloitte.de nicht gefunden.';
-                      } else if (result.reason === 'forbidden') {
-                        msg = 'Kein Zugriff auf das Postfach no_reply.events@deloitte.de. Pruefe: (1) Calendars.Read.Shared ist im SharePoint Admin Center freigegeben, (2) dein User hat delegate/shared access auf die Mailbox.';
-                      } else if (result.message) {
-                        msg = result.message;
+                      // result.message aus EventService hat Prioritaet (enthaelt Diagnose-Infos wie EventId),
+                      // sonst Fallback auf generische Texte pro Reason.
+                      let msg = result.message || 'Unbekannter Fehler beim Lesen des Outlook-Termins.';
+                      if (!result.message) {
+                        if (result.reason === 'no-pointer') {
+                          msg = 'Für dieses Event ist kein Outlook-Termin verknüpft (OutlookEventId / CalendarLink fehlen).';
+                        } else if (result.reason === 'not-found') {
+                          msg = 'Outlook-Termin wurde im Postfach no_reply.events@deloitte.de nicht gefunden.';
+                        } else if (result.reason === 'forbidden') {
+                          msg = 'Graph-API-Zugriff abgelehnt (HTTP 403). Zwei Dinge müssen erfüllt sein:\n\n'
+                            + '1) Tenant-Admin muss die Permission "Calendars.Read.Shared" im SharePoint Admin Center genehmigen:\n'
+                            + '   SharePoint Admin Center → Advanced → API access → Pending requests → "Calendars.Read.Shared" → Approve\n\n'
+                            + '2) Dein User muss Exchange-seitig Lese-Zugriff auf den Kalender von no_reply.events@deloitte.de haben. Der Exchange-Admin führt dafür aus:\n'
+                            + '   Add-MailboxFolderPermission -Identity "no_reply.events@deloitte.de:\\Calendar" -User "<deine-email>" -AccessRights Reviewer\n\n'
+                            + 'Beide Schritte sind einmalig nötig.';
+                        }
                       }
                       setDeclineResult({ declinedAndRegistered: [], declinedTotal: 0, error: msg });
                       setShowDeclineModal(true);
@@ -691,7 +698,7 @@ export default function AdminPage(): React.ReactElement {
                   setIsCheckingDeclines(false);
                 }}
               >
-                <Users size={16} /> {isCheckingDeclines ? 'Outlook wird gepruefen...' : 'Outlook-Absagen pruefen'}
+                <Users size={16} /> {isCheckingDeclines ? 'Outlook wird geprüft...' : 'Outlook-Absagen prüfen'}
               </button>
             )}
             {/* Excel-Export-Dropdown: Deloitte-View oder B2Run-View */}
@@ -1629,11 +1636,11 @@ export default function AdminPage(): React.ReactElement {
             <div className="flex-between mb-16">
               <h3 style={{ margin: 0 }}>Outlook-Absagen vs. Anmeldungen</h3>
               <button className="btn btn-secondary" style={{ padding: '4px 10px' }} onClick={() => setShowDeclineModal(false)}>
-                Schliessen
+                Schließen
               </button>
             </div>
             {declineResult.error ? (
-              <p style={{ color: 'var(--dex-red)' }}>{declineResult.error}</p>
+              <p style={{ color: 'var(--dex-red)', whiteSpace: 'pre-line' }}>{declineResult.error}</p>
             ) : declineResult.declinedAndRegistered.length === 0 ? (
               <p style={{ color: 'var(--dex-gray-600)' }}>
                 Keine Diskrepanzen gefunden. {declineResult.declinedTotal > 0
