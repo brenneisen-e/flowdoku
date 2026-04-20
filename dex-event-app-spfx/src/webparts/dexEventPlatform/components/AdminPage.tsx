@@ -894,7 +894,9 @@ export default function AdminPage(): React.ReactElement {
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const imageBase64 = (q as any).imageBase64 as string | undefined;
-          return { question: q.question, imageBase64, correctCount, answeredCount, total: totalQuizzes };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const section = (q as any).section as string | undefined;
+          return { question: q.question, imageBase64, section, correctCount, answeredCount, total: totalQuizzes };
         });
 
         // Top 10 nach Score, bei Gleichstand: abgeschlossene vor nicht-abgeschlossenen, dann Zeitpunkt
@@ -956,8 +958,81 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   </div>
 
-                  {/* Pro Frage */}
+                  {/* Pro Frage - gruppiert nach Bereich falls vorhanden */}
                   <h4 style={{ marginTop: 0, marginBottom: 12 }}>Pro Frage</h4>
+                  {(() => {
+                    const hasSections = perQuestion.some(pq => !!pq.section);
+                    if (!hasSections) return null;
+                    // Gruppen in Reihenfolge der ersten Erwaehnung
+                    const sectionsInOrder: string[] = [];
+                    for (const pq of perQuestion) {
+                      if (pq.section && sectionsInOrder.indexOf(pq.section) < 0) sectionsInOrder.push(pq.section);
+                    }
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
+                        {sectionsInOrder.map(sec => (
+                          <div key={`stat-sec-${sec}`}>
+                            <h5 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.92rem' }}>
+                              Bereich: {sec}
+                            </h5>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {perQuestion.map((pq, idx) => pq.section === sec ? (() => {
+                                const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
+                                return (
+                                  <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                                        {pq.imageBase64 && (
+                                          <img src={pq.imageBase64} alt="" style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }} />
+                                        )}
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{idx + 1}. {pq.question}</span>
+                                      </div>
+                                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
+                                        {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
+                                      </span>
+                                    </div>
+                                    <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${pct}%`, background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)', transition: 'width 0.3s' }} />
+                                    </div>
+                                  </div>
+                                );
+                              })() : null)}
+                            </div>
+                          </div>
+                        ))}
+                        {/* Fragen ohne Bereich */}
+                        {perQuestion.some(pq => !pq.section) && (
+                          <div>
+                            <h5 style={{ margin: '0 0 6px', color: 'var(--dex-gray-600)', fontSize: '0.92rem' }}>Ohne Bereich</h5>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {perQuestion.map((pq, idx) => !pq.section ? (() => {
+                                const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
+                                return (
+                                  <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                                        {pq.imageBase64 && (
+                                          <img src={pq.imageBase64} alt="" style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }} />
+                                        )}
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{idx + 1}. {pq.question}</span>
+                                      </div>
+                                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
+                                        {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
+                                      </span>
+                                    </div>
+                                    <div style={{ height: 6, background: 'var(--dex-gray-200)', borderRadius: 3, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${pct}%`, background: pct >= 70 ? 'var(--dex-green, #86bc25)' : pct >= 40 ? 'var(--dex-orange, #ff8c00)' : 'var(--dex-red, #c00)', transition: 'width 0.3s' }} />
+                                    </div>
+                                  </div>
+                                );
+                              })() : null)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {!perQuestion.some(pq => !!pq.section) && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
                     {perQuestion.map((pq, idx) => {
                       const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
@@ -992,6 +1067,7 @@ export default function AdminPage(): React.ReactElement {
                       );
                     })}
                   </div>
+                  )}
 
                   {/* Top 10 */}
                   <h4 style={{ marginTop: 0, marginBottom: 12 }}>Top 10 Teilnehmer</h4>

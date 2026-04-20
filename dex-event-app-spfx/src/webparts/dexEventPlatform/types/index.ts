@@ -75,6 +75,9 @@ export interface QuizQuestion {
   /** Optionales Bild zur Frage (data-URL mit base64-jpeg oder png). Wird inline im
    * FunZone-JSON gespeichert. Max empfohlen: ~80KB pro Bild (komprimiert). */
   imageBase64?: string;
+  /** Optionaler Bereichs-Name. Fragen mit gleichem Bereich werden zusammen auf
+   * einer Quiz-Seite angezeigt (statt nach clusterSize gepaginiert). */
+  section?: string;
 }
 
 export interface EventDocument {
