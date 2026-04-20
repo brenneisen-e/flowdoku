@@ -19,12 +19,21 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive UND Warteliste) + Nachrücken von Warteliste
 **Letztes Update:** 2026-04-20
 
-**Änderung 2026-04-20:** `Get_Active_Participants` umbenannt zu `Get_Enrolled_Participants`.
-Filter geändert von `(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')`
-auf `Status ne 'Abgemeldet'`. Vorher wurden Warteliste-Einträge beim Renummerieren übersprungen
-— führte zu Lücken in der TeilnehmerID-Sequenz wenn ein Aktiver unregistrierte und kein
-Warteliste-Eintrag nachrücken konnte (MaxParticipants bereits erreicht). Jetzt bekommen
-Aktive + Warteliste gemeinsam fortlaufende IDs nach RegistrationDate.
+**Änderungen 2026-04-20:**
+
+1. `Get_Active_Participants` umbenannt zu `Get_Enrolled_Participants`. Filter geändert von
+   `(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')`
+   auf `Status ne 'Abgemeldet'`. Vorher wurden Warteliste-Einträge beim Renummerieren
+   übersprungen — führte zu Lücken in der TeilnehmerID-Sequenz. Jetzt bekommen Aktive
+   + Warteliste gemeinsam fortlaufende IDs nach RegistrationDate.
+2. Neuer Compose-Step `Count_Active` zählt Enrolled-Items mit `Status ≠ 'Warteliste'`.
+   `Check_Nachrücken`-Bedingung vergleicht jetzt `Count_Active < MaxParticipants` statt
+   `length(GenerateSPData) < MaxParticipants`. Nötig weil `GenerateSPData` nach Fix #1
+   auch Warteliste-Einträge enthält und die alte Bedingung sonst nie mehr triggern würde.
+3. `Promote_Waitlist.body` enthält nur noch `Status: Angemeldet` — KEIN `TeilnehmerID`
+   mehr. Die korrekte TID wurde bereits im Batch-Update gesetzt (erste Warteliste in
+   RegistrationDate-Reihenfolge = Count_Active + 1). Alte Logik `TID = length(GenerateSPData) + 1`
+   hätte nach Fix #1 eine zu hohe TID erzeugt (= EnrolledCount + 1 statt Count_Active + 1).
 
 ```json
 TRIGGER:
@@ -102,11 +111,18 @@ GET_ENROLLED_PARTICIPANTS:
   "runAfter": { "Get_ListItemType": ["Succeeded"] }
 }
 
+COUNT_ACTIVE:
+{
+  "type": "Compose",
+  "inputs": "@length(filter(body('Get_Enrolled_Participants')?['value'], not(equals(item()?['Status'], 'Warteliste'))))",
+  "runAfter": { "Get_Enrolled_Participants": ["Succeeded"] }
+}
+
 GENERATE_INDICES:
 {
   "type": "Compose",
   "inputs": "@range(0, length(body('Get_Enrolled_Participants')?['value']))",
-  "runAfter": { "Get_Enrolled_Participants": ["Succeeded"] }
+  "runAfter": { "Count_Active": ["Succeeded"] }
 }
 
 GENERATESPDATA:
@@ -190,7 +206,7 @@ PROCESS_BATCH_SCOPE:
       "type": "If",
       "expression": {
         "and": [
-          { "less": ["@length(body('GenerateSPData'))", "@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']"] },
+          { "less": ["@outputs('Count_Active')", "@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']"] },
           { "greater": ["@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']", 0] }
         ]
       },
@@ -218,7 +234,7 @@ PROCESS_BATCH_SCOPE:
                   "parameters/method": "POST",
                   "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})",
                   "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
-                  "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\",\"TeilnehmerID\":@{add(length(body('GenerateSPData')), 1)}}"
+                  "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\"}"
                 },
                 "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
               }
