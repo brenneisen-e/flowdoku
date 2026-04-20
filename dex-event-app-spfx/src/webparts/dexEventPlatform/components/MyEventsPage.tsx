@@ -141,22 +141,42 @@ function QuizPlayer({
     return padded;
   };
   const [allAnswers, setAllAnswers] = React.useState<number[][]>(buildInitial);
+
   const hadResumeData = !!initialAnswers && countAnswered(buildInitial()) > 0;
   const completedAllInitial = hadResumeData && countAnswered(buildInitial()) === quiz.length;
 
-  // Erste unbeantwortete Frage -> auf Cluster-Grenze runden.
-  const firstUnansweredIndex = (): number => {
+  // Erste unbeantwortete Frage in einem gegebenen Answers-Array
+  const firstUnansweredIn = (answers: number[][]): number => {
     for (let i = 0; i < quiz.length; i++) {
-      if (!allAnswers[i] || allAnswers[i].length === 0) return i;
+      if (!answers[i] || answers[i].length === 0) return i;
     }
-    return quiz.length; // alle beantwortet
+    return quiz.length;
   };
-  const initialClusterStart = Math.floor(firstUnansweredIndex() / size) * size;
+
+  const initialFirstUnans = firstUnansweredIn(buildInitial());
+  const initialClusterStart = Math.floor(initialFirstUnans / size) * size;
 
   const [clusterStart, setClusterStart] = React.useState(Math.min(initialClusterStart, Math.max(0, quiz.length - size)));
   const [showQuiz, setShowQuiz] = React.useState(false);
   const [showSummary, setShowSummary] = React.useState(completedAllInitial);
   const [isSaving, setIsSaving] = React.useState(false);
+
+  // Wenn die Prop `initialAnswers` sich aendert (z.B. nach einem Reload der
+  // Registrierung aus SharePoint), State neu aus der Prop ableiten. useState
+  // ignoriert Prop-Aenderungen nach dem Mount. Solange der User aktiv im Quiz
+  // ist (showQuiz=true), nicht in clusterStart/showSummary eingreifen, damit
+  // der User nicht mitten im Spiel zurueckgeworfen wird.
+  const initialAnswersKey = initialAnswers ? JSON.stringify(initialAnswers) : '';
+  React.useEffect(() => {
+    const fresh = buildInitial();
+    setAllAnswers(fresh);
+    if (!showQuiz) {
+      const firstUnans = firstUnansweredIn(fresh);
+      setClusterStart(Math.min(Math.floor(firstUnans / size) * size, Math.max(0, quiz.length - size)));
+      setShowSummary(countAnswered(fresh) === quiz.length && quiz.length > 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAnswersKey, quiz.length]);
 
   const toggleOption = (qIdx: number, optIdx: number): void => {
     setAllAnswers(prev => {
@@ -993,14 +1013,45 @@ export default function MyEventsPage(): React.ReactElement {
                     onProgress={async (score: number, answers: number[][], isComplete: boolean) => {
                       // Nach jedem Cluster-Wechsel in die Subsite-Teilnehmerliste schreiben.
                       // isComplete=true setzt zusaetzlich QuizCompletedAt (fuer Statistik-Filter).
-                      if (!event.subsiteUrl) return;
+                      if (!event.subsiteUrl) {
+                        console.warn('[DEX] saveQuizProgress: event.subsiteUrl leer - Save uebersprungen', { eventId: event.id });
+                        return;
+                      }
                       try {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const ctx = (window as any).__dexSpfxContext;
-                        if (!ctx) return;
+                        if (!ctx) {
+                          console.warn('[DEX] saveQuizProgress: __dexSpfxContext fehlt - Save uebersprungen');
+                          return;
+                        }
                         const { EventService } = await import('../services/EventService');
                         const svc = new EventService(ctx);
-                        await svc.saveQuizProgress(event.subsiteUrl, registration.Id, score, answers, isComplete);
+                        const ok = await svc.saveQuizProgress(event.subsiteUrl, registration.Id, score, answers, isComplete);
+                        console.warn('[DEX] saveQuizProgress Ergebnis', {
+                          ok,
+                          regId: registration.Id,
+                          score,
+                          answeredCount: answers.filter(a => Array.isArray(a) && a.length > 0).length,
+                          totalQuestions: answers.length,
+                          isComplete,
+                        });
+                        // Lokale myEvents-Liste nach erfolgreichem Save aktualisieren, damit die
+                        // registration im Parent-State die frischen QuizScore/QuizAnswers hat —
+                        // sonst sieht der User beim Wiedereintritt noch das alte (leere) Feld.
+                        if (ok) {
+                          setMyEvents(prev => prev.map(entry => {
+                            if (entry.event.id !== event.id) return entry;
+                            return {
+                              ...entry,
+                              registration: {
+                                ...entry.registration,
+                                QuizScore: score,
+                                QuizAnswers: JSON.stringify(answers),
+                                ...(isComplete ? { QuizCompletedAt: new Date().toISOString() } : {}),
+                              },
+                            };
+                          }));
+                        }
                       } catch (err) { console.warn('[DEX] saveQuizProgress failed:', err); }
                     }}
                   />
