@@ -88,6 +88,65 @@ export default function CheckInPage(): React.ReactElement {
     setCameraError('');
     if (!videoRef.current) return;
 
+    // 1. Browser-API-Check: manche Embedded-WebViews (SharePoint-Mobile-App)
+    //    stellen mediaDevices gar nicht bereit. Dort gleich mit klarer Meldung
+    //    abbrechen statt auf qr-scanner-Fehler zu warten.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError(
+        'Dein Browser stellt keinen Kamera-Zugriff bereit. '
+        + 'Bitte oeffne diese Seite direkt in Edge oder Safari (nicht in der SharePoint-App / Teams).'
+      );
+      return;
+    }
+
+    // 2. Explizit Berechtigung anfragen (triggert Permission-Prompt). Damit
+    //    bekommen wir sauber unterscheidbare Fehler statt einer generischen
+    //    qr-scanner-Exception. Das Test-Stream wird danach sofort geschlossen
+    //    und qr-scanner startet seinen eigenen Stream.
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      // Test-Stream sofort stoppen, damit qr-scanner seinen eigenen aufbauen kann
+      testStream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = err as any;
+      const name = e?.name || '';
+      let msg: string;
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        msg = 'Kamera-Berechtigung wurde abgelehnt. Bitte in den Browser-Einstellungen '
+          + 'fuer diese Seite die Kamera erlauben und dann erneut versuchen. '
+          + '(iOS Safari: aA-Icon links in der Adresszeile -> Website-Einstellungen -> Kamera: Erlauben. '
+          + 'Android Chrome: Schloss-Icon in der Adresszeile -> Berechtigungen -> Kamera: Zulassen.)';
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        msg = 'Keine Kamera gefunden. Stelle sicher, dass dein Geraet eine Kamera hat und kein anderes Programm sie blockiert.';
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        msg = 'Die Kamera ist bereits in Benutzung (z.B. Teams-Anruf oder eine andere App). Bitte schliesse andere Apps und versuche es erneut.';
+      } else if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+        // Kein Environment-Facing-Camera verfuegbar -> Fallback auf beliebige Kamera
+        try {
+          const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          fallback.getTracks().forEach(track => track.stop());
+        } catch {
+          setCameraError('Keine passende Kamera gefunden.');
+          return;
+        }
+        // Fallback OK -> weiter mit qr-scanner-Start (ohne early return)
+        msg = '';
+      } else if (name === 'SecurityError') {
+        msg = 'Kamera-Zugriff vom Browser blockiert (vermutlich unsichere Verbindung oder eingebetteter iframe). Oeffne die Seite direkt in Edge/Safari.';
+      } else {
+        msg = `Kamera konnte nicht gestartet werden: ${e?.message || String(err) || 'Unbekannter Fehler'}`;
+      }
+      if (msg) {
+        setCameraError(msg);
+        return;
+      }
+    }
+
+    // 3. qr-scanner starten (nutzt jetzt die bereits erteilte Permission)
     try {
       const scanner = new QrScanner(
         videoRef.current,
@@ -116,7 +175,7 @@ export default function CheckInPage(): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const error = err as any;
       const msg = typeof error === 'string' ? error : error?.message || 'Unbekannter Fehler';
-      setCameraError(`Kamera konnte nicht gestartet werden: ${msg}`);
+      setCameraError(`Scanner konnte nicht gestartet werden: ${msg}`);
     }
   };
 
@@ -382,13 +441,6 @@ export default function CheckInPage(): React.ReactElement {
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{pendingCheckIn.location}</p>
               )}
             </div>
-            <span style={{
-              padding: '6px 14px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 700,
-              background: pendingCheckIn.status === 'Eingecheckt' ? '#e8f5e9' : '#e3f2fd',
-              color: pendingCheckIn.status === 'Eingecheckt' ? '#2e7d32' : '#1565c0',
-            }}>
-              {pendingCheckIn.status}
-            </span>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
             Event: <strong>{pendingCheckIn.event.title}</strong>
@@ -399,7 +451,7 @@ export default function CheckInPage(): React.ReactElement {
               onClick={confirmCheckIn}
               style={{ flex: 1, fontSize: '1rem', padding: '12px 0', background: 'var(--dex-green)' }}
             >
-              Einchecken bestätigen
+              Einchecken
             </button>
             <button
               className="btn btn-secondary"
@@ -436,16 +488,27 @@ export default function CheckInPage(): React.ReactElement {
             </div>
           </>
         )}
-        <div style={{ position: 'relative', width: '100%', maxWidth: 500, margin: '0 auto', overflow: 'hidden', borderRadius: 12 }}>
+        {/* Wichtig: Video nicht mit fixer Hoehe + objectFit:cover croppen, sonst landet
+            die vom qr-scanner eingeblendete Scan-Region-Box verschoben, weil die
+            Library Overlay-Koordinaten aus dem nativen Video-Aspect berechnet.
+            Video soll seine natuerliche Aspect Ratio behalten (width:100%, height:auto).
+            Vor dem Scan-Start verstecken wir den Container via max-height:0 - so
+            bleibt der Video-Ref stabil und die Library kann nach getUserMedia die
+            Dimensionen korrekt bestimmen. */}
+        <div style={{
+          position: 'relative', width: '100%', maxWidth: 500, margin: '0 auto',
+          overflow: 'hidden', borderRadius: 12,
+          maxHeight: isScanning ? '80vh' : 0,
+          border: isScanning ? '3px solid var(--dex-green)' : 'none',
+          background: '#000',
+          transition: 'max-height 0.3s ease',
+        }}>
           <video
             ref={videoRef}
             style={{
-              width: '100%', height: isScanning ? 400 : 0,
-              display: 'block',
-              border: isScanning ? '3px solid var(--dex-green)' : 'none',
-              objectFit: 'cover', background: '#000',
-              transition: 'height 0.3s ease',
-              borderRadius: 12,
+              width: '100%', height: 'auto', display: 'block',
+              background: '#000',
+              borderRadius: 9,
             }}
             playsInline
             muted

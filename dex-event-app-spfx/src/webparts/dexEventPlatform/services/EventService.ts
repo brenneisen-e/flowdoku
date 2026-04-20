@@ -668,22 +668,41 @@ export class EventService {
     const ctx = this.context as any;
     if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfuegbar.' };
 
-    // 1. OutlookEventId + CalendarLink aus DEX_Events holen
+    // 1. OutlookEventId + CalendarLink aus DEX_Events holen. Nutzt den bewaehrten
+    // `getEvent()`-Path (gleiche Abfrage wie der Rest der App). Direktes
+    // $select=OutlookEventId,CalendarLink hatte in v5.18 zu leeren Strings
+    // gefuehrt obwohl die Spalten in SharePoint gefuellt waren.
     let outlookEventId = '';
     let calendarLink = '';
+    let loadedEvent = false;
     try {
-      const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=OutlookEventId,CalendarLink`,
-        SPHttpClient.configurations.v1,
-        { headers: { Accept: 'application/json;odata=nometadata' } }
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        outlookEventId = String(data.OutlookEventId || '');
-        calendarLink = String(data.CalendarLink || '');
+      const numericId = Number(eventId);
+      const spEvent = await this.getEvent(numericId);
+      if (spEvent) {
+        loadedEvent = true;
+        outlookEventId = String(spEvent.OutlookEventId || '');
+        calendarLink = String(spEvent.CalendarLink || '');
+        console.warn('[DEX] getDeclinedAttendees: Event geladen', {
+          id: numericId,
+          outlookEventIdLen: outlookEventId.length,
+          calendarLinkLen: calendarLink.length,
+        });
+      } else {
+        console.warn('[DEX] getDeclinedAttendees: getEvent() lieferte null', { eventId });
       }
-    } catch { /* faellt unten durch */ }
-    if (!outlookEventId && !calendarLink) return { ok: false, attendees: [], reason: 'no-pointer' };
+    } catch (err) {
+      console.warn('[DEX] getDeclinedAttendees: getEvent() warf', err);
+    }
+    if (!outlookEventId && !calendarLink) {
+      return {
+        ok: false,
+        attendees: [],
+        reason: 'no-pointer',
+        message: loadedEvent
+          ? `Event-Item (Id=${eventId}) enthaelt weder OutlookEventId noch CalendarLink.`
+          : `Event-Item (Id=${eventId}) konnte nicht aus DEX_Events geladen werden (403/404?). Details siehe Browser-Console.`,
+      };
+    }
 
     // 2. Outlook-Termin via Graph laden
     const mailbox = 'no_reply.events@deloitte.de';

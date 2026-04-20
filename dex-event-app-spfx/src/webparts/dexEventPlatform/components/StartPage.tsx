@@ -13,7 +13,7 @@ export default function StartPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      <div className="start-grid" style={canCreateEvents ? { gridTemplateColumns: '1fr 1fr 1fr' } : undefined}>
+      <div className={`start-grid${canCreateEvents ? ' start-grid--with-admin' : ''}`}>
         <div className="card card-clickable start-card" onClick={() => navigate('register')}>
           <div className="start-card__icon">
             <Calendar size={64} strokeWidth={1} />
@@ -29,7 +29,7 @@ export default function StartPage(): React.ReactElement {
           <p>{t('start.myevents.desc')}</p>
         </div>
         {canCreateEvents && (
-          <div className="card card-clickable start-card" onClick={() => navigate('admin')}>
+          <div className="card card-clickable start-card start-card--admin" onClick={() => navigate('admin')}>
             <div className="start-card__icon">
               <Settings size={64} strokeWidth={1} />
             </div>
