@@ -217,33 +217,33 @@ function IDReorderFlow(): React.ReactElement {
       <Arrow />
       <FlowNode type="process" label="Status → 'Processing'" />
       <Arrow />
-      <FlowNode type="subprocess" label="Alle aktiven Teilnehmer laden (Status = Angemeldet oder Eingecheckt) von SubsiteUrl" />
+      <FlowNode type="subprocess" label="Get_Enrolled_Participants: alle Teilnehmer mit Status ≠ 'Abgemeldet' laden (Aktive + Warteliste), sortiert nach RegistrationDate asc" />
       <Arrow />
-      <FlowNode type="process" label="Sortieren nach RegistrationDate (älteste zuerst)" />
+      <FlowNode type="process" label="Count_Active: Anzahl Enrolled-Einträge mit Status ≠ 'Warteliste' zählen (= aktuell belegte Plätze)" />
       <Arrow />
-      <FlowNode type="process" label="TeilnehmerIDs vergeben: 1, 2, 3, ... N (lückenlos)" />
+      <FlowNode type="process" label="TeilnehmerIDs neu vergeben: 1, 2, 3, ... N (lückenlos, Aktive zuerst wegen RegistrationDate, Warteliste dahinter)" />
       <Arrow />
-      <FlowNode type="subprocess" label="$batch Updates an SharePoint (50 Items pro Batch, 1-2 Sek Pause)" />
+      <FlowNode type="subprocess" label="$batch-Update an SharePoint: nur TeilnehmerID schreiben (Status bleibt unangetastet — Warteliste bleibt Warteliste)" />
       <Arrow />
-      <FlowNode type="decision" label="Platz frei? (Angemeldet < MaxParticipants)" />
+      <FlowNode type="decision" label="Platz frei? (Count_Active < MaxParticipants AND MaxParticipants > 0)" />
       <BranchContainer>
         <Branch label="Ja">
-          <FlowNode type="process" label="Ersten Warteliste-Eintrag nachrücken → Status = Angemeldet" />
+          <FlowNode type="subprocess" label="Get_Waitlist_First: ersten Warteliste-Eintrag laden (Status eq 'Warteliste', sortiert nach RegistrationDate asc)" />
           <Arrow />
-          <FlowNode type="data" label="DEX_Participants: EventNumber von Waitlist → Registered" />
+          <FlowNode type="process" label="Promote_Waitlist: MERGE Status → 'Angemeldet' (KEINE TeilnehmerID-Änderung — der Batch hat die neue TID bereits korrekt auf Count_Active + 1 gesetzt)" />
           <Arrow />
-          <FlowNode type="data" label="DEX_Emails: Nachrücker-E-Mail" />
+          <FlowNode type="data" label="DEX_Emails: Nachrücker-E-Mail mit Template 'Nachruecken' (pro EmailLanguage)" />
           <Arrow />
-          <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung" />
+          <FlowNode type="data" label="DEX_Outlook: Kalender-Einladung in Queue ('Einladen')" />
         </Branch>
         <Branch label="Nein">
-          <FlowNode type="process" label="Kein Nachrücken nötig" />
+          <FlowNode type="process" label="Kein Nachrücken nötig — Event voll oder keine Warteliste" />
         </Branch>
       </BranchContainer>
       <Arrow />
       <FlowNode type="process" label="Status → 'Done'" />
       <Arrow />
-      <FlowNode type="end" color="#6a1b9a" label="Flow-Instanz beendet. Falls weitere Queue-Einträge: Nächste Instanz startet." />
+      <FlowNode type="end" color="#6a1b9a" label="Flow-Instanz beendet. Bei weiteren Queue-Einträgen startet die nächste Instanz." />
     </div>
   );
 }
