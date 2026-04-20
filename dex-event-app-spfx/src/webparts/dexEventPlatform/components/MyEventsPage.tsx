@@ -145,34 +145,66 @@ function QuizPlayer({
   const hadResumeData = !!initialAnswers && countAnswered(buildInitial()) > 0;
   const completedAllInitial = hadResumeData && countAnswered(buildInitial()) === quiz.length;
 
-  // Erste unbeantwortete Frage in einem gegebenen Answers-Array
-  const firstUnansweredIn = (answers: number[][]): number => {
-    for (let i = 0; i < quiz.length; i++) {
-      if (!answers[i] || answers[i].length === 0) return i;
+  // Gruppen = "Seiten" des Quiz. Wenn mindestens eine Frage ein Feld `section`
+  // hat, wird pro Section eine Gruppe (alle Fragen der Section zusammen). Fragen
+  // ohne Section landen im Anschluss in einer "Ohne Bereich"-Gruppe. Ohne
+  // Sections faellt alles auf Cluster-Groesse zurueck.
+  const groups: Array<{ title?: string; indices: number[] }> = (() => {
+    const hasAnySection = quiz.some(q => !!q.section);
+    if (!hasAnySection) {
+      // Klassisches Cluster-Verhalten
+      const out: Array<{ title?: string; indices: number[] }> = [];
+      for (let i = 0; i < quiz.length; i += size) {
+        out.push({ indices: Array.from({ length: Math.min(size, quiz.length - i) }, (_, k) => i + k) });
+      }
+      return out;
     }
-    return quiz.length;
+    // Sections in Reihenfolge der ersten Frage-Erwaehnung
+    const sectionsInOrder: string[] = [];
+    for (const q of quiz) {
+      if (q.section && sectionsInOrder.indexOf(q.section) < 0) sectionsInOrder.push(q.section);
+    }
+    const out: Array<{ title?: string; indices: number[] }> = [];
+    for (const sec of sectionsInOrder) {
+      const indices: number[] = [];
+      for (let i = 0; i < quiz.length; i++) {
+        if (quiz[i].section === sec) indices.push(i);
+      }
+      out.push({ title: sec, indices });
+    }
+    // Unsortierte am Ende als eigene Gruppe (nur wenn vorhanden)
+    const unsorted: number[] = [];
+    for (let i = 0; i < quiz.length; i++) {
+      if (!quiz[i].section) unsorted.push(i);
+    }
+    if (unsorted.length > 0) out.push({ title: isDe ? 'Ohne Bereich' : 'No section', indices: unsorted });
+    return out;
+  })();
+
+  // Welche Gruppe enthaelt die erste unbeantwortete Frage?
+  const firstUnansweredGroupIdx = (answers: number[][]): number => {
+    for (let g = 0; g < groups.length; g++) {
+      for (const qi of groups[g].indices) {
+        if (!answers[qi] || answers[qi].length === 0) return g;
+      }
+    }
+    return groups.length; // alles beantwortet
   };
 
-  const initialFirstUnans = firstUnansweredIn(buildInitial());
-  const initialClusterStart = Math.floor(initialFirstUnans / size) * size;
+  const initialGroupIdx = Math.min(firstUnansweredGroupIdx(buildInitial()), Math.max(0, groups.length - 1));
 
-  const [clusterStart, setClusterStart] = React.useState(Math.min(initialClusterStart, Math.max(0, quiz.length - size)));
+  const [currentGroupIdx, setCurrentGroupIdx] = React.useState(initialGroupIdx);
   const [showQuiz, setShowQuiz] = React.useState(false);
   const [showSummary, setShowSummary] = React.useState(completedAllInitial);
   const [isSaving, setIsSaving] = React.useState(false);
 
-  // Wenn die Prop `initialAnswers` sich aendert (z.B. nach einem Reload der
-  // Registrierung aus SharePoint), State neu aus der Prop ableiten. useState
-  // ignoriert Prop-Aenderungen nach dem Mount. Solange der User aktiv im Quiz
-  // ist (showQuiz=true), nicht in clusterStart/showSummary eingreifen, damit
-  // der User nicht mitten im Spiel zurueckgeworfen wird.
+  // Prop-Sync wenn initialAnswers nachkommt (z.B. nach Save-Reload)
   const initialAnswersKey = initialAnswers ? JSON.stringify(initialAnswers) : '';
   React.useEffect(() => {
     const fresh = buildInitial();
     setAllAnswers(fresh);
     if (!showQuiz) {
-      const firstUnans = firstUnansweredIn(fresh);
-      setClusterStart(Math.min(Math.floor(firstUnans / size) * size, Math.max(0, quiz.length - size)));
+      setCurrentGroupIdx(Math.min(firstUnansweredGroupIdx(fresh), Math.max(0, groups.length - 1)));
       setShowSummary(countAnswered(fresh) === quiz.length && quiz.length > 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,15 +234,14 @@ function QuizPlayer({
   };
 
   const goNext = async (): Promise<void> => {
-    const nextStart = clusterStart + size;
-    if (nextStart >= quiz.length) {
-      // letzter Cluster -> Summary zeigen + als komplett markieren wenn alle beantwortet
+    const nextIdx = currentGroupIdx + 1;
+    if (nextIdx >= groups.length) {
       const done = countAnswered(allAnswers) === quiz.length;
       await saveProgress(allAnswers, done);
       setShowSummary(true);
     } else {
       await saveProgress(allAnswers, false);
-      setClusterStart(nextStart);
+      setCurrentGroupIdx(nextIdx);
     }
   };
 
@@ -219,9 +250,9 @@ function QuizPlayer({
       setShowSummary(false);
       return;
     }
-    if (clusterStart === 0) return;
+    if (currentGroupIdx === 0) return;
     await saveProgress(allAnswers, false);
-    setClusterStart(Math.max(0, clusterStart - size));
+    setCurrentGroupIdx(Math.max(0, currentGroupIdx - 1));
   };
 
   if (!showQuiz) {
@@ -317,9 +348,9 @@ function QuizPlayer({
     );
   }
 
-  // ===== Aktiver Cluster =====
-  const clusterEnd = Math.min(clusterStart + size, quiz.length);
-  const isLastCluster = clusterEnd >= quiz.length;
+  // ===== Aktive Gruppe (Section oder Cluster) =====
+  const currentGroup = groups[currentGroupIdx] || { indices: [] };
+  const isLastGroup = currentGroupIdx >= groups.length - 1;
 
   return (
     <div style={{ marginTop: 12, padding: 16, background: 'var(--dex-gray-50)', borderRadius: 12 }}>
@@ -330,7 +361,7 @@ function QuizPlayer({
             {isDe ? 'Fortschritt' : 'Progress'}: {answeredCount} / {quiz.length} ({progressPct}%)
           </span>
           <span style={{ color: 'var(--dex-gray-400)' }}>
-            {isDe ? 'Fragen' : 'Questions'} {clusterStart + 1}–{clusterEnd}
+            {isDe ? 'Seite' : 'Page'} {currentGroupIdx + 1} / {groups.length}
           </span>
         </div>
         <div style={{ width: '100%', height: 8, background: 'var(--dex-gray-200)', borderRadius: 4, overflow: 'hidden' }}>
@@ -342,10 +373,18 @@ function QuizPlayer({
         </div>
       </div>
 
-      {/* Fragen des aktuellen Clusters */}
+      {/* Bereichs-Titel, wenn vorhanden */}
+      {currentGroup.title && (
+        <h3 style={{ margin: '0 0 14px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem' }}>
+          {currentGroup.title}
+        </h3>
+      )}
+
+      {/* Fragen der aktuellen Gruppe */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {quiz.slice(clusterStart, clusterEnd).map((question, localIdx) => {
-          const qIdx = clusterStart + localIdx;
+        {currentGroup.indices.map(qIdx => {
+          const question = quiz[qIdx];
+          if (!question) return null;
           const given = allAnswers[qIdx] || [];
           return (
             <div key={question.id || qIdx}>
@@ -395,8 +434,8 @@ function QuizPlayer({
         <button
           className="btn btn-secondary"
           onClick={goBack}
-          disabled={clusterStart === 0 || isSaving}
-          style={{ fontSize: '0.82rem', visibility: clusterStart === 0 ? 'hidden' : 'visible' }}
+          disabled={currentGroupIdx === 0 || isSaving}
+          style={{ fontSize: '0.82rem', visibility: currentGroupIdx === 0 ? 'hidden' : 'visible' }}
         >
           {isDe ? 'Zurück' : 'Back'}
         </button>
@@ -408,7 +447,7 @@ function QuizPlayer({
         >
           {isSaving
             ? (isDe ? 'Speichere…' : 'Saving…')
-            : isLastCluster
+            : isLastGroup
               ? (isDe ? 'Ergebnis anzeigen' : 'Show result')
               : (isDe ? 'Weiter' : 'Next')}
         </button>

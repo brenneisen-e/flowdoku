@@ -16,8 +16,15 @@ Wird aktualisiert wenn Flows geändert werden.
 ## 1. DEX_IDReorder_TeilnehmerIDs
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
-**Zweck:** TeilnehmerIDs neu vergeben + Nachrücken von Warteliste
-**Letztes Update:** 2026-04-06
+**Zweck:** TeilnehmerIDs neu vergeben (Aktive UND Warteliste) + Nachrücken von Warteliste
+**Letztes Update:** 2026-04-20
+
+**Änderung 2026-04-20:** `Get_Active_Participants` umbenannt zu `Get_Enrolled_Participants`.
+Filter geändert von `(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')`
+auf `Status ne 'Abgemeldet'`. Vorher wurden Warteliste-Einträge beim Renummerieren übersprungen
+— führte zu Lücken in der TeilnehmerID-Sequenz wenn ein Aktiver unregistrierte und kein
+Warteliste-Eintrag nachrücken konnte (MaxParticipants bereits erreicht). Jetzt bekommen
+Aktive + Warteliste gemeinsam fortlaufende IDs nach RegistrationDate.
 
 ```json
 TRIGGER:
@@ -80,14 +87,14 @@ GET_LISTITEMTYPE:
   "runAfter": { "Settings": ["Succeeded"] }
 }
 
-GET_ACTIVE_PARTICIPANTS:
+GET_ENROLLED_PARTICIPANTS:
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "dataset": "@outputs('Settings')?['siteAddress']",
       "parameters/method": "GET",
-      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')&$orderby=RegistrationDate asc&$top=5000",
+      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')",
       "parameters/headers": { "Accept": "application/json;odata=nometadata" }
     },
     "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
@@ -98,8 +105,8 @@ GET_ACTIVE_PARTICIPANTS:
 GENERATE_INDICES:
 {
   "type": "Compose",
-  "inputs": "@range(0, length(body('Get_Active_Participants')?['value']))",
-  "runAfter": { "Get_Active_Participants": ["Succeeded"] }
+  "inputs": "@range(0, length(body('Get_Enrolled_Participants')?['value']))",
+  "runAfter": { "Get_Enrolled_Participants": ["Succeeded"] }
 }
 
 GENERATESPDATA:
@@ -108,7 +115,7 @@ GENERATESPDATA:
   "inputs": {
     "from": "@outputs('Generate_Indices')",
     "select": {
-      "ID": "@body('Get_Active_Participants')?['value'][item()]?['Id']",
+      "ID": "@body('Get_Enrolled_Participants')?['value'][item()]?['Id']",
       "TeilnehmerID": "@add(item(), 1)"
     }
   },
