@@ -41,6 +41,8 @@ export interface DeloitteEvent {
   transferTimes: TransferTime[];
   documents: EventDocument[];
   quiz: QuizQuestion[];
+  /** Anzahl Fragen pro Ansicht im Quiz-Player (1..4). Default 1 = klassisch einzeln. */
+  quizClusterSize?: number;
   eventSpecificFields: EventSpecificField[];
 }
 
