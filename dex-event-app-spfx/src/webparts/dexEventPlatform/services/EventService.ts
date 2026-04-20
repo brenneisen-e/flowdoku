@@ -143,6 +143,24 @@ const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
 const REG_LIST_NAME = 'Teilnehmer';
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 
+export interface DeclinedAttendee {
+  email: string;
+  name: string;
+}
+
+export type DeclineCheckReason = 'no-pointer' | 'not-found' | 'forbidden' | 'error';
+
+// Flaches Ergebnis-Shape, weil der TS-4.7-Compiler bei Discriminated Unions
+// ueber eine async-Funktion + React-Callback teils nicht korrekt narrowed.
+// Erfolg: ok=true, attendees gefuellt, reason/message leer.
+// Fehler: ok=false, reason gesetzt, attendees leeres Array.
+export interface DeclineCheckResult {
+  ok: boolean;
+  attendees: DeclinedAttendee[];
+  reason?: DeclineCheckReason;
+  message?: string;
+}
+
 export interface SPEvent {
   Id: number;
   Title: string;
@@ -621,6 +639,92 @@ export class EventService {
       return response.ok;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Liefert alle Attendees, die den Outlook-Kalendertermin abgelehnt haben.
+   *
+   * Liest den Termin im Postfach der Shared Mailbox `no_reply.events@deloitte.de`
+   * via Microsoft Graph. Der Admin-User braucht dafuer delegate/shared access
+   * auf das Postfach (Mailbox-Permission) + die SPFx-App muss `Calendars.Read.Shared`
+   * im Admin Center genehmigt bekommen.
+   *
+   * Holt `OutlookEventId` + `CalendarLink` via `GET` auf DEX_Events/{id}. Primaerer
+   * Lookup des Outlook-Events ueber `OutlookEventId`. Wenn leer (alte Events):
+   * Fallback ueber `iCalUId` per `$filter`.
+   *
+   * Rueckgabe-Status:
+   * - `ok: true`, `attendees: [...]` - Termin gefunden, Declines extrahiert
+   * - `ok: false`, `reason: 'no-pointer'` - DEX_Events hat weder OutlookEventId noch CalendarLink
+   * - `ok: false`, `reason: 'not-found'` - Outlook-Termin existiert nicht (mehr)
+   * - `ok: false`, `reason: 'forbidden'` - Admin hat keine Mailbox-Permission oder Tenant-Admin hat Calendars.Read.Shared nicht genehmigt
+   * - `ok: false`, `reason: 'error'` - unerwarteter Fehler
+   */
+  public async getDeclinedAttendees(
+    eventId: number | string
+  ): Promise<DeclineCheckResult> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = this.context as any;
+    if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfuegbar.' };
+
+    // 1. OutlookEventId + CalendarLink aus DEX_Events holen
+    let outlookEventId = '';
+    let calendarLink = '';
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=OutlookEventId,CalendarLink`,
+        SPHttpClient.configurations.v1,
+        { headers: { Accept: 'application/json;odata=nometadata' } }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        outlookEventId = String(data.OutlookEventId || '');
+        calendarLink = String(data.CalendarLink || '');
+      }
+    } catch { /* faellt unten durch */ }
+    if (!outlookEventId && !calendarLink) return { ok: false, attendees: [], reason: 'no-pointer' };
+
+    // 2. Outlook-Termin via Graph laden
+    const mailbox = 'no_reply.events@deloitte.de';
+    try {
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let ev: any = null;
+      if (outlookEventId) {
+        ev = await client.api(`/users/${mailbox}/events/${outlookEventId}`)
+          .select('id,subject,attendees')
+          .get();
+      } else {
+        const escaped = calendarLink.replace(/'/g, "''");
+        const resp = await client.api(`/users/${mailbox}/events`)
+          .filter(`iCalUId eq '${escaped}'`)
+          .select('id,subject,attendees')
+          .top(1)
+          .get();
+        ev = (resp?.value || [])[0] || null;
+      }
+      if (!ev) return { ok: false, attendees: [], reason: 'not-found' };
+      if (!Array.isArray(ev.attendees)) return { ok: true, attendees: [] };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const declined = ev.attendees
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a?.status?.response === 'declined')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((a: any) => ({
+          email: String(a?.emailAddress?.address || '').toLowerCase(),
+          name: String(a?.emailAddress?.name || ''),
+        }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a.email);
+      return { ok: true, attendees: declined };
+    } catch (err) {
+      console.warn('[DEX] getDeclinedAttendees failed:', err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status = (err as any)?.statusCode || (err as any)?.status;
+      if (status === 403 || status === 401) return { ok: false, attendees: [], reason: 'forbidden' };
+      if (status === 404) return { ok: false, attendees: [], reason: 'not-found' };
+      return { ok: false, attendees: [], reason: 'error', message: err instanceof Error ? err.message : String(err) };
     }
   }
 

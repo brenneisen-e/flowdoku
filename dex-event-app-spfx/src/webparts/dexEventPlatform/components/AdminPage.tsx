@@ -74,6 +74,16 @@ export default function AdminPage(): React.ReactElement {
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
+  // Outlook-Decline-Check (Admin only): zeigt Teilnehmer, die in Outlook
+  // abgesagt haben, aber in der Teilnehmerliste noch aktiv gelistet sind.
+  const [isCheckingDeclines, setIsCheckingDeclines] = React.useState(false);
+  const [declineResult, setDeclineResult] = React.useState<{
+    declinedAndRegistered: Array<{ email: string; name: string; reg: SPRegistration }>;
+    declinedTotal: number;
+    error: string | null;
+  } | null>(null);
+  const [showDeclineModal, setShowDeclineModal] = React.useState(false);
+  const [declineCopied, setDeclineCopied] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -624,6 +634,66 @@ export default function AdminPage(): React.ReactElement {
             >
               <Mail size={16} /> {t('admin.emailall')}
             </button>
+            {isAdmin && (
+              <button
+                className="btn btn-secondary btn-block"
+                disabled={isCheckingDeclines || !selectedEvent}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent) return;
+                  setIsCheckingDeclines(true);
+                  setDeclineResult(null);
+                  setDeclineCopied(false);
+                  try {
+                    const result = await eventServiceRef.getDeclinedAttendees(selectedEvent.id);
+                    if (result.ok) {
+                      // Aktive Teilnehmer: nur Status ∈ {Angemeldet, QR versendet, Eingecheckt}
+                      // werden gegen die Outlook-Decliner gematched. Wer bereits abgemeldet
+                      // oder auf der Warteliste ist, ist hier nicht interessant.
+                      const activeByEmail = new Map<string, SPRegistration>();
+                      for (const r of registrations) {
+                        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+                          activeByEmail.set(String(r.ParticipantEmail || '').toLowerCase(), r);
+                        }
+                      }
+                      const hits: Array<{ email: string; name: string; reg: SPRegistration }> = [];
+                      for (const d of result.attendees) {
+                        const reg = activeByEmail.get(d.email);
+                        if (reg) hits.push({ email: d.email, name: d.name, reg });
+                      }
+                      setDeclineResult({
+                        declinedAndRegistered: hits,
+                        declinedTotal: result.attendees.length,
+                        error: null,
+                      });
+                      setShowDeclineModal(true);
+                    } else {
+                      let msg = 'Unbekannter Fehler beim Lesen des Outlook-Termins.';
+                      if (result.reason === 'no-pointer') {
+                        msg = 'Fuer dieses Event ist kein Outlook-Termin verknuepft (OutlookEventId / CalendarLink fehlen).';
+                      } else if (result.reason === 'not-found') {
+                        msg = 'Outlook-Termin wurde im Postfach no_reply.events@deloitte.de nicht gefunden.';
+                      } else if (result.reason === 'forbidden') {
+                        msg = 'Kein Zugriff auf das Postfach no_reply.events@deloitte.de. Pruefe: (1) Calendars.Read.Shared ist im SharePoint Admin Center freigegeben, (2) dein User hat delegate/shared access auf die Mailbox.';
+                      } else if (result.message) {
+                        msg = result.message;
+                      }
+                      setDeclineResult({ declinedAndRegistered: [], declinedTotal: 0, error: msg });
+                      setShowDeclineModal(true);
+                    }
+                  } catch (err) {
+                    setDeclineResult({
+                      declinedAndRegistered: [],
+                      declinedTotal: 0,
+                      error: err instanceof Error ? err.message : String(err),
+                    });
+                    setShowDeclineModal(true);
+                  }
+                  setIsCheckingDeclines(false);
+                }}
+              >
+                <Users size={16} /> {isCheckingDeclines ? 'Outlook wird gepruefen...' : 'Outlook-Absagen pruefen'}
+              </button>
+            )}
             {/* Excel-Export-Dropdown: Deloitte-View oder B2Run-View */}
             <div style={{ position: 'relative' }}>
               <button
@@ -1541,6 +1611,89 @@ export default function AdminPage(): React.ReactElement {
           />
         );
       })()}
+
+      {/* ===== OUTLOOK-DECLINE-CHECK MODAL (Admin only) ===== */}
+      {showDeclineModal && declineResult && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => setShowDeclineModal(false)}
+        >
+          <div
+            className="card"
+            style={{ background: '#fff', maxWidth: 720, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 24 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0 }}>Outlook-Absagen vs. Anmeldungen</h3>
+              <button className="btn btn-secondary" style={{ padding: '4px 10px' }} onClick={() => setShowDeclineModal(false)}>
+                Schliessen
+              </button>
+            </div>
+            {declineResult.error ? (
+              <p style={{ color: 'var(--dex-red)' }}>{declineResult.error}</p>
+            ) : declineResult.declinedAndRegistered.length === 0 ? (
+              <p style={{ color: 'var(--dex-gray-600)' }}>
+                Keine Diskrepanzen gefunden. {declineResult.declinedTotal > 0
+                  ? `Es gibt ${declineResult.declinedTotal} Outlook-Absage(n), aber keiner davon ist in der Teilnehmerliste noch aktiv.`
+                  : 'Niemand hat den Outlook-Termin abgelehnt.'}
+              </p>
+            ) : (
+              <>
+                <p style={{ color: 'var(--dex-gray-700)' }}>
+                  <strong>{declineResult.declinedAndRegistered.length}</strong> Teilnehmer haben den Outlook-Termin abgelehnt,
+                  stehen aber in der Teilnehmerliste noch als aktiv:
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem' }}
+                    onClick={() => {
+                      const emails = declineResult.declinedAndRegistered.map(d => d.email).join('; ');
+                      navigator.clipboard.writeText(emails).then(() => {
+                        setDeclineCopied(true);
+                        setTimeout(() => setDeclineCopied(false), 2000);
+                      }).catch(() => window.prompt('E-Mail-Adressen kopieren:', emails));
+                    }}
+                  >
+                    <Copy size={14} /> {declineCopied ? 'Kopiert!' : 'E-Mails kopieren'}
+                  </button>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--dex-gray-50)' }}>
+                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>ID</th>
+                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>E-Mail</th>
+                      <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid var(--dex-gray-200)' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {declineResult.declinedAndRegistered.map(d => {
+                      const displayName = (d.reg.Vorname && d.reg.Nachname)
+                        ? `${d.reg.Vorname} ${d.reg.Nachname}`
+                        : (d.reg.ParticipantName || d.name);
+                      return (
+                        <tr key={d.email}>
+                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.reg.TeilnehmerID ?? '-'}</td>
+                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{displayName}</td>
+                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.email}</td>
+                          <td style={{ padding: '8px', borderBottom: '1px solid var(--dex-gray-100)' }}>{d.reg.Status}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 12 }}>
+                  Insgesamt {declineResult.declinedTotal} Outlook-Absage(n) erfasst.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
