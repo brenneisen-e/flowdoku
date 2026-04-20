@@ -286,6 +286,16 @@ function QuizPlayer({
                     style={{ fontSize: 14, color: unanswered ? 'var(--dex-orange)' : isCorrect ? 'var(--dex-green)' : 'var(--dex-red)' }}
                   />
                 </div>
+                {q.imageBase64 && (
+                  <img
+                    src={q.imageBase64}
+                    alt=""
+                    style={{
+                      maxWidth: '100%', maxHeight: 120, display: 'block',
+                      borderRadius: 6, marginBottom: 6, border: '1px solid var(--dex-gray-200)',
+                    }}
+                  />
+                )}
                 <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
                   {unanswered
                     ? (isDe ? 'Nicht beantwortet' : 'Not answered')
@@ -342,6 +352,16 @@ function QuizPlayer({
               <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 10 }}>
                 {qIdx + 1}. {question.question}
               </div>
+              {question.imageBase64 && (
+                <img
+                  src={question.imageBase64}
+                  alt=""
+                  style={{
+                    maxWidth: '100%', maxHeight: 240, display: 'block',
+                    borderRadius: 8, marginBottom: 10, border: '1px solid var(--dex-gray-200)',
+                  }}
+                />
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {question.options.map((opt, i) => {
                   const isSelected = given.includes(i);
@@ -1027,14 +1047,23 @@ export default function MyEventsPage(): React.ReactElement {
                         const { EventService } = await import('../services/EventService');
                         const svc = new EventService(ctx);
                         const ok = await svc.saveQuizProgress(event.subsiteUrl, registration.Id, score, answers, isComplete);
-                        console.warn('[DEX] saveQuizProgress Ergebnis', {
-                          ok,
-                          regId: registration.Id,
-                          score,
-                          answeredCount: answers.filter(a => Array.isArray(a) && a.length > 0).length,
-                          totalQuestions: answers.length,
-                          isComplete,
-                        });
+                        const answeredNow = answers.filter(a => Array.isArray(a) && a.length > 0).length;
+                        console.warn(`[DEX] saveQuizProgress ok=${ok} regId=${registration.Id} score=${score} answered=${answeredNow}/${answers.length} complete=${isComplete} subsite=${event.subsiteUrl}`);
+                        // VERIFY: re-read das Item und checke ob QuizAnswers tatsaechlich in SP landete
+                        try {
+                          const verifyResp = await ctx.spHttpClient.get(
+                            `${event.subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${registration.Id})?$select=QuizScore,QuizAnswers,QuizCompletedAt`,
+                            (await import('@microsoft/sp-http')).SPHttpClient.configurations.v1
+                          );
+                          if (verifyResp.ok) {
+                            const data = await verifyResp.json();
+                            console.warn(`[DEX] saveQuizProgress VERIFY: QuizScore=${data.QuizScore} QuizAnswersLen=${(data.QuizAnswers || '').length} QuizCompletedAt=${data.QuizCompletedAt} QuizAnswersSample=${String(data.QuizAnswers || '').substring(0, 120)}`);
+                          } else {
+                            console.warn(`[DEX] saveQuizProgress VERIFY read failed: ${verifyResp.status}`);
+                          }
+                        } catch (vErr) {
+                          console.warn('[DEX] saveQuizProgress VERIFY error:', vErr);
+                        }
                         // Lokale myEvents-Liste nach erfolgreichem Save aktualisieren, damit die
                         // registration im Parent-State die frischen QuizScore/QuizAnswers hat —
                         // sonst sieht der User beim Wiedereintritt noch das alte (leere) Feld.

@@ -72,6 +72,9 @@ export interface QuizQuestion {
   question: string;
   options: string[];
   correctIndices: number[]; // Indices der richtigen Antworten (0-basiert, mehrere moeglich)
+  /** Optionales Bild zur Frage (data-URL mit base64-jpeg oder png). Wird inline im
+   * FunZone-JSON gespeichert. Max empfohlen: ~80KB pro Bild (komprimiert). */
+  imageBase64?: string;
 }
 
 export interface EventDocument {
