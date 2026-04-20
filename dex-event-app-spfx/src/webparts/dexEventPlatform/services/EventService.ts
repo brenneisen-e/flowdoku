@@ -3380,6 +3380,17 @@ export class EventService {
     isComplete: boolean
   ): Promise<boolean> {
     try {
+      // Vor dem Schreiben sicherstellen, dass die Quiz-Spalten auf der
+      // Teilnehmer-Liste existieren. Bei Bestandsevents (vor Quiz-Feature
+      // angelegt) fehlen sie oft; _merge mit odata=nometadata schluckt
+      // unbekannte Felder stumm und das Save wirkt wie "gespeichert",
+      // persistiert aber nichts.
+      // Silent: wenn der aktuelle User keine Manage-Lists-Permission auf
+      // der Subsite hat, schlaegt das Anlegen fehl (Regular User). Dann
+      // kann nur ein Admin/Organizer die Spalten anlegen — dafuer gibt's
+      // die "Spalten fixen"-Funktion im Admin Center.
+      await this.ensureQuizColumnsOnRegList(subsiteUrl);
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: { [key: string]: any } = {
         'QuizScore': score,
@@ -3396,6 +3407,48 @@ export class EventService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Quiz-Spalten auf der Teilnehmer-Liste einer Event-Subsite anlegen,
+   * falls sie fehlen. Idempotent und silent: bei fehlender Permission
+   * kein Crash, einfach kein-op.
+   */
+  private async ensureQuizColumnsOnRegList(subsiteUrl: string): Promise<void> {
+    try {
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=200&$select=InternalName`,
+        SPHttpClient.configurations.v1
+      );
+      if (!fieldsResp.ok) return;
+      const fieldsData = await fieldsResp.json();
+      const existing = new Set<string>(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fieldsData.value || fieldsData.d?.results || []).map((f: any) => f.InternalName)
+      );
+      const required: Array<{ title: string; type: number }> = [
+        { title: 'QuizScore', type: 9 },      // Number
+        { title: 'QuizAnswers', type: 3 },    // Note (multiline)
+        { title: 'QuizCompletedAt', type: 4 } // DateTime
+      ];
+      for (const f of required) {
+        if (existing.has(f.title)) continue;
+        try {
+          await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`,
+            {
+              '__metadata': { 'type': 'SP.Field' },
+              'Title': f.title,
+              'FieldTypeKind': f.type,
+              'Required': false,
+            }
+          );
+          console.warn(`[DEX] ensureQuizColumnsOnRegList: ${f.title} nachgelegt auf ${subsiteUrl}`);
+        } catch {
+          // keine Permission -> silent. User braucht Admin der "Spalten fixen" macht.
+        }
+      }
+    } catch { /* silent */ }
   }
 
   /**
