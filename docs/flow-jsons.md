@@ -34,6 +34,17 @@ Wird aktualisiert wenn Flows geändert werden.
    mehr. Die korrekte TID wurde bereits im Batch-Update gesetzt (erste Warteliste in
    RegistrationDate-Reihenfolge = Count_Active + 1). Alte Logik `TID = length(GenerateSPData) + 1`
    hätte nach Fix #1 eine zu hohe TID erzeugt (= EnrolledCount + 1 statt Count_Active + 1).
+4. `Queue_Email` (Nachrücker-Mail): Subject/Body/EventTitle-Spalte nutzen jetzt
+   `first(outputs('Get_EventDetails')?['body/value'])?['Title']` statt
+   `triggerOutputs()?['body/Title']` — letzteres war der DEX_IDReorder-Queue-Title
+   ("Reorder: <EventName>"), nicht der echte Event-Name. Anrede + RecipientName nutzen
+   jetzt `Vorname` statt `ParticipantName` (nur Vorname in der Begrüßung).
+5. `Queue_Outlook.item/Title`: ebenfalls auf EventDetails.Title umgestellt — vorher
+   "Einladen: Reorder: <Name>", jetzt "Einladen: <Name>".
+6. Nachrücken-Template in `DEX_EmailTemplates` wird jetzt pre-wrapped gespeichert
+   (komplettes Deloitte-Design inklusive Logo/Header/Footer), weil der PA-Flow den
+   BodyHtml raw verwendet. Client-Code erkennt pre-wrapped Templates in
+   `buildEmailFromTemplate()` und skippt den zweiten Wrap. App-seitig v5.33.0+ nötig.
 
 ```json
 TRIGGER:
@@ -257,13 +268,13 @@ PROCESS_BATCH_SCOPE:
                 "parameters": {
                   "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                   "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                  "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['Subject'], concat('Platz frei: ', triggerOutputs()?['body/Title'])), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName']), '{{EventTitle}}', triggerOutputs()?['body/Title'])",
+                  "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['Subject'], concat('Spot available: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
                   "item/Recipient": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
-                  "item/RecipientName": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName']",
+                  "item/RecipientName": "@first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']",
                   "item/EmailType/Value": "Nachruecken",
-                  "item/EventTitle": "@triggerOutputs()?['body/Title']",
+                  "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
                   "item/Status/Value": "Pending",
-                  "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['BodyHtml'], concat('Hallo ', first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName'], ', du bist nachgerückt!')), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantName']), '{{EventTitle}}', triggerOutputs()?['body/Title'])",
+                  "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['BodyHtml'], ''), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
                   "item/EventId": "@triggerOutputs()?['body/EventId']"
                 },
                 "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
@@ -276,7 +287,7 @@ PROCESS_BATCH_SCOPE:
                 "parameters": {
                   "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
                   "table": "d794655b-c950-416c-a478-5dbae285e46d",
-                  "item/Title": "Einladen: @{triggerOutputs()?['body/Title']}",
+                  "item/Title": "Einladen: @{first(outputs('Get_EventDetails')?['body/value'])?['Title']}",
                   "item/Attendee": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
                   "item/EventId": "@triggerOutputs()?['body/EventId']",
                   "item/ActionType/Value": "Einladen",
