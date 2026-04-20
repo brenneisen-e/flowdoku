@@ -1644,6 +1644,16 @@ export default function AdminPage(): React.ReactElement {
                             if (reg.ParticipantEmail && selectedEvent.eventNumber) {
                               eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
                             }
+                            // IDReorder in Queue: auch fuer Warteliste-Entfernen noetig, damit die TIDs
+                            // nach dem Abmeldung lueckenlos bleiben (Bug vor v5.30: wurde nur beim
+                            // Angemeldet-Abmelden aufgerufen, Warteliste-Entfernen hat die Luecke stehen
+                            // gelassen).
+                            if (selectedEvent.subsiteUrl) {
+                              eventServiceRef.queueIDReorder(
+                                selectedEvent.id, selectedEvent.eventNumber || 0,
+                                selectedEvent.subsiteUrl, selectedEvent.title
+                              ).catch(err => console.warn('[DEX] queueIDReorder (Warteliste) failed:', err));
+                            }
                             const regs = await getAllRegistrations(selectedEvent.id);
                             setRegistrations(regs);
                           }}
