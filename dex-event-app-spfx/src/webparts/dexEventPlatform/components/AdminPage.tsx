@@ -1583,12 +1583,23 @@ export default function AdminPage(): React.ReactElement {
                               reg.ParticipantEmail, selectedEvent.eventNumber
                             ).catch(err => console.warn('[DEX]', err));
                           }
-                          // IDReorder in Queue eintragen
+                          // IDReorder in Queue eintragen - await damit wir sehen ob's klappt.
+                          // queueIDReorder returned silent false bei HTTP-Fehlern (Permission/Payload),
+                          // deshalb User explizit informieren wenn's schief geht.
                           if (selectedEvent.subsiteUrl) {
-                            eventServiceRef.queueIDReorder(
-                              selectedEvent.id, selectedEvent.eventNumber || 0,
-                              selectedEvent.subsiteUrl, selectedEvent.title
-                            ).catch(err => console.warn('[DEX]', err));
+                            try {
+                              const ok = await eventServiceRef.queueIDReorder(
+                                selectedEvent.id, selectedEvent.eventNumber || 0,
+                                selectedEvent.subsiteUrl, selectedEvent.title
+                              );
+                              if (!ok) {
+                                console.warn('[DEX] queueIDReorder returned false');
+                                alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                              }
+                            } catch (err) {
+                              console.warn('[DEX] queueIDReorder threw:', err);
+                              alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                            }
                           }
                           const regs = await getAllRegistrations(selectedEvent.id);
                           setRegistrations(regs);
@@ -1645,14 +1656,21 @@ export default function AdminPage(): React.ReactElement {
                               eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
                             }
                             // IDReorder in Queue: auch fuer Warteliste-Entfernen noetig, damit die TIDs
-                            // nach dem Abmeldung lueckenlos bleiben (Bug vor v5.30: wurde nur beim
-                            // Angemeldet-Abmelden aufgerufen, Warteliste-Entfernen hat die Luecke stehen
-                            // gelassen).
+                            // nach dem Abmeldung lueckenlos bleiben.
                             if (selectedEvent.subsiteUrl) {
-                              eventServiceRef.queueIDReorder(
-                                selectedEvent.id, selectedEvent.eventNumber || 0,
-                                selectedEvent.subsiteUrl, selectedEvent.title
-                              ).catch(err => console.warn('[DEX] queueIDReorder (Warteliste) failed:', err));
+                              try {
+                                const ok = await eventServiceRef.queueIDReorder(
+                                  selectedEvent.id, selectedEvent.eventNumber || 0,
+                                  selectedEvent.subsiteUrl, selectedEvent.title
+                                );
+                                if (!ok) {
+                                  console.warn('[DEX] queueIDReorder (Warteliste) returned false');
+                                  alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                }
+                              } catch (err) {
+                                console.warn('[DEX] queueIDReorder (Warteliste) threw:', err);
+                                alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                              }
                             }
                             const regs = await getAllRegistrations(selectedEvent.id);
                             setRegistrations(regs);
