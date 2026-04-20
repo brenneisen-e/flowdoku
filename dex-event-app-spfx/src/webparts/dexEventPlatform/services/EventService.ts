@@ -198,6 +198,7 @@ export interface SPEvent {
   Transfers: string; // JSON-Array mit Transferzeiten
   Documents: string; // JSON-Array mit Dokumenten
   FunZone: string; // JSON-Array mit Quiz-Fragen
+  QuizClusterSize?: number; // 1..4 - wie viele Fragen pro Quiz-Ansicht. Optional, Default 1.
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
@@ -1676,6 +1677,7 @@ export class EventService {
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
       { title: 'Documents', type: 3 }, // JSON-Array mit Dokumenten
       { title: 'FunZone', type: 3 }, // JSON-Array mit Quiz-Fragen
+      { title: 'QuizClusterSize', type: 9 }, // Number - 1..4 Fragen pro Quiz-Ansicht
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
       { title: 'SubsiteUrl', type: 2 },
@@ -1932,7 +1934,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -2046,6 +2048,7 @@ export class EventService {
     transfers?: string; // JSON-Array mit Transferzeiten
     documents?: string; // JSON-Array mit Dokumenten
     funZone?: string; // JSON-Array mit Quiz-Fragen
+    quizClusterSize?: number; // 1..4 - Fragen pro Quiz-Ansicht
     emailLanguage?: string;
     emailTemplateOverrides?: string;
     disableEmails?: boolean;
@@ -2136,6 +2139,7 @@ export class EventService {
         'Transfers': event.transfers || '[]',
         'Documents': event.documents || '[]',
         'FunZone': event.funZone || '[]',
+        'QuizClusterSize': typeof event.quizClusterSize === 'number' ? event.quizClusterSize : null,
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
@@ -3354,24 +3358,39 @@ export class EventService {
 
 
   /**
-   * Quiz-Ergebnis in die Registrierung eines Teilnehmers schreiben.
-   * answers ist ein Array von ausgewaehlten Antwort-Indices (arrays,
-   * weil Fragen mehrere richtige Antworten haben koennen).
+   * Quiz-Fortschritt in die Registrierung eines Teilnehmers schreiben.
+   *
+   * - answers: ausgewaehlte Antwort-Indices pro Frage (Array von Arrays, weil
+   *   Fragen mehrere richtige Antworten haben koennen). Unbeantwortete Fragen
+   *   bleiben als leeres Array `[]` stehen, damit der Index-Offset erhalten bleibt.
+   * - score: aktuell erreichte Punkte (Anzahl korrekt beantworteter Fragen).
+   * - isComplete: true wenn alle Fragen beantwortet sind — dann wird auch
+   *   `QuizCompletedAt` gesetzt. Andernfalls bleibt QuizCompletedAt unveraendert
+   *   (null/leer), sodass der Teilnehmer als "teilweise beantwortet" gelistet wird.
+   *
+   * Ersetzt die frueher nur-am-Ende aufgerufene `saveQuizResult()`. Wird jetzt
+   * bei jedem "Weiter"-Klick im QuizPlayer aufgerufen (Auto-Save), damit der
+   * Teilnehmer beim spaeteren Wiedereintritt an derselben Stelle weitermachen kann.
    */
-  public async saveQuizResult(
+  public async saveQuizProgress(
     subsiteUrl: string,
     itemId: number,
     score: number,
-    answers: number[][]
+    answers: number[][],
+    isComplete: boolean
   ): Promise<boolean> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: { [key: string]: any } = {
+        'QuizScore': score,
+        'QuizAnswers': JSON.stringify(answers),
+      };
+      if (isComplete) {
+        payload.QuizCompletedAt = new Date().toISOString();
+      }
       const resp = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        {
-          'QuizScore': score,
-          'QuizAnswers': JSON.stringify(answers),
-          'QuizCompletedAt': new Date().toISOString(),
-        }
+        payload
       );
       return resp.ok || resp.status === 406;
     } catch {

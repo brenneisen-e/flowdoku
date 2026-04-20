@@ -613,6 +613,7 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
   );
+  const [quizClusterSize, setQuizClusterSize] = React.useState<number>(editEvent?.quizClusterSize || 1);
   const [currentStep, setCurrentStep] = React.useState(0);
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
   // EventType wird bei neuen Events aus dem Template abgeleitet; bei Edit
@@ -1035,6 +1036,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
+      updates['QuizClusterSize'] = Math.min(Math.max(1, quizClusterSize || 1), 4);
       updates['EmailLanguage'] = emailLanguage;
       updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
         ? JSON.stringify({
@@ -1232,6 +1234,7 @@ export default function EventCreationPage(): React.ReactElement {
         transfers: JSON.stringify(transferTimes),
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
         funZone: JSON.stringify(quiz),
+        quizClusterSize: Math.min(Math.max(1, quizClusterSize || 1), 4),
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
           ? JSON.stringify({
@@ -3063,6 +3066,31 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
                   {t('create.funzone.hint')}
                 </p>
+
+                {/* Cluster-Size: wie viele Fragen pro Ansicht im Quiz-Player */}
+                <div style={{
+                  padding: 12, marginBottom: 16, background: 'var(--dex-gray-50, #fafafa)',
+                  borderRadius: 10, border: '1px solid var(--dex-gray-200)',
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                    Fragen pro Ansicht:
+                  </label>
+                  <select
+                    className="form-input"
+                    value={quizClusterSize}
+                    onChange={e => setQuizClusterSize(parseInt(e.target.value, 10) || 1)}
+                    style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto', minWidth: 120 }}
+                  >
+                    <option value={1}>1 (einzeln)</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </select>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                    Legt fest, wie viele Fragen dem Teilnehmer gleichzeitig angezeigt werden.
+                  </span>
+                </div>
 
                 {quiz.map((q, qi) => (
                   <div key={q.id} style={{

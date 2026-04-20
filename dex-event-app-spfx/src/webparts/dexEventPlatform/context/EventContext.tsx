@@ -136,6 +136,7 @@ export interface CreateEventInput {
   transfers?: string; // JSON-Array mit Transferzeiten
   documents?: string; // JSON-Array mit Dokumenten
   funZone?: string; // JSON-Array mit Quiz-Fragen
+  quizClusterSize?: number; // 1..4 Fragen pro Quiz-Ansicht
   emailLanguage?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
@@ -301,6 +302,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
       quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
+      quizClusterSize: typeof e.QuizClusterSize === 'number' && e.QuizClusterSize >= 1 ? e.QuizClusterSize : undefined,
       documents: [], // Wird per loadAttachments nachgeladen
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,

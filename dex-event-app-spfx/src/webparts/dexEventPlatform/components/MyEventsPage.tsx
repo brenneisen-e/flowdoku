@@ -76,59 +76,140 @@ function getDocIconName(name: string): string {
   }
 }
 
-function QuizPlayer({ quiz, t, onComplete }: { quiz: QuizQuestion[]; t: (key: string) => string; onComplete?: (score: number, answers: number[][]) => void }): React.ReactElement {
-  const [currentQ, setCurrentQ] = React.useState(0);
-  const [selectedAnswers, setSelectedAnswers] = React.useState<number[]>([]);
-  const [allAnswers, setAllAnswers] = React.useState<number[][]>([]);
-  const [submitted, setSubmitted] = React.useState(false);
-  const [score, setScore] = React.useState(0);
-  const [finished, setFinished] = React.useState(false);
+/**
+ * Berechnet wie viele Fragen korrekt beantwortet wurden.
+ * Eine Frage gilt als korrekt, wenn die Menge der gewaehlten Indices exakt
+ * gleich der Menge der `correctIndices` ist.
+ */
+function computeQuizScore(quiz: QuizQuestion[], answers: number[][]): number {
+  let score = 0;
+  for (let i = 0; i < quiz.length; i++) {
+    const q = quiz[i];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const correct = q.correctIndices || [(q as any).correctIndex || 0];
+    const given = answers[i] || [];
+    if (given.length === 0) continue;
+    if (given.length === correct.length && correct.every(c => given.includes(c))) {
+      score++;
+    }
+  }
+  return score;
+}
+
+/**
+ * Zaehlt wie viele Fragen (mindestens teilweise) beantwortet wurden.
+ */
+function countAnswered(answers: number[][]): number {
+  let n = 0;
+  for (const a of answers) {
+    if (a && a.length > 0) n++;
+  }
+  return n;
+}
+
+/**
+ * QuizPlayer mit Resume + Cluster + Progress-Bar + Auto-Save.
+ *
+ * - initialAnswers: zuvor gespeicherte Antworten (leere innere Arrays = nicht beantwortet)
+ * - clusterSize: 1..4 Fragen pro Ansicht (Default 1)
+ * - onProgress: wird bei jedem "Weiter"/"Zurueck" aufgerufen + am Ende mit isComplete=true
+ */
+function QuizPlayer({
+  quiz,
+  t,
+  clusterSize = 1,
+  initialAnswers,
+  onProgress,
+}: {
+  quiz: QuizQuestion[];
+  t: (key: string) => string;
+  clusterSize?: number;
+  initialAnswers?: number[][];
+  onProgress?: (score: number, answers: number[][], isComplete: boolean) => void;
+}): React.ReactElement {
+  const size = Math.min(Math.max(1, clusterSize || 1), 4);
+  const isDe = t('myevents.agenda') === 'Programm';
+
+  // Antworten initialisieren: fuer jede Frage ein Array (leer wenn unbeantwortet).
+  // Pads initialAnswers auf quiz.length, damit Zugriff per Index immer sicher ist.
+  const buildInitial = (): number[][] => {
+    const padded: number[][] = [];
+    for (let i = 0; i < quiz.length; i++) {
+      const prev = initialAnswers && Array.isArray(initialAnswers[i]) ? initialAnswers[i] : [];
+      padded.push(Array.isArray(prev) ? prev.slice() : []);
+    }
+    return padded;
+  };
+  const [allAnswers, setAllAnswers] = React.useState<number[][]>(buildInitial);
+  const hadResumeData = !!initialAnswers && countAnswered(buildInitial()) > 0;
+  const completedAllInitial = hadResumeData && countAnswered(buildInitial()) === quiz.length;
+
+  // Erste unbeantwortete Frage -> auf Cluster-Grenze runden.
+  const firstUnansweredIndex = (): number => {
+    for (let i = 0; i < quiz.length; i++) {
+      if (!allAnswers[i] || allAnswers[i].length === 0) return i;
+    }
+    return quiz.length; // alle beantwortet
+  };
+  const initialClusterStart = Math.floor(firstUnansweredIndex() / size) * size;
+
+  const [clusterStart, setClusterStart] = React.useState(Math.min(initialClusterStart, Math.max(0, quiz.length - size)));
   const [showQuiz, setShowQuiz] = React.useState(false);
+  const [showSummary, setShowSummary] = React.useState(completedAllInitial);
+  const [isSaving, setIsSaving] = React.useState(false);
 
-  const question = quiz[currentQ];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const correctIndices = question.correctIndices || [(question as any).correctIndex || 0];
-
-  const handleAnswer = (index: number): void => {
-    if (submitted) return;
-    setSelectedAnswers(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]);
+  const toggleOption = (qIdx: number, optIdx: number): void => {
+    setAllAnswers(prev => {
+      const next = prev.slice();
+      const curr = next[qIdx] ? next[qIdx].slice() : [];
+      const pos = curr.indexOf(optIdx);
+      if (pos >= 0) curr.splice(pos, 1); else curr.push(optIdx);
+      next[qIdx] = curr;
+      return next;
+    });
   };
 
-  const checkAnswer = (): void => {
-    setSubmitted(true);
-    const isCorrect = correctIndices.length === selectedAnswers.length && correctIndices.every(c => selectedAnswers.includes(c));
-    if (isCorrect) setScore(s => s + 1);
+  const answeredCount = countAnswered(allAnswers);
+  const progressPct = quiz.length > 0 ? Math.round((answeredCount / quiz.length) * 100) : 0;
+
+  const saveProgress = async (answers: number[][], markComplete: boolean): Promise<void> => {
+    if (!onProgress) return;
+    setIsSaving(true);
+    try {
+      await onProgress(computeQuizScore(quiz, answers), answers, markComplete);
+    } catch { /* Save-Fehler ignorieren - State bleibt lokal */ }
+    setIsSaving(false);
   };
 
-  const nextQuestion = (): void => {
-    // Antworten der aktuellen Frage zum Array hinzufuegen
-    const updatedAnswers = [...allAnswers, selectedAnswers.slice()];
-    setAllAnswers(updatedAnswers);
-    if (currentQ < quiz.length - 1) {
-      setCurrentQ(currentQ + 1);
-      setSelectedAnswers([]);
-      setSubmitted(false);
+  const goNext = async (): Promise<void> => {
+    const nextStart = clusterStart + size;
+    if (nextStart >= quiz.length) {
+      // letzter Cluster -> Summary zeigen + als komplett markieren wenn alle beantwortet
+      const done = countAnswered(allAnswers) === quiz.length;
+      await saveProgress(allAnswers, done);
+      setShowSummary(true);
     } else {
-      setFinished(true);
-      // Quiz abgeschlossen - Ergebnis an Parent weitergeben.
-      // score ist bereits final, weil checkAnswer() synchron lief bevor der User
-      // den "Weiter"-Button geklickt hat. React haette ihn sonst nicht gezeigt.
-      if (onComplete) {
-        onComplete(score, updatedAnswers);
-      }
+      await saveProgress(allAnswers, false);
+      setClusterStart(nextStart);
     }
   };
 
-  const restart = (): void => {
-    setCurrentQ(0);
-    setSelectedAnswers([]);
-    setAllAnswers([]);
-    setSubmitted(false);
-    setScore(0);
-    setFinished(false);
+  const goBack = async (): Promise<void> => {
+    if (showSummary) {
+      setShowSummary(false);
+      return;
+    }
+    if (clusterStart === 0) return;
+    await saveProgress(allAnswers, false);
+    setClusterStart(Math.max(0, clusterStart - size));
   };
 
   if (!showQuiz) {
+    const resumeLabel = completedAllInitial
+      ? (isDe ? 'Antworten ansehen / ändern' : 'Review / edit answers')
+      : hadResumeData
+        ? (isDe ? `Weiter (${answeredCount}/${quiz.length})` : `Continue (${answeredCount}/${quiz.length})`)
+        : (isDe ? `Quiz starten (${quiz.length} ${quiz.length === 1 ? 'Frage' : 'Fragen'})` : `Start quiz (${quiz.length} ${quiz.length === 1 ? 'question' : 'questions'})`);
     return (
       <div style={{ marginTop: 12 }}>
         <button
@@ -141,27 +222,62 @@ function QuizPlayer({ quiz, t, onComplete }: { quiz: QuizQuestion[]; t: (key: st
           }}
         >
           <Icon iconName="Game" style={{ fontSize: 20 }} />
-          Fun-Zone: Quiz ({quiz.length} {quiz.length === 1 ? 'Frage' : 'Fragen'})
+          Fun-Zone: {resumeLabel}
         </button>
       </div>
     );
   }
 
-  if (finished) {
+  // ===== Summary =====
+  if (showSummary) {
+    const score = computeQuizScore(quiz, allAnswers);
     return (
-      <div style={{ marginTop: 12, padding: 20, background: 'var(--dex-gray-50)', borderRadius: 12, textAlign: 'center' }}>
-        <div style={{ fontSize: '2rem', marginBottom: 8 }}>{score === quiz.length ? '🎉' : score >= quiz.length / 2 ? '👏' : '💪'}</div>
-        <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>
-          {score} / {quiz.length} {t('myevents.agenda') === 'Programm' ? 'richtig' : 'correct'}
+      <div style={{ marginTop: 12, padding: 20, background: 'var(--dex-gray-50)', borderRadius: 12 }}>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>{score === quiz.length ? '🎉' : score >= quiz.length / 2 ? '👏' : '💪'}</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>
+            {score} / {quiz.length} {isDe ? 'richtig' : 'correct'}
+          </div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+            {score === quiz.length
+              ? (isDe ? 'Perfekt! Alle richtig!' : 'Perfect! All correct!')
+              : (isDe ? 'Gut gemacht!' : 'Well done!')}
+          </div>
         </div>
-        <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 12 }}>
-          {score === quiz.length
-            ? (t('myevents.agenda') === 'Programm' ? 'Perfekt! Alle richtig!' : 'Perfect! All correct!')
-            : (t('myevents.agenda') === 'Programm' ? 'Gut gemacht!' : 'Well done!')}
+        {/* Einzel-Auflistung: Fragen + eigene Antwort + Haken */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {quiz.map((q, qi) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const correct = q.correctIndices || [(q as any).correctIndex || 0];
+            const given = allAnswers[qi] || [];
+            const isCorrect = given.length > 0 && given.length === correct.length && correct.every(c => given.includes(c));
+            const unanswered = given.length === 0;
+            return (
+              <div key={q.id || qi} style={{
+                padding: 10, borderRadius: 8,
+                background: unanswered ? 'rgba(237,139,0,0.08)' : isCorrect ? 'rgba(134,188,37,0.1)' : 'rgba(218,41,28,0.08)',
+                border: `1px solid ${unanswered ? 'var(--dex-orange)' : isCorrect ? 'var(--dex-green)' : 'var(--dex-red)'}`,
+                fontSize: '0.82rem',
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {qi + 1}. {q.question}{' '}
+                  <Icon
+                    iconName={unanswered ? 'Warning' : isCorrect ? 'CheckMark' : 'Cancel'}
+                    style={{ fontSize: 14, color: unanswered ? 'var(--dex-orange)' : isCorrect ? 'var(--dex-green)' : 'var(--dex-red)' }}
+                  />
+                </div>
+                <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
+                  {unanswered
+                    ? (isDe ? 'Nicht beantwortet' : 'Not answered')
+                    : `${isDe ? 'Deine Antwort' : 'Your answer'}: ${given.map(i => q.options[i]).join(', ')}`}
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          <button className="btn btn-primary" onClick={restart} style={{ fontSize: '0.82rem' }}>
-            {t('myevents.agenda') === 'Programm' ? 'Nochmal spielen' : 'Play again'}
+          <button className="btn btn-secondary" onClick={goBack} style={{ fontSize: '0.82rem' }}>
+            {isDe ? 'Antworten ändern' : 'Edit answers'}
           </button>
           <button className="btn btn-secondary" onClick={() => setShowQuiz(false)} style={{ fontSize: '0.82rem' }}>
             {t('create.templates.close')}
@@ -171,60 +287,92 @@ function QuizPlayer({ quiz, t, onComplete }: { quiz: QuizQuestion[]; t: (key: st
     );
   }
 
+  // ===== Aktiver Cluster =====
+  const clusterEnd = Math.min(clusterStart + size, quiz.length);
+  const isLastCluster = clusterEnd >= quiz.length;
+
   return (
     <div style={{ marginTop: 12, padding: 16, background: 'var(--dex-gray-50)', borderRadius: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-          {t('myevents.agenda') === 'Programm' ? 'Frage' : 'Question'} {currentQ + 1} / {quiz.length}
-        </span>
-        <span style={{ fontSize: '0.78rem', color: 'var(--dex-green-dark)', fontWeight: 600 }}>
-          {score} {t('myevents.agenda') === 'Programm' ? 'Punkte' : 'Points'}
-        </span>
+      {/* Progress-Bar */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+          <span>
+            {isDe ? 'Fortschritt' : 'Progress'}: {answeredCount} / {quiz.length} ({progressPct}%)
+          </span>
+          <span style={{ color: 'var(--dex-gray-400)' }}>
+            {isDe ? 'Fragen' : 'Questions'} {clusterStart + 1}–{clusterEnd}
+          </span>
+        </div>
+        <div style={{ width: '100%', height: 8, background: 'var(--dex-gray-200)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{
+            width: `${progressPct}%`, height: '100%',
+            background: progressPct === 100 ? 'var(--dex-green)' : 'var(--dex-green-dark, #4a7c1f)',
+            transition: 'width 0.3s ease',
+          }} />
+        </div>
       </div>
-      <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 12 }}>{question.question}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {question.options.map((opt, i) => {
-          let bg = 'var(--dex-white)';
-          let border = '1px solid var(--dex-gray-200)';
-          let color = 'var(--dex-gray-800)';
-          const isSelected = selectedAnswers.includes(i);
-          const isCorrect = correctIndices.includes(i);
-          if (submitted) {
-            if (isCorrect) { bg = 'rgba(134,188,37,0.15)'; border = '2px solid var(--dex-green)'; color = 'var(--dex-green-dark)'; }
-            else if (isSelected) { bg = 'rgba(218,41,28,0.1)'; border = '2px solid var(--dex-red)'; color = 'var(--dex-red)'; }
-          } else if (isSelected) {
-            bg = 'rgba(134,188,37,0.08)'; border = '2px solid var(--dex-green)';
-          }
+
+      {/* Fragen des aktuellen Clusters */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {quiz.slice(clusterStart, clusterEnd).map((question, localIdx) => {
+          const qIdx = clusterStart + localIdx;
+          const given = allAnswers[qIdx] || [];
           return (
-            <button
-              key={i}
-              onClick={() => handleAnswer(i)}
-              disabled={submitted}
-              style={{
-                padding: '10px 14px', borderRadius: 10, border, background: bg, color,
-                cursor: submitted ? 'default' : 'pointer', textAlign: 'left',
-                fontSize: '0.88rem', fontWeight: submitted && isCorrect ? 700 : 400,
-                transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10,
-              }}
-            >
-              <Icon iconName={isSelected || (submitted && isCorrect) ? 'CheckboxComposite' : 'Checkbox'} style={{ fontSize: 16, flexShrink: 0 }} />
-              {opt}
-            </button>
+            <div key={question.id || qIdx}>
+              <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 10 }}>
+                {qIdx + 1}. {question.question}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {question.options.map((opt, i) => {
+                  const isSelected = given.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => toggleOption(qIdx, i)}
+                      style={{
+                        padding: '10px 14px', borderRadius: 10,
+                        border: isSelected ? '2px solid var(--dex-green)' : '1px solid var(--dex-gray-200)',
+                        background: isSelected ? 'rgba(134,188,37,0.08)' : 'var(--dex-white)',
+                        color: 'var(--dex-gray-800)',
+                        cursor: 'pointer', textAlign: 'left',
+                        fontSize: '0.88rem',
+                        transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 10,
+                      }}
+                    >
+                      <Icon iconName={isSelected ? 'CheckboxComposite' : 'Checkbox'} style={{ fontSize: 16, flexShrink: 0 }} />
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
-      {selectedAnswers.length > 0 && !submitted && (
-        <button className="btn btn-primary" onClick={checkAnswer} style={{ marginTop: 12, fontSize: '0.82rem' }}>
-          {t('myevents.agenda') === 'Programm' ? 'Antwort prüfen' : 'Check answer'}
+
+      {/* Navigation */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, gap: 8 }}>
+        <button
+          className="btn btn-secondary"
+          onClick={goBack}
+          disabled={clusterStart === 0 || isSaving}
+          style={{ fontSize: '0.82rem', visibility: clusterStart === 0 ? 'hidden' : 'visible' }}
+        >
+          {isDe ? 'Zurück' : 'Back'}
         </button>
-      )}
-      {submitted && (
-        <button className="btn btn-primary" onClick={nextQuestion} style={{ marginTop: 12, fontSize: '0.82rem' }}>
-          {currentQ < quiz.length - 1
-            ? (t('myevents.agenda') === 'Programm' ? 'Nächste Frage' : 'Next question')
-            : (t('myevents.agenda') === 'Programm' ? 'Ergebnis anzeigen' : 'Show result')}
+        <button
+          className="btn btn-primary"
+          onClick={goNext}
+          disabled={isSaving}
+          style={{ fontSize: '0.82rem' }}
+        >
+          {isSaving
+            ? (isDe ? 'Speichere…' : 'Saving…')
+            : isLastCluster
+              ? (isDe ? 'Ergebnis anzeigen' : 'Show result')
+              : (isDe ? 'Weiter' : 'Next')}
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -831,8 +979,20 @@ export default function MyEventsPage(): React.ReactElement {
                   <QuizPlayer
                     quiz={event.quiz}
                     t={t}
-                    onComplete={async (score: number, answers: number[][]) => {
-                      // Ergebnis in die Subsite-Teilnehmerliste schreiben (fuer Statistik)
+                    clusterSize={event.quizClusterSize}
+                    initialAnswers={(() => {
+                      // Zuvor gespeicherte Antworten aus der Teilnehmer-Registrierung laden
+                      // (QuizAnswers ist JSON-String eines number[][]).
+                      try {
+                        const raw = registration.QuizAnswers;
+                        if (!raw) return undefined;
+                        const parsed = JSON.parse(raw);
+                        return Array.isArray(parsed) ? parsed : undefined;
+                      } catch { return undefined; }
+                    })()}
+                    onProgress={async (score: number, answers: number[][], isComplete: boolean) => {
+                      // Nach jedem Cluster-Wechsel in die Subsite-Teilnehmerliste schreiben.
+                      // isComplete=true setzt zusaetzlich QuizCompletedAt (fuer Statistik-Filter).
                       if (!event.subsiteUrl) return;
                       try {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -840,8 +1000,8 @@ export default function MyEventsPage(): React.ReactElement {
                         if (!ctx) return;
                         const { EventService } = await import('../services/EventService');
                         const svc = new EventService(ctx);
-                        await svc.saveQuizResult(event.subsiteUrl, registration.Id, score, answers);
-                      } catch (err) { console.warn('[DEX] saveQuizResult failed:', err); }
+                        await svc.saveQuizProgress(event.subsiteUrl, registration.Id, score, answers, isComplete);
+                      } catch (err) { console.warn('[DEX] saveQuizProgress failed:', err); }
                     }}
                   />
                 )}
