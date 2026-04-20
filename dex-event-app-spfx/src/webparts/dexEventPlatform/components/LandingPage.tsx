@@ -118,13 +118,20 @@ export default function LandingPage(): React.ReactElement {
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
             {t('landing.start')}
           </button>
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center' }}>
+          <div
+            className="landing__actions"
+            style={{
+              display: 'flex', gap: 12, justifyContent: 'center', alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             <button
               onClick={() => setShowInfo(!showInfo)}
               style={{
                 background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
                 width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
+                flexShrink: 0,
               }}
               title={locale === 'de' ? 'Über die App' : 'About the app'}
             >
@@ -146,6 +153,7 @@ export default function LandingPage(): React.ReactElement {
             <button
               type="button"
               onClick={() => setShowInquiry(true)}
+              className="landing__bubble"
               style={{
                 position: 'relative',
                 background: 'var(--dex-green)',
@@ -156,7 +164,6 @@ export default function LandingPage(): React.ReactElement {
                 lineHeight: 1.35,
                 maxWidth: 280,
                 boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                marginLeft: 4,
                 border: 'none',
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -164,19 +171,6 @@ export default function LandingPage(): React.ReactElement {
               }}
               title={locale === 'de' ? 'Anfrage senden' : 'Send inquiry'}
             >
-              <span
-                style={{
-                  position: 'absolute',
-                  left: -7,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 0,
-                  height: 0,
-                  borderTop: '7px solid transparent',
-                  borderBottom: '7px solid transparent',
-                  borderRight: '8px solid var(--dex-green)',
-                }}
-              />
               {locale === 'de'
                 ? 'Möchtest du die DEX App auch für dein Event nutzen? Melde dich gerne bei uns!'
                 : 'Want to use the DEX App for your event too? Just reach out to us!'}

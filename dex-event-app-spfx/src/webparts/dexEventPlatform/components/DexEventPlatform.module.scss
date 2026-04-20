@@ -245,6 +245,7 @@
 
     /* ========== Start Page ========== */
     .start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; margin: 0 auto; }
+    .start-grid--with-admin { grid-template-columns: 1fr 1fr 1fr; }
     .start-card {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       padding: 64px 32px; text-align: center; gap: 12px; min-height: 320px;
@@ -351,10 +352,24 @@
       .header-title { font-size: 0.85rem; padding-left: 10px; }
       .header-logo { font-size: 1.1rem; }
 
-      /* Start */
-      .start-grid { grid-template-columns: 1fr; gap: 16px; }
-      .start-card { padding: 32px 20px; min-height: 200px; }
-      .start-card__icon { width: 80px; height: 80px; }
+      /* Start - Mobile: 2 Spalten nebeneinander; Admin-Kachel spannt volle Breite in Zeile 2 */
+      .start-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .start-grid--with-admin { grid-template-columns: 1fr 1fr; }
+      .start-grid--with-admin .start-card--admin { grid-column: 1 / -1; }
+      .start-card { padding: 20px 14px; min-height: 160px; }
+      .start-card__icon { width: 60px; height: 60px; }
+      .start-card h2 { font-size: 1rem; }
+      .start-card p { font-size: 0.82rem; }
+
+      /* Landing Page - Mobile: kleinerer Orb, weniger Padding, Scrolling erlauben */
+      .landing { overflow: auto; }
+      .landing__hero { padding: 16px 12px; gap: 16px; }
+      .landing__card { padding: 20px 16px; gap: 16px; border-radius: 16px; }
+      .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); }
+      .landing__text h1 { font-size: 1.3rem; }
+      .landing__text p { font-size: 0.9rem; }
+      /* Sprechblase auf Mobile volle Breite (umgebrochen unter den Icons) */
+      .landing__actions .landing__bubble { flex: 1 1 100%; max-width: none; }
 
       /* Event Grid */
       .event-grid { grid-template-columns: 1fr; gap: 16px; }
