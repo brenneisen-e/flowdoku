@@ -36,6 +36,19 @@ export const Book = ({ size = 20 }: IconProps): React.ReactElement => (
   </svg>
 );
 
+export const QrCode = ({ size = 20 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3" />
+    <path d="M21 14v.01" />
+    <path d="M14 21h3" />
+    <path d="M21 21v-3" />
+    <path d="M17 17h4" />
+  </svg>
+);
+
 export const Info = ({ size = 18 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
