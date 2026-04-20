@@ -892,7 +892,9 @@ export default function AdminPage(): React.ReactElement {
               if (isRight) correctCount++;
             } catch { /* skip */ }
           }
-          return { question: q.question, correctCount, answeredCount, total: totalQuizzes };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const imageBase64 = (q as any).imageBase64 as string | undefined;
+          return { question: q.question, imageBase64, correctCount, answeredCount, total: totalQuizzes };
         });
 
         // Top 10 nach Score, bei Gleichstand: abgeschlossene vor nicht-abgeschlossenen, dann Zeitpunkt
@@ -961,10 +963,19 @@ export default function AdminPage(): React.ReactElement {
                       const pct = pq.answeredCount > 0 ? Math.round((pq.correctCount / pq.answeredCount) * 100) : 0;
                       return (
                         <div key={idx} style={{ padding: 10, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 8 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 12 }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                              {idx + 1}. {pq.question}
-                            </span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                              {pq.imageBase64 && (
+                                <img
+                                  src={pq.imageBase64}
+                                  alt=""
+                                  style={{ width: 60, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid var(--dex-gray-200)' }}
+                                />
+                              )}
+                              <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                                {idx + 1}. {pq.question}
+                              </span>
+                            </div>
                             <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
                               {pq.correctCount} / {pq.answeredCount} richtig ({pct}%)
                             </span>

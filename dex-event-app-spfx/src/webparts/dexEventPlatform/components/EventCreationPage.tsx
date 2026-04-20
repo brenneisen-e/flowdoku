@@ -609,9 +609,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [initialDocumentNames] = React.useState<string[]>(
     editEvent?.documents?.map(d => d.name) || []
   );
-  const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndices: number[]}>>(
+  const [quiz, setQuiz] = React.useState<Array<{id: string; question: string; options: string[]; correctIndices: number[]; imageBase64?: string}>>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0]})) || []
+    editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0], imageBase64: (q as any).imageBase64})) || []
   );
   const [quizClusterSize, setQuizClusterSize] = React.useState<number>(editEvent?.quizClusterSize || 1);
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -947,7 +947,7 @@ export default function EventCreationPage(): React.ReactElement {
   const removeQuizQuestion = (id: string): void => {
     setQuiz(quiz.filter(q => q.id !== id));
   };
-  const updateQuizQuestion = (id: string, updates: Partial<{question: string; options: string[]; correctIndices: number[]}>): void => {
+  const updateQuizQuestion = (id: string, updates: Partial<{question: string; options: string[]; correctIndices: number[]; imageBase64: string | undefined}>): void => {
     setQuiz(quiz.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
@@ -3112,6 +3112,78 @@ export default function EventCreationPage(): React.ReactElement {
                       placeholder={t('create.funzone.questionplaceholder')}
                       style={{ marginBottom: 10 }}
                     />
+                    {/* Optional: Bild zur Frage */}
+                    <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      {q.imageBase64 ? (
+                        <>
+                          <img
+                            src={q.imageBase64}
+                            alt="Frage-Bild"
+                            style={{ maxHeight: 80, maxWidth: 160, borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateQuizQuestion(q.id, { imageBase64: undefined })}
+                            style={{
+                              fontSize: '0.72rem', padding: '4px 10px',
+                              border: '1px solid var(--dex-gray-300)', borderRadius: 6,
+                              background: '#fff', color: 'var(--dex-red)', cursor: 'pointer',
+                            }}
+                          >
+                            Bild entfernen
+                          </button>
+                        </>
+                      ) : (
+                        <label style={{
+                          fontSize: '0.78rem', padding: '6px 12px',
+                          border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
+                          cursor: 'pointer', color: 'var(--dex-gray-600)',
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                        }}>
+                          Bild hochladen (optional)
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={async e => {
+                              const file = e.target.files && e.target.files[0];
+                              if (!file) return;
+                              try {
+                                // Bild auf max 800px Breite skalieren + als JPEG 0.8 Qualität re-encoden.
+                                // Sonst wuerde eine 3MB-Handyaufnahme direkt in die FunZone-JSON-Spalte wandern.
+                                const dataUrl = await new Promise<string>((resolve, reject) => {
+                                  const reader = new FileReader();
+                                  reader.onload = () => resolve(String(reader.result || ''));
+                                  reader.onerror = reject;
+                                  reader.readAsDataURL(file);
+                                });
+                                const img = new Image();
+                                await new Promise<void>((resolve, reject) => {
+                                  img.onload = () => resolve();
+                                  img.onerror = reject;
+                                  img.src = dataUrl;
+                                });
+                                const maxW = 800;
+                                const scale = img.width > maxW ? maxW / img.width : 1;
+                                const w = Math.round(img.width * scale);
+                                const h = Math.round(img.height * scale);
+                                const canvas = document.createElement('canvas');
+                                canvas.width = w;
+                                canvas.height = h;
+                                const ctx = canvas.getContext('2d');
+                                if (!ctx) return;
+                                ctx.drawImage(img, 0, 0, w, h);
+                                const compressed = canvas.toDataURL('image/jpeg', 0.8);
+                                updateQuizQuestion(q.id, { imageBase64: compressed });
+                              } catch {
+                                alert('Bild konnte nicht verarbeitet werden.');
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
                     <label style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 4, display: 'block' }}>
                       {t('create.funzone.options')}
                     </label>

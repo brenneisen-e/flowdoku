@@ -286,6 +286,16 @@ function QuizPlayer({
                     style={{ fontSize: 14, color: unanswered ? 'var(--dex-orange)' : isCorrect ? 'var(--dex-green)' : 'var(--dex-red)' }}
                   />
                 </div>
+                {q.imageBase64 && (
+                  <img
+                    src={q.imageBase64}
+                    alt=""
+                    style={{
+                      maxWidth: '100%', maxHeight: 120, display: 'block',
+                      borderRadius: 6, marginBottom: 6, border: '1px solid var(--dex-gray-200)',
+                    }}
+                  />
+                )}
                 <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
                   {unanswered
                     ? (isDe ? 'Nicht beantwortet' : 'Not answered')
@@ -342,6 +352,16 @@ function QuizPlayer({
               <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 10 }}>
                 {qIdx + 1}. {question.question}
               </div>
+              {question.imageBase64 && (
+                <img
+                  src={question.imageBase64}
+                  alt=""
+                  style={{
+                    maxWidth: '100%', maxHeight: 240, display: 'block',
+                    borderRadius: 8, marginBottom: 10, border: '1px solid var(--dex-gray-200)',
+                  }}
+                />
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {question.options.map((opt, i) => {
                   const isSelected = given.includes(i);
