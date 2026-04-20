@@ -11,12 +11,16 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book } from './Icons';
+import { ChevronLeft, Settings, Book, QrCode } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, isAdmin } = useRoles();
+  const { currentUserRole, isAdmin, isOrganizer } = useRoles();
+  // Check-In-Button (Admin / Organizer): schneller Einstieg in den QR-Scanner
+  // ohne vorher ein konkretes Event auszuwaehlen. CheckInPage liest das Event
+  // aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
+  const canCheckIn = isAdmin || isOrganizer;
   const { t } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
@@ -70,6 +74,17 @@ export default function Header(): React.ReactElement {
         )}
       </div>
       <div className="header-right">
+        {canCheckIn && (
+          <button
+            className="header-icon-btn"
+            onClick={() => navigate('check-in')}
+            title={t('header.checkin')}
+            style={currentPage === 'check-in' ? { background: 'var(--dex-gray-200)' } : {}}
+            aria-label={t('header.checkin')}
+          >
+            <QrCode size={20} />
+          </button>
+        )}
         <button
           className="header-icon-btn"
           onClick={() => navigate('manual')}
