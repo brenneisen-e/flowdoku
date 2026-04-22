@@ -83,6 +83,50 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 4,
+            title: isDe ? 'Mehrere richtige Antworten pro Frage' : 'Multiple correct answers per question',
+            description: (
+              <>
+                {isDe
+                  ? 'Seit v5.x erlaubt der Editor mehrere richtige Antworten pro Frage. Setze einfach mehrere Haken im Feld "Richtige Antwort(en)" — der Teilnehmer muss dann alle richtigen Antworten treffen (und keine falschen). Gut für Wissensfragen mit "wähle alle passenden Antworten"-Charakter. Intern wird das als correctIndices-Array gespeichert.'
+                  : 'Since v5.x the editor allows multiple correct answers per question. Just tick multiple checkboxes in the "Correct answer(s)" field — the participant must then pick all correct answers (and none wrong). Great for knowledge questions with "pick all that apply" style. Stored internally as correctIndices array.'}
+              </>
+            ),
+          },
+          {
+            number: 5,
+            title: isDe ? 'Bild zur Frage hinzufügen' : 'Add image to question',
+            description: (
+              <>
+                {isDe
+                  ? 'Pro Frage kann ein Bild als JPG/PNG hochgeladen werden. Die App komprimiert es automatisch (empfohlen: max. ~80 KB final, daher reicht normale Handyfoto-Qualität nach Komprimierung). Das Bild wird als data:image/... Base64-URL inline im FunZone-JSON des Events gespeichert — keine externe Storage-Referenz, kein Broken-Image-Risiko. Im Quiz-Player wird es oberhalb des Fragetextes angezeigt. Gut für "Welches Logo siehst du?" oder "Welches Foto zeigt Event XYZ?"-Fragen.'
+                  : 'A JPG/PNG image can be uploaded per question. The app compresses it automatically (recommended: max ~80 KB final — standard phone photo quality after compression is plenty). The image is stored inline as data:image/... base64 URL in the event\'s FunZone JSON — no external storage reference, no broken-image risk. In the quiz player it is displayed above the question text. Great for "Which logo is this?" or "Which photo shows event XYZ?"-style questions.'}
+              </>
+            ),
+          },
+          {
+            number: 6,
+            title: isDe ? 'Fragen clustern (Cluster-Size)' : 'Cluster questions (cluster size)',
+            description: (
+              <>
+                {isDe
+                  ? 'Normalerweise zeigt der Quiz-Player eine Frage pro Bildschirm. Für längere Quizzes kannst du die Cluster-Size auf 2, 3 oder 4 setzen — dann werden mehrere Fragen auf einer Seite zusammen angezeigt. Praktisch, wenn die Fragen thematisch zusammenhängen oder der User schneller durchspielen soll. Default ist 1.'
+                  : 'Normally the quiz player shows one question per screen. For longer quizzes you can set the cluster size to 2, 3 or 4 — multiple questions then appear on one page together. Useful when questions are thematically related or you want the user to play through faster. Default is 1.'}
+              </>
+            ),
+          },
+          {
+            number: 7,
+            title: isDe ? 'Bereiche (Sections) zur thematischen Gliederung' : 'Sections for thematic grouping',
+            description: (
+              <>
+                {isDe
+                  ? 'Große Quizzes kannst du per "+ Bereich"-Button in thematische Sections gliedern. Fragen mit gleichem Bereich-Namen werden im Quiz-Player automatisch auf einer gemeinsamen Seite angezeigt (überschreibt die Cluster-Size innerhalb des Bereichs). So kannst du z.B. einen Block "Deloitte-Wissen", einen Block "Event-Locations" und einen Block "Fun-Fakten" bauen, die jeweils als eigene Section erscheinen.'
+                  : 'For large quizzes you can use the "+ Section" button to group questions into thematic sections. Questions with the same section name appear together on one page in the quiz player (overriding the cluster size within that section). E.g. you can build a "Deloitte knowledge" block, an "Event locations" block and a "Fun facts" block, each as its own section.'}
+              </>
+            ),
+          },
+          {
+            number: 8,
             title: isDe ? 'Quiz veröffentlichen = speichern' : 'Publish = save',
             description: (
               <>

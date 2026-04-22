@@ -13,6 +13,7 @@ import { profileSection } from './sections/profile';
 import { createEventSection } from './sections/createEvent';
 import { editEventSection } from './sections/editEvent';
 import { subEventsSection } from './sections/subEvents';
+import { b2runSection } from './sections/b2run';
 import { manageParticipantsSection } from './sections/manageParticipants';
 import { registerForOtherSection } from './sections/registerForOther';
 import { checkInSection } from './sections/checkIn';
@@ -21,6 +22,7 @@ import { massMailSection } from './sections/massMail';
 import { rolesSection } from './sections/roles';
 import { templatesSection } from './sections/templates';
 import { idReorderSection } from './sections/idReorder';
+import { waitlistSection } from './sections/waitlist';
 import { flowsSection } from './sections/flows';
 import { faqSection } from './sections/faq';
 
@@ -38,6 +40,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     createEventSection(locale),
     editEventSection(locale),
     subEventsSection(locale),
+    b2runSection(locale),
     manageParticipantsSection(locale),
     registerForOtherSection(locale),
     quizSection(locale),
@@ -45,6 +48,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     rolesSection(locale),
     templatesSection(locale),
     idReorderSection(locale),
+    waitlistSection(locale),
     flowsSection(locale),
     faqSection(locale),
   ];

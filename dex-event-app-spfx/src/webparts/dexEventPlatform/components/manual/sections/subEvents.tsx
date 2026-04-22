@@ -9,8 +9,8 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
     title: isDe ? 'Sub-Events (Trainingssessions)' : 'Sub-events (training sessions)',
     category: 'organizer',
     description: isDe
-      ? 'Innerhalb eines Hauptevents mehrere Sessions anlegen — jede mit eigenem Termin, Ort, Kapazitaet, eigener An-/Abmelde-Mail und eigenem Outlook-Kalendereintrag (Deloitte-Layout).'
-      : 'Create multiple sessions inside a main event — each with its own date, location, capacity, own registration/cancellation emails, and a dedicated Outlook calendar entry (Deloitte layout).',
+      ? 'Innerhalb eines Hauptevents mehrere Sessions anlegen — jede mit eigenem Termin, Ort, Kapazität, eigener An-/Abmelde-Mail und eigenem Outlook-Kalendereintrag. Seit v6.4 sind Sub-Events eigenständige DEX_Events-Items mit parentEventId — dadurch funktionieren Teilnehmerlisten, Warteliste, Outlook-Termine, Custom-Fields und Mail-Templates identisch zu Top-Level-Events (ohne Sonderlogik).'
+      : 'Create multiple sessions inside a main event — each with its own date, location, capacity, own registration/cancellation emails and dedicated Outlook calendar entry. Since v6.4 sub-events are standalone DEX_Events items with parentEventId — so participant lists, waitlist, Outlook invites, custom fields and email templates work identically to top-level events (no special logic).',
     visibleFor: ['User', 'Organizer', 'Admin'],
     perspectives: [
       {

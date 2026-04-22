@@ -223,3 +223,17 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 - DEX_OutlookForwardHandler — Meeting-Forward-Notifications abfangen → FYI-Mail an Organizer wenn weitergeleiteter Empfänger nicht registriert
 
 Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. Sie dient als einzige Referenz für den aktuellen Stand der Flows.
+
+### Pflicht-Mitlaufende Artefakte bei App-Updates
+
+**WICHTIG (ab v6.9):** Bei jedem neuen Feature oder größerem Umbau müssen folgende Artefakte synchron aktualisiert werden, bevor ein Release gebaut wird. Das ist Review-Kriterium, nicht optional:
+
+| Artefakt | Pfad | Pflicht-Inhalt |
+|---------|------|---------------|
+| **Handbuch-Sektion** | `src/webparts/dexEventPlatform/components/manual/sections/*.tsx` | Neue Sektion pro Feature ODER bestehende Sektion um Schritte erweitern. Immer mit Prosa-Beschreibungen "was macht der Nutzer & warum", zweisprachig DE/EN. Registrieren in `handbookContent.ts`. |
+| **Rollenmatrix** | `src/webparts/dexEventPlatform/components/RoleMatrixPage.tsx` | Neue User-/Organizer-/Admin-Fähigkeit als zusätzliche Zeile in das Matrix-Array einfügen — inkl. Description, die erklärt wofür das Feature ist. Zeigt dem Admin auf einen Blick, wer was darf. |
+| **Prozess-Übersicht (Flowcharts)** | `src/webparts/dexEventPlatform/components/FlowchartPage.tsx` | Betroffene Flowcharts (RegistrationFlow, CancellationFlow, IDReorderFlow, EventCreationFlow etc.) müssen den neuen Ablauf widerspiegeln. Seit v6.9 mit Prosa-`details`-Feld pro FlowNode — dort jedes wichtige Step erklären, was passiert und warum. Neue Flows brauchen eigene Render-Function. |
+| **docs/flow-jsons.md** | `docs/flow-jsons.md` | Wenn sich ein Power-Automate-Flow ändert (neue Action, geänderte Expression, neue Condition): Section entsprechend aktualisieren mit Struktur-Diagramm und Begründung. |
+| **CLAUDE.md** | `CLAUDE.md` | Neue Konventionen, neue SharePoint-Listen, neue Schema-Felder: hier ergänzen, damit die Projekt-Regeln aktuell bleiben. |
+
+Beim Review eines Feature-Commits wird geprüft: **Handbuch ✓, Rollenmatrix ✓, Flowchart ✓, ggf. Flow-JSONs ✓.** Fehlt einer, blockiert das den Release.
