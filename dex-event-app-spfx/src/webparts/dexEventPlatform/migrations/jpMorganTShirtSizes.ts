@@ -527,7 +527,20 @@ export interface MigrationResult {
   errors: number;
 }
 
-export type MigrationProgressPhase = 'loading-event' | 'loading-registrations' | 'updating' | 'done' | 'skipped' | 'error';
+export type MigrationProgressPhase = 'loading-event' | 'creating-field' | 'loading-registrations' | 'updating' | 'done' | 'skipped' | 'error';
+
+/** Sortierte T-Shirt-Optionen, entspricht den in der CSV beobachteten Größen. */
+const TSHIRT_OPTIONS: string[] = [
+  'Crew neck - S',
+  'Crew neck - M',
+  'Crew neck - L',
+  'Crew neck - XL',
+  'XS (Unisex)',
+  'S (Unisex)',
+  'M (Unisex)',
+  'L (Unisex)',
+  'XL (Unisex)',
+];
 
 export interface MigrationProgress {
   phase: MigrationProgressPhase;
@@ -577,21 +590,85 @@ export async function migrateJPMorganTShirtSizes(
     if (onProgress) onProgress({ phase: 'loading-event', message: `Event "${event.title}" vorbereiten…`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
 
     // T-Shirt-Custom-Field finden (via Label-Match)
-    const tshirtField = event.eventSpecificFields.find(f =>
+    let tshirtField = event.eventSpecificFields.find(f =>
       /t-?shirt|shirt.*(groe|grö)sse/i.test(f.label || '')
     );
-    if (!tshirtField) {
-      console.warn('[DEX][MIGRATION] Kein T-Shirt-Custom-Field in Event gefunden:', event.title);
-      if (onProgress) onProgress({ phase: 'skipped', message: `Kein T-Shirt-Feld in "${event.title}" gefunden — übersprungen.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
-      continue;
+    let spInternalName: string = tshirtField ? ((tshirtField as unknown as { spInternalName?: string }).spInternalName || '') : '';
+    let cfId: string = tshirtField ? tshirtField.id : '';
+
+    // Auto-Create: wenn das Event noch gar kein T-Shirt-Feld hat, legen wir es
+    // jetzt an — als Custom-Field im Event + als SP-Spalte in der Teilnehmerliste.
+    // Danach läuft die normale Wertmigration direkt durch.
+    if (!tshirtField || !spInternalName) {
+      try {
+        const newField = {
+          id: tshirtField ? tshirtField.id : 'tshirt_size',
+          label: tshirtField ? tshirtField.label : 'T-Shirt-Größe',
+          type: 'select' as const,
+          required: false,
+          visible: true,
+          options: TSHIRT_OPTIONS,
+          spInternalName: spInternalName || '',
+        };
+        // Gesamt-Snapshot der Custom-Fields: bestehende + neues Feld (ggf. ersetzt)
+        const existingMapped = event.eventSpecificFields.map(f => ({
+          id: f.id,
+          label: f.label,
+          type: f.type,
+          required: f.required,
+          options: f.options,
+          visible: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          spInternalName: (f as any).spInternalName || '',
+        }));
+        const customFieldsForFix = tshirtField
+          ? existingMapped.map(f => (f.id === newField.id ? newField : f))
+          : [...existingMapped, newField];
+
+        const isB2Run = !!((event as unknown as { durchstarterCapacity?: number }).durchstarterCapacity
+          || (event as unknown as { funstarterCapacity?: number }).funstarterCapacity);
+        const hasQuiz = !!(event.quiz && event.quiz.length > 0);
+
+        if (onProgress) onProgress({ phase: 'creating-field', message: `T-Shirt-Spalte in "${event.title}" wird angelegt…`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
+
+        const fixResult = await eventService.fixRegistrationListColumns(
+          event.subsiteUrl,
+          { isB2Run, hasQuiz, customFields: customFieldsForFix }
+        );
+        const sp = fixResult.customFieldMap ? fixResult.customFieldMap[newField.id] : '';
+        if (!sp) {
+          console.warn('[DEX][MIGRATION] T-Shirt-Spalte konnte nicht angelegt werden:', event.title);
+          if (onProgress) onProgress({ phase: 'skipped', message: `T-Shirt-Spalte in "${event.title}" konnte nicht angelegt werden — übersprungen.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
+          continue;
+        }
+
+        // SP-Spalten-Mapping in den Custom-Fields persistieren und im DEX_Events-Item speichern.
+        const persistedFields = customFieldsForFix.map(f => {
+          const mapped = fixResult.customFieldMap ? fixResult.customFieldMap[f.id] : '';
+          return mapped ? { ...f, spInternalName: mapped } : f;
+        });
+        try {
+          await eventService.updateEvent(Number(event.id), { 'CustomFields': JSON.stringify(persistedFields) });
+        } catch (err) {
+          console.warn('[DEX][MIGRATION] updateEvent (CustomFields) fehlgeschlagen:', event.title, err);
+        }
+
+        spInternalName = sp;
+        cfId = newField.id;
+        tshirtField = {
+          id: newField.id,
+          label: newField.label,
+          type: newField.type,
+          required: newField.required,
+          options: newField.options,
+          spInternalName: sp,
+        };
+      } catch (err) {
+        console.warn('[DEX][MIGRATION] T-Shirt-Auto-Create fehlgeschlagen:', event.title, err);
+        if (onProgress) onProgress({ phase: 'error', message: `T-Shirt-Spalte in "${event.title}" konnte nicht angelegt werden.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
+        continue;
+      }
     }
-    const spInternalName: string = (tshirtField as unknown as { spInternalName?: string }).spInternalName || '';
-    if (!spInternalName) {
-      console.warn('[DEX][MIGRATION] T-Shirt-Feld hat keinen spInternalName:', event.title, tshirtField.label);
-      if (onProgress) onProgress({ phase: 'skipped', message: `T-Shirt-Feld "${tshirtField.label}" hat keine SP-Spalte — übersprungen.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
-      continue;
-    }
-    const cfId = tshirtField.id;
 
     if (onProgress) onProgress({ phase: 'loading-registrations', message: `Teilnehmerliste für "${event.title}" wird geladen…`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
     let regs: SPRegistration[] = [];
