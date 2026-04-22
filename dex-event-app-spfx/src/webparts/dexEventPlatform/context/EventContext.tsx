@@ -305,6 +305,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       isFictive: !!e.IsFictive,
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
+      // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
+      // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
+      ...(() => {
+        try {
+          const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const b = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
+          if (!b || typeof b !== 'object') return {};
+          return {
+            durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
+            funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
+            durchstarterRequiresProof: !!b.durchstarterRequiresProof,
+          };
+        } catch { return {}; }
+      })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
       quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),

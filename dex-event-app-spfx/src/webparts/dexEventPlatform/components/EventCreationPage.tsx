@@ -673,6 +673,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [funstarterCapacity, setFunstarterCapacity] = React.useState<string>(
     editEvent && typeof editEvent.funstarterCapacity === 'number' ? String(editEvent.funstarterCapacity) : ''
   );
+  // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
+  const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
+    editEvent?.durchstarterStartblock || ''
+  );
+  const [funstarterStartblock, setFunstarterStartblock] = React.useState<string>(
+    editEvent?.funstarterStartblock || ''
+  );
+  const [durchstarterRequiresProof, setDurchstarterRequiresProof] = React.useState<boolean>(
+    !!editEvent?.durchstarterRequiresProof
+  );
   const [showPreview, setShowPreview] = React.useState(false);
   const [showRegisterPreview, setShowRegisterPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
@@ -1177,10 +1187,21 @@ export default function EventCreationPage(): React.ReactElement {
       updates['FunZone'] = JSON.stringify(quiz);
       updates['QuizClusterSize'] = Math.min(Math.max(1, quizClusterSize || 1), 4);
       updates['EmailLanguage'] = emailLanguage;
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
+      // v6.15: B2Run-Config (Starter-Typ → Startblock, Leistungsnachweis-Pflicht)
+      // wird in EmailTemplateOverrides._b2run piggyback gespeichert, damit keine
+      // neue SP-Spalte nötig ist.
+      const b2runExtraConfig = (durchstarterStartblock || funstarterStartblock || durchstarterRequiresProof)
+        ? { _b2run: {
+            ...(durchstarterStartblock ? { durchstarterStartblock } : {}),
+            ...(funstarterStartblock ? { funstarterStartblock } : {}),
+            ...(durchstarterRequiresProof ? { durchstarterRequiresProof: true } : {}),
+          } }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+            ...b2runExtraConfig,
             ...emailTemplateOverrides,
           })
         : '';
@@ -1388,13 +1409,24 @@ export default function EventCreationPage(): React.ReactElement {
         funZone: JSON.stringify(quiz),
         quizClusterSize: Math.min(Math.max(1, quizClusterSize || 1), 4),
         emailLanguage,
-        emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
-          ? JSON.stringify({
-              ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
-              ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
-              ...emailTemplateOverrides,
-            })
-          : '',
+        emailTemplateOverrides: (() => {
+          const b2runExtra = (durchstarterStartblock || funstarterStartblock || durchstarterRequiresProof)
+            ? { _b2run: {
+                ...(durchstarterStartblock ? { durchstarterStartblock } : {}),
+                ...(funstarterStartblock ? { funstarterStartblock } : {}),
+                ...(durchstarterRequiresProof ? { durchstarterRequiresProof: true } : {}),
+              } }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0;
+          return hasAny
+            ? JSON.stringify({
+                ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
+                ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+                ...b2runExtra,
+                ...emailTemplateOverrides,
+              })
+            : '';
+        })(),
         disableEmails,
         disableOutlook,
         isFictive,
@@ -2630,6 +2662,65 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginTop: 12, padding: '8px 12px', background: '#fff', borderRadius: 8, fontSize: '0.85rem' }}>
                     <strong>{t('create.b2runcap.total')}:</strong> {((parseInt(durchstarterCapacity, 10) || 0) + (parseInt(funstarterCapacity, 10) || 0))} {t('create.b2runcap.seats')}
                   </div>
+
+                  {/* v6.15: Starter-Typ → Startblock-Zuordnung (optional).
+                      Nur sinnvoll wenn Startblocks definiert sind (Reiter "Event-spezifische Felder").
+                      Wenn gesetzt, wird der Startblock bei der Registrierung automatisch
+                      anhand des gewählten Starter-Typs gesetzt — der User muss den Block
+                      nicht extra auswählen. */}
+                  {b2runStartblocks.length > 0 && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff', borderRadius: 8 }}>
+                      <label className="form-label" style={{ marginBottom: 6 }}>
+                        {t('create.b2runcap.starterblock.title') || 'Starter-Typ → Startblock-Zuordnung'}
+                        <InfoTooltip text={t('create.b2runcap.starterblock.hint') || 'Wenn gesetzt: der Startblock wird bei der Registrierung automatisch anhand des gewählten Starter-Typs gesetzt. Freie Plätze pro Starter-Typ entsprechen den freien Plätzen im zugeordneten Block.'} />
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.78rem', marginBottom: 4, color: 'var(--dex-gray-600)' }}>Durchstarter →</label>
+                          <select
+                            className="form-select"
+                            value={durchstarterStartblock}
+                            onChange={e => setDurchstarterStartblock(e.target.value)}
+                          >
+                            <option value="">{t('create.b2runcap.starterblock.none') || '— kein automatischer Block —'}</option>
+                            {b2runStartblocks.map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.78rem', marginBottom: 4, color: 'var(--dex-gray-600)' }}>Funstarter →</label>
+                          <select
+                            className="form-select"
+                            value={funstarterStartblock}
+                            onChange={e => setFunstarterStartblock(e.target.value)}
+                          >
+                            <option value="">{t('create.b2runcap.starterblock.none') || '— kein automatischer Block —'}</option>
+                            {b2runStartblocks.map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* v6.15: Leistungsnachweis-Pflicht für Durchstarter.
+                      Wenn aktiv, muss der User beim Wählen von Durchstarter eine Checkbox
+                      bestätigen, dass ein entsprechender Leistungsnachweis vorliegt. */}
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff', borderRadius: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={durchstarterRequiresProof}
+                        onChange={e => setDurchstarterRequiresProof(e.target.checked)}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong>{t('create.b2runcap.proof.title') || 'Leistungsnachweis für Durchstarter erforderlich'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {t('create.b2runcap.proof.hint') || 'Wenn aktiv, muss der User beim Wählen von Durchstarter zusätzlich bestätigen, dass ein Leistungsnachweis vorhanden ist.'}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
                   <div style={{ marginTop: 12 }}>
                     <label className="form-label" style={{ marginBottom: 4 }}>
                       {t('create.waitlist')}
