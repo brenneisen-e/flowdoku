@@ -70,23 +70,34 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
         steps: [
           {
             number: 1,
-            title: isDe ? 'Sessions sind unabhängig vom Hauptevent' : 'Sessions are independent from the main event',
+            title: isDe ? 'Integrierte Event-Auswahl auf der Registrierungsseite' : 'Integrated event selection on the registration page',
             description: (
               <>
                 {isDe
-                  ? 'Seit v6.13 kannst du dich für Sessions an- und abmelden, ohne zwangsläufig am Hauptevent teilzunehmen. Auf der Registrierungsseite eines Events siehst du im linken Bereich die Session-Liste mit einem "Anmelden"-Button pro Session — du kannst dich direkt für einzelne Sessions anmelden, auch wenn du nicht auf "Jetzt anmelden" für das Hauptevent klickst. Umgekehrt kannst du das Hauptevent buchen ohne eine Session dazu.'
-                  : 'Since v6.13 you can register and cancel sessions independently of the main event. On the event registration page the session list appears in the left column with a "Register" button per session — you can sign up for individual sessions without submitting the main-event form. Conversely, you can register for the main event without picking any session.'}
+                  ? 'Seit v6.14 wählst du auf der Registrierungsseite direkt per Checkbox aus, wofür du dich anmelden möchtest — das Haupt-Event und/oder einzelne Sessions. Jede Checkbox kann unabhängig an- oder abgewählt werden. Beim Absenden wird für jede aktivierte Auswahl eine eigene Registrierung durchgeführt — pro Session eine eigene Bestätigungsmail und ein eigener Outlook-Kalendereintrag im Deloitte-Layout.'
+                  : 'Since v6.14 you pick directly on the registration page — via checkboxes — what to register for: the main event and/or individual sessions. Each checkbox can be toggled independently. On submit, a separate registration is created for every selected item — each session gets its own confirmation email and its own Outlook calendar entry, both in the Deloitte layout.'}
               </>
             ),
           },
           {
             number: 2,
-            title: isDe ? 'Sessions direkt auf der Registrierungsseite oder danach buchen' : 'Pick sessions on the registration page or right after',
+            title: isDe ? 'Nur Sessions ohne Haupt-Event' : 'Sessions only (no main event)',
             description: (
               <>
                 {isDe
-                  ? 'Die Session-Liste erscheint sowohl vor dem Absenden der Hauptevent-Anmeldung als auch auf dem Bestätigungsbildschirm — beide Stellen führen zum selben Ergebnis. Pro Klick bekommst du eine eigene Bestätigungsmail und einen separaten Outlook-Kalendereintrag — beides im Deloitte-Layout.'
-                  : 'The session list appears both before submitting the main registration and on the confirmation screen — both locations lead to the same result. Each click triggers a dedicated confirmation email and a separate Outlook calendar entry — both in Deloitte layout.'}
+                  ? 'Du kannst die Haupt-Event-Checkbox abwählen und dich ausschließlich für eine oder mehrere Sessions anmelden. In dem Fall erscheint auf der Bestätigungsseite der Hinweis "Du hast dich ausschließlich für die ausgewählten Sessions angemeldet". In "My Events" taucht das Haupt-Event mit orangefarbenem Badge "Nur Sessions" auf, damit du die Session-Anmeldungen weiterhin einsehen und verwalten kannst — ohne dass du dadurch automatisch am Haupt-Event teilnimmst.'
+                  : 'You can uncheck the main-event checkbox and register only for one or more sessions. In that case the confirmation screen explains "You have registered for the selected sessions only". In "My Events" the main event card shows up with an orange "Sessions only" badge so you can keep viewing and managing your session registrations — without automatically participating in the main event.'}
+              </>
+            ),
+          },
+          {
+            number: 3,
+            title: isDe ? 'B2Run: Durchstarter / Funstarter pro Session' : 'B2Run: Durchstarter / Funstarter per session',
+            description: (
+              <>
+                {isDe
+                  ? 'Bei B2Run-Events mit getrennten Durchstarter-/Funstarter-Kapazitäten fragt die Registrierungsseite auch pro Session nach dem Starter-Typ — der Wert wird in die Session-Teilnehmerliste geschrieben. Wenn du dich gleichzeitig für das Haupt-Event anmeldest, erbt die Session automatisch den dort gewählten Starter-Typ — dann entfällt die Einzel-Auswahl pro Session (keine doppelte Abfrage).'
+                  : 'For B2Run events with split Durchstarter/Funstarter capacities, the registration page asks for the starter type per session — the value is written to the session participant list. If you register for the main event at the same time, the session inherits that starter type automatically — no duplicate prompt per session.'}
               </>
             ),
           },

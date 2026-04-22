@@ -19,6 +19,11 @@ import PdfViewer from './PdfViewer';
 interface MyEventEntry {
   event: DeloitteEvent;
   registration: SPRegistration;
+  /** Seit v6.14: wenn true, ist der User NICHT direkt fürs Parent-Event angemeldet,
+   *  sondern nur für mindestens eine Sub-Event-Session. Die Parent-Karte dient dann
+   *  nur als Container, damit die Session-Registrierungen sichtbar und verwaltbar
+   *  bleiben. Das Status-Badge zeigt "Nur Sessions" statt dem echten Parent-Status. */
+  sessionsOnly?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -656,6 +661,34 @@ export default function MyEventsPage(): React.ReactElement {
           }
         } catch { /* */ }
       }
+      // v6.14: Sessions-Only-Entries. Wenn der User nur Sub-Events eines Parent-Events
+      // angemeldet hat (nicht das Parent selbst), zeigen wir den Parent trotzdem als
+      // Container mit Badge "Nur Sessions", damit die Session-Anmeldungen sichtbar und
+      // managebar bleiben. Wir iterieren über alle Top-Level-Events, für die der Parent
+      // KEINE eigene aktive Registrierung hat, und prüfen, ob mindestens ein Child-Event
+      // des Parents in allMyNumbers enthalten ist.
+      const parentsAlreadyAdded = new Set<string>(entries.map(e => e.event.id));
+      for (const parent of topLevelEvents) {
+        if (parentsAlreadyAdded.has(parent.id)) continue;
+        const kids = childEventsOf(parent.id);
+        if (kids.length === 0) continue;
+        const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+        if (!hasActiveChild) continue;
+        // Virtuelle Registration — reicht als Platzhalter. Status 'Abgemeldet' würde den
+        // Eintrag in den "past"-Bucket werfen; wir nutzen 'Angemeldet' mit sessionsOnly=true
+        // als Marker, damit er in "activeEntries" erscheint aber die Parent-Aktionen ausgeblendet werden.
+        const virtualReg: SPRegistration = {
+          Id: 0,
+          Title: '',
+          ParticipantName: '',
+          ParticipantEmail: '',
+          Status: 'Angemeldet',
+          RegistrationDate: '',
+          CancellationDate: '',
+          CustomData: '',
+        };
+        entries.push({ event: parent, registration: virtualReg, sessionsOnly: true });
+      }
       // Zusatzschleife: abgemeldete Events finden. DEX_Participants haelt nur
       // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
       // entfernt. Ohne diese Schleife waeren alte Abmeldungen im "My Events"-Tab
@@ -803,7 +836,7 @@ export default function MyEventsPage(): React.ReactElement {
 
       {activeEntries.length > 0 && (
         <div className="my-events-list">
-          {activeEntries.map(({ event, registration }) => {
+          {activeEntries.map(({ event, registration, sessionsOnly }) => {
             // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
             try {
@@ -860,12 +893,34 @@ export default function MyEventsPage(): React.ReactElement {
                     {/* Header: Titel + Status Badge */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
-                      <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
-                        {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
-                          ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
-                          : getStatusLabel(registration.Status, t)}
-                      </span>
+                      {sessionsOnly ? (
+                        <span
+                          className="badge"
+                          title={t('myevents.sessionsonly.hint')}
+                          style={{
+                            flexShrink: 0, marginLeft: 12,
+                            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+                          }}
+                        >
+                          {t('myevents.sessionsonly.badge') || 'Nur Sessions'}
+                        </span>
+                      ) : (
+                        <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
+                          {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
+                            ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
+                            : getStatusLabel(registration.Status, t)}
+                        </span>
+                      )}
                     </div>
+                    {sessionsOnly && (
+                      <div style={{
+                        marginTop: 6, padding: '6px 10px', borderRadius: 6,
+                        background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
+                        color: 'var(--dex-orange)', fontSize: '0.78rem',
+                      }}>
+                        {t('myevents.sessionsonly.hint')}
+                      </div>
+                    )}
 
                     {/* Kompakte Info-Zeile: Location + Datum inline, umbricht auf schmalen Bildschirmen */}
                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
@@ -1057,7 +1112,7 @@ export default function MyEventsPage(): React.ReactElement {
                 )}
 
                 {/* Fun-Zone Quiz */}
-                {event.quiz && event.quiz.length > 0 && (
+                {!sessionsOnly && event.quiz && event.quiz.length > 0 && (
                   <QuizPlayer
                     quiz={event.quiz}
                     t={t}
@@ -1143,28 +1198,32 @@ export default function MyEventsPage(): React.ReactElement {
                   />
                 )}
 
-                {/* Registriert am + Aktionen */}
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
-                    {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
-                  </span>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', display: 'block', marginBottom: 4, width: '100%' }}>
-                        {t('myevents.latecancel')}
-                      </span>
-                    )}
-                    <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
-                      {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
-                    </button>
-                    <button className="btn" onClick={() => handleCancel(event.id)} disabled={isCancelling} style={{ fontSize: '0.78rem', padding: '4px 12px', background: cancellingId === event.id ? 'var(--dex-red)' : 'var(--dex-gray-200)', color: cancellingId === event.id ? '#fff' : 'var(--dex-gray-700)' }}>
-                      {cancellingId === event.id ? (isCancelling ? '...' : t('myevents.confirmcancel')) : t('myevents.cancel')}
-                    </button>
-                    {cancellingId === event.id && !isCancelling && (
-                      <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.78rem', padding: '4px 12px' }}>{t('myevents.keepreg')}</button>
-                    )}
+                {/* Registriert am + Aktionen — im Sessions-Only-Modus ausblenden,
+                    weil es keine echte Parent-Registrierung gibt. Sessions werden
+                    über die Sub-Event-Sektion oben gemanagt. */}
+                {!sessionsOnly && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                      {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
+                    </span>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', display: 'block', marginBottom: 4, width: '100%' }}>
+                          {t('myevents.latecancel')}
+                        </span>
+                      )}
+                      <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
+                        {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
+                      </button>
+                      <button className="btn" onClick={() => handleCancel(event.id)} disabled={isCancelling} style={{ fontSize: '0.78rem', padding: '4px 12px', background: cancellingId === event.id ? 'var(--dex-red)' : 'var(--dex-gray-200)', color: cancellingId === event.id ? '#fff' : 'var(--dex-gray-700)' }}>
+                        {cancellingId === event.id ? (isCancelling ? '...' : t('myevents.confirmcancel')) : t('myevents.cancel')}
+                      </button>
+                      {cancellingId === event.id && !isCancelling && (
+                        <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.78rem', padding: '4px 12px' }}>{t('myevents.keepreg')}</button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })}
