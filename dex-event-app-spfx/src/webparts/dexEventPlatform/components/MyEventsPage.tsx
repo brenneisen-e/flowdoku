@@ -848,14 +848,30 @@ export default function MyEventsPage(): React.ReactElement {
             for (const field of event.eventSpecificFields) {
               fieldLabelMap[field.id] = field.label;
             }
+            // Fallback-Labels für ad-hoc Keys, die NICHT als EventSpecificField
+            // registriert sind (z.B. Leistungsnachweis, der direkt aus der Starter-
+            // Typ-Sektion kommt). Sonst würde der technische Key angezeigt.
+            const adHocLabels: Record<string, string> = {
+              b2run_leistungsnachweis: t('reg.starter.proof') || 'Leistungsnachweis vorhanden',
+            };
 
             // "salutation" überspringen (wird schon im Namen angezeigt)
+            // Boolean-Werte ('true'/'false') zu lesbarem Ja/Nein konvertieren,
+            // damit das UI nicht "true" als technischen String zeigt.
+            const yesLabel = t('general.yes') || 'Ja';
+            const noLabel = t('general.no') || 'Nein';
             const displayData = Object.keys(customData)
               .filter(key => key !== 'salutation' && customData[key])
-              .map(key => ({
-                label: fieldLabelMap[key] || key,
-                value: customData[key],
-              }));
+              .map(key => {
+                const raw = customData[key];
+                let value: string = raw;
+                if (raw === 'true') value = yesLabel;
+                else if (raw === 'false') value = noLabel;
+                return {
+                  label: fieldLabelMap[key] || adHocLabels[key] || key,
+                  value,
+                };
+              });
 
             return (
               <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">

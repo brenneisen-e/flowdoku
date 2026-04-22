@@ -1271,7 +1271,11 @@ export default function AdminPage(): React.ReactElement {
                   value={selectedEvent.id}
                   onChange={e => {
                     const target = [parent, ...siblings].find(x => x && x.id === e.target.value);
-                    if (target) setSelectedEvent(target);
+                    // Nicht nur setSelectedEvent — sonst bleibt die alte
+                    // Teilnehmerliste stehen (Parent-Teilnehmer tauchen dann in
+                    // der Session-Ansicht auf). handleSelectEvent lädt die
+                    // Registrations aus der richtigen Subsite neu.
+                    if (target) handleSelectEvent(target).catch(() => { /* fehler wird intern gesetzt */ });
                   }}
                   style={{ maxWidth: 340, padding: '6px 12px', fontSize: '0.85rem' }}
                   aria-label="Event wechseln"
@@ -1582,7 +1586,7 @@ export default function AdminPage(): React.ReactElement {
                   <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Job Title</th>
                   <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Standort</th>
                   {isSplitCapacity && (
-                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Starter-Typ: wird bei der Anmeldung gewählt. Bei Warteliste ist der tatsächliche Startblock noch nicht zugewiesen (erst beim Nachrücken).">Startblock</th>
+                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'.">Starter-Typ</th>
                   )}
                   {([['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
                     <th
