@@ -527,6 +527,17 @@ export interface MigrationResult {
   errors: number;
 }
 
+export type MigrationProgressPhase = 'loading-event' | 'loading-registrations' | 'updating' | 'done' | 'skipped' | 'error';
+
+export interface MigrationProgress {
+  phase: MigrationProgressPhase;
+  message: string;
+  current: number;   // Anzahl bereits verarbeiteter Teilnehmer in diesem Event
+  total: number;     // Gesamt-Teilnehmer des aktuellen Events
+  updated: number;   // bisher tatsächlich aktualisiert
+  eventTitle: string;
+}
+
 /**
  * Führt die Migration aus. Liest alle JP-Morgan-Events, findet pro Event das
  * T-Shirt-Custom-Field, und trägt pro Teilnehmer (E-Mail-Match) die Größe nach.
@@ -537,7 +548,8 @@ export interface MigrationResult {
  */
 export async function migrateJPMorganTShirtSizes(
   eventService: EventService,
-  events: DeloitteEvent[]
+  events: DeloitteEvent[],
+  onProgress?: (p: MigrationProgress) => void
 ): Promise<MigrationResult | null> {
   const jpEvents = events.filter(e =>
     /jp\s*morgan|jpmorgan/i.test(e.title || '') && !!e.subsiteUrl
@@ -562,35 +574,44 @@ export async function migrateJPMorganTShirtSizes(
   for (const event of jpEvents) {
     if (!event.subsiteUrl) continue;
 
+    if (onProgress) onProgress({ phase: 'loading-event', message: `Event "${event.title}" vorbereiten…`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
+
     // T-Shirt-Custom-Field finden (via Label-Match)
     const tshirtField = event.eventSpecificFields.find(f =>
       /t-?shirt|shirt.*(groe|grö)sse/i.test(f.label || '')
     );
     if (!tshirtField) {
       console.warn('[DEX][MIGRATION] Kein T-Shirt-Custom-Field in Event gefunden:', event.title);
+      if (onProgress) onProgress({ phase: 'skipped', message: `Kein T-Shirt-Feld in "${event.title}" gefunden — übersprungen.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
       continue;
     }
     const spInternalName: string = (tshirtField as unknown as { spInternalName?: string }).spInternalName || '';
     if (!spInternalName) {
       console.warn('[DEX][MIGRATION] T-Shirt-Feld hat keinen spInternalName:', event.title, tshirtField.label);
+      if (onProgress) onProgress({ phase: 'skipped', message: `T-Shirt-Feld "${tshirtField.label}" hat keine SP-Spalte — übersprungen.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
       continue;
     }
     const cfId = tshirtField.id;
 
+    if (onProgress) onProgress({ phase: 'loading-registrations', message: `Teilnehmerliste für "${event.title}" wird geladen…`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
     let regs: SPRegistration[] = [];
     try {
       regs = await eventService.getAllRegistrations(event.subsiteUrl);
     } catch (err) {
       console.warn('[DEX][MIGRATION] getAllRegistrations failed:', event.title, err);
+      if (onProgress) onProgress({ phase: 'error', message: `Teilnehmerliste "${event.title}" konnte nicht geladen werden.`, current: 0, total: 0, updated: result.updated, eventTitle: event.title });
       continue;
     }
 
+    const total = regs.length;
+    let processed = 0;
     for (const reg of regs) {
+      processed += 1;
       result.registrationsChecked += 1;
       const email = (reg.ParticipantEmail || '').toLowerCase().trim();
-      if (!email) { result.skippedNoMatch += 1; continue; }
+      if (!email) { result.skippedNoMatch += 1; if (onProgress) onProgress({ phase: 'updating', message: `Teilnehmer ohne E-Mail übersprungen (${processed}/${total})`, current: processed, total, updated: result.updated, eventTitle: event.title }); continue; }
       const newSize = emailToSize[email];
-      if (!newSize) { result.skippedNoMatch += 1; continue; }
+      if (!newSize) { result.skippedNoMatch += 1; if (onProgress) onProgress({ phase: 'updating', message: `${email}: nicht in CSV (${processed}/${total})`, current: processed, total, updated: result.updated, eventTitle: event.title }); continue; }
 
       // CustomData parsen — prüfen ob schon gesetzt
       let customData: Record<string, string> = {};
@@ -600,6 +621,7 @@ export async function migrateJPMorganTShirtSizes(
 
       if (customData[cfId] && customData[cfId].trim()) {
         result.skippedAlreadySet += 1;
+        if (onProgress) onProgress({ phase: 'updating', message: `${email}: bereits gefüllt, übersprungen (${processed}/${total})`, current: processed, total, updated: result.updated, eventTitle: event.title });
         continue;
       }
 
@@ -611,8 +633,18 @@ export async function migrateJPMorganTShirtSizes(
       };
       const ok = await eventService.mergeRegistrationFields(event.subsiteUrl, reg.Id, body);
       if (ok) { result.updated += 1; } else { result.errors += 1; }
+      if (onProgress) onProgress({ phase: 'updating', message: ok ? `${email} → ${newSize} (${processed}/${total})` : `${email}: Update fehlgeschlagen (${processed}/${total})`, current: processed, total, updated: result.updated, eventTitle: event.title });
     }
   }
+
+  if (onProgress) onProgress({
+    phase: 'done',
+    message: `Migration abgeschlossen. ${result.updated} aktualisiert, ${result.skippedAlreadySet} übersprungen (bereits gefüllt), ${result.skippedNoMatch} ohne CSV-Match, ${result.errors} Fehler.`,
+    current: result.registrationsChecked,
+    total: result.registrationsChecked,
+    updated: result.updated,
+    eventTitle: jpEvents.map(e => e.title).join(', '),
+  });
 
   return result;
 }
