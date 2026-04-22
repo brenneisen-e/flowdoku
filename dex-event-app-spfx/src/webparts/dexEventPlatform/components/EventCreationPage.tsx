@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders } from '../services/EmailTemplates';
-import { EventType, AgendaItem, SubEvent } from '../types';
+import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
@@ -166,7 +166,7 @@ function StepBadge({ n }: { n: number }): React.ReactElement {
 
 export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
-  const { events, createEvent, updateEvent, refreshEvents } = useEvents();
+  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchGroups, getGroupMembers, roles } = useRoles();
   // Audience-Suche (Personen + Verteiler/Security-Groups)
@@ -614,9 +614,46 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0], imageBase64: (q as any).imageBase64, section: (q as any).section})) || []
   );
   const [quizClusterSize, setQuizClusterSize] = React.useState<number>(editEvent?.quizClusterSize || 1);
-  const [subEvents, setSubEvents] = React.useState<SubEvent[]>(
-    editEvent?.subEvents ? [...editEvent.subEvents] : []
-  );
+  // Sub-Events-Drafts im UI. Seit v6.4: Sub-Events sind eigene DEX_Events-Items.
+  // Beim Edit laden wir die bestehenden Child-Events und mappen sie auf Drafts.
+  // Beim Save werden Drafts mit `dbId` als updateEvent, ohne als createEvent geschrieben;
+  // in der DB verbliebene Child-Events, die nicht mehr im Draft sind, werden gelöscht.
+  interface SubEventDraft {
+    id: string;                     // Synthetische Client-ID (für React-Keys); nicht = DB-Id
+    dbId?: string;                  // DEX_Events-Id wenn das Sub-Event bereits persistiert wurde
+    title: string;
+    description?: string;
+    location?: string;
+    startDate: string;
+    endDate: string;
+    maxParticipants?: number;
+    registrationDeadline?: string;
+    disableEmails?: boolean;
+    disableOutlook?: boolean;
+  }
+  const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
+    if (!editEvent) return [];
+    const kids = childEventsOf(editEvent.id);
+    return kids.map(k => ({
+      id: k.id,
+      dbId: k.id,
+      title: k.title,
+      description: k.description,
+      location: k.location,
+      startDate: k.startDate,
+      endDate: k.endDate,
+      maxParticipants: k.maxParticipants || 0,
+      registrationDeadline: k.registrationDeadline,
+      disableEmails: k.disableEmails,
+      disableOutlook: k.disableOutlook,
+    }));
+  });
+  // Snapshot der beim Edit-Start vorhandenen Sub-Event-DB-IDs, um beim Save
+  // entfernte Sub-Events zu löschen.
+  const [initialSubEventDbIds] = React.useState<string[]>(() => {
+    if (!editEvent) return [];
+    return childEventsOf(editEvent.id).map(k => k.id);
+  });
   // Bereiche, die per "+ Bereich"-Button angelegt aber noch nicht mit einer
   // Frage belegt wurden. Sobald eine Frage per Drag&Drop reinkommt, ergibt sich
   // der Section-Name aus dem question.section-Feld selbst — pendingSections
@@ -981,6 +1018,82 @@ export default function EventCreationPage(): React.ReactElement {
     setAgenda(agenda.map(a => a.id === id ? { ...a, ...updates } : a));
   };
 
+  /**
+   * Persistiert die Sub-Event-Drafts nach dem Parent-Save. Seit v6.4 sind Sub-Events
+   * eigene DEX_Events-Items mit gesetztem parentEventId.
+   *
+   * - Drafts **ohne dbId** → `createEvent({ ..., parentEventId })`
+   * - Drafts **mit dbId** und Werte-Diff → `updateEvent(dbId, patch)`
+   * - Initial vorhandene Sub-Event-DB-IDs, die **nicht** mehr als Draft existieren → `deleteEvent(id)` (kaskadierend inkl. Subsite + Kalendertermin)
+   *
+   * Alle Sub-Events erben Metadaten (Organizer, Audience, Email-Language,
+   * Templates, Logos) vom Parent — eigenständig sind nur Titel, Daten, Ort und Kapazität.
+   */
+  const persistSubEventsForParent = async (parentEventId: string): Promise<void> => {
+    const keptDbIds = new Set<string>();
+    for (const draft of subEvents) {
+      if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
+      const childPayload = {
+        title: draft.title.trim(),
+        type: 'Other',
+        status: 'Active',
+        description: draft.description || '',
+        location: draft.location || '',
+        locationAddress: '',
+        locationFilter: locationFilter,
+        audience: audience,
+        filterMode: filterMode,
+        startDate: draft.startDate || '',
+        endDate: draft.endDate || '',
+        registrationDeadline: draft.registrationDeadline || '',
+        lastDeregisterDate: '',
+        maxParticipants: draft.maxParticipants || 0,
+        waitlistEnabled: true,
+        eventImageUrl: '',
+        organizer: organizer,
+        organizerEmail: organizerEmails.join(';'),
+        outlookEventId: '',
+        outlookBody: '',
+        agenda: '[]',
+        transfers: '[]',
+        documents: '[]',
+        funZone: '[]',
+        quizClusterSize: 1,
+        emailLanguage: emailLanguage,
+        emailTemplateOverrides: '',
+        disableEmails: !!draft.disableEmails,
+        disableOutlook: !!draft.disableOutlook,
+        isFictive: isFictive,
+        customFields: [],
+        parentEventId: parentEventId,
+      };
+      if (draft.dbId) {
+        keptDbIds.add(draft.dbId);
+        // Update bestehender Sub-Event: nur geänderte Felder patchen.
+        await updateEvent(draft.dbId, {
+          'Title': childPayload.title,
+          'Description': childPayload.description,
+          'Location': childPayload.location,
+          'StartDate': childPayload.startDate || null,
+          'EndDate': childPayload.endDate || null,
+          'RegistrationDeadline': childPayload.registrationDeadline || null,
+          'MaxParticipants': childPayload.maxParticipants,
+          'DisableEmails': childPayload.disableEmails,
+          'DisableOutlook': childPayload.disableOutlook,
+        });
+      } else {
+        await createEvent(childPayload);
+      }
+    }
+    // Entfernte Sub-Events aufräumen: deleteEvent löscht kaskadierend auch
+    // die Subsite (Teilnehmerliste) und queued einen Outlook-DeleteEvent.
+    for (const oldId of initialSubEventDbIds) {
+      if (!keptDbIds.has(oldId)) {
+        try { await deleteEvent(oldId); } catch { /* Delete-Fehler darf Save nicht blockieren */ }
+      }
+    }
+  };
+
   const handleSubmit = async (): Promise<void> => {
     if (!title || !description) return;
     setIsSubmitting(true);
@@ -1046,9 +1159,6 @@ export default function EventCreationPage(): React.ReactElement {
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
       updates['QuizClusterSize'] = Math.min(Math.max(1, quizClusterSize || 1), 4);
-      // Sub-Events: outlookBody pro Sub-Event wird beim Edit bereits gewrappt gespeichert
-      // (siehe Editor in Reiter 5 Kommunikation).
-      updates['SubEvents'] = JSON.stringify(subEvents);
       updates['EmailLanguage'] = emailLanguage;
       updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
         ? JSON.stringify({
@@ -1102,6 +1212,10 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
+        try { await persistSubEventsForParent(selectedEventId); }
+        catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
+
         // Custom-Fields-Columns auf der Teilnehmerliste auto-sync: falls
         // neue Custom-Fields ohne spInternalName hinzugekommen sind oder
         // SP-Spalten fehlen, jetzt anlegen + spInternalName ins Event
@@ -1171,49 +1285,13 @@ export default function EventCreationPage(): React.ReactElement {
             const ctx = (window as any).__dexSpfxContext;
             if (ctx && editEvent?.subsiteUrl) {
               const svc = new EventService(ctx);
-              // Parent-Event UpdateEvent
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
-              // Zusaetzlich: pro bereits existierendem Sub-Event-Kalender ein
-              // UpdateEvent queuen. Der Flow patched damit die Sub-Event-
-              // Kalenderdaten (Titel/Start/Ende/Ort/Body) ueber die Override-Felder.
-              // Nur Sub-Events die bereits einen Kalender haben (i.e. mind. ein
-              // Teilnehmer war angemeldet) werden aktualisiert — fuer "leere"
-              // Sub-Events entsteht kein Kalender beim Update, sondern erst beim
-              // naechsten Einladen.
-              try {
-                const subCalendars = await svc.getSubEventCalendarLinks(selectedEventId);
-                if (subCalendars.length > 0) {
-                  // Aktuelle Sub-Event-Definitionen aus dem State (post-edit) nehmen,
-                  // damit die Override-Felder mit den NEUEN Werten (Titel/Datum/Ort)
-                  // gequeued werden — nicht mit den alten aus DEX_Events.
-                  const seById: Record<string, SubEvent> = {};
-                  for (const se of subEvents) { if (se.id) seById[se.id] = se; }
-                  for (const sc of subCalendars) {
-                    const se = seById[sc.subEventId];
-                    if (!se) {
-                      // Sub-Event wurde in diesem Edit entfernt — Kalender loeschen,
-                      // sonst bleibt er als Leiche im Shared-Mailbox-Kalender stehen.
-                      await svc.queueOutlookDeleteSubEventCalendar(
-                        selectedEventId, title, sc.subEventId, sc.calendarLink
-                      );
-                      continue;
-                    }
-                    if (se.disableOutlook) continue;
-                    await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent', {
-                      id: se.id,
-                      title: se.title,
-                      startDate: se.startDate,
-                      endDate: se.endDate,
-                      location: se.location,
-                      body: se.outlookBody && se.outlookBody.length > 0
-                        ? se.outlookBody
-                        : undefined,
-                    });
-                  }
-                }
-              } catch { /* Sub-Event-Update optional */ }
             }
           } catch { /* Outlook-Update optional */ }
+          // Sub-Event-Outlook-Updates laufen bereits über persistSubEventsForParent
+          // (updateEvent auf jeden Draft mit dbId) — der bestehende DEX_Outlook_Einladungen-
+          // Flow für Parent-Events wird pro Sub-Event ebenfalls getriggert, weil ein
+          // Sub-Event dieselbe Updateevent-Logik nutzt wie ein Top-Level-Event.
         }
         setProgress(100);
         setProgressLabel('Änderungen gespeichert!');
@@ -1287,7 +1365,6 @@ export default function EventCreationPage(): React.ReactElement {
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
         funZone: JSON.stringify(quiz),
         quizClusterSize: Math.min(Math.max(1, quizClusterSize || 1), 4),
-        subEvents: JSON.stringify(subEvents),
         emailLanguage,
         emailTemplateOverrides: (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview)
           ? JSON.stringify({
@@ -1313,6 +1390,9 @@ export default function EventCreationPage(): React.ReactElement {
       if (eventId) {
         setProgress(100);
         setProgressLabel('Event erfolgreich erstellt!');
+        // Sub-Events als eigene DEX_Events-Items mit parentEventId=eventId anlegen.
+        try { await persistSubEventsForParent(String(eventId)); }
+        catch (err) { console.warn('[DEX] Sub-Events beim Create persistieren fehlgeschlagen:', err); }
         // E-Mail an Organisator senden
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3312,7 +3392,7 @@ export default function EventCreationPage(): React.ReactElement {
                     className="btn btn-outline"
                     style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}
                     onClick={() => {
-                      const newSub: SubEvent = {
+                      const newSub: SubEventDraft = {
                         id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                         title: '',
                         description: '',

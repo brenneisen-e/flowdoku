@@ -94,15 +94,14 @@ export function formatOrganizerList(organizers: string[], lang: string): string 
 
 interface EventContextType {
   events: DeloitteEvent[];
+  /** Top-Level-Events (ohne parentEventId) — was in EventListPage/MyEventsPage angezeigt wird. */
+  topLevelEvents: DeloitteEvent[];
+  /** Kind-Events eines Parents (Sub-Events / Trainingssessions), sortiert nach StartDate. */
+  childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string) => Promise<boolean>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
-  /** Sub-Event-Anmeldung (setzt voraus, dass der User bereits am Hauptevent angemeldet ist).
-   * Fuegt die SubEventId zum JSON-Array `SubEventIds` im Teilnehmer-Item hinzu und queued
-   * eine eigene Mail sowie einen eigenen Outlook-Kalendereintrag (Deloitte-Layout). */
-  registerForSubEvent: (eventId: string, subEventId: string) => Promise<boolean>;
-  cancelSubEventRegistration: (eventId: string, subEventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -142,7 +141,8 @@ export interface CreateEventInput {
   documents?: string; // JSON-Array mit Dokumenten
   funZone?: string; // JSON-Array mit Quiz-Fragen
   quizClusterSize?: number; // 1..4 Fragen pro Quiz-Ansicht
-  subEvents?: string; // JSON-Array mit Sub-Events (Trainingssessions etc.)
+  /** Seit v6.4: wenn gesetzt, wird das Event als Sub-Event zum angegebenen Parent angelegt. */
+  parentEventId?: string;
   emailLanguage?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
@@ -309,7 +309,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
       quiz: (() => { try { return e.FunZone ? JSON.parse(e.FunZone) : []; } catch { return []; } })(),
       quizClusterSize: typeof e.QuizClusterSize === 'number' && e.QuizClusterSize >= 1 ? e.QuizClusterSize : undefined,
-      subEvents: (() => { try { return e.SubEvents ? JSON.parse(e.SubEvents) : []; } catch { return []; } })(),
+      parentEventId: e.ParentEventId || undefined,
       documents: [], // Wird per loadAttachments nachgeladen
       eventSpecificFields: customFields.map(cf => ({
         id: cf.id,
@@ -648,6 +648,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
+    // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
+    // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
+    // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.
+    const children = events.filter(e => e.parentEventId === eventId);
+    for (const child of children) {
+      try {
+        await eventService.deleteEvent(Number(child.id));
+        delete subsiteMap.current[child.id];
+      } catch (err) {
+        console.warn('[DEX] Child-Event-Delete fehlgeschlagen:', child.id, err);
+      }
+    }
     const success = await eventService.deleteEvent(Number(eventId));
     delete subsiteMap.current[eventId];
     // Events immer neu laden, auch wenn Subsite-Loeschung fehlschlug
@@ -760,193 +772,34 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     );
   }
 
-  // ==================== Sub-Events ====================
 
-  /**
-   * Sub-Event-Kurzbeschreibung (Datum/Ort) als HTML-Snippet für Mail- und Outlook-Body.
-   */
-  function renderSubEventDetailsHtml(subEvent: {
-    title: string; description?: string; location?: string; startDate: string; endDate: string;
-  }): string {
-    const fmtDate = (iso: string): string => {
-      if (!iso) return '';
-      try {
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return iso;
-        return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      } catch { return iso; }
-    };
-    const esc = (s: string): string => s
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const rows: string[] = [];
-    rows.push(`<p><strong>${esc(subEvent.title)}</strong></p>`);
-    if (subEvent.description) rows.push(`<p>${esc(subEvent.description).replace(/\r?\n/g, '<br>')}</p>`);
-    rows.push('<table cellpadding="4" cellspacing="0" style="border-collapse:collapse;margin:8px 0;font-size:14px;">');
-    if (subEvent.startDate) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Start:</td><td>${esc(fmtDate(subEvent.startDate))}</td></tr>`);
-    if (subEvent.endDate) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Ende:</td><td>${esc(fmtDate(subEvent.endDate))}</td></tr>`);
-    if (subEvent.location) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Ort:</td><td>${esc(subEvent.location)}</td></tr>`);
-    // Platzhalter-Titel falls Sub-Event ohne Titel gespeichert wurde (nur defensiv —
-    // die UI verhindert das eigentlich schon).
-    rows.push('</table>');
-    return rows.join('\n');
-  }
-
-  async function registerForSubEvent(eventId: string, subEventId: string): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const event = events.find(e => e.id === eventId);
-    if (!event) return false;
-    const sub = (event.subEvents || []).find(s => s.id === subEventId);
-    if (!sub) return false;
-
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) {
-      console.warn('[DEX] registerForSubEvent: Keine Hauptevent-Registrierung gefunden');
-      return false;
-    }
-
-    // Kapazitaets-Check: wenn maxParticipants gesetzt, Anzahl aktueller Sub-Event-Registrierungen zaehlen
-    if (typeof sub.maxParticipants === 'number' && sub.maxParticipants > 0) {
-      try {
-        const current = await eventService.getRegistrationsForSubEvent(subsiteUrl, sub.id);
-        if (current.length >= sub.maxParticipants) {
-          console.warn('[DEX] registerForSubEvent: Sub-Event voll');
-          return false;
-        }
-      } catch { /* bei Fehler konservativ weitermachen */ }
-    }
-
-    // SubEventIds-Array aktualisieren (add-if-missing)
-    let ids: string[] = [];
-    try { if (myReg.SubEventIds) ids = JSON.parse(myReg.SubEventIds) || []; } catch { ids = []; }
-    if (ids.indexOf(subEventId) < 0) ids.push(subEventId);
-    const ok = await eventService.updateSubEventIds(subsiteUrl, myReg.Id, ids);
-    if (!ok) return false;
-
-    // Mail: Anmeldung für Sub-Event (Deloitte-Layout)
-    if (!event.disableEmails && !sub.disableEmails) {
-      try {
-        const lang = (event.emailLanguage || 'EN').toUpperCase();
-        const isDe = lang === 'DE';
-        const heading = isDe ? 'Anmeldung bestätigt' : 'Registration confirmed';
-        const subHeading = `${event.title} — ${sub.title}`;
-        // Organizer-Hinweis konsistent mit dem Parent-Anmeldungs-Template:
-        // bei organisatorischen Fragen an die Event-Organizer verweisen.
-        const organizerList = formatOrganizerList(event.organizers, lang);
-        const organizerHint = isDe
-          ? (organizerList
-            ? `<p style="color:#555;font-size:0.9rem;">Bei organisatorischen Fragen zum Event wende dich bitte an <strong>${organizerList}</strong>.</p>`
-            : '')
-          : (organizerList
-            ? `<p style="color:#555;font-size:0.9rem;">For organizational questions about the event, please reach out to <strong>${organizerList}</strong>.</p>`
-            : '');
-        const inner = isDe
-          ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist jetzt für die folgende Session angemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Du bekommst eine separate Kalendereinladung für diese Session.</p>${organizerHint}<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-          : `<p>Hello ${currentUserFirstName || ''},</p><p>You're now registered for the following session:</p>${renderSubEventDetailsHtml(sub)}<p>You'll receive a separate calendar invite for this session.</p>${organizerHint}<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
-        const body = wrapTemplate('#86bc25', heading, subHeading, inner);
-        const subject = isDe
-          ? `Anmeldebestätigung: ${event.title} — ${sub.title}`
-          : `Registration confirmed: ${event.title} — ${sub.title}`;
-        await eventService.queueEmail(subject, currentUserEmail, currentUserName, body, 'Anmeldung', `${event.title} / ${sub.title}`, eventId);
-      } catch (err) { console.warn('[DEX] queueEmail (sub-event) failed:', err); }
-    }
-
-    // Outlook: eigener Kalendereintrag für den Sub-Event (mit Override-Feldern)
-    if (!event.disableOutlook && !sub.disableOutlook) {
-      try {
-        const outlookBodyForSub = sub.outlookBody && sub.outlookBody.length > 0
-          ? sub.outlookBody
-          : wrapTemplate('#86bc25', sub.title, event.title, renderSubEventDetailsHtml(sub));
-        await eventService.queueOutlookEvent(
-          currentUserEmail, eventId, event.title, 'Einladen',
-          {
-            id: sub.id,
-            title: sub.title,
-            startDate: sub.startDate,
-            endDate: sub.endDate,
-            location: sub.location,
-            body: outlookBodyForSub,
-          }
-        );
-      } catch (err) { console.warn('[DEX] queueOutlookEvent (sub-event) failed:', err); }
-    }
-
-    return true;
-  }
-
-  async function cancelSubEventRegistration(eventId: string, subEventId: string): Promise<boolean> {
-    const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
-    const event = events.find(e => e.id === eventId);
-    if (!event) return false;
-    const sub = (event.subEvents || []).find(s => s.id === subEventId);
-    // Sub-Event kann inzwischen gelöscht worden sein — Abmeldung trotzdem erlauben.
-
-    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
-    if (!myReg) return false;
-
-    let ids: string[] = [];
-    try { if (myReg.SubEventIds) ids = JSON.parse(myReg.SubEventIds) || []; } catch { ids = []; }
-    const idx = ids.indexOf(subEventId);
-    if (idx < 0) return true; // war nicht angemeldet — idempotent OK
-    ids.splice(idx, 1);
-    const ok = await eventService.updateSubEventIds(subsiteUrl, myReg.Id, ids);
-    if (!ok) return false;
-
-    if (sub) {
-      // Abmelde-Mail (Deloitte-Layout)
-      if (!event.disableEmails && !sub.disableEmails) {
-        try {
-          const lang = (event.emailLanguage || 'EN').toUpperCase();
-          const isDe = lang === 'DE';
-          const heading = isDe ? 'Abmeldung bestätigt' : 'Cancellation confirmed';
-          const subHeading = `${event.title} — ${sub.title}`;
-          const organizerList = formatOrganizerList(event.organizers, lang);
-          const organizerHint = isDe
-            ? (organizerList
-              ? `<p style="color:#555;font-size:0.9rem;">Bei organisatorischen Fragen zum Event wende dich bitte an <strong>${organizerList}</strong>.</p>`
-              : '')
-            : (organizerList
-              ? `<p style="color:#555;font-size:0.9rem;">For organizational questions about the event, please reach out to <strong>${organizerList}</strong>.</p>`
-              : '');
-          const inner = isDe
-            ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist erfolgreich von der folgenden Session abgemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Die Kalendereinladung für diese Session wurde zurückgezogen.</p>${organizerHint}<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-            : `<p>Hello ${currentUserFirstName || ''},</p><p>You've been successfully unregistered from the following session:</p>${renderSubEventDetailsHtml(sub)}<p>The calendar invitation for this session has been withdrawn.</p>${organizerHint}<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
-          const body = wrapTemplate('#86bc25', heading, subHeading, inner);
-          const subject = isDe
-            ? `Abmeldung: ${event.title} — ${sub.title}`
-            : `Cancellation: ${event.title} — ${sub.title}`;
-          await eventService.queueEmail(subject, currentUserEmail, currentUserName, body, 'Abmeldung', `${event.title} / ${sub.title}`, eventId);
-        } catch (err) { console.warn('[DEX] queueEmail (sub-event cancel) failed:', err); }
-      }
-      // Outlook-Termin zurückziehen
-      if (!event.disableOutlook && !sub.disableOutlook) {
-        try {
-          await eventService.queueOutlookEvent(
-            currentUserEmail, eventId, event.title, 'Ausladen',
-            {
-              id: sub.id,
-              title: sub.title,
-              startDate: sub.startDate,
-              endDate: sub.endDate,
-              location: sub.location,
-            }
-          );
-        } catch (err) { console.warn('[DEX] queueOutlookEvent (sub-event cancel) failed:', err); }
-      }
-    }
-
-    return true;
-  }
+  // ==================== Sub-Event-Helper (v6.4+) ====================
+  // Seit v6.4 sind Sub-Events keine separaten JSON-Arrays mehr, sondern
+  // eigene DEX_Events-Items mit gesetztem parentEventId. Damit funktionieren
+  // alle bestehenden Flows (DEX_CreateOutlookEvent, DEX_Outlook_Einladungen,
+  // Teilnehmerliste, Organizer-Kalendereinladungen, Declines, QR-Codes,
+  // Warteliste, ...) unverändert — ein Sub-Event ist einfach ein Event.
+  const topLevelEvents = React.useMemo(
+    () => events.filter(e => !e.parentEventId),
+    [events]
+  );
+  const childEventsOf = React.useCallback(
+    (parentEventId: string): DeloitteEvent[] => {
+      if (!parentEventId) return [];
+      return events
+        .filter(e => e.parentEventId === parentEventId)
+        .slice()
+        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    },
+    [events]
+  );
 
   return React.createElement(
     EventContext.Provider,
     {
       value: {
-        events, isEventsLoading,
+        events, topLevelEvents, childEventsOf, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        registerForSubEvent, cancelSubEventRegistration,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
       },

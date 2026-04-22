@@ -11,7 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Salutation } from '../types';
+import { Salutation, DeloitteEvent } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
 import OrganizerList from './OrganizerList';
@@ -27,7 +27,7 @@ function formatDate(iso: string): string {
 
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, checkRegistrationByEmail, registerForSubEvent, cancelSubEventRegistration, getMyRegistration, getAllRegistrations } = useEvents();
+  const { events, registerForEvent, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, isAdmin } = useRoles();
   const { t } = useLanguage();
@@ -352,15 +352,14 @@ export default function RegistrationPage(): React.ReactElement {
                   : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email))}
           </p>
           {/* Sub-Event-Anmeldung nach erfolgreicher Hauptevent-Anmeldung.
-              Nur fuer Self-Registration sichtbar (Fuer-andere-Pfad queued die Mails/Outlook
-              an den Teilnehmer selbst — Sub-Event-Anmeldung macht der dann in seiner eigenen Session). */}
-          {!registerForOther && !isFull && event.subEvents && event.subEvents.length > 0 && (
+              Nur für Self-Registration sichtbar — bei "für andere Person anmelden"
+              soll der Teilnehmer die Session-Anmeldungen selbst in seinem eigenen
+              My-Events-Tab vornehmen. */}
+          {!registerForOther && !isFull && childEventsOf(event.id).length > 0 && (
             <SubEventEnrollmentSection
-              eventId={event.id}
-              eventTitle={event.title}
-              subEvents={event.subEvents}
-              registerForSubEvent={registerForSubEvent}
-              cancelSubEventRegistration={cancelSubEventRegistration}
+              childEvents={childEventsOf(event.id)}
+              registerForEvent={registerForEvent}
+              cancelRegistration={cancelRegistration}
               getMyRegistration={getMyRegistration}
               getAllRegistrations={getAllRegistrations}
               language={event.emailLanguage || 'EN'}
@@ -933,68 +932,67 @@ export default function RegistrationPage(): React.ReactElement {
 // Wird auf dem Success-Screen der RegistrationPage angezeigt. Zeigt alle Sub-Events
 // des Parent-Events mit Kapazitaetsanzeige und einem An-/Abmelden-Button pro Session.
 function SubEventEnrollmentSection(props: {
-  eventId: string;
-  eventTitle: string;
-  subEvents: Array<{
-    id: string;
-    title: string;
-    description?: string;
-    location?: string;
-    startDate: string;
-    endDate: string;
-    maxParticipants?: number;
-    registrationDeadline?: string;
-  }>;
-  registerForSubEvent: (eventId: string, subEventId: string) => Promise<boolean>;
-  cancelSubEventRegistration: (eventId: string, subEventId: string) => Promise<boolean>;
-  getMyRegistration: (eventId: string) => Promise<{ SubEventIds?: string } | null>;
-  getAllRegistrations: (eventId: string) => Promise<Array<{ Status?: string; SubEventIds?: string }>>;
+  /** Child-Events (Sub-Events) des Parent-Events, geliefert vom Context via childEventsOf(parentId). */
+  childEvents: DeloitteEvent[];
+  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  cancelRegistration: (eventId: string) => Promise<boolean>;
+  getMyRegistration: (eventId: string) => Promise<{ Status?: string } | null>;
+  getAllRegistrations: (eventId: string) => Promise<Array<{ Status?: string }>>;
   language: string;
 }): React.ReactElement {
   const { t } = useLanguage();
   const isDe = (props.language || 'EN').toUpperCase() === 'DE';
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState<Set<string>>(new Set());
-  // Auslastung pro Sub-Event (Anzahl aktiver Anmeldungen). Wird fuer die
-  // Belegungs-Anzeige (z.B. "8/10") und zum Deaktivieren bei vollen Sessions genutzt.
+  // Auslastung pro Sub-Event (Anzahl aktiver Anmeldungen) — pro Sub-Event-Teilnehmerliste abfragen.
   const [subEventCounts, setSubEventCounts] = React.useState<Record<string, number>>({});
 
   const refresh = React.useCallback(async (): Promise<void> => {
     try {
-      const reg = await props.getMyRegistration(props.eventId);
-      if (reg && reg.SubEventIds) {
-        const arr = JSON.parse(reg.SubEventIds) as string[];
-        setRegisteredSet(new Set(Array.isArray(arr) ? arr : []));
-      } else {
-        setRegisteredSet(new Set());
-      }
-      // Alle Registrierungen laden und pro Sub-Event zaehlen (nur aktive Teilnehmer).
-      const all = await props.getAllRegistrations(props.eventId);
-      const counts: Record<string, number> = {};
-      for (const r of all || []) {
-        const st = r.Status || '';
-        if (st !== 'Angemeldet' && st !== 'QR versendet' && st !== 'Eingecheckt') continue;
-        let ids: string[] = [];
-        try { if (r.SubEventIds) ids = JSON.parse(r.SubEventIds) || []; } catch { ids = []; }
-        for (const id of ids) counts[id] = (counts[id] || 0) + 1;
-      }
-      setSubEventCounts(counts);
+      const regPromises = props.childEvents.map(async (ce) => {
+        const reg = await props.getMyRegistration(ce.id);
+        const isActive = !!reg && reg.Status && reg.Status !== 'Abgemeldet';
+        return { id: ce.id, isActive };
+      });
+      const regs = await Promise.all(regPromises);
+      const newSet = new Set<string>();
+      for (const r of regs) { if (r.isActive) newSet.add(r.id); }
+      setRegisteredSet(newSet);
+
+      const countPromises = props.childEvents.map(async (ce) => {
+        const all = await props.getAllRegistrations(ce.id);
+        const active = (all || []).filter(r => {
+          const st = r.Status || '';
+          return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
+        }).length;
+        return { id: ce.id, count: active };
+      });
+      const counts = await Promise.all(countPromises);
+      const map: Record<string, number> = {};
+      for (const c of counts) map[c.id] = c.count;
+      setSubEventCounts(map);
     } catch { /* ignore */ }
-  }, [props.eventId]);
+  }, [props.childEvents.map(c => c.id).join(',')]);
 
   React.useEffect(() => { refresh().catch(() => { /* ignore */ }); }, [refresh]);
 
-  const handleToggle = async (subEventId: string, currentlyRegistered: boolean): Promise<void> => {
-    setBusy(prev => { const s = new Set(prev); s.add(subEventId); return s; });
+  const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    setBusy(prev => { const s = new Set(prev); s.add(childEventId); return s; });
     try {
       if (currentlyRegistered) {
-        await props.cancelSubEventRegistration(props.eventId, subEventId);
+        await props.cancelRegistration(childEventId);
       } else {
-        await props.registerForSubEvent(props.eventId, subEventId);
+        // Sub-Event-Registrierung: kein Formular nötig — wir übernehmen nur das
+        // Basis-Profil (Name/Email kommt aus SPFx-Kontext im EventService).
+        // Custom Fields vom Parent werden nicht kopiert; der Sub-Event kann
+        // eigene Custom Fields haben, die dann der normale Registrierungs-Weg
+        // (Direkt-Aufruf auf das Sub-Event) abdeckt. Für den Quick-Toggle hier
+        // reichen die Basis-Daten.
+        await props.registerForEvent(childEventId, {});
       }
       await refresh();
     } finally {
-      setBusy(prev => { const s = new Set(prev); s.delete(subEventId); return s; });
+      setBusy(prev => { const s = new Set(prev); s.delete(childEventId); return s; });
     }
   };
 
@@ -1015,35 +1013,35 @@ function SubEventEnrollmentSection(props: {
       <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 16 }}>
         {t('reg.subevents.hint')}
       </p>
-      {props.subEvents.map(se => {
-        const isReg = registeredSet.has(se.id);
-        const isBusy = busy.has(se.id);
-        const deadlinePassed = !!(se.registrationDeadline && new Date(se.registrationDeadline) < new Date());
-        const count = subEventCounts[se.id] || 0;
-        const hasCap = typeof se.maxParticipants === 'number' && se.maxParticipants > 0;
-        const isFull = hasCap && count >= (se.maxParticipants || 0);
+      {props.childEvents.map(ce => {
+        const isReg = registeredSet.has(ce.id);
+        const isBusy = busy.has(ce.id);
+        const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+        const count = subEventCounts[ce.id] || 0;
+        const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+        const isFull = hasCap && count >= (ce.maxParticipants || 0);
         const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
         return (
-          <div key={se.id} style={{
+          <div key={ce.id} style={{
             padding: 12, marginBottom: 8, borderRadius: 8,
             border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
             background: isReg ? 'rgba(134,188,37,0.06)' : '#fff',
             display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
           }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{se.title || t('reg.subevents.untitled')}</div>
-              {se.description && (
-                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>{se.description}</div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{ce.title || t('reg.subevents.untitled')}</div>
+              {ce.description && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>{ce.description}</div>
               )}
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                {se.startDate && <><strong>{t('reg.subevents.start')}:</strong> {fmt(se.startDate)} </>}
-                {se.endDate && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.end')}:</strong> {fmt(se.endDate)} </>}
-                {se.location && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.location')}:</strong> {se.location}</>}
+                {ce.startDate && <><strong>{t('reg.subevents.start')}:</strong> {fmt(ce.startDate)} </>}
+                {ce.endDate && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.end')}:</strong> {fmt(ce.endDate)} </>}
+                {ce.location && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.location')}:</strong> {ce.location}</>}
                 {hasCap && (
                   <>
                     &nbsp;·&nbsp;<strong>{t('reg.subevents.capacity')}:</strong>{' '}
                     <span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>
-                      {count}/{se.maxParticipants}
+                      {count}/{ce.maxParticipants}
                     </span>
                   </>
                 )}
@@ -1063,7 +1061,7 @@ function SubEventEnrollmentSection(props: {
               className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
               style={{ fontSize: '0.8rem', padding: '6px 14px', minWidth: 110 }}
               disabled={disabled}
-              onClick={() => handleToggle(se.id, isReg)}
+              onClick={() => handleToggle(ce.id, isReg)}
             >
               {isBusy
                 ? '...'

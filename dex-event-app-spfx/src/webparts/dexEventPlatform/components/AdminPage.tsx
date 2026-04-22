@@ -43,14 +43,11 @@ function getStatusColor(status: string): string {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { events, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
+  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
   const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
-  // Filter fuer Sub-Events: 'all' = Hauptevent + alle Sub-Events, 'main' = nur Hauptevent-Angemeldete
-  // (keine SubEventIds oder leer), oder konkrete SubEvent.id.
-  const [selectedSubEventId, setSelectedSubEventId] = React.useState<string>('all');
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
@@ -419,24 +416,13 @@ export default function AdminPage(): React.ReactElement {
 
   // Event ausgewählt - Detail-Ansicht
   const query = searchQuery.toLowerCase().trim();
-  const matchesSearchOnly = (reg: SPRegistration): boolean => {
+  const matchesSearch = (reg: SPRegistration): boolean => {
     if (!query) return true;
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || '');
     return name.toLowerCase().includes(query)
       || (reg.ParticipantEmail || '').toLowerCase().includes(query)
       || String(reg.TeilnehmerID || '').includes(query);
   };
-  // Sub-Event-Filter: 'all' = keine Einschraenkung, 'main' = Teilnehmer ohne Sub-Event-Anmeldung,
-  // konkrete ID = nur Teilnehmer die diesen Sub-Event gebucht haben. Greift zusaetzlich zur Suche.
-  const matchesSubEventFilter = (reg: SPRegistration): boolean => {
-    if (selectedSubEventId === 'all') return true;
-    let ids: string[] = [];
-    try { if (reg.SubEventIds) ids = JSON.parse(reg.SubEventIds) || []; } catch { ids = []; }
-    if (selectedSubEventId === 'main') return ids.length === 0;
-    return ids.indexOf(selectedSubEventId) >= 0;
-  };
-  const matchesSearch = (reg: SPRegistration): boolean =>
-    matchesSearchOnly(reg) && matchesSubEventFilter(reg);
 
   const sortRegs = (a: SPRegistration, b: SPRegistration): number => {
     let cmp = 0;
@@ -1143,34 +1129,38 @@ export default function AdminPage(): React.ReactElement {
             <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {selectedEvent && selectedEvent.subEvents && selectedEvent.subEvents.length > 0 && (
-              <select
-                className="form-input"
-                value={selectedSubEventId}
-                onChange={e => setSelectedSubEventId(e.target.value)}
-                style={{ maxWidth: 320, padding: '6px 12px', fontSize: '0.85rem' }}
-                aria-label="Sub-Event-Filter"
-              >
-                <option value="all">Alle (Hauptevent + Sessions)</option>
-                <option value="main">Nur Hauptevent (keine Session)</option>
-                {selectedEvent.subEvents.map(se => {
-                  const count = registrations.filter(r => {
-                    let ids: string[] = [];
-                    try { if (r.SubEventIds) ids = JSON.parse(r.SubEventIds) || []; } catch { ids = []; }
-                    return ids.indexOf(se.id) >= 0
-                      && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-                  }).length;
-                  const capInfo = (typeof se.maxParticipants === 'number' && se.maxParticipants > 0)
-                    ? ` ${count}/${se.maxParticipants}`
-                    : ` ${count}`;
-                  return (
-                    <option key={se.id} value={se.id}>
-                      Session: {se.title || 'ohne Titel'}{capInfo}
+            {/* Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Wenn der selektierte
+                Event Child-Events hat, zeigen wir einen Dropdown zum schnellen
+                Umschalten in die Admin-Ansicht der Child-Events (oder zurück zum Parent). */}
+            {selectedEvent && (() => {
+              const isChild = !!selectedEvent.parentEventId;
+              const siblings = isChild
+                ? childEventsOf(selectedEvent.parentEventId || '')
+                : childEventsOf(selectedEvent.id);
+              if (!isChild && siblings.length === 0) return null;
+              const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
+              return (
+                <select
+                  className="form-input"
+                  value={selectedEvent.id}
+                  onChange={e => {
+                    const target = [parent, ...siblings].find(x => x && x.id === e.target.value);
+                    if (target) setSelectedEvent(target);
+                  }}
+                  style={{ maxWidth: 340, padding: '6px 12px', fontSize: '0.85rem' }}
+                  aria-label="Event wechseln"
+                >
+                  {parent && (
+                    <option value={parent.id}>Hauptevent: {parent.title}</option>
+                  )}
+                  {siblings.map(c => (
+                    <option key={c.id} value={c.id}>
+                      Session: {c.title || 'ohne Titel'}
                     </option>
-                  );
-                })}
-              </select>
-            )}
+                  ))}
+                </select>
+              );
+            })()}
             <input
               type="text"
               className="form-input"
