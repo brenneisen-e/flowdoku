@@ -91,8 +91,63 @@ function AppContent(): React.ReactElement {
     markExpiredEventsAsCompleted().catch(err => console.warn('[DEX] expire check failed:', err));
   }, [isAdmin, isEventsLoading]);
 
-  // Cleanup-Migration entfernt - laeuft jetzt manuell pro Event ueber einen
-  // Button im Admin Center (siehe AdminPage 'Teilnehmer-Profile auffrischen')
+  // One-Shot-Migration: JP-Morgan T-Shirt-Größen beim Admin-Start nachtragen.
+  // Idempotent: überschreibt keine bereits gesetzten Werte; trägt nur fehlende
+  // Größen anhand E-Mail-Match aus der gepflegten CSV nach.
+  // State für die Toast-UI, damit der Admin den Progress live sieht.
+  const [migrationToast, setMigrationToast] = React.useState<{
+    phase: 'running' | 'done' | 'skipped' | 'error';
+    message: string;
+    current: number;
+    total: number;
+    updated: number;
+  } | null>(null);
+  const didTShirtMigration = React.useRef(false);
+  React.useEffect(() => {
+    if (didTShirtMigration.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didTShirtMigration.current = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = (window as any).__dexSpfxContext;
+    if (!ctx) return;
+    (async () => {
+      try {
+        const { EventService } = await import('../services/EventService');
+        const { migrateJPMorganTShirtSizes } = await import('../migrations/jpMorganTShirtSizes');
+        const svc = new EventService(ctx);
+        // Initialer Toast
+        setMigrationToast({ phase: 'running', message: 'JP-Morgan T-Shirt-Größen werden geladen…', current: 0, total: 0, updated: 0 });
+        const result = await migrateJPMorganTShirtSizes(svc, events, (p) => {
+          // Mappen: 'loading-event'/'loading-registrations'/'updating' → 'running',
+          // 'done' → 'done', 'skipped'/'error' → entsprechend.
+          const uiPhase: 'running' | 'done' | 'skipped' | 'error' =
+            p.phase === 'done' ? 'done'
+            : p.phase === 'error' ? 'error'
+            : p.phase === 'skipped' ? 'skipped'
+            : 'running';
+          setMigrationToast({ phase: uiPhase, message: p.message, current: p.current, total: p.total, updated: p.updated });
+        });
+        if (result && result.updated > 0) {
+          console.warn('[DEX][MIGRATION] JP-Morgan T-Shirt-Größen nachgetragen:', result);
+        } else if (result) {
+          console.warn('[DEX][MIGRATION] JP-Morgan T-Shirt-Größen: nichts zu tun', result);
+          // Wenn kein JP-Morgan-Event gefunden wurde: Toast gar nicht erst einblenden.
+          // Wenn gefunden aber keine Updates: 'done' mit 0 bleibt sichtbar + auto-close.
+        } else {
+          // result === null: kein JP-Morgan-Event auf dem Tenant → Toast schließen
+          setMigrationToast(null);
+        }
+        // Auto-close nach 12s
+        setTimeout(() => setMigrationToast(null), 12000);
+      } catch (err) {
+        console.warn('[DEX][MIGRATION] T-Shirt-Migration fehlgeschlagen:', err);
+        setMigrationToast({ phase: 'error', message: 'Migration fehlgeschlagen — Details im Browser-Log.', current: 0, total: 0, updated: 0 });
+        setTimeout(() => setMigrationToast(null), 12000);
+      }
+    })().catch(() => { /* swallowed */ });
+  }, [isAdmin, isEventsLoading, events]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {
@@ -232,6 +287,86 @@ function AppContent(): React.ReactElement {
       <main className="main-content">
         {renderPage()}
       </main>
+      {/* Migration-Toast (Admin only) — wird von der One-Shot-Migration gesetzt. */}
+      {migrationToast && (() => {
+        const accent = migrationToast.phase === 'running'
+          ? 'var(--dex-orange, #ed8b00)'
+          : migrationToast.phase === 'done'
+            ? 'var(--dex-green, #86bc25)'
+            : migrationToast.phase === 'error'
+              ? 'var(--dex-red, #c00)'
+              : 'var(--dex-gray-400)';
+        const title = migrationToast.phase === 'running'
+          ? 'Datenmigration läuft…'
+          : migrationToast.phase === 'done'
+            ? 'Datenmigration abgeschlossen'
+            : migrationToast.phase === 'error'
+              ? 'Datenmigration fehlgeschlagen'
+              : 'Datenmigration übersprungen';
+        const percent = migrationToast.total > 0
+          ? Math.round((migrationToast.current / migrationToast.total) * 100)
+          : null;
+        return (
+          <div style={{
+            position: 'fixed', bottom: 20, right: 20, zIndex: 2000,
+            width: 380, maxWidth: 'calc(100% - 40px)',
+            padding: '14px 18px', borderRadius: 'var(--dex-radius, 12px)',
+            background: '#fff',
+            border: `1px solid ${accent}`,
+            borderLeft: `4px solid ${accent}`,
+            boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            {migrationToast.phase === 'running' && (
+              <div style={{
+                width: 20, height: 20, marginTop: 2, flexShrink: 0,
+                border: '3px solid var(--dex-gray-200)',
+                borderTopColor: accent,
+                borderRadius: '50%',
+                animation: 'dex-spin 0.8s linear infinite',
+              }} />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: accent, marginBottom: 4 }}>
+                {title}
+                {percent !== null && migrationToast.phase === 'running' && ` (${percent}%)`}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', wordBreak: 'break-word' }}>
+                {migrationToast.message}
+              </div>
+              {migrationToast.total > 0 && (
+                <div style={{
+                  marginTop: 8,
+                  height: 4,
+                  background: 'var(--dex-gray-200)',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${percent || 0}%`,
+                    background: accent,
+                    transition: 'width 0.2s ease-out',
+                  }} />
+                </div>
+              )}
+              {migrationToast.phase === 'done' && migrationToast.updated > 0 && (
+                <div style={{ marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                  {migrationToast.updated} Einträge aktualisiert.
+                </div>
+              )}
+            </div>
+            {migrationToast.phase !== 'running' && (
+              <button
+                onClick={() => setMigrationToast(null)}
+                aria-label="Schließen"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--dex-gray-500)', lineHeight: 1, padding: 0 }}
+              >×</button>
+            )}
+          </div>
+        );
+      })()}
+      <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
