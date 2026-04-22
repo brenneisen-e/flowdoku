@@ -127,6 +127,99 @@ export default function AdminPage(): React.ReactElement {
   const pastEvents = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
 
+  // v6.17: Verfügbare Spalten der Teilnehmer-Tabelle aufbauen. MUSS vor dem
+  // early return `if (!selectedEvent) return ...` stehen — sonst verletzen
+  // die Hooks die Rules-of-Hooks (unterschiedliche Hook-Anzahl pro Render =
+  // React Error #310).
+  const availableColumns = React.useMemo(() => {
+    const isSplit = !!selectedEvent
+      && typeof selectedEvent.durchstarterCapacity === 'number'
+      && typeof selectedEvent.funstarterCapacity === 'number'
+      && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+    const userIds = (selectedEvent?.eventSpecificFields || [])
+      .filter(f => f.type === 'user')
+      .map(f => f.id);
+    const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
+      { id: 'id', label: '#', alwaysVisible: true },
+      { id: 'anrede', label: 'Anrede' },
+      { id: 'name', label: 'Name', alwaysVisible: true },
+      { id: 'email', label: 'Email' },
+      { id: 'jobTitle', label: 'Job Title' },
+      { id: 'location', label: 'Standort' },
+    ];
+    if (isSplit) cols.push({ id: 'starterType', label: 'Starter-Typ' });
+    cols.push({ id: 'status', label: 'Status' });
+    cols.push({ id: 'date', label: 'Registriert am' });
+    cols.push({ id: 'registeredBy', label: 'Registriert von' });
+    if (userIds.length > 0) cols.push({ id: 'roommate', label: 'Zimmerpartner' });
+    for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
+      cols.push({ id: `cf-${f.id}`, label: f.label });
+    }
+    cols.push({ id: 'action', label: 'Aktion', alwaysVisible: true });
+    return cols;
+  }, [
+    selectedEvent?.id,
+    selectedEvent?.durchstarterCapacity,
+    selectedEvent?.funstarterCapacity,
+    (selectedEvent?.eventSpecificFields || []).map(f => `${f.id}:${f.type}:${f.label}`).join(','),
+  ]);
+
+  const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
+  // localStorage-Load beim Event-Wechsel.
+  React.useEffect(() => {
+    if (!selectedEvent) { setColumnOrder([]); setHiddenColumns([]); return; }
+    const allIds = availableColumns.map(c => c.id);
+    try {
+      const raw = localStorage.getItem(columnStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.hidden)) {
+          const knownOrder = parsed.order.filter((id: string) => allIds.indexOf(id) >= 0);
+          const missing = allIds.filter(id => knownOrder.indexOf(id) < 0);
+          setColumnOrder([...knownOrder, ...missing]);
+          setHiddenColumns(parsed.hidden.filter((id: string) => allIds.indexOf(id) >= 0));
+          return;
+        }
+      }
+    } catch { /* kaputte Config ignorieren */ }
+    setColumnOrder(allIds);
+    setHiddenColumns([]);
+  }, [columnStorageKey, availableColumns.map(c => c.id).join(',')]);
+
+  // Persistieren bei Änderungen.
+  React.useEffect(() => {
+    if (!columnStorageKey || columnOrder.length === 0) return;
+    try {
+      localStorage.setItem(columnStorageKey, JSON.stringify({ order: columnOrder, hidden: hiddenColumns }));
+    } catch { /* quota exceeded oder private mode → ignorieren */ }
+  }, [columnStorageKey, columnOrder.join(','), hiddenColumns.join(',')]);
+
+  // Helper: Spalte ausblenden / wieder einblenden / verschieben.
+  const hideColumn = (id: string): void => {
+    const col = availableColumns.find(c => c.id === id);
+    if (!col || col.alwaysVisible) return;
+    if (hiddenColumns.indexOf(id) < 0) setHiddenColumns([...hiddenColumns, id]);
+  };
+  const showColumn = (id: string): void => {
+    setHiddenColumns(hiddenColumns.filter(h => h !== id));
+    if (columnOrder.indexOf(id) < 0) {
+      const actionIdx = columnOrder.indexOf('action');
+      const next = [...columnOrder];
+      if (actionIdx >= 0) next.splice(actionIdx, 0, id); else next.push(id);
+      setColumnOrder(next);
+    }
+  };
+  const moveColumn = (id: string, direction: -1 | 1): void => {
+    const idx = columnOrder.indexOf(id);
+    if (idx < 0) return;
+    const target = idx + direction;
+    if (target < 0 || target >= columnOrder.length) return;
+    if (columnOrder[target] === 'action') return;
+    const next = [...columnOrder];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setColumnOrder(next);
+  };
+
   /**
    * CSV Export fuer Teilnehmerlisten.
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
@@ -497,95 +590,6 @@ export default function AdminPage(): React.ReactElement {
   const userFieldIds = (selectedEvent?.eventSpecificFields || [])
     .filter(f => f.type === 'user')
     .map(f => f.id);
-
-  // v6.17: Verfügbare Spalten der Teilnehmer-Tabelle aufbauen. Die Liste hängt
-  // vom ausgewählten Event ab (Split-Kapazität, Zimmerpartner-Feld, Custom-Fields).
-  // Jede Spalte bekommt eine stabile ID, damit die localStorage-Config auch nach
-  // App-Updates korrekt rekonstruierbar ist. `alwaysVisible` verhindert das
-  // Ausblenden von Pflicht-Spalten (Nr, Name, Aktion).
-  const availableColumns = React.useMemo(() => {
-    const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
-      { id: 'id', label: '#', alwaysVisible: true },
-      { id: 'anrede', label: 'Anrede' },
-      { id: 'name', label: 'Name', alwaysVisible: true },
-      { id: 'email', label: 'Email' },
-      { id: 'jobTitle', label: 'Job Title' },
-      { id: 'location', label: 'Standort' },
-    ];
-    if (isSplitCapacity) cols.push({ id: 'starterType', label: 'Starter-Typ' });
-    cols.push({ id: 'status', label: 'Status' });
-    cols.push({ id: 'date', label: 'Registriert am' });
-    cols.push({ id: 'registeredBy', label: 'Registriert von' });
-    if (userFieldIds.length > 0) cols.push({ id: 'roommate', label: 'Zimmerpartner' });
-    for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
-      cols.push({ id: `cf-${f.id}`, label: f.label });
-    }
-    cols.push({ id: 'action', label: 'Aktion', alwaysVisible: true });
-    return cols;
-  }, [selectedEvent?.id, isSplitCapacity, userFieldIds.join(','), (selectedEvent?.eventSpecificFields || []).map(f => f.id).join(',')]);
-
-  // localStorage: beim Event-Wechsel Config laden; Defaults = alle Spalten in
-  // Standard-Reihenfolge sichtbar. Config-Key pro Event, damit verschiedene
-  // Events unterschiedliche Custom-Fields haben dürfen.
-  const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
-  React.useEffect(() => {
-    if (!selectedEvent) { setColumnOrder([]); setHiddenColumns([]); return; }
-    const allIds = availableColumns.map(c => c.id);
-    try {
-      const raw = localStorage.getItem(columnStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.hidden)) {
-          // Nur bekannte Spalten übernehmen, neue Spalten am Ende anhängen.
-          const knownOrder = parsed.order.filter((id: string) => allIds.indexOf(id) >= 0);
-          const missing = allIds.filter(id => knownOrder.indexOf(id) < 0);
-          setColumnOrder([...knownOrder, ...missing]);
-          setHiddenColumns(parsed.hidden.filter((id: string) => allIds.indexOf(id) >= 0));
-          return;
-        }
-      }
-    } catch { /* kaputte Config ignorieren */ }
-    // Default: alle Spalten sichtbar in Standard-Reihenfolge.
-    setColumnOrder(allIds);
-    setHiddenColumns([]);
-  }, [columnStorageKey, availableColumns.map(c => c.id).join(',')]);
-
-  // Persistieren bei Änderungen.
-  React.useEffect(() => {
-    if (!columnStorageKey || columnOrder.length === 0) return;
-    try {
-      localStorage.setItem(columnStorageKey, JSON.stringify({ order: columnOrder, hidden: hiddenColumns }));
-    } catch { /* quota exceeded oder private mode → ignorieren */ }
-  }, [columnStorageKey, columnOrder.join(','), hiddenColumns.join(',')]);
-
-  // Helper: Spalte ausblenden / wieder einblenden / verschieben.
-  const hideColumn = (id: string): void => {
-    const col = availableColumns.find(c => c.id === id);
-    if (!col || col.alwaysVisible) return;
-    if (hiddenColumns.indexOf(id) < 0) setHiddenColumns([...hiddenColumns, id]);
-  };
-  const showColumn = (id: string): void => {
-    setHiddenColumns(hiddenColumns.filter(h => h !== id));
-    // Falls noch nicht in der Reihenfolge: vor der "action"-Spalte einfügen,
-    // damit Aktionen immer zuletzt bleiben.
-    if (columnOrder.indexOf(id) < 0) {
-      const actionIdx = columnOrder.indexOf('action');
-      const next = [...columnOrder];
-      if (actionIdx >= 0) next.splice(actionIdx, 0, id); else next.push(id);
-      setColumnOrder(next);
-    }
-  };
-  const moveColumn = (id: string, direction: -1 | 1): void => {
-    const idx = columnOrder.indexOf(id);
-    if (idx < 0) return;
-    const target = idx + direction;
-    if (target < 0 || target >= columnOrder.length) return;
-    // Nie über die 'action'-Spalte hinaus bewegen — die bleibt immer letzte.
-    if (columnOrder[target] === 'action') return;
-    const next = [...columnOrder];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setColumnOrder(next);
-  };
 
   // Render-Funktionen pro Spalte — als eine Map, damit der Header + die Body-Zeilen
   // die gleiche stabile ID benutzen. Wird bei jedem Registration-Render neu aufgebaut,
