@@ -27,7 +27,7 @@ function formatDate(iso: string): string {
 
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, checkRegistrationByEmail } = useEvents();
+  const { events, registerForEvent, checkRegistrationByEmail, registerForSubEvent, cancelSubEventRegistration, getMyRegistration, getAllRegistrations } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, isAdmin } = useRoles();
   const { t } = useLanguage();
@@ -351,6 +351,21 @@ export default function RegistrationPage(): React.ReactElement {
                   ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
                   : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email))}
           </p>
+          {/* Sub-Event-Anmeldung nach erfolgreicher Hauptevent-Anmeldung.
+              Nur fuer Self-Registration sichtbar (Fuer-andere-Pfad queued die Mails/Outlook
+              an den Teilnehmer selbst — Sub-Event-Anmeldung macht der dann in seiner eigenen Session). */}
+          {!registerForOther && !isFull && event.subEvents && event.subEvents.length > 0 && (
+            <SubEventEnrollmentSection
+              eventId={event.id}
+              eventTitle={event.title}
+              subEvents={event.subEvents}
+              registerForSubEvent={registerForSubEvent}
+              cancelSubEventRegistration={cancelSubEventRegistration}
+              getMyRegistration={getMyRegistration}
+              getAllRegistrations={getAllRegistrations}
+              language={event.emailLanguage || 'EN'}
+            />
+          )}
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
               {t('myevents.title')}
@@ -910,6 +925,160 @@ export default function RegistrationPage(): React.ReactElement {
           <Send size={16} /> {isSubmitting ? t('reg.submitting') : t('reg.register')}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ==================== Sub-Event-Anmeldung nach Hauptevent-Registrierung ====================
+// Wird auf dem Success-Screen der RegistrationPage angezeigt. Zeigt alle Sub-Events
+// des Parent-Events mit Kapazitaetsanzeige und einem An-/Abmelden-Button pro Session.
+function SubEventEnrollmentSection(props: {
+  eventId: string;
+  eventTitle: string;
+  subEvents: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    location?: string;
+    startDate: string;
+    endDate: string;
+    maxParticipants?: number;
+    registrationDeadline?: string;
+  }>;
+  registerForSubEvent: (eventId: string, subEventId: string) => Promise<boolean>;
+  cancelSubEventRegistration: (eventId: string, subEventId: string) => Promise<boolean>;
+  getMyRegistration: (eventId: string) => Promise<{ SubEventIds?: string } | null>;
+  getAllRegistrations: (eventId: string) => Promise<Array<{ Status?: string; SubEventIds?: string }>>;
+  language: string;
+}): React.ReactElement {
+  const { t } = useLanguage();
+  const isDe = (props.language || 'EN').toUpperCase() === 'DE';
+  const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
+  const [busy, setBusy] = React.useState<Set<string>>(new Set());
+  // Auslastung pro Sub-Event (Anzahl aktiver Anmeldungen). Wird fuer die
+  // Belegungs-Anzeige (z.B. "8/10") und zum Deaktivieren bei vollen Sessions genutzt.
+  const [subEventCounts, setSubEventCounts] = React.useState<Record<string, number>>({});
+
+  const refresh = React.useCallback(async (): Promise<void> => {
+    try {
+      const reg = await props.getMyRegistration(props.eventId);
+      if (reg && reg.SubEventIds) {
+        const arr = JSON.parse(reg.SubEventIds) as string[];
+        setRegisteredSet(new Set(Array.isArray(arr) ? arr : []));
+      } else {
+        setRegisteredSet(new Set());
+      }
+      // Alle Registrierungen laden und pro Sub-Event zaehlen (nur aktive Teilnehmer).
+      const all = await props.getAllRegistrations(props.eventId);
+      const counts: Record<string, number> = {};
+      for (const r of all || []) {
+        const st = r.Status || '';
+        if (st !== 'Angemeldet' && st !== 'QR versendet' && st !== 'Eingecheckt') continue;
+        let ids: string[] = [];
+        try { if (r.SubEventIds) ids = JSON.parse(r.SubEventIds) || []; } catch { ids = []; }
+        for (const id of ids) counts[id] = (counts[id] || 0) + 1;
+      }
+      setSubEventCounts(counts);
+    } catch { /* ignore */ }
+  }, [props.eventId]);
+
+  React.useEffect(() => { refresh().catch(() => { /* ignore */ }); }, [refresh]);
+
+  const handleToggle = async (subEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    setBusy(prev => { const s = new Set(prev); s.add(subEventId); return s; });
+    try {
+      if (currentlyRegistered) {
+        await props.cancelSubEventRegistration(props.eventId, subEventId);
+      } else {
+        await props.registerForSubEvent(props.eventId, subEventId);
+      }
+      await refresh();
+    } finally {
+      setBusy(prev => { const s = new Set(prev); s.delete(subEventId); return s; });
+    }
+  };
+
+  const fmt = (iso: string): string => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleString(isDe ? 'de-DE' : 'en-GB', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    } catch { return iso; }
+  };
+
+  return (
+    <div style={{ marginTop: 32, textAlign: 'left', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+      <h3 style={{ marginTop: 0, marginBottom: 4 }}>
+        {t('reg.subevents.title') || (isDe ? 'Zusaetzliche Sessions' : 'Additional sessions')}
+      </h3>
+      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 16 }}>
+        {t('reg.subevents.hint')
+          || (isDe
+            ? 'Du kannst dich hier zusaetzlich fuer einzelne Sessions anmelden. Pro Session bekommst du eine eigene Bestaetigungs-E-Mail und einen eigenen Outlook-Kalendereintrag.'
+            : 'You can register for individual sessions here. You will receive a separate confirmation email and calendar invite per session.')}
+      </p>
+      {props.subEvents.map(se => {
+        const isReg = registeredSet.has(se.id);
+        const isBusy = busy.has(se.id);
+        const deadlinePassed = !!(se.registrationDeadline && new Date(se.registrationDeadline) < new Date());
+        const count = subEventCounts[se.id] || 0;
+        const hasCap = typeof se.maxParticipants === 'number' && se.maxParticipants > 0;
+        const isFull = hasCap && count >= (se.maxParticipants || 0);
+        const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
+        return (
+          <div key={se.id} style={{
+            padding: 12, marginBottom: 8, borderRadius: 8,
+            border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+            background: isReg ? 'rgba(134,188,37,0.06)' : '#fff',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{se.title}</div>
+              {se.description && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>{se.description}</div>
+              )}
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                {se.startDate && <><strong>{isDe ? 'Start' : 'Start'}:</strong> {fmt(se.startDate)} </>}
+                {se.endDate && <>&nbsp;·&nbsp;<strong>{isDe ? 'Ende' : 'End'}:</strong> {fmt(se.endDate)} </>}
+                {se.location && <>&nbsp;·&nbsp;<strong>{isDe ? 'Ort' : 'Location'}:</strong> {se.location}</>}
+                {hasCap && (
+                  <>
+                    &nbsp;·&nbsp;<strong>{isDe ? 'Plaetze' : 'Capacity'}:</strong>{' '}
+                    <span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>
+                      {count}/{se.maxParticipants}
+                    </span>
+                  </>
+                )}
+              </div>
+              {deadlinePassed && !isReg && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', marginTop: 4 }}>
+                  {isDe ? 'Anmeldeschluss fuer diese Session ist abgelaufen.' : 'Registration deadline for this session has passed.'}
+                </div>
+              )}
+              {isFull && !isReg && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--dex-red, #c00)', marginTop: 4 }}>
+                  {isDe ? 'Diese Session ist voll.' : 'This session is full.'}
+                </div>
+              )}
+            </div>
+            <button
+              className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px', minWidth: 110 }}
+              disabled={disabled}
+              onClick={() => handleToggle(se.id, isReg)}
+            >
+              {isBusy
+                ? '...'
+                : (isReg
+                    ? (t('reg.subevents.cancel') || (isDe ? 'Abmelden' : 'Cancel'))
+                    : (t('reg.subevents.register') || (isDe ? 'Anmelden' : 'Register')))}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
