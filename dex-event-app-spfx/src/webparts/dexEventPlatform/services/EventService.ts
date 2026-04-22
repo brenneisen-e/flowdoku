@@ -3117,11 +3117,19 @@ export class EventService {
 
   /**
    * TeilnehmerIDs sequentiell neu vergeben (1, 2, 3, ...).
-   * Nur angemeldete Teilnehmer bekommen IDs, sortiert nach SP-ListItem-ID (Erstellungsreihenfolge).
-   * Abgemeldete Teilnehmer bekommen TeilnehmerID = null.
+   *
+   * Seit v6.5: Zwei-Pass-Reorder.
+   * 1. Erst alle **Angemeldeten** (Status ∈ Angemeldet / QR versendet / Eingecheckt)
+   *    in Reihenfolge der Registrierung (SP-ItemId asc) → bekommen IDs 1..N.
+   * 2. Danach alle **Warteliste**-Teilnehmer in Reihenfolge der Registrierung
+   *    → bekommen IDs N+1..N+M (Warteliste hängt lückenlos hinten an).
+   * 3. Abgemeldete bekommen TeilnehmerID = null.
+   *
+   * Damit stehen im Teilnehmerlisten-Grid die Angemeldeten sauber oben, die
+   * Warteliste sauber unten — kein Durchmischen mehr.
    */
   public async reorderParticipantIDs(subsiteUrl: string): Promise<{ success: number; errors: number }> {
-    // Alle Items laden, sortiert nach SP Id (Erstellungsreihenfolge)
+    // Alle Items laden, sortiert nach SP Id (Erstellungsreihenfolge = Reihenfolge der Registrierung)
     const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=500`;
 
@@ -3135,17 +3143,33 @@ export class EventService {
       } catch { break; }
     }
 
+    // Ziel-IDs in einem ersten Durchlauf berechnen: erst Angemeldete, dann Warteliste.
+    const targetIds = new Map<number, number | null>();
     let nextId = 1;
+    // Pass 1: Angemeldete / QR versendet / Eingecheckt
+    for (const item of allItems) {
+      if (item.Status === 'Angemeldet' || item.Status === 'QR versendet' || item.Status === 'Eingecheckt') {
+        targetIds.set(item.Id, nextId++);
+      }
+    }
+    // Pass 2: Warteliste
+    for (const item of allItems) {
+      if (item.Status === 'Warteliste') {
+        targetIds.set(item.Id, nextId++);
+      }
+    }
+    // Pass 3: Abgemeldete (TeilnehmerID=null)
+    for (const item of allItems) {
+      if (!targetIds.has(item.Id)) {
+        targetIds.set(item.Id, null);
+      }
+    }
+
     let success = 0;
     let errors = 0;
-
     for (const item of allItems) {
-      const isActive = item.Status === 'Angemeldet' || item.Status === 'QR versendet' || item.Status === 'Eingecheckt' || item.Status === 'Warteliste';
-      const newId = isActive ? nextId++ : null;
-
-      // Nur updaten wenn sich die ID aendert
+      const newId = targetIds.get(item.Id) ?? null;
       if (newId === item.TeilnehmerID) { success++; continue; }
-
       try {
         const resp = await this._merge(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${item.Id})`,
