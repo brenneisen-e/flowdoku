@@ -617,99 +617,57 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 ## 4. DEX_Outlook_Einladungen
 
 **Trigger:** Neuer Eintrag in DEX_Outlook (alle 5 Minuten, Concurrency 1)
-**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin loeschen (via Graph API). Seit v6.0 auch Sub-Event-Kalender (eigener Termin pro Trainingssession) via Override-Felder.
-**Letztes Update:** 2026-04-22 (v6.2, production): Sub-Event-Branch mit Einladen/Ausladen/UpdateEvent, Override-Felder, pro SubEventId ein eigener Kalendertermin. Parent-DeleteEvent loescht nicht mehr automatisch Sub-Event-Kalender — das queued die App separat pro Sub-Event als DeleteEvent-Items ohne SubEventId (landen im bestehenden Is_DeleteEvent-Branch).
+**Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin löschen (via Graph API).
+**Letztes Update:** 2026-04-22 (v6.4, production): Sub-Event-Sonderlogik komplett entfernt. Sub-Events sind seit v6.4 eigene DEX_Events-Items mit gesetztem `ParentEventId` — sie laufen durch denselben Einladen/Ausladen/Update/Delete-Pfad wie Top-Level-Events, **keine** Override-Felder, **kein** separater Branch. Flow-Struktur entspricht wieder der ursprünglichen v5.x-Version.
 
-### Sub-Event-Support (seit v6.0)
-
-Wenn `SubEventId` im Queue-Item gesetzt ist, laeuft der neue `Is_SubEvent`-Branch **am Anfang** des Flows:
-
-- **Einladen / Ausladen**: Sucht per `SubEventId + CalendarLink ne null` den fruehesten DEX_Outlook-Eintrag mit Kalendertermin-iCalUId. Wenn keiner: neuen Kalender anlegen (mit `OverrideTitle`, `OverrideStart`, `OverrideEnd`, `OverrideLocation`, `OverrideBody` aus dem Queue-Item), iCalUId ins aktuelle Queue-Item schreiben. Sonst: bestehenden Kalender wiederverwenden, Attendee hinzufuegen/entfernen.
-- **UpdateEvent**: patched den Sub-Event-Kalender mit `OverrideTitle`/`OverrideStart`/`OverrideEnd`/`OverrideBody` — parallel zum Parent-UpdateEvent. Die App queued pro editierten Sub-Event ein UpdateEvent-Item (wenn der Sub-Event bereits einen Kalender hat).
-- **DeleteEvent**: wird **ohne** `SubEventId` gequeued (nur `CalendarLink`). Faellt damit durch den Is_SubEvent-Branch durch und landet im existierenden `Is_DeleteEvent`-Branch, der den Kalender ueber iCalUId direkt loescht.
-
-### Flow-Struktur (v6.2)
+### Flow-Struktur (v6.4)
 
 ```
 Trigger (DEX_Outlook, alle 5 Min, Concurrency 1)
-├── Init_SubEvent_iCalUId (string)       \
-├── Init_SubEvent_Attendees (array)       }  Top-Level — InitializeVariable darf nicht in If nested sein
-├── Init_SubEvent_GraphEventId (string)  /
-├── Is_SubEvent (SubEventId ne '')
-│   ├── TRUE:
-│   │   ├── Find_SubEvent_Calendar (SharePoint Get Items, $filter=SubEventId + CalendarLink ne null + Id ne current)
-│   │   ├── Is_New_SubEvent_Calendar (length(value) == 0)
-│   │   │   ├── TRUE (kein Kalender vorhanden):
-│   │   │   │   ├── Build_SubEvent_Create_Body (Compose)
-│   │   │   │   ├── Create_SubEvent_Calendar (Graph POST /calendar/events)
-│   │   │   │   └── Update_item (SP Update: Status=Sent, CalendarLink=iCalUId)
-│   │   │   └── FALSE (Kalender existiert):
-│   │   │       ├── Set_SubEvent_iCalUId
-│   │   │       ├── Find_SubEvent_Graph_Event (Graph GET by iCalUId)
-│   │   │       ├── Set_SubEvent_Attendees
-│   │   │       ├── Set_SubEvent_GraphEventId
-│   │   │       ├── Is_SubEvent_UpdateEvent (ActionType == UpdateEvent)
-│   │   │       │   ├── TRUE:  Build_SubEvent_Update_Body (Compose) → Patch_SubEvent_Update (Graph PATCH)
-│   │   │       │   └── FALSE: Is_SubEvent_Einladen (ActionType == Einladen)
-│   │   │       │                ├── TRUE:  Append_SubEvent_Attendee + Patch_SubEvent_Einladen
-│   │   │       │                └── FALSE: Filter_SubEvent_Attendees + Patch_SubEvent_Ausladen
-│   │   │       └── Update_item_1 (SP Update: Status=Sent, runAfter Is_SubEvent_UpdateEvent: Succeeded)
-│   │   └── Terminate (Succeeded)
-│   └── FALSE: (nichts — Parent-Logik laeuft unten weiter)
-├── Is_DeleteEvent (ActionType == DeleteEvent, runAfter Is_SubEvent: Succeeded)
-│   └── TRUE: Find_Outlook_Event_For_Delete (Graph GET by CalendarLink) → Delete_Outlook_Event (Graph DELETE)
+├── Is_DeleteEvent (ActionType == DeleteEvent, runAfter Trigger)
+│   └── TRUE: Find_Outlook_Event_For_Delete (Graph GET by CalendarLink)
+│             └── Outlook_Event_Found (length > 0)
+│                 └── TRUE: Delete_Outlook_Event (Graph DELETE) → Set_Sent_DeleteEvent (SP Status=Sent)
 ├── Get_Event_Details (SharePoint Get Items DEX_Events by EventId, runAfter Is_DeleteEvent)
-├── Init_RealEventId
-├── Init_Attendees
-└── Check_CalendarLink
-    └── TRUE: Find_Outlook_Event (Graph GET) → Check_EventFound
-        └── TRUE: Get_Existing_Event → Set_Attendees → Is_UpdateEvent
-            ├── TRUE: Build_Update_Body (Compose) → Send_an_HTTP_request (Graph PATCH)
-            └── FALSE: Check_ActionType (Einladen/Ausladen) — bestehende Logik
+├── Init_RealEventId (string)
+├── Init_Attendees (array)
+└── Check_CalendarLink (Event.CalendarLink gesetzt?)
+    ├── TRUE: Find_Outlook_Event (Graph GET by iCalUId)
+    │         → Set_variable (varRealEventId)
+    │         → Check_EventFound (varRealEventId nicht leer?)
+    │           ├── TRUE: Get_Existing_Event → Set_variable_1 (var_Attendees)
+    │           │         → Is_UpdateEvent (ActionType == UpdateEvent)
+    │           │           ├── TRUE:  Build_Update_Body (Compose) → Send_an_HTTP_request (Graph PATCH Titel/Start/Ende/Body)
+    │           │           └── FALSE: Check_ActionType (ActionType == Einladen)
+    │           │                      ├── TRUE:  Add_Attendee + Update_Event_Einladen (PATCH attendees)
+    │           │                      └── FALSE: Filter_Attendees + Update_Event_Ausladen (PATCH attendees)
+    │           │         → Set_Sent (Status=Sent)
+    │           └── FALSE: Set_Failed_1 (Event nicht in Outlook gefunden)
+    └── FALSE: Set_Failed (kein CalendarLink im DEX_Events-Item)
 ```
 
-**Build_SubEvent_Update_Body (Compose, innerhalb Is_SubEvent_UpdateEvent TRUE):**
+### ActionTypes
 
-```json
-{
-  "subject": "@{triggerBody()?['OverrideTitle']}",
-  "start": {
-    "dateTime": "@{convertFromUtc(triggerBody()?['OverrideStart'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
-    "timeZone": "W. Europe Standard Time"
-  },
-  "end": {
-    "dateTime": "@{convertFromUtc(triggerBody()?['OverrideEnd'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
-    "timeZone": "W. Europe Standard Time"
-  },
-  "location": { "displayName": "@{coalesce(triggerBody()?['OverrideLocation'], '')}" },
-  "body": { "contentType": "html", "content": "@{coalesce(triggerBody()?['OverrideBody'], '')}" }
-}
-```
+- `Einladen` — einzelnen Teilnehmer zum Outlook-Termin hinzufügen
+- `Ausladen` — einzelnen Teilnehmer aus dem Outlook-Termin entfernen
+- `UpdateEvent` — Titel, Start, Ende **und Body** des Outlook-Termins aktualisieren (seit 2026-04-17: `OutlookBody` aus DEX_Events mit aufgelöstem `{{ORB_URL}}` per Graph PATCH; vorher blieb der Body vom initialen Create unverändert)
+- `DeleteEvent` — kompletten Outlook-Termin löschen. Das DEX_Outlook-Queue-Item enthält `CalendarLink` (iCalUId) direkt, weil das zugehörige DEX_Events-Item bereits gelöscht ist wenn der Flow läuft.
 
-**Patch_SubEvent_Update (HTTP):**
-- Uri: `@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', variables('varSubEventGraphEventId'))`
-- Method: `PATCH`
-- Body: `@outputs('Build_SubEvent_Update_Body')`
-- ContentType: `application/json`
+### Warum keine Sub-Event-Sonderlogik (seit v6.4)
 
-### Sauberes Verzweigungs-Verhalten (seit 2026-04-22)
+Sub-Events sind eigene DEX_Events-Items mit `ParentEventId` ≠ leer. Dadurch:
+- Der **`DEX_CreateOutlookEvent`**-Flow legt für jedes Sub-Event automatisch einen eigenen Kalendertermin an (wie für Top-Level-Events).
+- Anmeldungen werden in der **eigenen Subsite** des Sub-Events gespeichert (eigene Teilnehmerliste, QR-Codes, Warteliste).
+- **`DEX_Outlook_Einladungen`** (dieser Flow) bekommt für jede Sub-Event-Anmeldung eine ganz normale `Einladen`-Queue-Zeile mit EventId=Sub-Event-ID. Er findet das Calendar-Event über den CalendarLink im Sub-Event-DEX_Events-Item und fügt den Attendee hinzu — keine Sonderwege nötig.
+- Bei **Parent-Löschung** löscht die App kaskadierend alle Child-Events (`EventContext.deleteEvent` iteriert `events.filter(e.parentEventId === parentId)`). Jedes Child-Delete queued sein eigenes `DeleteEvent`-Item → Is_DeleteEvent-Branch räumt den Kalender auf.
 
-Jedes DEX_Outlook-Queue-Item fuehrt **genau einen** relevanten Graph-PATCH aus:
-
-- `ActionType=UpdateEvent` → nur `Patch_SubEvent_Update` laeuft; `Is_SubEvent_Einladen` wird gar nicht evaluiert (im TRUE-Zweig von Is_SubEvent_UpdateEvent).
-- `ActionType=Einladen` → Is_SubEvent_UpdateEvent=FALSE → Else → Is_SubEvent_Einladen=TRUE → `Patch_SubEvent_Einladen`.
-- `ActionType=Ausladen` → Is_SubEvent_UpdateEvent=FALSE → Else → Is_SubEvent_Einladen=FALSE → `Patch_SubEvent_Ausladen`.
-
-Keine unnoetigen No-Op-PATCHes, keine potentiellen doppelten "Updated meeting"-Mails aus Graph.
-
-### Parent-Event-Update (seit 2026-04-17, unveraendert — wird jetzt nach Is_SubEvent ausgefuehrt)
+### Parent-Event-Update (seit 2026-04-17, unverändert)
 
 Ablauf:
 1. Trigger (neues DEX_Outlook-Item)
-2. **Is_SubEvent?** (NEU v6.0) → Ja: Sub-Event-Branch inkl. Terminate am Ende. Nein: weiter.
-3. **Is_DeleteEvent?** → Ja: Outlook-Termin per `triggerBody()?['CalendarLink']` finden (iCalUId) → DELETE → Status=Sent. Nein: weiter.
-4. Event-Details laden (DEX_Events via EventId) → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden?
-5. Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende **+ Body** → Nein: Einladen/Ausladen → Status=Sent
+2. **Is_DeleteEvent?** → Ja: Outlook-Termin per `triggerBody()?['CalendarLink']` finden (iCalUId) → DELETE → Status=Sent. Nein: weiter.
+3. Event-Details laden (DEX_Events via EventId) → CalendarLink vorhanden? → Outlook-Event per iCalUId finden → Event-ID speichern → Event gefunden?
+4. Bestehende Attendees laden → Is_UpdateEvent? → Ja: PATCH Titel/Start/Ende **+ Body** → Nein: Einladen/Ausladen → Status=Sent
 
 **ActionTypes:**
 - `Einladen` — einzelnen Teilnehmer zum Outlook-Termin hinzufuegen
