@@ -3000,6 +3000,28 @@ export class EventService {
   }
 
   /**
+   * Schlanker MERGE-Helper auf ein einzelnes Teilnehmerlisten-Item — baut
+   * keine ChangeLog-Logik, keine FieldMap-Auflösung, keine Default-Felder ein.
+   * Genutzt für One-Shot-Migrationen (z.B. T-Shirt-Größen-Import), die direkt
+   * bestimmte Felder (inkl. CustomData-JSON + einzelne SP-Spalten) setzen wollen.
+   */
+  public async mergeRegistrationFields(
+    subsiteUrl: string,
+    itemId: number,
+    body: Record<string, unknown>
+  ): Promise<boolean> {
+    try {
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        body
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Custom Data einer Registrierung aktualisieren (Teilnehmer aendert eigene Angaben).
    */
   public async updateRegistrationData(

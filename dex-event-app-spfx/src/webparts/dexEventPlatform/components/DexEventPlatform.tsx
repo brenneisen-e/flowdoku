@@ -91,8 +91,35 @@ function AppContent(): React.ReactElement {
     markExpiredEventsAsCompleted().catch(err => console.warn('[DEX] expire check failed:', err));
   }, [isAdmin, isEventsLoading]);
 
-  // Cleanup-Migration entfernt - laeuft jetzt manuell pro Event ueber einen
-  // Button im Admin Center (siehe AdminPage 'Teilnehmer-Profile auffrischen')
+  // One-Shot-Migration: JP-Morgan T-Shirt-Größen beim Admin-Start nachtragen.
+  // Idempotent: überschreibt keine bereits gesetzten Werte; trägt nur fehlende
+  // Größen anhand E-Mail-Match aus der gepflegten CSV nach.
+  const didTShirtMigration = React.useRef(false);
+  React.useEffect(() => {
+    if (didTShirtMigration.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didTShirtMigration.current = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = (window as any).__dexSpfxContext;
+    if (!ctx) return;
+    (async () => {
+      try {
+        const { EventService } = await import('../services/EventService');
+        const { migrateJPMorganTShirtSizes } = await import('../migrations/jpMorganTShirtSizes');
+        const svc = new EventService(ctx);
+        const result = await migrateJPMorganTShirtSizes(svc, events);
+        if (result && result.updated > 0) {
+          console.warn('[DEX][MIGRATION] JP-Morgan T-Shirt-Größen nachgetragen:', result);
+        } else if (result) {
+          console.warn('[DEX][MIGRATION] JP-Morgan T-Shirt-Größen: nichts zu tun', result);
+        }
+      } catch (err) {
+        console.warn('[DEX][MIGRATION] T-Shirt-Migration fehlgeschlagen:', err);
+      }
+    })().catch(() => { /* swallowed */ });
+  }, [isAdmin, isEventsLoading, events]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {
