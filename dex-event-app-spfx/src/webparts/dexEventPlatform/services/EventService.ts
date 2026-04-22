@@ -742,6 +742,73 @@ export class EventService {
   }
 
   /**
+   * Liefert die pro Sub-Event bekannten Outlook-Kalender-Links (iCalUIds) fuer ein
+   * Event. Datenquelle: alle DEX_Outlook-Items mit passender EventId, SubEventId und
+   * gefuelltem CalendarLink — wir nehmen pro SubEventId den chronologisch ersten
+   * Eintrag (das ist der "Create"-Eintrag bei dem der Flow die iCalUId zurueckgeschrieben hat).
+   *
+   * Genutzt fuer:
+   *  - Cleanup bei Event-Loeschung (alle Sub-Event-Kalender loeschen)
+   *  - Update-Propagation (Override-Felder pro Sub-Event pflegen)
+   */
+  public async getSubEventCalendarLinks(
+    eventId: string | number
+  ): Promise<Array<{ subEventId: string; calendarLink: string }>> {
+    try {
+      const eid = String(eventId).replace(/'/g, "''");
+      const filter = `EventId eq '${eid}' and CalendarLink ne null`;
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items?$select=Id,SubEventId,CalendarLink&$filter=${encodeURIComponent(filter)}&$orderby=Id asc&$top=500`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items: Array<{ SubEventId?: string; CalendarLink?: string }> = data.value || data.d?.results || [];
+      const seen: Record<string, string> = {};
+      for (const it of items) {
+        const sid = (it.SubEventId || '').trim();
+        const cl = (it.CalendarLink || '').trim();
+        if (!sid || !cl) continue;
+        if (!(sid in seen)) seen[sid] = cl;
+      }
+      return Object.keys(seen).map(k => ({ subEventId: k, calendarLink: seen[k] }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * DeleteEvent fuer einen einzelnen Sub-Event-Kalender queuen. `SubEventId` wird
+   * bewusst NICHT mitgeschrieben, damit der Flow im `Is_SubEvent`-Branch nicht
+   * in die Einladen/Ausladen-Logik faellt — sondern sauber im `Is_DeleteEvent`-
+   * Branch landet und den Kalender via CalendarLink loescht (gleiches Pattern
+   * wie beim Parent-Delete).
+   */
+  public async queueOutlookDeleteSubEventCalendar(
+    eventId: string,
+    eventTitle: string,
+    subEventTitle: string,
+    calendarLink: string
+  ): Promise<boolean> {
+    try {
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+          'Title': `DeleteEvent: ${eventTitle} — ${subEventTitle}`,
+          'Attendee': '',
+          'EventId': eventId,
+          'ActionType': 'DeleteEvent',
+          'Status': 'Pending',
+          'CalendarLink': calendarLink,
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Liefert alle Attendees, die den Outlook-Kalendertermin abgelehnt haben.
    *
    * Liest den Termin im Postfach der Shared Mailbox `no_reply.events@deloitte.de`
@@ -2349,6 +2416,34 @@ export class EventService {
           await this.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
         } catch { /* Queue-Fehler ignorieren */ }
       }
+      // 0b. Sub-Event-Kalender ebenfalls aufraeumen: jeder Sub-Event hat ggf.
+      //     einen eigenen Outlook-Termin (iCalUId im ersten zugehoerigen
+      //     DEX_Outlook-Item). Wir queuen pro gefundener iCalUId ein
+      //     DeleteEvent-Item (ohne SubEventId, damit der Flow direkt den
+      //     Is_DeleteEvent-Branch nutzt und ueber CalendarLink loescht).
+      try {
+        const subCalendars = await this.getSubEventCalendarLinks(eventId);
+        // Sub-Event-Titel aus dem gespeicherten JSON rausziehen (best effort —
+        // reine Kosmetik fuer den DEX_Outlook-Titel, die Delete-Logik braucht
+        // nur den CalendarLink).
+        const subTitleById: Record<string, string> = {};
+        try {
+          if (event.SubEvents) {
+            const arr = JSON.parse(event.SubEvents) as Array<{ id: string; title?: string }>;
+            for (const s of arr) { if (s && s.id) subTitleById[s.id] = s.title || ''; }
+          }
+        } catch { /* ignore */ }
+        for (const sc of subCalendars) {
+          try {
+            await this.queueOutlookDeleteSubEventCalendar(
+              String(eventId),
+              event.Title || '',
+              subTitleById[sc.subEventId] || sc.subEventId,
+              sc.calendarLink
+            );
+          } catch { /* einzelner Queue-Fehler darf Event-Delete nicht blockieren */ }
+        }
+      } catch { /* Sub-Event-Cleanup optional */ }
 
       // 1. Subsite loeschen (neue Events)
       if (event.SubsiteUrl) {

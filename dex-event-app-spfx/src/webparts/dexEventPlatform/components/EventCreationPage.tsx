@@ -1171,7 +1171,47 @@ export default function EventCreationPage(): React.ReactElement {
             const ctx = (window as any).__dexSpfxContext;
             if (ctx && editEvent?.subsiteUrl) {
               const svc = new EventService(ctx);
+              // Parent-Event UpdateEvent
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+              // Zusaetzlich: pro bereits existierendem Sub-Event-Kalender ein
+              // UpdateEvent queuen. Der Flow patched damit die Sub-Event-
+              // Kalenderdaten (Titel/Start/Ende/Ort/Body) ueber die Override-Felder.
+              // Nur Sub-Events die bereits einen Kalender haben (i.e. mind. ein
+              // Teilnehmer war angemeldet) werden aktualisiert — fuer "leere"
+              // Sub-Events entsteht kein Kalender beim Update, sondern erst beim
+              // naechsten Einladen.
+              try {
+                const subCalendars = await svc.getSubEventCalendarLinks(selectedEventId);
+                if (subCalendars.length > 0) {
+                  // Aktuelle Sub-Event-Definitionen aus dem State (post-edit) nehmen,
+                  // damit die Override-Felder mit den NEUEN Werten (Titel/Datum/Ort)
+                  // gequeued werden — nicht mit den alten aus DEX_Events.
+                  const seById: Record<string, SubEvent> = {};
+                  for (const se of subEvents) { if (se.id) seById[se.id] = se; }
+                  for (const sc of subCalendars) {
+                    const se = seById[sc.subEventId];
+                    if (!se) {
+                      // Sub-Event wurde in diesem Edit entfernt — Kalender loeschen,
+                      // sonst bleibt er als Leiche im Shared-Mailbox-Kalender stehen.
+                      await svc.queueOutlookDeleteSubEventCalendar(
+                        selectedEventId, title, sc.subEventId, sc.calendarLink
+                      );
+                      continue;
+                    }
+                    if (se.disableOutlook) continue;
+                    await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent', {
+                      id: se.id,
+                      title: se.title,
+                      startDate: se.startDate,
+                      endDate: se.endDate,
+                      location: se.location,
+                      body: se.outlookBody && se.outlookBody.length > 0
+                        ? se.outlookBody
+                        : undefined,
+                    });
+                  }
+                }
+              } catch { /* Sub-Event-Update optional */ }
             }
           } catch { /* Outlook-Update optional */ }
         }
