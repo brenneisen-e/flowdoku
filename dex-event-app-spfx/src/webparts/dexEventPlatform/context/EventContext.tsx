@@ -364,12 +364,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     let status = 'Angemeldet';
     let effectiveStarterType: string | undefined = preferredStarterType;
 
-    // B2Run Split-Capacity Logik
+    // B2Run Split-Capacity Logik (seit v6.5): getrennte Wartelisten pro StarterType.
+    // Wenn der Wunsch-Typ noch freie Plätze hat → direkt angemeldet mit diesem Typ.
+    // Wenn der Wunsch-Typ voll ist → landet auf der Warteliste MIT gesetztem
+    // PreferredStarterType (kein stiller Fallback auf den anderen Typ mehr).
+    // Die Entscheidung "möchte ich auf den anderen Typ umsteigen" trifft der User
+    // explizit im UI (RegistrationPage Pre-Check-Dialog), bevor er hier reinkommt —
+    // dann hat preferredStarterType bereits den neuen Wunsch.
     const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
     if (event && isB2runSplit && preferredStarterType) {
       try {
-        // Aktuelle Auslastung fuer beide Typen zaehlen
         const allRegs = await eventService.getAllRegistrations(subsiteUrl);
         const activeRegs = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
         const durchCount = activeRegs.filter(r => r.StarterType === 'Durchstarter').length;
@@ -380,16 +385,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           effectiveStarterType = 'Durchstarter';
         } else if (preferredStarterType === 'Funstarter' && funFree > 0) {
           effectiveStarterType = 'Funstarter';
-        } else if (preferredStarterType === 'Durchstarter' && funFree > 0) {
-          // Durchstarter voll, Fallback auf Funstarter
-          effectiveStarterType = 'Funstarter';
-        } else if (preferredStarterType === 'Funstarter' && durchFree > 0) {
-          // Funstarter voll, Fallback auf Durchstarter
-          effectiveStarterType = 'Durchstarter';
         } else {
-          // Beide voll -> Warteliste
+          // Wunsch-Typ voll → Warteliste für genau diesen Typ.
           status = 'Warteliste';
-          effectiveStarterType = undefined; // wird erst beim Nachruecken gesetzt
+          effectiveStarterType = undefined; // wird erst beim Nachrücken gesetzt
         }
       } catch { /* Bei Fehler: normale Logik */ }
     } else if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
@@ -556,15 +555,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             );
           } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
         }
-        // Nachruecken: Ersten Warteliste-Teilnehmer auf den freigewordenen Platz setzen.
-        // Der Nachruecker erbt den StarterType des Abgemeldeten (bei B2Run-Split).
-        // Wird hier direkt client-seitig gemacht, damit der Power Automate Flow
-        // keinen doppelten Nachrueck-Versuch macht.
+        // Nachrücken: Ersten Warteliste-Teilnehmer auf den freigewordenen Platz setzen.
+        // Bei B2Run-Split-Kapazitäten (getrennte Durchstarter-/Funstarter-Wartelisten,
+        // seit v6.5): nur den ersten Warteliste-Teilnehmer nachrücken, dessen
+        // PreferredStarterType mit dem freigewordenen Typ übereinstimmt. Damit wird
+        // ein abgemeldeter Durchstarter-Platz nicht an einen Funstarter-Warteliste-
+        // Teilnehmer vergeben und umgekehrt.
+        const isB2runSplitCancel = typeof event.durchstarterCapacity === 'number'
+          && typeof event.funstarterCapacity === 'number'
+          && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
         try {
           const promoted = await eventService.promoteFirstWaitlistItem(
             subsiteUrl,
             cancelledStarterType || undefined,
-            event.maxParticipants
+            event.maxParticipants,
+            (isB2runSplitCancel && cancelledStarterType) ? cancelledStarterType : undefined
           );
           if (promoted && promoted.success && !event.disableEmails) {
             // Nachrueck-E-Mail an den Nachruecker senden

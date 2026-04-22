@@ -456,6 +456,21 @@ export default function AdminPage(): React.ReactElement {
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste').filter(matchesSearch)
     .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
+  // Seit v6.5: getrennte Wartelisten bei B2Run-Split-Kapazitäten (Durchstarter/Funstarter).
+  // Die Split-Aktivierung erkennen wir daran, dass beide Kapazitäts-Felder gesetzt und > 0 sind.
+  const isSplitCapacity = !!selectedEvent
+    && typeof selectedEvent.durchstarterCapacity === 'number'
+    && typeof selectedEvent.funstarterCapacity === 'number'
+    && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+  const waitlistDurch = isSplitCapacity
+    ? waitlistRegs.filter(r => r.PreferredStarterType === 'Durchstarter')
+    : [];
+  const waitlistFun = isSplitCapacity
+    ? waitlistRegs.filter(r => r.PreferredStarterType === 'Funstarter')
+    : [];
+  const waitlistUnassigned = isSplitCapacity
+    ? waitlistRegs.filter(r => !r.PreferredStarterType || (r.PreferredStarterType !== 'Durchstarter' && r.PreferredStarterType !== 'Funstarter'))
+    : [];
 
   // Roommate-Matching: durchsucht CustomData nach user-Type Feldern, extrahiert
   // Email aus "Name <email>"-Format, baut Map Email -> Partner-Email. Match-Badge,
@@ -800,6 +815,43 @@ export default function AdminPage(): React.ReactElement {
           <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
         </div>
       </div>
+
+      {/* Split-Kapazitäts-Übersicht (seit v6.5): getrennte Belegung pro Starter-Typ. */}
+      {isSplitCapacity && (() => {
+        const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const durchActive = active.filter(r => r.StarterType === 'Durchstarter').length;
+        const funActive = active.filter(r => r.StarterType === 'Funstarter').length;
+        const durchCap = selectedEvent?.durchstarterCapacity || 0;
+        const funCap = selectedEvent?.funstarterCapacity || 0;
+        const durchWait = waitlistDurch.length;
+        const funWait = waitlistFun.length;
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+            <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-green-dark, #6b9a1e)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ color: 'var(--dex-green-dark, #6b9a1e)' }}>Durchstarter</strong>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
+                  {durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span>
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                Warteliste: <strong style={{ color: 'var(--dex-orange)' }}>{durchWait}</strong>
+              </div>
+            </div>
+            <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-orange, #ff8c00)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ color: 'var(--dex-orange, #ff8c00)' }}>Funstarter</strong>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
+                  {funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span>
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                Warteliste: <strong style={{ color: 'var(--dex-orange)' }}>{funWait}</strong>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
         <button
@@ -1455,6 +1507,9 @@ export default function AdminPage(): React.ReactElement {
                   ))}
                   <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Job Title</th>
                   <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Standort</th>
+                  {isSplitCapacity && (
+                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Starter-Typ: wird bei der Anmeldung gewählt. Bei Warteliste ist der tatsächliche Startblock noch nicht zugewiesen (erst beim Nachrücken).">Startblock</th>
+                  )}
                   {([['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
                     <th
                       key={col}
@@ -1491,6 +1546,22 @@ export default function AdminPage(): React.ReactElement {
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).JobTitle || '-'}</td>
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).Location || '-'}</td>
+                    {isSplitCapacity && (
+                      <td style={{ padding: 8, fontSize: '0.8rem' }}>
+                        {(() => {
+                          // Tatsächlicher Startblock (StarterType) + Wunsch (PreferredStarterType).
+                          // Wenn beide identisch: nur einen anzeigen. Wenn unterschiedlich (z.B. per
+                          // Fallback-Dialog auf anderen Typ umgestiegen): Wunsch in Klammern daneben.
+                          const actual = reg.StarterType || '';
+                          const pref = reg.PreferredStarterType || '';
+                          if (!actual && !pref) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
+                          if (actual && pref && actual !== pref) {
+                            return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
+                          }
+                          return <span>{actual || `Wunsch: ${pref}`}</span>;
+                        })()}
+                      </td>
+                    )}
                     <td style={{ padding: 8 }}>
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>
@@ -1650,77 +1721,97 @@ export default function AdminPage(): React.ReactElement {
           </div>
         )}
 
-        {waitlistRegs.length > 0 && (
-          <>
-            <h4 style={{ marginTop: 24, color: 'var(--dex-orange)' }}>Warteliste ({waitlistRegs.length})</h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Platz</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {waitlistRegs.map((reg, i) => (
-                    <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                      <td style={{ padding: 8, fontWeight: 600, color: 'var(--dex-orange)' }}>{i + 1}</td>
-                      <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
-                      <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                      <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
-                      <td style={{ padding: 8 }}>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
-                          onClick={async () => {
-                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                            const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                            if (!confirm(`${name} von der Warteliste entfernen?`)) return;
-                            await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
-                            if (reg.ParticipantEmail && !selectedEvent.disableEmails) {
-                              const emailData = cancellationEmail(name, selectedEvent.title);
-                              eventServiceRef.queueEmail(
-                                emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                                'Abmeldung', selectedEvent.title, selectedEvent.id
-                              ).catch(err => console.warn('[DEX]', err));
-                            }
-                            if (reg.ParticipantEmail && selectedEvent.eventNumber) {
-                              eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
-                            }
-                            // IDReorder in Queue: auch fuer Warteliste-Entfernen noetig, damit die TIDs
-                            // nach dem Abmeldung lueckenlos bleiben.
-                            if (selectedEvent.subsiteUrl) {
-                              try {
-                                const ok = await eventServiceRef.queueIDReorder(
-                                  selectedEvent.id, selectedEvent.eventNumber || 0,
-                                  selectedEvent.subsiteUrl, selectedEvent.title
-                                );
-                                if (!ok) {
-                                  console.warn('[DEX] queueIDReorder (Warteliste) returned false');
-                                  alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+        {(() => {
+          // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
+          // PreferredStarterType. Ohne Split: eine einzige Warteliste wie bisher.
+          const renderWaitlistTable = (title: string, regs: SPRegistration[], accentColor: string): React.ReactElement | null => {
+            if (regs.length === 0) return null;
+            return (
+              <React.Fragment key={title}>
+                <h4 style={{ marginTop: 24, color: accentColor }}>{title} ({regs.length})</h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Platz</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
+                        {isSplitCapacity && <th style={{ textAlign: 'left', padding: 8 }}>Wunsch-Typ</th>}
+                        <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                        <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {regs.map((reg, i) => (
+                        <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{i + 1}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                          {isSplitCapacity && (
+                            <td style={{ padding: 8, color: 'var(--dex-gray-700)' }}>
+                              {reg.PreferredStarterType || '—'}
+                            </td>
+                          )}
+                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                          <td style={{ padding: 8 }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                              onClick={async () => {
+                                if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                                const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                                if (!confirm(`${name} von der Warteliste entfernen?`)) return;
+                                await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
+                                if (reg.ParticipantEmail && !selectedEvent.disableEmails) {
+                                  const emailData = cancellationEmail(name, selectedEvent.title);
+                                  eventServiceRef.queueEmail(
+                                    emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                                    'Abmeldung', selectedEvent.title, selectedEvent.id
+                                  ).catch(err => console.warn('[DEX]', err));
                                 }
-                              } catch (err) {
-                                console.warn('[DEX] queueIDReorder (Warteliste) threw:', err);
-                                alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
-                              }
-                            }
-                            const regs = await getAllRegistrations(selectedEvent.id);
-                            setRegistrations(regs);
-                          }}
-                        >
-                          Entfernen
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                                if (reg.ParticipantEmail && selectedEvent.eventNumber) {
+                                  eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
+                                }
+                                if (selectedEvent.subsiteUrl) {
+                                  try {
+                                    const ok = await eventServiceRef.queueIDReorder(
+                                      selectedEvent.id, selectedEvent.eventNumber || 0,
+                                      selectedEvent.subsiteUrl, selectedEvent.title
+                                    );
+                                    if (!ok) {
+                                      alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                    }
+                                  } catch {
+                                    alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                  }
+                                }
+                                const allRegs = await getAllRegistrations(selectedEvent.id);
+                                setRegistrations(allRegs);
+                              }}
+                            >
+                              Entfernen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </React.Fragment>
+            );
+          };
+
+          if (isSplitCapacity) {
+            return (
+              <>
+                {renderWaitlistTable('Warteliste Durchstarter', waitlistDurch, 'var(--dex-green-dark, #6b9a1e)')}
+                {renderWaitlistTable('Warteliste Funstarter', waitlistFun, 'var(--dex-orange, #ff8c00)')}
+                {renderWaitlistTable('Warteliste ohne Typ', waitlistUnassigned, 'var(--dex-gray-500)')}
+              </>
+            );
+          }
+          return renderWaitlistTable('Warteliste', waitlistRegs, 'var(--dex-orange)');
+        })()}
 
         {cancelledRegs.length > 0 && (
           <>

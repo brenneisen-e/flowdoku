@@ -916,14 +916,31 @@ export default function EventCreationPage(): React.ReactElement {
 
   // Bei B2Run: maxParticipants automatisch aus Summe von Durchstarter + Funstarter berechnen
   const isB2runTemplate = selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'));
+  // Seit v6.5: explizite Checkbox in Schritt 3 ("Lauf-Event mit getrennten
+  // Starter-Kapazitäten") statt versteckt über das Template gesteuert.
+  // Initial-Wert: beim Edit aus vorhandenen Kapazitäten abgeleitet, bei neuem
+  // Event true wenn B2Run-Template gewählt wurde.
+  const [useSplitCapacities, setUseSplitCapacities] = React.useState<boolean>(() => {
+    if (editEvent) {
+      return typeof editEvent.durchstarterCapacity === 'number'
+        && typeof editEvent.funstarterCapacity === 'number'
+        && (editEvent.durchstarterCapacity > 0 || editEvent.funstarterCapacity > 0);
+    }
+    return selectedTemplate === 'b2run';
+  });
+  // Automatisch aktivieren wenn B2Run-Template nachträglich gewählt wird.
   React.useEffect(() => {
-    if (!isB2runTemplate) return;
+    if (!editEvent && selectedTemplate === 'b2run') setUseSplitCapacities(true);
+  }, [selectedTemplate, editEvent]);
+
+  React.useEffect(() => {
+    if (!useSplitCapacities) return;
     const d = parseInt(durchstarterCapacity, 10) || 0;
     const f = parseInt(funstarterCapacity, 10) || 0;
     const sum = d + f;
     if (sum > 0) setMaxParticipants(String(sum));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [durchstarterCapacity, funstarterCapacity, isB2runTemplate]);
+  }, [durchstarterCapacity, funstarterCapacity, useSplitCapacities]);
 
   const fillDemo = (): void => {
     const now = new Date();
@@ -1174,9 +1191,14 @@ export default function EventCreationPage(): React.ReactElement {
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
       updates['IsFictive'] = isFictive;
-      if (isB2runTemplate) {
+      if (useSplitCapacities) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
         updates['FunstarterCapacity'] = parseInt(funstarterCapacity, 10) || 0;
+      } else {
+        // Split deaktiviert: Kapazitäten nullen, damit die registerForEvent-Logik
+        // nicht irrtümlich den B2Run-Split-Pfad nimmt.
+        updates['DurchstarterCapacity'] = null;
+        updates['FunstarterCapacity'] = null;
       }
 
       setProgress(50);
@@ -1376,8 +1398,8 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails,
         disableOutlook,
         isFictive,
-        durchstarterCapacity: isB2runTemplate ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
-        funstarterCapacity: isB2runTemplate ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
+        durchstarterCapacity: useSplitCapacities ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
+        funstarterCapacity: useSplitCapacities ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -2547,8 +2569,26 @@ export default function EventCreationPage(): React.ReactElement {
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deregAfterStart')}</p>}
 
-              {/* B2Run: Split-Kapazitaeten fuer Durchstarter + Funstarter */}
-              {isB2runTemplate ? (
+              {/* Explizite Wahl: Lauf-Event mit getrennten Starter-Kapazitäten (seit v6.5)? */}
+              <div className="form-group" style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)', marginBottom: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={useSplitCapacities}
+                    onChange={e => setUseSplitCapacities(e.target.checked)}
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                  />
+                  <span>
+                    <strong>Lauf-Event mit getrennten Starter-Kapazitäten</strong>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                      z.B. B2Run: getrennte Plätze und Wartelisten für Durchstarter und Funstarter. Wenn deaktiviert, gilt eine einzige Teilnehmerzahl.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* B2Run: Split-Kapazitäten für Durchstarter + Funstarter */}
+              {useSplitCapacities ? (
                 <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.b2runcap')}

@@ -124,6 +124,8 @@ export default function RegistrationPage(): React.ReactElement {
   }, [navIntent, canCreateEvents]);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
   const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
+  // Seit v6.5: Fallback-Dialog wenn B2Run-Wunschtyp voll, aber Alternative frei.
+  const [fallbackDialog, setFallbackDialog] = React.useState<{ wunsch: string; alt: string; altFree: number } | null>(null);
   const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -296,26 +298,48 @@ export default function RegistrationPage(): React.ReactElement {
       }
     }
 
+    // Seit v6.5: B2Run-Split-Kapazitäten. Wenn der gewählte Starter-Typ voll ist,
+    // aber der andere Typ noch freie Plätze hat, zeigen wir einen Dialog —
+    // der User entscheidet explizit:
+    //   (a) auf den anderen Typ umsteigen, oder
+    //   (b) auf die Warteliste für den gewünschten Typ.
+    // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
+    // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
+    if (isB2runSplit && preferredStarterType) {
+      const durchFree = Math.max(0, durchCap - starterCounts.durch);
+      const funFree = Math.max(0, funCap - starterCounts.fun);
+      const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
+      const altType = preferredStarterType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
+      const altFree = altType === 'Durchstarter' ? durchFree : funFree;
+      if (wunschFree === 0 && altFree > 0) {
+        // Dialog zeigen, Submit warten.
+        setFallbackDialog({ wunsch: preferredStarterType, alt: altType, altFree });
+        return;
+      }
+    }
+
+    await performRegistration(preferredStarterType);
+  };
+
+  // Eigentliche Registrierung — entkoppelt vom Validation/Submit-Trigger,
+  // damit sie auch vom Fallback-Dialog aufgerufen werden kann (mit ggf. geändertem Starter-Typ).
+  const performRegistration = async (starterTypeToUse: string): Promise<void> => {
     setError('');
     setIsSubmitting(true);
-
     try {
       const customData: Record<string, string> = {
         salutation,
         ...eventSpecific,
       };
-
       const participantEmail = email.trim();
-
       const success = await registerForEvent(
         selectedEventId!,
         customData,
         firstName.trim(),
         surname.trim(),
         participantEmail,
-        preferredStarterType || undefined
+        starterTypeToUse || undefined
       );
-
       if (success) {
         setSubmitted(true);
       } else {
@@ -924,6 +948,70 @@ export default function RegistrationPage(): React.ReactElement {
           <Send size={16} /> {isSubmitting ? t('reg.submitting') : t('reg.register')}
         </button>
       </div>
+
+      {/* Fallback-Dialog (seit v6.5): Wunsch-Starter-Typ voll, aber Alternative frei.
+          User entscheidet explizit zwischen Umsteigen oder Warteliste. */}
+      {fallbackDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setFallbackDialog(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius, 12px)',
+              padding: 24, maxWidth: 480, width: '100%',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
+            }}
+          >
+            <h3 style={{ margin: 0, marginBottom: 10 }}>
+              {fallbackDialog.wunsch}-Plätze sind voll
+            </h3>
+            <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 8 }}>
+              Für <strong>{fallbackDialog.wunsch}</strong> gibt es aktuell keine freien Plätze mehr.
+            </p>
+            <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 20 }}>
+              Es sind allerdings noch <strong>{fallbackDialog.altFree}</strong> Plätze als <strong>{fallbackDialog.alt}</strong> frei.
+              Möchtest du stattdessen als <strong>{fallbackDialog.alt}</strong> starten?
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.9rem' }}
+                onClick={async () => {
+                  const wunsch = fallbackDialog.wunsch;
+                  setFallbackDialog(null);
+                  // Wunsch beibehalten → landet auf Warteliste für den Wunsch-Typ.
+                  await performRegistration(wunsch);
+                }}
+              >
+                Auf {fallbackDialog.wunsch}-Warteliste
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ fontSize: '0.9rem' }}
+                onClick={async () => {
+                  const alt = fallbackDialog.alt;
+                  setFallbackDialog(null);
+                  // Preferred auf den Alt-Typ setzen, damit sowohl Anzeige
+                  // als auch das Register-Payload den neuen Wunsch nutzen.
+                  setPreferredStarterType(alt);
+                  await performRegistration(alt);
+                }}
+              >
+                Als {fallbackDialog.alt} starten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

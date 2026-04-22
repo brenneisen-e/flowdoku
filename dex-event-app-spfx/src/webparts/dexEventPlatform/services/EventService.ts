@@ -3496,7 +3496,12 @@ export class EventService {
   public async promoteFirstWaitlistItem(
     subsiteUrl: string,
     inheritStarterType?: string,
-    maxParticipants?: number
+    maxParticipants?: number,
+    /** Seit v6.5: Bei B2Run-Events mit getrennten Durchstarter-/Funstarter-Wartelisten
+     * hier den freigewordenen Starter-Typ mitgeben — dann wird NUR der erste
+     * Warteliste-Teilnehmer mit passendem PreferredStarterType nachgerückt.
+     * Wenn leer: Default-Verhalten (beliebiger Warteliste-Teilnehmer). */
+    onlyWithPreferredType?: string
   ): Promise<{ success: boolean; email?: string; name?: string; skippedOverbooked?: boolean }> {
     try {
       // Ueberbuchungs-Schutz: Nur nachruecken, wenn tatsaechlich ein Platz frei ist.
@@ -3516,9 +3521,16 @@ export class EventService {
         }
       }
 
-      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst)
+      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst).
+      // Bei B2Run-Split-Kapazitäten: nur die passende Warteliste durchsuchen
+      // (PreferredStarterType == onlyWithPreferredType).
+      let filter = `Status eq 'Warteliste'`;
+      if (onlyWithPreferredType) {
+        const esc = onlyWithPreferredType.replace(/'/g, "''");
+        filter += ` and PreferredStarterType eq '${esc}'`;
+      }
       const resp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=Status eq 'Warteliste'&$orderby=RegistrationDate asc&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=RegistrationDate asc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return { success: false };
