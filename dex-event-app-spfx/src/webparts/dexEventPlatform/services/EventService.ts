@@ -222,7 +222,7 @@ export interface SPEvent {
   Documents: string; // JSON-Array mit Dokumenten
   FunZone: string; // JSON-Array mit Quiz-Fragen
   QuizClusterSize?: number; // 1..4 - wie viele Fragen pro Quiz-Ansicht. Optional, Default 1.
-  SubEvents?: string; // JSON-Array mit Sub-Events (eigene Datum/Ort/Outlook-Termin)
+  ParentEventId?: string; // Seit v6.4: wenn gesetzt, ist dies ein Sub-Event und zeigt auf das Parent-Event. Leer = Top-Level-Event.
   RegistrationListName: string;
   SubsiteUrl: string; // Absolute URL der Event-Subsite
 }
@@ -261,7 +261,6 @@ export interface SPRegistration {
   CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgeloest hat
   CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
   CustomData: string; // JSON mit Custom Field Werten
-  SubEventIds?: string; // JSON-Array der Sub-Event-IDs, für die sich der Teilnehmer angemeldet hat
 }
 
 export interface SPParticipant {
@@ -563,13 +562,7 @@ export class EventService {
   public async ensureOutlookList(): Promise<void> {
     const listName = 'DEX_Outlook';
     const exists = await this.listExists(listName);
-    if (exists) {
-      // Override-Felder für Sub-Events ggf. nachlegen (idempotent).
-      try {
-        await this.ensureOutlookOverrideFields(listName);
-      } catch { /* ignore */ }
-      return;
-    }
+    if (exists) return;
 
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -594,15 +587,6 @@ export class EventService {
       // CalendarLink (iCalUId) - nur für DeleteEvent nötig, damit der Flow das Outlook-
       // Event auch dann noch finden kann, wenn das DEX_Events-Item schon gelöscht wurde.
       { title: 'CalendarLink', type: 3 },
-      // Sub-Event Override-Felder: wenn gesetzt, nutzt der Flow diese Werte statt der
-      // Parent-Event-Daten (Titel/Start/Ende/Ort/Body). Damit kann derselbe Flow sowohl
-      // Parent- als auch Sub-Event-Termine versenden, ohne weitere Logik-Änderungen.
-      { title: 'SubEventId', type: 2 },
-      { title: 'OverrideTitle', type: 2 },
-      { title: 'OverrideStart', type: 4 },
-      { title: 'OverrideEnd', type: 4 },
-      { title: 'OverrideLocation', type: 2 },
-      { title: 'OverrideBody', type: 3 }, // Multiline - HTML-Body bereits im Deloitte-Layout
     ];
 
     for (const f of fields) {
@@ -626,84 +610,26 @@ export class EventService {
   }
 
   /**
-   * Fehlende Sub-Event-Override-Felder auf bestehendem DEX_Outlook nachträglich anlegen.
-   * Idempotent — skippt Felder die bereits existieren.
-   */
-  private async ensureOutlookOverrideFields(listName: string): Promise<void> {
-    const overrideFields: Array<{ title: string; type: number; metaType?: string }> = [
-      { title: 'SubEventId', type: 2 },
-      { title: 'OverrideTitle', type: 2 },
-      { title: 'OverrideStart', type: 4 },
-      { title: 'OverrideEnd', type: 4 },
-      { title: 'OverrideLocation', type: 2 },
-      { title: 'OverrideBody', type: 3 },
-    ];
-    for (const f of overrideFields) {
-      const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')?$select=Id`;
-      try {
-        const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
-        if (probe.ok) continue;
-      } catch { /* weitermachen — Anlage versuchen */ }
-      try {
-        await this._post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
-          {
-            '__metadata': { 'type': f.metaType || 'SP.Field' },
-            'Title': f.title,
-            'FieldTypeKind': f.type,
-            'Required': false,
-          }
-        );
-      } catch { /* nächstes Feld */ }
-    }
-  }
-
-  /**
    * Outlook-Termin-Einladung in die Queue eintragen.
    * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
-   *
-   * Optionaler `subEvent`-Parameter: wenn gesetzt, werden die Override-Felder
-   * (SubEventId + OverrideTitle/Start/End/Location/Body) mitgeschrieben. Der Flow
-   * nutzt diese Felder (falls vorhanden) statt der Parent-Event-Daten und erzeugt
-   * dadurch einen separaten Kalendereintrag pro Sub-Event.
    */
   public async queueOutlookEvent(
     attendee: string,
     eventId: string,
     eventTitle: string,
-    actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent',
-    subEvent?: {
-      id: string;
-      title: string;
-      startDate?: string;
-      endDate?: string;
-      location?: string;
-      body?: string; // HTML-Body bereits im Deloitte-Layout (wrapTemplate)
-    }
+    actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
   ): Promise<boolean> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
-        'Title': subEvent
-          ? `${actionType}: ${eventTitle} / ${subEvent.title}`
-          : `${actionType}: ${eventTitle}`,
-        'Attendee': attendee,
-        'EventId': eventId,
-        'ActionType': actionType,
-        'Status': 'Pending',
-      };
-      if (subEvent) {
-        payload['SubEventId'] = subEvent.id;
-        payload['OverrideTitle'] = `${eventTitle} — ${subEvent.title}`;
-        if (subEvent.startDate) payload['OverrideStart'] = subEvent.startDate;
-        if (subEvent.endDate) payload['OverrideEnd'] = subEvent.endDate;
-        if (subEvent.location) payload['OverrideLocation'] = subEvent.location;
-        if (subEvent.body) payload['OverrideBody'] = subEvent.body;
-      }
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
-        payload
+        {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
+          'Title': `${actionType}: ${eventTitle}`,
+          'Attendee': attendee,
+          'EventId': eventId,
+          'ActionType': actionType,
+          'Status': 'Pending',
+        }
       );
       return response.ok;
     } catch {
@@ -728,73 +654,6 @@ export class EventService {
         {
           '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
           'Title': `DeleteEvent: ${eventTitle}`,
-          'Attendee': '',
-          'EventId': eventId,
-          'ActionType': 'DeleteEvent',
-          'Status': 'Pending',
-          'CalendarLink': calendarLink,
-        }
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Liefert die pro Sub-Event bekannten Outlook-Kalender-Links (iCalUIds) für ein
-   * Event. Datenquelle: alle DEX_Outlook-Items mit passender EventId, SubEventId und
-   * gefülltem CalendarLink — wir nehmen pro SubEventId den chronologisch ersten
-   * Eintrag (das ist der "Create"-Eintrag bei dem der Flow die iCalUId zurückgeschrieben hat).
-   *
-   * Genutzt für:
-   *  - Cleanup bei Event-Löschung (alle Sub-Event-Kalender löschen)
-   *  - Update-Propagation (Override-Felder pro Sub-Event pflegen)
-   */
-  public async getSubEventCalendarLinks(
-    eventId: string | number
-  ): Promise<Array<{ subEventId: string; calendarLink: string }>> {
-    try {
-      const eid = String(eventId).replace(/'/g, "''");
-      const filter = `EventId eq '${eid}' and CalendarLink ne null`;
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items?$select=Id,SubEventId,CalendarLink&$filter=${encodeURIComponent(filter)}&$orderby=Id asc&$top=500`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const items: Array<{ SubEventId?: string; CalendarLink?: string }> = data.value || data.d?.results || [];
-      const seen: Record<string, string> = {};
-      for (const it of items) {
-        const sid = (it.SubEventId || '').trim();
-        const cl = (it.CalendarLink || '').trim();
-        if (!sid || !cl) continue;
-        if (!(sid in seen)) seen[sid] = cl;
-      }
-      return Object.keys(seen).map(k => ({ subEventId: k, calendarLink: seen[k] }));
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * DeleteEvent für einen einzelnen Sub-Event-Kalender queuen. `SubEventId` wird
-   * bewusst NICHT mitgeschrieben, damit der Flow im `Is_SubEvent`-Branch nicht
-   * in die Einladen/Ausladen-Logik fällt — sondern sauber im `Is_DeleteEvent`-
-   * Branch landet und den Kalender via CalendarLink löscht (gleiches Pattern
-   * wie beim Parent-Delete).
-   */
-  public async queueOutlookDeleteSubEventCalendar(
-    eventId: string,
-    eventTitle: string,
-    subEventTitle: string,
-    calendarLink: string
-  ): Promise<boolean> {
-    try {
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
-        {
-          '__metadata': { 'type': 'SP.Data.DEX_x005f_OutlookListItem' },
-          'Title': `DeleteEvent: ${eventTitle} — ${subEventTitle}`,
           'Attendee': '',
           'EventId': eventId,
           'ActionType': 'DeleteEvent',
@@ -1843,7 +1702,7 @@ export class EventService {
       { title: 'Documents', type: 3 }, // JSON-Array mit Dokumenten
       { title: 'FunZone', type: 3 }, // JSON-Array mit Quiz-Fragen
       { title: 'QuizClusterSize', type: 9 }, // Number - 1..4 Fragen pro Quiz-Ansicht
-      { title: 'SubEvents', type: 3 }, // JSON-Array mit Sub-Events (Trainingssessions etc.)
+      { title: 'ParentEventId', type: 2 }, // Seit v6.4: ID des Parent-Events (wenn dies ein Sub-Event ist)
       { title: 'RegistrationListName', type: 2 },
       { title: 'RegistrationListUrl', type: 2 },
       { title: 'SubsiteUrl', type: 2 },
@@ -2100,7 +1959,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,SubEvents,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -2215,7 +2074,8 @@ export class EventService {
     documents?: string; // JSON-Array mit Dokumenten
     funZone?: string; // JSON-Array mit Quiz-Fragen
     quizClusterSize?: number; // 1..4 - Fragen pro Quiz-Ansicht
-    subEvents?: string; // JSON-Array mit Sub-Events (Trainingssessions etc.)
+    /** Seit v6.4: wenn gesetzt, wird dieses Event als Sub-Event angelegt und zeigt auf das angegebene Parent-Event. */
+    parentEventId?: string;
     emailLanguage?: string;
     emailTemplateOverrides?: string;
     disableEmails?: boolean;
@@ -2307,7 +2167,7 @@ export class EventService {
         'Documents': event.documents || '[]',
         'FunZone': event.funZone || '[]',
         'QuizClusterSize': typeof event.quizClusterSize === 'number' ? event.quizClusterSize : null,
-        'SubEvents': event.subEvents || '[]',
+        'ParentEventId': event.parentEventId || '',
         'RegistrationListName': REG_LIST_NAME,
         'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
@@ -2416,35 +2276,6 @@ export class EventService {
           await this.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
         } catch { /* Queue-Fehler ignorieren */ }
       }
-      // 0b. Sub-Event-Kalender ebenfalls aufräumen: jeder Sub-Event hat ggf.
-      //     einen eigenen Outlook-Termin (iCalUId im ersten zugehörigen
-      //     DEX_Outlook-Item). Wir queuen pro gefundener iCalUId ein
-      //     DeleteEvent-Item (ohne SubEventId, damit der Flow direkt den
-      //     Is_DeleteEvent-Branch nutzt und über CalendarLink löscht).
-      try {
-        const subCalendars = await this.getSubEventCalendarLinks(eventId);
-        // Sub-Event-Titel aus dem gespeicherten JSON rausziehen (best effort —
-        // reine Kosmetik fuer den DEX_Outlook-Titel, die Delete-Logik braucht
-        // nur den CalendarLink).
-        const subTitleById: Record<string, string> = {};
-        try {
-          if (event.SubEvents) {
-            const arr = JSON.parse(event.SubEvents) as Array<{ id: string; title?: string }>;
-            for (const s of arr) { if (s && s.id) subTitleById[s.id] = s.title || ''; }
-          }
-        } catch { /* ignore */ }
-        for (const sc of subCalendars) {
-          try {
-            await this.queueOutlookDeleteSubEventCalendar(
-              String(eventId),
-              event.Title || '',
-              subTitleById[sc.subEventId] || sc.subEventId,
-              sc.calendarLink
-            );
-          } catch { /* einzelner Queue-Fehler darf Event-Delete nicht blockieren */ }
-        }
-      } catch { /* Sub-Event-Cleanup optional */ }
-
       // 1. Subsite loeschen (neue Events)
       if (event.SubsiteUrl) {
         try {
@@ -2642,7 +2473,6 @@ export class EventService {
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
       { title: 'CustomData', type: 3 },
-      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs für die sich der Teilnehmer angemeldet hat
     ];
 
     for (const f of baseFields) {
@@ -3244,49 +3074,6 @@ export class EventService {
   }
 
   /**
-   * SubEventIds eines Teilnehmer-Items setzen. Merkt sich die Anmeldung zu
-   * einzelnen Sub-Events (Trainingssessions etc.) als JSON-Array in der
-   * Teilnehmerliste.
-   */
-  public async updateSubEventIds(
-    subsiteUrl: string,
-    itemId: number,
-    subEventIds: string[]
-  ): Promise<boolean> {
-    try {
-      const response = await this._merge(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { 'SubEventIds': JSON.stringify(subEventIds || []) }
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Alle Registrierungen auf einer Subsite laden, die einen bestimmten Sub-Event
-   * enthalten. Genutzt fuer Kapazitaets-Checks und Admin-Filter.
-   */
-  public async getRegistrationsForSubEvent(
-    subsiteUrl: string,
-    subEventId: string
-  ): Promise<SPRegistration[]> {
-    try {
-      const all = await this.getAllRegistrations(subsiteUrl);
-      return all.filter(r => {
-        if (!r.SubEventIds) return false;
-        try {
-          const arr = JSON.parse(r.SubEventIds) as string[];
-          return Array.isArray(arr) && arr.indexOf(subEventId) >= 0;
-        } catch { return false; }
-      });
-    } catch {
-      return [];
-    }
-  }
-
-  /**
    * Eigene Registrierung fuer ein Event laden
    */
   public async getMyRegistration(
@@ -3410,7 +3197,6 @@ export class EventService {
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
-      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs (für Events mit Sub-Events)
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(

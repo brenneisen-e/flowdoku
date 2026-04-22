@@ -111,7 +111,9 @@ function isEventVisibleForUser(
 }
 
 export default function EventListPage(): React.ReactElement {
-  const { events, isEventsLoading, getMyEventNumbers } = useEvents();
+  // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
+  // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
   const { t } = useLanguage();

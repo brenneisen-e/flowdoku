@@ -612,7 +612,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForSubEvent, cancelSubEventRegistration, getAllRegistrations } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForEvent, getAllRegistrations } = useEvents();
   const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -631,7 +631,7 @@ export default function MyEventsPage(): React.ReactElement {
       return;
     }
     loadMyRegistrations();
-  }, [events, isEventsLoading]);
+  }, [topLevelEvents, isEventsLoading]);
 
   async function loadMyRegistrations(): Promise<void> {
     setIsLoading(true);
@@ -644,7 +644,10 @@ export default function MyEventsPage(): React.ReactElement {
 
     if (allMyNumbers.length > 0) {
       // Nur Events laden die in DEX_Participants stehen
-      const relevantEvents = events.filter(e => e.eventNumber && allMyNumbers.indexOf(e.eventNumber) >= 0);
+      // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. In "My Events" zeigen
+      // wir nur Top-Level-Events; Sub-Event-Anmeldungen erscheinen verschachtelt
+      // unter ihrem Parent über childEventsOf().
+      const relevantEvents = topLevelEvents.filter(e => e.eventNumber && allMyNumbers.indexOf(e.eventNumber) >= 0);
       for (const event of relevantEvents) {
         try {
           const reg = await getMyRegistration(event.id);
@@ -657,7 +660,7 @@ export default function MyEventsPage(): React.ReactElement {
       // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
       // entfernt. Ohne diese Schleife waeren alte Abmeldungen im "My Events"-Tab
       // unsichtbar, sobald der User noch fuer mind. ein Event angemeldet ist.
-      const remainingEvents = events.filter(e => !e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0);
+      const remainingEvents = topLevelEvents.filter(e => !e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0);
       for (const event of remainingEvents) {
         try {
           const reg = await getMyRegistration(event.id);
@@ -668,7 +671,7 @@ export default function MyEventsPage(): React.ReactElement {
       }
     } else {
       // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag
-      for (const event of events) {
+      for (const event of topLevelEvents) {
         try {
           const reg = await getMyRegistration(event.id);
           if (reg) {
@@ -1125,13 +1128,16 @@ export default function MyEventsPage(): React.ReactElement {
                   />
                 )}
 
-                {/* Sub-Events (Trainingssessions etc.) — nur wenn Event welche hat */}
-                {event.subEvents && event.subEvents.length > 0 && (
+                {/* Sub-Events (Trainingssessions etc.) — nur wenn Event welche hat.
+                    Seit v6.4: Sub-Events sind eigene DEX_Events-Items, werden über
+                    childEventsOf(parentId) aus dem Context gezogen. */}
+                {childEventsOf(event.id).length > 0 && (
                   <MyEventSubEvents
-                    event={event}
-                    registration={registration}
-                    registerForSubEvent={registerForSubEvent}
-                    cancelSubEventRegistration={cancelSubEventRegistration}
+                    parentEvent={event}
+                    childEvents={childEventsOf(event.id)}
+                    registerForEvent={registerForEvent}
+                    cancelRegistration={cancelRegistration}
+                    getMyRegistration={getMyRegistration}
                     getAllRegistrations={getAllRegistrations}
                     onMutated={loadMyRegistrations}
                   />
@@ -1197,51 +1203,49 @@ export default function MyEventsPage(): React.ReactElement {
 }
 
 // ==================== Sub-Events im "My Events"-Tab ====================
-// Zeigt pro Event eine kompakte Session-Liste mit An-/Abmelden-Button. Nutzt
-// die aktuell gespeicherten SubEventIds aus der Registrierung (kein Reload
-// noetig) und ruft nach jeder Aktion onMutated auf, damit der Parent die
-// Registrierungen neu laedt.
+// Seit v6.4: Sub-Events sind eigene DEX_Events-Items (childEventsOf(parentId)).
+// Anmeldung/Abmeldung läuft über den normalen registerForEvent/cancelRegistration-
+// Pfad — identisch zu einem Top-Level-Event. Eigene Teilnehmerliste pro Sub-Event.
 function MyEventSubEvents(props: {
-  event: DeloitteEvent;
-  registration: SPRegistration;
-  registerForSubEvent: (eventId: string, subEventId: string) => Promise<boolean>;
-  cancelSubEventRegistration: (eventId: string, subEventId: string) => Promise<boolean>;
+  parentEvent: DeloitteEvent;
+  childEvents: DeloitteEvent[];
+  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  cancelRegistration: (eventId: string) => Promise<boolean>;
+  getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   onMutated: () => Promise<void>;
 }): React.ReactElement | null {
-  const isDe = (props.event.emailLanguage || 'EN').toUpperCase() === 'DE';
+  const isDe = (props.parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
   const [busyId, setBusyId] = React.useState<string | null>(null);
-  const [localIds, setLocalIds] = React.useState<Set<string>>(() => {
-    try {
-      const arr = props.registration.SubEventIds ? JSON.parse(props.registration.SubEventIds) : [];
-      return new Set(Array.isArray(arr) ? arr : []);
-    } catch { return new Set<string>(); }
-  });
+  const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
 
-  React.useEffect(() => {
+  const refresh = React.useCallback(async (): Promise<void> => {
     try {
-      const arr = props.registration.SubEventIds ? JSON.parse(props.registration.SubEventIds) : [];
-      setLocalIds(new Set(Array.isArray(arr) ? arr : []));
-    } catch { setLocalIds(new Set<string>()); }
-  }, [props.registration.SubEventIds]);
+      const regs = await Promise.all(props.childEvents.map(async (ce) => {
+        const reg = await props.getMyRegistration(ce.id);
+        const isActive = !!reg && reg.Status !== 'Abgemeldet';
+        return { id: ce.id, isActive };
+      }));
+      const s = new Set<string>();
+      for (const r of regs) { if (r.isActive) s.add(r.id); }
+      setRegisteredSet(s);
 
-  const refreshCounts = React.useCallback(async (): Promise<void> => {
-    try {
-      const all = await props.getAllRegistrations(props.event.id);
-      const c: Record<string, number> = {};
-      for (const r of all || []) {
-        const st = r.Status || '';
-        if (st !== 'Angemeldet' && st !== 'QR versendet' && st !== 'Eingecheckt') continue;
-        let ids: string[] = [];
-        try { if (r.SubEventIds) ids = JSON.parse(r.SubEventIds) || []; } catch { ids = []; }
-        for (const id of ids) c[id] = (c[id] || 0) + 1;
-      }
-      setCounts(c);
+      const countPairs = await Promise.all(props.childEvents.map(async (ce) => {
+        const all = await props.getAllRegistrations(ce.id);
+        const active = (all || []).filter(r => {
+          const st = r.Status || '';
+          return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
+        }).length;
+        return { id: ce.id, count: active };
+      }));
+      const map: Record<string, number> = {};
+      for (const p of countPairs) map[p.id] = p.count;
+      setCounts(map);
     } catch { /* ignore */ }
-  }, [props.event.id]);
+  }, [props.childEvents.map(c => c.id).join(',')]);
 
-  React.useEffect(() => { refreshCounts().catch(() => { /* ignore */ }); }, [refreshCounts]);
+  React.useEffect(() => { refresh().catch(() => { /* ignore */ }); }, [refresh]);
 
   const fmt = (iso: string): string => {
     if (!iso) return '';
@@ -1252,29 +1256,22 @@ function MyEventSubEvents(props: {
     } catch { return iso; }
   };
 
-  const handleToggle = async (subEventId: string, currentlyRegistered: boolean): Promise<void> => {
-    setBusyId(subEventId);
+  const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    setBusyId(childEventId);
     try {
       if (currentlyRegistered) {
-        const ok = await props.cancelSubEventRegistration(props.event.id, subEventId);
-        if (ok) {
-          setLocalIds(prev => { const s = new Set(prev); s.delete(subEventId); return s; });
-        }
+        await props.cancelRegistration(childEventId);
       } else {
-        const ok = await props.registerForSubEvent(props.event.id, subEventId);
-        if (ok) {
-          setLocalIds(prev => { const s = new Set(prev); s.add(subEventId); return s; });
-        }
+        await props.registerForEvent(childEventId, {});
       }
-      await refreshCounts();
+      await refresh();
       await props.onMutated();
     } finally {
       setBusyId(null);
     }
   };
 
-  const subs = props.event.subEvents || [];
-  if (subs.length === 0) return null;
+  if (props.childEvents.length === 0) return null;
 
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
@@ -1282,28 +1279,28 @@ function MyEventSubEvents(props: {
         {isDe ? 'Zusätzliche Sessions' : 'Additional sessions'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {subs.map(se => {
-          const isReg = localIds.has(se.id);
-          const isBusy = busyId === se.id;
-          const deadlinePassed = !!(se.registrationDeadline && new Date(se.registrationDeadline) < new Date());
-          const count = counts[se.id] || 0;
-          const hasCap = typeof se.maxParticipants === 'number' && se.maxParticipants > 0;
-          const isFull = hasCap && count >= (se.maxParticipants || 0);
+        {props.childEvents.map(ce => {
+          const isReg = registeredSet.has(ce.id);
+          const isBusy = busyId === ce.id;
+          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+          const count = counts[ce.id] || 0;
+          const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+          const isFull = hasCap && count >= (ce.maxParticipants || 0);
           const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
           return (
-            <div key={se.id} style={{
+            <div key={ce.id} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
               padding: '8px 12px', borderRadius: 8,
               background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
               border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{se.title || (isDe ? 'Session ohne Titel' : 'Untitled session')}</div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{ce.title || (isDe ? 'Session ohne Titel' : 'Untitled session')}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                  {se.startDate && <>{fmt(se.startDate)}{se.endDate ? ` – ${fmt(se.endDate)}` : ''}</>}
-                  {se.location && <>&nbsp;·&nbsp;{se.location}</>}
+                  {ce.startDate && <>{fmt(ce.startDate)}{ce.endDate ? ` – ${fmt(ce.endDate)}` : ''}</>}
+                  {ce.location && <>&nbsp;·&nbsp;{ce.location}</>}
                   {hasCap && (
-                    <>&nbsp;·&nbsp;<span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>{count}/{se.maxParticipants}</span></>
+                    <>&nbsp;·&nbsp;<span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>{count}/{ce.maxParticipants}</span></>
                   )}
                   {isReg && (
                     <span style={{ marginLeft: 8, color: 'var(--dex-green)', fontWeight: 600 }}>
@@ -1321,7 +1318,7 @@ function MyEventSubEvents(props: {
                 className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
                 style={{ fontSize: '0.75rem', padding: '4px 12px', minWidth: 92 }}
                 disabled={disabled}
-                onClick={() => handleToggle(se.id, isReg)}
+                onClick={() => handleToggle(ce.id, isReg)}
               >
                 {isBusy ? '...' : (isReg ? (isDe ? 'Abmelden' : 'Cancel') : (isDe ? 'Anmelden' : 'Register'))}
               </button>

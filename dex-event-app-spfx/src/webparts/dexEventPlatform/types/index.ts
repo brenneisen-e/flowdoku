@@ -44,30 +44,8 @@ export interface DeloitteEvent {
   /** Anzahl Fragen pro Ansicht im Quiz-Player (1..4). Default 1 = klassisch einzeln. */
   quizClusterSize?: number;
   eventSpecificFields: EventSpecificField[];
-  /** Optionale Sub-Events (z.B. Trainingssessions fuer B2Run). Eigenes Datum/Ort/Kapazitaet/Outlook-Termin.
-   * Kein separater Teilnehmerlisten-Eintrag — die Registrierung wird als JSON-Array
-   * (SubEventIds) im Teilnehmer-Eintrag mitgefuehrt. */
-  subEvents?: SubEvent[];
-}
-
-export interface SubEvent {
-  id: string;                       // uuid
-  title: string;
-  description?: string;
-  location?: string;
-  startDate: string;                // ISO-DateTime
-  endDate: string;                  // ISO-DateTime
-  maxParticipants?: number;         // optional — 0 oder undefined = keine Begrenzung
-  registrationDeadline?: string;    // ISO-DateTime, optional
-  lastDeregisterDate?: string;      // ISO-DateTime, optional
-  /** HTML-Body fuer den Outlook-Termin dieses Sub-Events (bereits im Deloitte-Layout gewrappt). */
-  outlookBody?: string;
-  /** Wenn true: Mails fuer An-/Abmeldung dieses Sub-Events unterdruecken. */
-  disableEmails?: boolean;
-  /** Wenn true: keinen separaten Outlook-Kalendereintrag fuer dieses Sub-Event. */
-  disableOutlook?: boolean;
-  /** Icon-Name aus Fluent UI (optional, z.B. 'Running', 'Education'). */
-  icon?: string;
+  /** Seit v6.4: wenn gesetzt, ist dieses Event ein Sub-Event (z.B. Trainingssession) und zeigt auf die id des Parent-Events. Top-Level-Events haben parentEventId=undefined/''. */
+  parentEventId?: string;
 }
 
 export interface AgendaItem {
@@ -135,8 +113,6 @@ export interface Registration {
   cancellationDate?: string;
   waitlistPosition?: number;
   eventSpecificData: Record<string, string>;
-  /** IDs der Sub-Events, fuer die sich der Teilnehmer zusaetzlich angemeldet hat. */
-  subEventIds?: string[];
 }
 
 export type UserRole = 'Admin' | 'Organizer' | 'User';
