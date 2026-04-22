@@ -1171,7 +1171,47 @@ export default function EventCreationPage(): React.ReactElement {
             const ctx = (window as any).__dexSpfxContext;
             if (ctx && editEvent?.subsiteUrl) {
               const svc = new EventService(ctx);
+              // Parent-Event UpdateEvent
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
+              // Zusaetzlich: pro bereits existierendem Sub-Event-Kalender ein
+              // UpdateEvent queuen. Der Flow patched damit die Sub-Event-
+              // Kalenderdaten (Titel/Start/Ende/Ort/Body) ueber die Override-Felder.
+              // Nur Sub-Events die bereits einen Kalender haben (i.e. mind. ein
+              // Teilnehmer war angemeldet) werden aktualisiert — fuer "leere"
+              // Sub-Events entsteht kein Kalender beim Update, sondern erst beim
+              // naechsten Einladen.
+              try {
+                const subCalendars = await svc.getSubEventCalendarLinks(selectedEventId);
+                if (subCalendars.length > 0) {
+                  // Aktuelle Sub-Event-Definitionen aus dem State (post-edit) nehmen,
+                  // damit die Override-Felder mit den NEUEN Werten (Titel/Datum/Ort)
+                  // gequeued werden — nicht mit den alten aus DEX_Events.
+                  const seById: Record<string, SubEvent> = {};
+                  for (const se of subEvents) { if (se.id) seById[se.id] = se; }
+                  for (const sc of subCalendars) {
+                    const se = seById[sc.subEventId];
+                    if (!se) {
+                      // Sub-Event wurde in diesem Edit entfernt — Kalender loeschen,
+                      // sonst bleibt er als Leiche im Shared-Mailbox-Kalender stehen.
+                      await svc.queueOutlookDeleteSubEventCalendar(
+                        selectedEventId, title, sc.subEventId, sc.calendarLink
+                      );
+                      continue;
+                    }
+                    if (se.disableOutlook) continue;
+                    await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent', {
+                      id: se.id,
+                      title: se.title,
+                      startDate: se.startDate,
+                      endDate: se.endDate,
+                      location: se.location,
+                      body: se.outlookBody && se.outlookBody.length > 0
+                        ? se.outlookBody
+                        : undefined,
+                    });
+                  }
+                }
+              } catch { /* Sub-Event-Update optional */ }
             }
           } catch { /* Outlook-Update optional */ }
         }
@@ -3032,169 +3072,263 @@ export default function EventCreationPage(): React.ReactElement {
                 })}
 
                 {/* ===== Sub-Events (Trainingssessions etc.) ===== */}
-                <h4 style={{ marginTop: 32, marginBottom: 4 }}>{t('create.subevents.title') || 'Sub-Events (optional)'}</h4>
-                <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
-                  {t('create.subevents.hint')
-                    || 'Zusaetzliche Sessions zum Hauptevent (z.B. Trainingssessions). Jede Session bekommt eine eigene An-/Abmelde-Mail und einen eigenen Outlook-Kalendereintrag — beides im Deloitte-Layout. Teilnehmer melden sich nach der Hauptevent-Anmeldung einzeln pro Session an.'}
-                </p>
-                {subEvents.length === 0 && (
-                  <div style={{
-                    padding: 12, border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                    color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 12,
-                  }}>
-                    {t('create.subevents.empty') || 'Keine Sub-Events angelegt.'}
-                  </div>
-                )}
-                {subEvents.map((se, idx) => (
-                  <div key={se.id} style={{
-                    border: '1px solid var(--dex-gray-200)', borderRadius: 8,
-                    padding: 12, marginBottom: 12, background: '#fff',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <strong style={{ fontSize: '0.9rem' }}>
-                        {se.title || (t('create.subevents.untitled') || 'Session ohne Titel')}
-                      </strong>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => setSubEvents(subEvents.filter(x => x.id !== se.id))}
-                      >
-                        {t('create.subevents.remove') || 'Entfernen'}
-                      </button>
+                <div className="form-group" style={{ marginTop: 32 }}>
+                  <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                    {t('create.subevents')}
+                    <InfoTooltip text={t('create.subevents.hint')} />
+                  </label>
+                  {subEvents.length === 0 && (
+                    <div style={{
+                      padding: 10, border: '1px dashed var(--dex-gray-300)', borderRadius: 'var(--dex-radius)',
+                      color: 'var(--dex-gray-500)', fontSize: '0.82rem', marginBottom: 8, marginTop: 4,
+                      textAlign: 'center', background: 'var(--dex-gray-50, #fafafa)',
+                    }}>
+                      {t('create.subevents.empty')}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.title') || 'Titel'}</label>
-                        <input
-                          className="form-control"
-                          value={se.title}
-                          onChange={e => {
-                            const v = e.target.value;
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, title: v } : x));
-                          }}
-                          placeholder={t('create.subevents.field.title.placeholder') || 'z.B. Trainingssession Woche 3'}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.location') || 'Ort'}</label>
-                        <input
-                          className="form-control"
-                          value={se.location || ''}
-                          onChange={e => {
-                            const v = e.target.value;
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, location: v } : x));
-                          }}
-                          placeholder={t('create.subevents.field.location.placeholder') || 'z.B. Deloitte Hauptgebaeude Koeln'}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.start') || 'Start'}</label>
-                        <input
-                          type="datetime-local"
-                          className="form-control"
-                          value={se.startDate ? se.startDate.substring(0, 16) : ''}
-                          onChange={e => {
-                            const v = e.target.value ? new Date(e.target.value).toISOString() : '';
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, startDate: v } : x));
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.end') || 'Ende'}</label>
-                        <input
-                          type="datetime-local"
-                          className="form-control"
-                          value={se.endDate ? se.endDate.substring(0, 16) : ''}
-                          onChange={e => {
-                            const v = e.target.value ? new Date(e.target.value).toISOString() : '';
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, endDate: v } : x));
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.max') || 'Max. Teilnehmer (0 = unbegrenzt)'}</label>
-                        <input
-                          type="number"
-                          min={0}
-                          className="form-control"
-                          value={se.maxParticipants || 0}
-                          onChange={e => {
-                            const v = parseInt(e.target.value, 10) || 0;
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, maxParticipants: v } : x));
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.deadline') || 'Anmeldeschluss (optional)'}</label>
-                        <input
-                          type="datetime-local"
-                          className="form-control"
-                          value={se.registrationDeadline ? se.registrationDeadline.substring(0, 16) : ''}
-                          onChange={e => {
-                            const v = e.target.value ? new Date(e.target.value).toISOString() : '';
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, registrationDeadline: v } : x));
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: 8 }}>
-                      <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('create.subevents.field.description') || 'Beschreibung'}</label>
-                      <textarea
-                        className="form-control"
-                        rows={2}
-                        value={se.description || ''}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, description: v } : x));
-                        }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={!se.disableEmails}
-                          onChange={e => {
-                            const v = !e.target.checked;
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableEmails: v } : x));
-                          }}
-                        />
-                        {t('create.subevents.field.emails') || 'Mails versenden (Deloitte-Layout)'}
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={!se.disableOutlook}
-                          onChange={e => {
-                            const v = !e.target.checked;
-                            setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableOutlook: v } : x));
-                          }}
-                        />
-                        {t('create.subevents.field.outlook') || 'Eigenen Outlook-Termin erzeugen'}
-                      </label>
-                    </div>
-                  </div>
-                ))}
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.8rem', marginTop: 4 }}
-                  onClick={() => {
-                    const newSub: SubEvent = {
-                      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                      title: '',
-                      description: '',
-                      location: '',
-                      startDate: '',
-                      endDate: '',
-                      maxParticipants: 0,
-                      disableEmails: false,
-                      disableOutlook: false,
+                  )}
+                  {subEvents.map((se, idx) => {
+                    // SubEvent-Daten werden intern als UTC-ISO gespeichert, fuer die
+                    // react-datepicker-Komponenten brauchen wir Date-Objekte mit den
+                    // richtigen Berlin-Lokalzeiten. Wir parsen via isoToLocal, was den
+                    // Berlin-Wert als "YYYY-MM-DDTHH:MM" liefert, und bauen daraus ein
+                    // JavaScript-Date-Objekt mit lokalen Werten.
+                    const startDateObj = se.startDate ? (() => {
+                      const local = isoToLocal(se.startDate); // "YYYY-MM-DDTHH:MM" in Berlin
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const endDateObj = se.endDate ? (() => {
+                      const local = isoToLocal(se.endDate);
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const deadlineObj = se.registrationDeadline ? (() => {
+                      const local = isoToLocal(se.registrationDeadline);
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const dateToBerlinIso = (d: Date | null): string => {
+                      if (!d) return '';
+                      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                      return berlinLocalToUtcIso(local);
                     };
-                    setSubEvents([...subEvents, newSub]);
-                  }}
-                >
-                  + {t('create.subevents.add') || 'Sub-Event hinzufuegen'}
-                </button>
+                    return (
+                      <div key={se.id} style={{
+                        padding: '14px 16px', marginBottom: 10, marginTop: 4,
+                        background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                        border: '1px solid var(--dex-gray-200)', borderLeft: '3px solid var(--dex-green, #86bc25)',
+                      }}>
+                        {/* Header-Zeile: Titel (prominent) + Loeschen */}
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.title')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.title}
+                              placeholder={t('create.subevents.title.placeholder')}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, title: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem', fontWeight: 600 }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSubEvents(subEvents.filter(x => x.id !== se.id))}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                              fontSize: '1.1rem', padding: '4px', lineHeight: 1, marginTop: 18,
+                            }}
+                            title={t('create.subevents.remove')}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 10, marginBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
+                            <DatePicker
+                              selected={startDateObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, startDate: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Datum und Uhrzeit"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              maxDate={endDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.end')}</label>
+                            <DatePicker
+                              selected={endDateObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, endDate: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Datum und Uhrzeit"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              minDate={startDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.deadline')}</label>
+                            <DatePicker
+                              selected={deadlineObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, registrationDeadline: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Optional"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              maxDate={startDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.max')}</label>
+                            <input
+                              type="number"
+                              min={0}
+                              className="form-input"
+                              value={se.maxParticipants || 0}
+                              onChange={e => {
+                                const v = parseInt(e.target.value, 10) || 0;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, maxParticipants: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Ort + Beschreibung */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.location')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.location || ''}
+                              placeholder={t('create.subevents.location.placeholder')}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, location: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.description')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.description || ''}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, description: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Toggles: Mails + Outlook */}
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingTop: 6, borderTop: '1px dashed var(--dex-gray-200)' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!se.disableEmails}
+                              onChange={e => {
+                                const v = !e.target.checked;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableEmails: v } : x));
+                              }}
+                              style={{ width: 14, height: 14, cursor: 'pointer' }}
+                            />
+                            {t('create.subevents.emails')}
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!se.disableOutlook}
+                              onChange={e => {
+                                const v = !e.target.checked;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableOutlook: v } : x));
+                              }}
+                              style={{ width: 14, height: 14, cursor: 'pointer' }}
+                            />
+                            {t('create.subevents.outlook')}
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}
+                    onClick={() => {
+                      const newSub: SubEvent = {
+                        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                        title: '',
+                        description: '',
+                        location: '',
+                        startDate: '',
+                        endDate: '',
+                        maxParticipants: 0,
+                        disableEmails: false,
+                        disableOutlook: false,
+                      };
+                      setSubEvents([...subEvents, newSub]);
+                    }}
+                  >
+                    <Plus size={14} /> {t('create.subevents.add')}
+                  </button>
+                </div>
               </div>{/* close Step 4 */}
 
               {/* ===== Step 5: Dokumente ===== */}
