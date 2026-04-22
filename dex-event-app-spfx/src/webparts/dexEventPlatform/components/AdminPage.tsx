@@ -19,7 +19,8 @@ import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail, wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
+import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import * as QRCode from 'qrcode';
 
@@ -84,6 +85,11 @@ export default function AdminPage(): React.ReactElement {
   } | null>(null);
   const [showDeclineModal, setShowDeclineModal] = React.useState(false);
   const [declineCopied, setDeclineCopied] = React.useState(false);
+
+  // Feedback-Toast fuer Nachruecker (seit v6.8): wenn Admin/Organizer jemanden
+  // abmeldet und dadurch ein Warteliste-Teilnehmer nachrueckt, zeigen wir
+  // direkt eine Info — der Admin muss nicht auf den Flow warten.
+  const [promotionToast, setPromotionToast] = React.useState<{ name: string; email: string; type?: string } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -514,6 +520,32 @@ export default function AdminPage(): React.ReactElement {
 
   return (
     <div className="page-container" role="main">
+      {/* Promote-Toast: zeigt den Nachrücker nach einer Admin-Abmeldung (seit v6.8). */}
+      {promotionToast && (
+        <div style={{
+          position: 'fixed', top: 80, right: 20, zIndex: 1000, maxWidth: 420,
+          padding: '14px 18px', borderRadius: 'var(--dex-radius, 12px)',
+          background: '#fff',
+          border: '1px solid var(--dex-green, #86bc25)',
+          borderLeft: '4px solid var(--dex-green, #86bc25)',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', marginBottom: 4 }}>
+              Nachgerückt: {promotionToast.name}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+              <strong>{promotionToast.email}</strong> wurde automatisch aus der Warteliste{promotionToast.type ? ` (${promotionToast.type})` : ''} nachgerückt. Nachrück-Mail + Outlook-Einladung wurden versendet.
+            </div>
+          </div>
+          <button
+            onClick={() => setPromotionToast(null)}
+            aria-label="Schließen"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--dex-gray-500)', lineHeight: 1, padding: 0 }}
+          >×</button>
+        </div>
+      )}
       <div className="flex-between mb-16">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -1667,6 +1699,8 @@ export default function AdminPage(): React.ReactElement {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           if (!confirm(`${name} (${reg.ParticipantEmail}) wirklich abmelden?`)) return;
+                          // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
+                          const cancelledStarterType = reg.StarterType || '';
                           await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                           // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
                           if (reg.ParticipantEmail) {
@@ -1689,9 +1723,63 @@ export default function AdminPage(): React.ReactElement {
                               reg.ParticipantEmail, selectedEvent.eventNumber
                             ).catch(err => console.warn('[DEX]', err));
                           }
-                          // IDReorder in Queue eintragen - await damit wir sehen ob's klappt.
-                          // queueIDReorder returned silent false bei HTTP-Fehlern (Permission/Payload),
-                          // deshalb User explizit informieren wenn's schief geht.
+                          // Seit v6.8: Bei Admin/Organizer-Cancel direkt client-seitig
+                          // den Nachrücker promoten — so sieht der Admin/Organizer sofort
+                          // wer nachgerückt ist. Der Flow später sieht Count_Active =
+                          // MaxParticipants und überspringt seinen eigenen Promote-Zweig.
+                          // Typ-bewusst: bei B2Run-Split (DurchstarterCapacity > 0 UND
+                          // FunstarterCapacity > 0) wird nur ein Warteliste-Teilnehmer
+                          // mit passendem PreferredStarterType nachgerückt.
+                          const isB2RunSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+                            && typeof selectedEvent.funstarterCapacity === 'number'
+                            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+                          try {
+                            const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+                              selectedEvent.subsiteUrl,
+                              cancelledStarterType || undefined,
+                              selectedEvent.maxParticipants,
+                              (isB2RunSplit && cancelledStarterType) ? cancelledStarterType : undefined
+                            );
+                            if (promoted && promoted.success && promoted.email) {
+                              // Feedback-Toast anzeigen
+                              setPromotionToast({ name: promoted.name || promoted.email, email: promoted.email, type: cancelledStarterType || undefined });
+                              // Nachrück-Mail + Outlook-Einladung queuen
+                              if (!selectedEvent.disableEmails) {
+                                try {
+                                  const lang = selectedEvent.emailLanguage || 'EN';
+                                  const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+                                  const promoteVars = {
+                                    Name: promotedFirstName,
+                                    EventTitle: selectedEvent.title,
+                                    Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+                                    AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+                                    WaitlistPosition: '',
+                                  };
+                                  let emailData: { subject: string; body: string };
+                                  const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+                                  const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+                                  if (spTpl) {
+                                    emailData = buildEmailFromTemplate(spTpl, promoteVars);
+                                  } else {
+                                    emailData = promotionEmail(promotedFirstName, selectedEvent.title);
+                                  }
+                                  await eventServiceRef.queueEmail(
+                                    emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                                    'Nachruecken', selectedEvent.title, selectedEvent.id
+                                  );
+                                } catch (err) { console.warn('[DEX] promote-email failed:', err); }
+                              }
+                              if (!selectedEvent.disableOutlook) {
+                                try {
+                                  await eventServiceRef.queueOutlookEvent(
+                                    promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
+                                  );
+                                } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
+                              }
+                            }
+                          } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
+                          // IDReorder in Queue eintragen — der Flow macht nur noch Reorder
+                          // (Promote ist oben schon passiert, Flow erkennt Count_Active = MaxParticipants).
                           if (selectedEvent.subsiteUrl) {
                             try {
                               const ok = await eventServiceRef.queueIDReorder(
