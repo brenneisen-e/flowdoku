@@ -261,7 +261,7 @@ export interface SPRegistration {
   CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgeloest hat
   CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
   CustomData: string; // JSON mit Custom Field Werten
-  SubEventIds?: string; // JSON-Array der Sub-Event-IDs, fuer die sich der Teilnehmer angemeldet hat
+  SubEventIds?: string; // JSON-Array der Sub-Event-IDs, für die sich der Teilnehmer angemeldet hat
 }
 
 export interface SPParticipant {
@@ -564,7 +564,7 @@ export class EventService {
     const listName = 'DEX_Outlook';
     const exists = await this.listExists(listName);
     if (exists) {
-      // Override-Felder fuer Sub-Events ggf. nachlegen (idempotent).
+      // Override-Felder für Sub-Events ggf. nachlegen (idempotent).
       try {
         await this.ensureOutlookOverrideFields(listName);
       } catch { /* ignore */ }
@@ -583,20 +583,20 @@ export class EventService {
       { title: 'Attendee', type: 2 },
       { title: 'EventId', type: 2 },
       // ActionType:
-      //  - Einladen / Ausladen: einzelnen Attendee zum Outlook-Termin hinzufuegen/entfernen
+      //  - Einladen / Ausladen: einzelnen Attendee zum Outlook-Termin hinzufügen/entfernen
       //  - UpdateEvent: Titel/Start/Ende aktualisieren (kein Attendee)
-      //  - DeleteEvent: kompletten Kalender-Termin loeschen (wird beim Loeschen eines Events
+      //  - DeleteEvent: kompletten Kalender-Termin löschen (wird beim Löschen eines Events
       //    aus der App abgesetzt, inkl. CalendarLink damit der Flow nicht auf DEX_Events
-      //    angewiesen ist - das Event-Item wird direkt danach aus DEX_Events geloescht).
+      //    angewiesen ist - das Event-Item wird direkt danach aus DEX_Events gelöscht).
       { title: 'ActionType', type: 6, choices: ['Einladen', 'Ausladen', 'UpdateEvent', 'DeleteEvent'], metaType: 'SP.FieldChoice' },
       { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
       { title: 'SentDate', type: 4 },
-      // CalendarLink (iCalUId) - nur fuer DeleteEvent noetig, damit der Flow das Outlook-
-      // Event auch dann noch finden kann, wenn das DEX_Events-Item schon geloescht wurde.
+      // CalendarLink (iCalUId) - nur für DeleteEvent nötig, damit der Flow das Outlook-
+      // Event auch dann noch finden kann, wenn das DEX_Events-Item schon gelöscht wurde.
       { title: 'CalendarLink', type: 3 },
       // Sub-Event Override-Felder: wenn gesetzt, nutzt der Flow diese Werte statt der
       // Parent-Event-Daten (Titel/Start/Ende/Ort/Body). Damit kann derselbe Flow sowohl
-      // Parent- als auch Sub-Event-Termine versenden, ohne weitere Logik-Aenderungen.
+      // Parent- als auch Sub-Event-Termine versenden, ohne weitere Logik-Änderungen.
       { title: 'SubEventId', type: 2 },
       { title: 'OverrideTitle', type: 2 },
       { title: 'OverrideStart', type: 4 },
@@ -626,7 +626,7 @@ export class EventService {
   }
 
   /**
-   * Fehlende Sub-Event-Override-Felder auf bestehendem DEX_Outlook nachtraeglich anlegen.
+   * Fehlende Sub-Event-Override-Felder auf bestehendem DEX_Outlook nachträglich anlegen.
    * Idempotent — skippt Felder die bereits existieren.
    */
   private async ensureOutlookOverrideFields(listName: string): Promise<void> {
@@ -654,7 +654,7 @@ export class EventService {
             'Required': false,
           }
         );
-      } catch { /* naechstes Feld */ }
+      } catch { /* nächstes Feld */ }
     }
   }
 
@@ -713,8 +713,8 @@ export class EventService {
 
   /**
    * DeleteEvent in die DEX_Outlook-Queue eintragen. Wird vom deleteEvent-Flow
-   * aufgerufen, BEVOR das DEX_Events-Item geloescht wird. Der DEX_Outlook_Einladungen-
-   * Flow findet den Outlook-Termin ueber CalendarLink (iCalUId) und loescht ihn.
+   * aufgerufen, BEVOR das DEX_Events-Item gelöscht wird. Der DEX_Outlook_Einladungen-
+   * Flow findet den Outlook-Termin über CalendarLink (iCalUId) und löscht ihn.
    * Attendee bleibt leer - DeleteEvent wirkt event-weit.
    */
   public async queueOutlookDeleteEvent(
@@ -742,13 +742,13 @@ export class EventService {
   }
 
   /**
-   * Liefert die pro Sub-Event bekannten Outlook-Kalender-Links (iCalUIds) fuer ein
+   * Liefert die pro Sub-Event bekannten Outlook-Kalender-Links (iCalUIds) für ein
    * Event. Datenquelle: alle DEX_Outlook-Items mit passender EventId, SubEventId und
-   * gefuelltem CalendarLink — wir nehmen pro SubEventId den chronologisch ersten
-   * Eintrag (das ist der "Create"-Eintrag bei dem der Flow die iCalUId zurueckgeschrieben hat).
+   * gefülltem CalendarLink — wir nehmen pro SubEventId den chronologisch ersten
+   * Eintrag (das ist der "Create"-Eintrag bei dem der Flow die iCalUId zurückgeschrieben hat).
    *
-   * Genutzt fuer:
-   *  - Cleanup bei Event-Loeschung (alle Sub-Event-Kalender loeschen)
+   * Genutzt für:
+   *  - Cleanup bei Event-Löschung (alle Sub-Event-Kalender löschen)
    *  - Update-Propagation (Override-Felder pro Sub-Event pflegen)
    */
   public async getSubEventCalendarLinks(
@@ -777,10 +777,10 @@ export class EventService {
   }
 
   /**
-   * DeleteEvent fuer einen einzelnen Sub-Event-Kalender queuen. `SubEventId` wird
+   * DeleteEvent für einen einzelnen Sub-Event-Kalender queuen. `SubEventId` wird
    * bewusst NICHT mitgeschrieben, damit der Flow im `Is_SubEvent`-Branch nicht
-   * in die Einladen/Ausladen-Logik faellt — sondern sauber im `Is_DeleteEvent`-
-   * Branch landet und den Kalender via CalendarLink loescht (gleiches Pattern
+   * in die Einladen/Ausladen-Logik fällt — sondern sauber im `Is_DeleteEvent`-
+   * Branch landet und den Kalender via CalendarLink löscht (gleiches Pattern
    * wie beim Parent-Delete).
    */
   public async queueOutlookDeleteSubEventCalendar(
@@ -2416,11 +2416,11 @@ export class EventService {
           await this.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
         } catch { /* Queue-Fehler ignorieren */ }
       }
-      // 0b. Sub-Event-Kalender ebenfalls aufraeumen: jeder Sub-Event hat ggf.
-      //     einen eigenen Outlook-Termin (iCalUId im ersten zugehoerigen
+      // 0b. Sub-Event-Kalender ebenfalls aufräumen: jeder Sub-Event hat ggf.
+      //     einen eigenen Outlook-Termin (iCalUId im ersten zugehörigen
       //     DEX_Outlook-Item). Wir queuen pro gefundener iCalUId ein
       //     DeleteEvent-Item (ohne SubEventId, damit der Flow direkt den
-      //     Is_DeleteEvent-Branch nutzt und ueber CalendarLink loescht).
+      //     Is_DeleteEvent-Branch nutzt und über CalendarLink löscht).
       try {
         const subCalendars = await this.getSubEventCalendarLinks(eventId);
         // Sub-Event-Titel aus dem gespeicherten JSON rausziehen (best effort —
@@ -2642,7 +2642,7 @@ export class EventService {
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
       { title: 'CustomData', type: 3 },
-      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs fuer die sich der Teilnehmer angemeldet hat
+      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs für die sich der Teilnehmer angemeldet hat
     ];
 
     for (const f of baseFields) {
@@ -3410,7 +3410,7 @@ export class EventService {
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
-      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs (fuer Events mit Sub-Events)
+      { title: 'SubEventIds', type: 3 },       // JSON-Array der Sub-Event-IDs (für Events mit Sub-Events)
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(

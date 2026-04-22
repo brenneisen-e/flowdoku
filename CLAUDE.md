@@ -185,11 +185,13 @@ import { Icon } from '@fluentui/react/lib/Icon';
 
 ### German Text / Sonderzeichen
 
-**IMPORTANT:** All user-facing text in components MUST use proper German characters (ä, ö, ü, ß). Never use ASCII substitutions (ae, oe, ue, ss) in visible UI text. Code comments may use ASCII substitutions if needed.
+**IMPORTANT (strikt ab v6.3.0):** Alle deutschen Texte — sowohl in der sichtbaren UI als auch in Code-Kommentaren, Mail-Bodies, Outlook-Termin-Bodies, Alert-/Console-Texten, Commit-Messages, Handbuch-Einträgen (`src/webparts/dexEventPlatform/components/manual/sections/*`) und `docs/*.md` — MÜSSEN echte Sonderzeichen verwenden (ä, ö, ü, ß, Ä, Ö, Ü). **Keine ASCII-Substitutionen** (ae, oe, ue, ss). Alle Dateien sind UTF-8, Encoding-Probleme sind daher kein Argument.
 
 Examples:
-- ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`, `für`
-- ❌ `Loeschen`, `oeffnen`, `Uebersicht`, `ausfuellen`, `hinzufuegen`, `Zurueck`, `fuer`
+- ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`, `für`, `Grüße`, `Bestätigung`, `zurückziehen`, `nächste`, `zusätzlich`, `Änderung`, `aufräumen`, `nötig`
+- ❌ `Loeschen`, `oeffnen`, `Uebersicht`, `ausfuellen`, `hinzufuegen`, `Zurueck`, `fuer`, `Gruesse`, `Bestaetigung`, `zurueckziehen`, `naechste`, `zusaetzlich`, `Aenderung`, `aufraeumen`, `noetig`
+
+Bei neuen Commits gilt das als Review-Kriterium. Bestehende ASCII-Substitutionen aus der Zeit vor v6.3.0 werden nicht flächendeckend refactored (Scope-Eingrenzung), aber jede berührte Datei wird im Rahmen der Änderung mit sauberem Deutsch versehen.
 
 ### Power Automate Flow Anleitungen
 
