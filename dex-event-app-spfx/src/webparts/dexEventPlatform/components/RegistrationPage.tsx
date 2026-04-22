@@ -378,8 +378,10 @@ export default function RegistrationPage(): React.ReactElement {
           {/* Sub-Event-Anmeldung nach erfolgreicher Hauptevent-Anmeldung.
               Nur für Self-Registration sichtbar — bei "für andere Person anmelden"
               soll der Teilnehmer die Session-Anmeldungen selbst in seinem eigenen
-              My-Events-Tab vornehmen. */}
-          {!registerForOther && !isFull && childEventsOf(event.id).length > 0 && (
+              My-Events-Tab vornehmen. Wartelisten-Status (isFull) blockiert die
+              Sessions NICHT: User können sich unabhängig vom Haupt-Event-Status
+              für Sessions an- und abmelden. */}
+          {!registerForOther && childEventsOf(event.id).length > 0 && (
             <SubEventEnrollmentSection
               childEvents={childEventsOf(event.id)}
               registerForEvent={registerForEvent}
@@ -556,6 +558,21 @@ export default function RegistrationPage(): React.ReactElement {
             <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
               {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
             </p>
+          )}
+          {/* Sub-Event-Anmeldung bereits vor der Haupt-Event-Registrierung anzeigen,
+              damit sich User unabhängig vom Haupt-Event für einzelne Sessions an- und
+              abmelden können. Bei "für andere Person anmelden" wird der Block
+              ausgeblendet, weil die Session-Zuordnung über getMyRegistration nur für
+              den eingeloggten User funktioniert. */}
+          {!registerForOther && childEventsOf(event.id).length > 0 && (
+            <SubEventEnrollmentSection
+              childEvents={childEventsOf(event.id)}
+              registerForEvent={registerForEvent}
+              cancelRegistration={cancelRegistration}
+              getMyRegistration={getMyRegistration}
+              getAllRegistrations={getAllRegistrations}
+              language={event.emailLanguage || 'EN'}
+            />
           )}
         </div>
 
