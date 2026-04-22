@@ -307,18 +307,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
+      // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
       ...(() => {
         try {
           const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
+          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [] };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const b = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
-          if (!b || typeof b !== 'object') return {};
-          return {
+          const b = (parsed as any)._b2run;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const qr = (parsed as any)._qrScanners;
+          const b2Part = b && typeof b === 'object' ? {
             durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
             funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
             durchstarterRequiresProof: !!b.durchstarterRequiresProof,
-          };
-        } catch { return {}; }
+          } : {};
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const qrNames: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.name || '')) : [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const qrEmails: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.email || '')) : [];
+          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails };
+        } catch { return { qrScannerNames: [], qrScannerEmails: [] }; }
       })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),

@@ -486,6 +486,19 @@ export default function EventCreationPage(): React.ReactElement {
   // bereits geladenen DEX_Roles-State, kein Async-Spinner mehr noetig.
   const isSearchingOrganizer = false;
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // v6.19: QR-Code-Scanner pro Event (beliebiger Deloitte-User, kein Admin/Organizer nötig).
+  // Getrennte State-Arrays für Namen + Emails (index-synchron). Sucht via Graph-API.
+  const [qrScannerNames, setQrScannerNames] = React.useState<string[]>(
+    editEvent && editEvent.qrScannerNames ? editEvent.qrScannerNames.slice() : []
+  );
+  const [qrScannerEmails, setQrScannerEmails] = React.useState<string[]>(
+    editEvent && editEvent.qrScannerEmails ? editEvent.qrScannerEmails.slice() : []
+  );
+  const [qrScannerSearch, setQrScannerSearch] = React.useState('');
+  const [qrScannerResults, setQrScannerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [isSearchingQrScanner, setIsSearchingQrScanner] = React.useState(false);
+  const qrScannerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -1197,11 +1210,16 @@ export default function EventCreationPage(): React.ReactElement {
             ...(durchstarterRequiresProof ? { durchstarterRequiresProof: true } : {}),
           } }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0)
+      // v6.19: QR-Code-Scanner piggyback in EmailTemplateOverrides._qrScanners
+      const qrScannerConfig = qrScannerEmails.length > 0
+        ? { _qrScanners: qrScannerNames.map((n, i) => ({ name: n, email: qrScannerEmails[i] || '' })).filter(x => x.email) }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
             ...b2runExtraConfig,
+            ...qrScannerConfig,
             ...emailTemplateOverrides,
           })
         : '';
@@ -1417,12 +1435,16 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(durchstarterRequiresProof ? { durchstarterRequiresProof: true } : {}),
               } }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0;
+          const qrExtra = qrScannerEmails.length > 0
+            ? { _qrScanners: qrScannerNames.map((n, i) => ({ name: n, email: qrScannerEmails[i] || '' })).filter(x => x.email) }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
                 ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
                 ...b2runExtra,
+                ...qrExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -1904,6 +1926,146 @@ export default function EventCreationPage(): React.ReactElement {
                             setOrganizerEmails(prev => [...prev, u.email]);
                             setOrganizerSearch('');
                             setOrganizerResults([]);
+                          }}
+                        >
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                            alt={u.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.email}{u.location ? ` · ${u.location}` : ''}
+                            </div>
+                          </div>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* v6.19: QR-Code-Scanner pro Event. Separater Picker im gleichen Stil wie
+                  Organizer, aber via Graph-Search (jeder Deloitte-User kann Scanner sein).
+                  QR-Scanner haben eingeschränkten Admin-Zugriff (nur QR-Tool + KPIs),
+                  erscheinen NICHT in Organizer-Listen auf MyEvents/RegistrationPage und
+                  bekommen KEINE Organizer-Mails. */}
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {t('create.qrscanners') || 'QR-Code-Scanner'}
+                  <InfoTooltip text={t('create.qrscanners.hint') || 'Optional: Personen die nur das QR-Code-Scanner-Tool + Check-In-KPIs nutzen dürfen. Keine Bearbeitungs-/Mail-Rechte, tauchen nicht in der Organizer-Liste auf.'} />
+                </label>
+                {qrScannerNames.length > 0 && (() => {
+                  const move = (idx: number, dir: -1 | 1): void => {
+                    const target = idx + dir;
+                    if (target < 0 || target >= qrScannerNames.length) return;
+                    const nextNames = [...qrScannerNames];
+                    const nextEmails = [...qrScannerEmails];
+                    [nextNames[idx], nextNames[target]] = [nextNames[target], nextNames[idx]];
+                    [nextEmails[idx], nextEmails[target]] = [nextEmails[target], nextEmails[idx]];
+                    setQrScannerNames(nextNames);
+                    setQrScannerEmails(nextEmails);
+                  };
+                  const remove = (idx: number): void => {
+                    setQrScannerNames(qrScannerNames.filter((_, i) => i !== idx));
+                    setQrScannerEmails(qrScannerEmails.filter((_, i) => i !== idx));
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {qrScannerNames.map((name, i) => {
+                        const email = qrScannerEmails[i] || '';
+                        return (
+                          <span
+                            key={`${email}-${i}`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '3px 6px 3px 4px',
+                              background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+                              borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                            }}
+                          >
+                            {email ? (
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
+                                alt={name}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              />
+                            ) : null}
+                            <span>{name}</span>
+                            {qrScannerNames.length > 1 && i > 0 && (
+                              <button type="button" onClick={() => move(i, -1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach vorne">◀</button>
+                            )}
+                            {qrScannerNames.length > 1 && i < qrScannerNames.length - 1 && (
+                              <button type="button" onClick={() => move(i, 1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach hinten">▶</button>
+                            )}
+                            <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <input
+                  className="form-input"
+                  value={qrScannerSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setQrScannerSearch(val);
+                    if (qrScannerTimerRef.current) clearTimeout(qrScannerTimerRef.current);
+                    if (val.trim().length < 2) { setQrScannerResults([]); return; }
+                    qrScannerTimerRef.current = setTimeout(() => {
+                      (async () => {
+                        try {
+                          setIsSearchingQrScanner(true);
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const hits: any[] = await searchUsers(val.trim());
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          setQrScannerResults((hits || []).slice(0, 50).map((u: any) => ({
+                            email: u.email || u.userEmail || '',
+                            displayName: u.displayName || u.userName || u.email || '',
+                            location: u.location || '',
+                          })));
+                        } catch { setQrScannerResults([]); }
+                        setIsSearchingQrScanner(false);
+                      })().catch(() => { /* ignore */ });
+                    }, 250);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => { setQrScannerSearch(''); setQrScannerResults([]); }, 150);
+                  }}
+                  placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben und aus der Liste auswählen'}
+                />
+                {isSearchingQrScanner && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
+                )}
+                {qrScannerResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 280, overflowY: 'auto',
+                  }}>
+                    {qrScannerResults.map(u => {
+                      const alreadyAdded = qrScannerEmails.indexOf(u.email) >= 0;
+                      return (
+                        <div
+                          key={u.email}
+                          style={{
+                            padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                            borderBottom: '1px solid var(--dex-gray-100)',
+                            opacity: alreadyAdded ? 0.45 : 1,
+                            display: 'flex', alignItems: 'center', gap: 10,
+                          }}
+                          onMouseDown={() => {
+                            if (alreadyAdded || !u.email) return;
+                            setQrScannerNames(prev => [...prev, u.displayName]);
+                            setQrScannerEmails(prev => [...prev, u.email]);
+                            setQrScannerSearch('');
+                            setQrScannerResults([]);
                           }}
                         >
                           <img

@@ -108,13 +108,23 @@ export default function AdminPage(): React.ReactElement {
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
 
-  // SuperAdmin sieht alle Events, EventAdmin nur seine
+  // SuperAdmin sieht alle Events, EventAdmin nur seine + QR-Scanner-Events.
+  // QR-Scanner bekommen eingeschränkten Zugriff (nur QR-Tool + Check-In-KPIs) —
+  // werden weiter unten via isQRScannerOnly geprüft.
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const isQRScannerFor = (ev: DeloitteEvent): boolean =>
+    !!currentEmailLc && !!ev.qrScannerEmails && ev.qrScannerEmails.some(e => e.toLowerCase() === currentEmailLc);
+  const isOrganizerFor = (ev: DeloitteEvent): boolean => {
+    const fullName = `${currentUser.firstName} ${currentUser.surname}`.toLowerCase();
+    return ev.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
+  };
   const adminEvents = isAdmin
     ? events
-    : events.filter(e => {
-      const fullName = `${currentUser.firstName} ${currentUser.surname}`.toLowerCase();
-      return e.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
-    });
+    : events.filter(e => isOrganizerFor(e) || isQRScannerFor(e));
+  // Wenn der User NUR QR-Scanner ist (nicht Organizer + nicht Admin), dann läuft die
+  // Admin-Page im eingeschränkten Modus für das ausgewählte Event: nur KPI-Kacheln
+  // + QR-Code-Scanner-Button sichtbar.
+  const isQRScannerOnlyForSelected = !!selectedEvent && !isAdmin && !isOrganizerFor(selectedEvent) && isQRScannerFor(selectedEvent);
 
   // Fuer Admins: vergangene Events in eine einklappbare Sektion auslagern
   // (Organizer sehen nur ihre eigenen Events — dort bleiben auch abgelaufene
@@ -1033,6 +1043,23 @@ export default function AdminPage(): React.ReactElement {
         );
       })()}
 
+      {/* v6.19: QR-Code-Scanner-Modus — User ist nur als Scanner eingetragen und
+          sieht deshalb NUR die Event-Info + KPIs + "QR-Code scannen"-Button.
+          Alle Organizer-Aktionen (Teilnehmerliste, Mails, Edit, Export etc.)
+          sind für Scanner ausgeblendet. */}
+      {isQRScannerOnlyForSelected && (
+        <div className="admin-actions" style={{ display: 'flex', marginBottom: 24 }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate('check-in', selectedEvent.id)}
+            style={{ flex: 1 }}
+          >
+            {t('admin.checkin') || 'QR-Code scannen'}
+          </button>
+        </div>
+      )}
+
+      {!isQRScannerOnlyForSelected && (<>
       <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
         <button
           className="btn btn-primary"
@@ -2436,6 +2463,7 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }
