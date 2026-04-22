@@ -221,6 +221,21 @@ export default function RegistrationPage(): React.ReactElement {
       setPreferredStarterType(singleStarterType);
     }
   }, [singleStarterType]);
+
+  // v6.15: Starter-Typ → Startblock-Auto-Mapping. Wenn der Admin für dieses Event
+  // einen Block an den Starter-Typ gebunden hat, wird das zugehörige
+  // b2run_startblock-Custom-Field automatisch gesetzt — der User muss den Block
+  // nicht extra auswählen (das Custom-Field wird dann im UI ausgeblendet).
+  const durchstarterBlock = event?.durchstarterStartblock || '';
+  const funstarterBlock = event?.funstarterStartblock || '';
+  const hasStarterBlockMapping = !!(durchstarterBlock || funstarterBlock);
+  React.useEffect(() => {
+    if (!hasStarterBlockMapping || !preferredStarterType) return;
+    const mappedBlock = preferredStarterType === 'Durchstarter' ? durchstarterBlock : funstarterBlock;
+    if (!mappedBlock) return;
+    if (eventSpecific.b2run_startblock === mappedBlock) return;
+    setEventSpecific(prev => ({ ...prev, b2run_startblock: mappedBlock }));
+  }, [preferredStarterType, durchstarterBlock, funstarterBlock, hasStarterBlockMapping]);
   React.useEffect(() => {
     if (!isB2runSplit || !event?.subsiteUrl) return;
     (async () => {
@@ -352,6 +367,12 @@ export default function RegistrationPage(): React.ReactElement {
       // B2Run: Starter-Typ Pflichtfeld
       if (isB2runSplit && !preferredStarterType) {
         setError(t('reg.starter.required'));
+        return;
+      }
+
+      // v6.15: Leistungsnachweis-Pflicht bei Durchstarter (Admin-Option)
+      if (event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && eventSpecific['b2run_leistungsnachweis'] !== 'true') {
+        setError(t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.');
         return;
       }
     }
@@ -1089,6 +1110,34 @@ export default function RegistrationPage(): React.ReactElement {
                     );
                   })}
                 </div>
+
+                {/* v6.15: Leistungsnachweis-Pflicht bei Durchstarter. Admin hat
+                    die Option pro Event aktiviert — User muss dann beim Wählen
+                    von Durchstarter bestätigen, dass ein Leistungsnachweis
+                    vorliegt. Ohne Bestätigung wird die Anmeldung blockiert. */}
+                {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
+                        onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
+                        </span>
+                      </span>
+                    </label>
+                    {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
+                      <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
+                        {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {event.eventSpecificFields.length === 0 && !isB2runSplit ? (
@@ -1097,6 +1146,8 @@ export default function RegistrationPage(): React.ReactElement {
               event.eventSpecificFields
                 // B2Run-Sonderregel: Mobilnummer nur zeigen wenn Infoservice aktiviert
                 .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+                // v6.15: Startblock ausblenden, wenn er automatisch aus dem Starter-Typ abgeleitet wird
+                .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
                 .map(fRaw => {
                   // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
                   // Mobilnummer Pflicht.

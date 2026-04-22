@@ -101,6 +101,29 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
           },
+          {
+            number: 8,
+            title: isDe ? 'Starter-Typ ↔ Startblock verknüpfen (v6.15)' : 'Link starter type ↔ start block (v6.15)',
+            description: (
+              <>
+                {isDe
+                  ? 'Seit v6.15 kann der Organizer bei Split-Kapazität direkt in Schritt 3 (Kapazität & Fristen) jedem Starter-Typ einen Startblock zuordnen — z.B. "Durchstarter → Block A", "Funstarter → Block B". Wenn gesetzt, wird das Startblock-Custom-Field bei der Registrierung automatisch anhand des gewählten Starter-Typs gesetzt. Der User muss den Block dann nicht extra auswählen; das b2run_startblock-Feld wird in der Registrierungs-Maske ausgeblendet. Die freien Plätze pro Starter-Typ entsprechen 1:1 den freien Plätzen im zugeordneten Block.'
+                  : 'Since v6.15 the organizer can, with split capacity enabled, map a start block to each starter type directly in step 3 (capacity & deadlines) — e.g. "Durchstarter → Block A", "Funstarter → Block B". If set, the start block custom field is auto-populated at registration based on the chosen starter type. The user does not have to pick the block separately; the b2run_startblock field is hidden in the registration form. Free seats per starter type map 1:1 to free seats in the associated block.'}
+              </>
+            ),
+          },
+          {
+            number: 9,
+            title: isDe ? 'Leistungsnachweis-Pflicht für Durchstarter (v6.15)' : 'Proof of performance for Durchstarter (v6.15)',
+            description: (
+              <>
+                {isDe
+                  ? 'Ebenfalls in Schritt 3 findest du die Option "Leistungsnachweis für Durchstarter erforderlich". Wenn aktiviert, muss der User beim Wählen von Durchstarter eine zusätzliche Pflicht-Checkbox bestätigen ("Ich bestätige, dass ein entsprechender Leistungsnachweis vorliegt"). Ohne Bestätigung wird die Anmeldung blockiert. Die Bestätigung landet als b2run_leistungsnachweis-Eintrag in den CustomData der Teilnehmerregistrierung, sodass Organizer später kontrollieren können, wer bestätigt hat.'
+                  : 'Also in step 3 you find the option "Proof of performance required for Durchstarter". When enabled, the user must tick an additional mandatory checkbox when selecting Durchstarter ("I confirm that a valid proof of performance exists"). Without confirmation, the registration is blocked. The confirmation lands as b2run_leistungsnachweis entry in the CustomData of the participant registration so organizers can later verify who confirmed.'}
+              </>
+            ),
+            mockup: <Callout variant="info">{isDe ? 'Typische Anwendung: Organizer vergibt 10 Durchstarter-Plätze an schnelle Läufer. Mit der Leistungsnachweis-Pflicht bestätigt jeder Durchstarter-Anmelder explizit, dass er die Qualifikation hat — dient als Gatekeeping-Mechanismus und rechtliche Absicherung.' : 'Typical use case: organizer allocates 10 Durchstarter slots to fast runners. With the proof requirement, every Durchstarter applicant explicitly confirms having the qualification — acts as gatekeeping mechanism and legal safeguard.'}</Callout>,
+          },
         ],
       },
     ],

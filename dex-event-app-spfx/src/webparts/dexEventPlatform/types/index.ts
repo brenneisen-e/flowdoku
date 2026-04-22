@@ -37,6 +37,14 @@ export interface DeloitteEvent {
   isFictive?: boolean;       // Wenn true: Event nur fuer Admins + eigene Organizer sichtbar (Test-Event)
   durchstarterCapacity?: number; // B2Run: getrennte Kapazitaet fuer Durchstarter
   funstarterCapacity?: number;   // B2Run: getrennte Kapazitaet fuer Funstarter
+  /** Seit v6.15: optionale Verknüpfung Starter-Typ → Startblock. Wenn gesetzt,
+   *  wird bei der Registrierung automatisch das passende Startblock-Custom-Field
+   *  gesetzt (keine Einzel-Auswahl durch den User nötig). */
+  durchstarterStartblock?: string;
+  funstarterStartblock?: string;
+  /** Seit v6.15: optionale Admin-Option. Wenn true, muss der User beim Wählen
+   *  von Durchstarter eine Checkbox "Leistungsnachweis vorhanden" bestätigen. */
+  durchstarterRequiresProof?: boolean;
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];
