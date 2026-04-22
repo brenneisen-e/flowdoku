@@ -11,7 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Salutation, DeloitteEvent } from '../types';
+import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
 import OrganizerList from './OrganizerList';
@@ -134,6 +134,61 @@ export default function RegistrationPage(): React.ReactElement {
   const [showDescription, setShowDescription] = React.useState(true);
   const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean } | null>(null);
 
+  // Seit v6.14: integrierte Session-Auswahl direkt auf der Registrierungsseite.
+  // Der User kann auf EINER Seite wählen, ob er sich für das Haupt-Event und/oder
+  // einzelne Sub-Events anmelden möchte. Bei B2Run-Parents zusätzlich pro Session
+  // eine Durchstarter/Funstarter-Auswahl.
+  const childEvents = React.useMemo(() => event ? childEventsOf(event.id) : [], [event?.id]);
+  const [registerForParent, setRegisterForParent] = React.useState(true);
+  const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
+  const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
+  const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number; wasRegistered: boolean }>>({});
+  const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
+  const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
+
+  // Vorbelegen: Parent-Reg prüfen + Sessions-Meta laden (bereits-registrierte
+  // Sessions werden als angehakt voreingestellt).
+  React.useEffect(() => {
+    if (!event || registerForOther) return;
+    (async () => {
+      try {
+        const r = await getMyRegistration(event.id);
+        setMyParentReg(r);
+        if (r && r.Status !== 'Abgemeldet') setRegisterForParent(false);
+      } catch { /* */ }
+    })();
+    if (childEvents.length > 0) {
+      (async () => {
+        try {
+          const meta: Record<string, { count: number; wasRegistered: boolean }> = {};
+          const preselect = new Set<string>();
+          const starterPre: Record<string, string> = {};
+          for (const ce of childEvents) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const [myReg, allRegs] = await Promise.all([
+              getMyRegistration(ce.id) as Promise<{ Status?: string; StarterType?: string; PreferredStarterType?: string } | null>,
+              getAllRegistrations(ce.id),
+            ]);
+            const wasRegistered = !!myReg && myReg.Status !== 'Abgemeldet';
+            const count = (allRegs || []).filter(r => {
+              const s = r.Status || '';
+              return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
+            }).length;
+            meta[ce.id] = { count, wasRegistered };
+            if (wasRegistered) {
+              preselect.add(ce.id);
+              const existingType = myReg?.StarterType || myReg?.PreferredStarterType;
+              if (existingType) starterPre[ce.id] = existingType;
+            }
+          }
+          setSessionMeta(meta);
+          setSelectedSessions(preselect);
+          setSessionStarterType(prev => ({ ...starterPre, ...prev }));
+        } catch { /* */ }
+      })();
+    }
+  }, [event?.id, registerForOther]);
+
   // Bild-Orientierung erkennen (Hochkant -> links | Querformat -> oben)
   const [imgOrientation, setImgOrientation] = React.useState<'portrait' | 'landscape'>('landscape');
   React.useEffect(() => {
@@ -236,43 +291,81 @@ export default function RegistrationPage(): React.ReactElement {
   const isFull = event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants;
   const errorBorder = { border: '2px solid var(--dex-red)' };
 
+  const parentAlreadyRegistered = !!(myParentReg && myParentReg.Status && myParentReg.Status !== 'Abgemeldet');
+  // "Hauptevent wird jetzt angemeldet" gilt nur, wenn der Parent-Checkbox an ist
+  // UND der User nicht bereits angemeldet ist. Bei bereits angemeldetem Parent
+  // wird die Parent-Registrierung nicht nochmal ausgelöst.
+  const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther;
+  // Fürs Registrieren für andere bleibt der alte Flow: Parent wird immer registriert,
+  // keine Session-Auswahl (siehe Render).
+  const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
+
   const handleSubmit = async (): Promise<void> => {
     // Validierung Pflichtfelder
     setShowErrors(true);
-    if (!salutation || !firstName.trim() || !surname.trim() || !email.trim()) {
-      setError(t('reg.requiredfields'));
+
+    // Wenn der Haupt-Event-Checkbox aus ist und keine Session ausgewählt ist,
+    // gibt es nichts zu tun.
+    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0) {
+      setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
       return;
     }
 
+    // Basis-Felder sind immer Pflicht (Name + Email), auch im Sessions-Only-Modus.
+    if (!firstName.trim() || !surname.trim() || !email.trim()) {
+      setError(t('reg.requiredfields'));
+      return;
+    }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError(t('reg.invalidemail') || 'Ungültige E-Mail-Adresse');
       return;
     }
 
-    // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder muessen 'true' sein,
-    // alle anderen duerfen nach trim nicht leer sein.
-    // B2Run: Mobilnummer ist nur Pflicht wenn Infoservice aktiviert; ansonsten
-    // gilt das Feld als versteckt und wird uebersprungen.
-    const missingRequired = event.eventSpecificFields
-      .filter(f => {
-        if (f.id === 'b2run_mobilnummer') {
-          if (eventSpecific['b2run_infoservice'] !== 'true') return false;
-          return !eventSpecific[f.id]?.trim();
-        }
-        if (!f.required) return false;
-        return f.type === 'checkbox'
-          ? eventSpecific[f.id] !== 'true'
-          : !eventSpecific[f.id]?.trim();
-      });
-    if (missingRequired.length > 0) {
-      setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
-      return;
+    // Nur wenn der User das Haupt-Event (neu) anmelden möchte, gelten
+    // Anrede + Custom-Fields + B2Run-Starter-Typ als Pflicht.
+    if (willRegisterParent || registerForOther) {
+      if (!salutation) {
+        setError(t('reg.requiredfields'));
+        return;
+      }
+
+      // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder muessen 'true' sein,
+      // alle anderen duerfen nach trim nicht leer sein.
+      // B2Run: Mobilnummer ist nur Pflicht wenn Infoservice aktiviert; ansonsten
+      // gilt das Feld als versteckt und wird uebersprungen.
+      const missingRequired = event.eventSpecificFields
+        .filter(f => {
+          if (f.id === 'b2run_mobilnummer') {
+            if (eventSpecific['b2run_infoservice'] !== 'true') return false;
+            return !eventSpecific[f.id]?.trim();
+          }
+          if (!f.required) return false;
+          return f.type === 'checkbox'
+            ? eventSpecific[f.id] !== 'true'
+            : !eventSpecific[f.id]?.trim();
+        });
+      if (missingRequired.length > 0) {
+        setError(`${t('reg.requiredcustom')}: ${missingRequired.map(f => f.label).join(', ')}`);
+        return;
+      }
+
+      // B2Run: Starter-Typ Pflichtfeld
+      if (isB2runSplit && !preferredStarterType) {
+        setError(t('reg.starter.required'));
+        return;
+      }
     }
 
-    // B2Run: Starter-Typ Pflichtfeld
-    if (isB2runSplit && !preferredStarterType) {
-      setError(t('reg.starter.required'));
-      return;
+    // B2Run-Parent: jede AUSGEWÄHLTE Session muss auch einen Starter-Typ gewählt haben.
+    // Ausnahme: wenn der User sich gleichzeitig fürs Haupt-Event anmeldet, erben
+    // die Sessions automatisch den Haupt-Event-Starter-Typ — dann keine Extra-Abfrage.
+    const sharedStarterTypeFromParent = (willRegisterParent || registerForOther) ? preferredStarterType : '';
+    if (isB2runSplit && !sharedStarterTypeFromParent && selectedSessions.size > 0) {
+      const missingStarter = Array.from(selectedSessions).some(sid => !sessionStarterType[sid]);
+      if (missingStarter) {
+        setError(t('reg.sessions.starter.required') || 'Bitte für jede ausgewählte Session den Starter-Typ wählen.');
+        return;
+      }
     }
 
     // Assistant-Ausnahme: defense-in-depth check beim Submit — Target muss
@@ -305,7 +398,7 @@ export default function RegistrationPage(): React.ReactElement {
     //   (b) auf die Warteliste für den gewünschten Typ.
     // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
     // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
-    if (isB2runSplit && preferredStarterType) {
+    if ((willRegisterParent || registerForOther) && isB2runSplit && preferredStarterType) {
       const durchFree = Math.max(0, durchCap - starterCounts.durch);
       const funFree = Math.max(0, funCap - starterCounts.fun);
       const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
@@ -332,16 +425,57 @@ export default function RegistrationPage(): React.ReactElement {
         ...eventSpecific,
       };
       const participantEmail = email.trim();
-      const success = await registerForEvent(
-        selectedEventId!,
-        customData,
-        firstName.trim(),
-        surname.trim(),
-        participantEmail,
-        starterTypeToUse || undefined
-      );
-      if (success) {
+      const firstTrim = firstName.trim();
+      const surnameTrim = surname.trim();
+
+      let anySuccess = false;
+      let parentOk = true;
+
+      // 1) Haupt-Event anmelden (nur wenn Checkbox an und noch nicht angemeldet).
+      if (willRegisterParent || registerForOther) {
+        parentOk = await registerForEvent(
+          selectedEventId!,
+          customData,
+          firstTrim,
+          surnameTrim,
+          participantEmail,
+          starterTypeToUse || undefined
+        );
+        if (parentOk) anySuccess = true;
+        else setError(t('reg.error'));
+      }
+
+      // 2) Ausgewählte Sessions an-/abmelden (unabhängig vom Parent).
+      //    - Session ausgewählt + nicht angemeldet → anmelden
+      //    - Session nicht ausgewählt + angemeldet → abmelden
+      //    - Starter-Typ: wenn der User sich gleichzeitig fürs Haupt-Event anmeldet,
+      //      wird dessen Starter-Typ auch auf die Session-Teilnehmerliste geschrieben
+      //      (shared) — sonst die pro-Session-Auswahl. So steht in der TN-Liste jeder
+      //      Session korrekt, ob der Teilnehmer Durchstarter oder Funstarter ist.
+      const inheritedStarterType = (willRegisterParent || registerForOther) ? (starterTypeToUse || preferredStarterType) : '';
+      if (!registerForOther) {
+        for (const ce of childEvents) {
+          const wasReg = sessionMeta[ce.id]?.wasRegistered;
+          const isSel = selectedSessions.has(ce.id);
+          if (isSel && !wasReg) {
+            const sType = (isB2runSplit && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
+            const ok = await registerForEvent(ce.id, {}, firstTrim, surnameTrim, participantEmail, sType);
+            if (ok) anySuccess = true;
+          } else if (!isSel && wasReg) {
+            await cancelRegistration(ce.id);
+            anySuccess = true;
+          }
+        }
+      }
+
+      if (anySuccess) {
+        // Flag: wenn ausschließlich Sessions angemeldet/geändert wurden (kein
+        // Parent diesmal oder schon vorher angemeldet), zeigen wir auf der
+        // Success-Seite den Sessions-Only-Hinweis.
+        setSessionsOnlySubmitted(!willRegisterParent && !registerForOther);
         setSubmitted(true);
+      } else if (!parentOk) {
+        // Parent-Fehler wurde schon in setError oben gesetzt.
       } else {
         setError(t('reg.error'));
       }
@@ -362,35 +496,24 @@ export default function RegistrationPage(): React.ReactElement {
   };
 
   if (submitted) {
+    const sessionsOnlyHint = sessionsOnlySubmitted;
+    const successHeadline = sessionsOnlyHint
+      ? (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet')
+      : (isFull ? t('reg.waitlisttitle') : t('reg.success'));
+    const successBody = sessionsOnlyHint
+      ? (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title)
+      : (isFull
+          ? (registerForOther
+              ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
+              : t('reg.waitlistmsg').replace('{title}', event.title))
+          : (registerForOther
+              ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
+              : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)));
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '64px 32px' }}>
-          <h2>{isFull ? t('reg.waitlisttitle') : t('reg.success')}</h2>
-          <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
-            {isFull
-              ? (registerForOther
-                  ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
-                  : t('reg.waitlistmsg').replace('{title}', event.title))
-              : (registerForOther
-                  ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
-                  : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email))}
-          </p>
-          {/* Sub-Event-Anmeldung nach erfolgreicher Hauptevent-Anmeldung.
-              Nur für Self-Registration sichtbar — bei "für andere Person anmelden"
-              soll der Teilnehmer die Session-Anmeldungen selbst in seinem eigenen
-              My-Events-Tab vornehmen. Wartelisten-Status (isFull) blockiert die
-              Sessions NICHT: User können sich unabhängig vom Haupt-Event-Status
-              für Sessions an- und abmelden. */}
-          {!registerForOther && childEventsOf(event.id).length > 0 && (
-            <SubEventEnrollmentSection
-              childEvents={childEventsOf(event.id)}
-              registerForEvent={registerForEvent}
-              cancelRegistration={cancelRegistration}
-              getMyRegistration={getMyRegistration}
-              getAllRegistrations={getAllRegistrations}
-              language={event.emailLanguage || 'EN'}
-            />
-          )}
+          <h2>{successHeadline}</h2>
+          <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
               {t('myevents.title')}
@@ -559,20 +682,149 @@ export default function RegistrationPage(): React.ReactElement {
               {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
             </p>
           )}
-          {/* Sub-Event-Anmeldung bereits vor der Haupt-Event-Registrierung anzeigen,
-              damit sich User unabhängig vom Haupt-Event für einzelne Sessions an- und
-              abmelden können. Bei "für andere Person anmelden" wird der Block
-              ausgeblendet, weil die Session-Zuordnung über getMyRegistration nur für
-              den eingeloggten User funktioniert. */}
-          {!registerForOther && childEventsOf(event.id).length > 0 && (
-            <SubEventEnrollmentSection
-              childEvents={childEventsOf(event.id)}
-              registerForEvent={registerForEvent}
-              cancelRegistration={cancelRegistration}
-              getMyRegistration={getMyRegistration}
-              getAllRegistrations={getAllRegistrations}
-              language={event.emailLanguage || 'EN'}
-            />
+          {/* v6.14: Integrierte Event-Auswahl — Parent + Sessions auf einer Seite.
+              Bei "für andere Person anmelden" bleibt der alte Flow (nur Parent, keine
+              Session-Auswahl), weil die Session-Zuordnung über getMyRegistration
+              nur für den eingeloggten User funktioniert.
+              Checkbox "Hauptevent anmelden" erscheint immer, ist bei bereits
+              Angemeldeten automatisch aus + disabled. Sessions erscheinen mit
+              eigener Checkbox; bei B2Run-Parents nur dann mit Durchstarter-/
+              Funstarter-Auswahl, wenn der User sich NICHT gleichzeitig fürs
+              Haupt-Event anmeldet (sonst wird der Haupt-Event-Starter-Typ
+              automatisch auf die Session-Anmeldung übernommen). */}
+          {!registerForOther && (childEvents.length > 0 || true) && (
+            <div style={{ marginTop: 16, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+              <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                {t('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
+              </p>
+
+              {/* Haupt-Event-Checkbox */}
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+                borderRadius: 8,
+                border: `1px solid ${registerForParent && !parentAlreadyRegistered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                background: registerForParent && !parentAlreadyRegistered ? 'rgba(134,188,37,0.06)' : '#fff',
+                cursor: parentAlreadyRegistered ? 'default' : 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={parentAlreadyRegistered ? true : registerForParent}
+                  disabled={parentAlreadyRegistered}
+                  onChange={e => setRegisterForParent(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>{t('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
+                  {parentAlreadyRegistered && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                      {t('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              {/* Sessions */}
+              {childEvents.length > 0 && (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
+                  {childEvents.map(ce => {
+                    const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                    const isSel = selectedSessions.has(ce.id);
+                    const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+                    const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
+                    // Erbt vom Haupt-Event wenn gleichzeitig angemeldet wird.
+                    const inheritsStarter = isB2runSplit && (willRegisterParent || registerForOther);
+                    const sType = sessionStarterType[ce.id] || '';
+
+                    return (
+                      <div key={ce.id} style={{
+                        padding: 10, borderRadius: 8,
+                        border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                        background: isSel ? 'rgba(134,188,37,0.06)' : '#fff',
+                      }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            disabled={disabled}
+                            onChange={e => {
+                              const next = new Set(selectedSessions);
+                              if (e.target.checked) next.add(ce.id); else next.delete(ce.id);
+                              setSelectedSessions(next);
+                            }}
+                            style={{ marginTop: 2 }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700 }}>{ce.title || t('reg.subevents.untitled')}</div>
+                            {ce.description && (
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                            )}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {ce.startDate && <>{formatDate(ce.startDate)}</>}
+                              {ce.location && <> · {ce.location}</>}
+                              {hasCap && (
+                                <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit' }}>{meta.count}/{ce.maxParticipants}</span></>
+                              )}
+                            </div>
+                            {deadlinePassed && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
+                                {t('reg.subevents.deadlinepassed')}
+                              </div>
+                            )}
+                            {isSessionFull && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-red)', marginTop: 2 }}>
+                                {t('reg.subevents.sessionfull')}
+                              </div>
+                            )}
+                            {/* B2Run Starter-Typ pro Session — nur wenn NICHT vom Parent geerbt */}
+                            {isSel && isB2runSplit && !inheritsStarter && (
+                              <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`starter-${ce.id}`}
+                                    checked={sType === 'Durchstarter'}
+                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Durchstarter' })}
+                                  />
+                                  Durchstarter
+                                </label>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`starter-${ce.id}`}
+                                    checked={sType === 'Funstarter'}
+                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Funstarter' })}
+                                  />
+                                  Funstarter
+                                </label>
+                              </div>
+                            )}
+                            {isSel && isB2runSplit && inheritsStarter && preferredStarterType && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
+                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType)}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {isSessionsOnlyMode && selectedSessions.size > 0 && (
+                <div style={{
+                  marginTop: 12, padding: '8px 10px', borderRadius: 6,
+                  background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
+                  color: 'var(--dex-orange)', fontSize: '0.78rem',
+                }}>
+                  {t('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -962,7 +1214,17 @@ export default function RegistrationPage(): React.ReactElement {
       <div className="registration-actions mt-24">
         <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
-          <Send size={16} /> {isSubmitting ? t('reg.submitting') : t('reg.register')}
+          <Send size={16} /> {(() => {
+            if (isSubmitting) return t('reg.submitting');
+            if (registerForOther) return t('reg.register');
+            const parts: string[] = [];
+            if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
+            if (selectedSessions.size > 0) {
+              parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (t('reg.selection.sessioncount.one') || 'Session') : (t('reg.selection.sessioncount.many') || 'Sessions')}`);
+            }
+            if (parts.length === 0) return t('reg.register');
+            return `${t('reg.register')} (${parts.join(' + ')})`;
+          })()}
         </button>
       </div>
 
@@ -1033,156 +1295,6 @@ export default function RegistrationPage(): React.ReactElement {
   );
 }
 
-// ==================== Sub-Event-Anmeldung nach Hauptevent-Registrierung ====================
-// Wird auf dem Success-Screen der RegistrationPage angezeigt. Zeigt alle Sub-Events
-// des Parent-Events mit Kapazitaetsanzeige und einem An-/Abmelden-Button pro Session.
-function SubEventEnrollmentSection(props: {
-  /** Child-Events (Sub-Events) des Parent-Events, geliefert vom Context via childEventsOf(parentId). */
-  childEvents: DeloitteEvent[];
-  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
-  cancelRegistration: (eventId: string) => Promise<boolean>;
-  getMyRegistration: (eventId: string) => Promise<{ Status?: string } | null>;
-  getAllRegistrations: (eventId: string) => Promise<Array<{ Status?: string }>>;
-  language: string;
-}): React.ReactElement {
-  const { t } = useLanguage();
-  const isDe = (props.language || 'EN').toUpperCase() === 'DE';
-  const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
-  const [busy, setBusy] = React.useState<Set<string>>(new Set());
-  // Auslastung pro Sub-Event (Anzahl aktiver Anmeldungen) — pro Sub-Event-Teilnehmerliste abfragen.
-  const [subEventCounts, setSubEventCounts] = React.useState<Record<string, number>>({});
-
-  const refresh = React.useCallback(async (): Promise<void> => {
-    try {
-      const regPromises = props.childEvents.map(async (ce) => {
-        const reg = await props.getMyRegistration(ce.id);
-        const isActive = !!reg && reg.Status && reg.Status !== 'Abgemeldet';
-        return { id: ce.id, isActive };
-      });
-      const regs = await Promise.all(regPromises);
-      const newSet = new Set<string>();
-      for (const r of regs) { if (r.isActive) newSet.add(r.id); }
-      setRegisteredSet(newSet);
-
-      const countPromises = props.childEvents.map(async (ce) => {
-        const all = await props.getAllRegistrations(ce.id);
-        const active = (all || []).filter(r => {
-          const st = r.Status || '';
-          return st === 'Angemeldet' || st === 'QR versendet' || st === 'Eingecheckt';
-        }).length;
-        return { id: ce.id, count: active };
-      });
-      const counts = await Promise.all(countPromises);
-      const map: Record<string, number> = {};
-      for (const c of counts) map[c.id] = c.count;
-      setSubEventCounts(map);
-    } catch { /* ignore */ }
-  }, [props.childEvents.map(c => c.id).join(',')]);
-
-  React.useEffect(() => { refresh().catch(() => { /* ignore */ }); }, [refresh]);
-
-  const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
-    setBusy(prev => { const s = new Set(prev); s.add(childEventId); return s; });
-    try {
-      if (currentlyRegistered) {
-        await props.cancelRegistration(childEventId);
-      } else {
-        // Sub-Event-Registrierung: kein Formular nötig — wir übernehmen nur das
-        // Basis-Profil (Name/Email kommt aus SPFx-Kontext im EventService).
-        // Custom Fields vom Parent werden nicht kopiert; der Sub-Event kann
-        // eigene Custom Fields haben, die dann der normale Registrierungs-Weg
-        // (Direkt-Aufruf auf das Sub-Event) abdeckt. Für den Quick-Toggle hier
-        // reichen die Basis-Daten.
-        await props.registerForEvent(childEventId, {});
-      }
-      await refresh();
-    } finally {
-      setBusy(prev => { const s = new Set(prev); s.delete(childEventId); return s; });
-    }
-  };
-
-  const fmt = (iso: string): string => {
-    if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return iso;
-      return d.toLocaleString(isDe ? 'de-DE' : 'en-GB', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      });
-    } catch { return iso; }
-  };
-
-  return (
-    <div style={{ marginTop: 32, textAlign: 'left', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
-      <h3 style={{ marginTop: 0, marginBottom: 4 }}>{t('reg.subevents.title')}</h3>
-      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 16 }}>
-        {t('reg.subevents.hint')}
-      </p>
-      {props.childEvents.map(ce => {
-        const isReg = registeredSet.has(ce.id);
-        const isBusy = busy.has(ce.id);
-        const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
-        const count = subEventCounts[ce.id] || 0;
-        const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
-        const isFull = hasCap && count >= (ce.maxParticipants || 0);
-        const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
-        return (
-          <div key={ce.id} style={{
-            padding: 12, marginBottom: 8, borderRadius: 8,
-            border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-            background: isReg ? 'rgba(134,188,37,0.06)' : '#fff',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{ce.title || t('reg.subevents.untitled')}</div>
-              {ce.description && (
-                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>{ce.description}</div>
-              )}
-              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                {ce.startDate && <><strong>{t('reg.subevents.start')}:</strong> {fmt(ce.startDate)} </>}
-                {ce.endDate && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.end')}:</strong> {fmt(ce.endDate)} </>}
-                {ce.location && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.location')}:</strong> {ce.location}</>}
-                {hasCap && (
-                  <>
-                    &nbsp;·&nbsp;<strong>{t('reg.subevents.capacity')}:</strong>{' '}
-                    <span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>
-                      {count}/{ce.maxParticipants}
-                    </span>
-                  </>
-                )}
-              </div>
-              {deadlinePassed && !isReg && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', marginTop: 4 }}>
-                  {t('reg.subevents.deadlinepassed')}
-                </div>
-              )}
-              {isFull && !isReg && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--dex-red, #c00)', marginTop: 4 }}>
-                  {t('reg.subevents.sessionfull')}
-                </div>
-              )}
-            </div>
-            <button
-              className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
-              style={{ fontSize: '0.8rem', padding: '6px 14px', minWidth: 110 }}
-              disabled={disabled}
-              onClick={() => handleToggle(ce.id, isReg)}
-            >
-              {isBusy
-                ? '...'
-                : (isReg ? t('reg.subevents.cancel') : t('reg.subevents.register'))}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ==================== User-Picker fuer Custom Fields (type='user') ====================
-// Speichert im Value das Format "Vorname Nachname <email>" - so kann beim
-// Registrieren spaeter die Email per regex extrahiert und (z.B. fuer Zimmerpartner)
-// eine Info-Mail an diese Person gequeued werden.
 function UserFieldPicker(props: {
   value: string;
   onChange: (v: string) => void;

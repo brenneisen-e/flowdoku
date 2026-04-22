@@ -270,7 +270,7 @@ function RegistrationFlow(): React.ReactElement {
       <FlowNode
         type="end"
         label="Registrierung abgeschlossen"
-        details="Der User sieht die Erfolgs-Seite. Bei Events mit Sub-Events (z.B. B2Run-Trainingssessions): die Sub-Events werden als separate DEX_Events-Items mit parentEventId verwaltet — sowohl die Registrierungsseite (linke Spalte) als auch der Success-Screen zeigen eine Liste mit 'Anmelden'-Buttons für jede Session. Seit v6.13 sind Session-Anmeldungen unabhängig vom Haupt-Event: der User kann sich für Sessions an- und abmelden, ohne sich zwangsläufig auch für das Haupt-Event zu registrieren."
+        details="Der User sieht die Erfolgs-Seite. Bei Events mit Sub-Events (z.B. B2Run-Trainingssessions): Seit v6.14 wählt der User auf der Registrierungsseite direkt per Checkbox aus, wofür er sich anmelden möchte — Haupt-Event und/oder einzelne Sessions. Pro ausgewählter Session wird eine eigene Registrierung angelegt (separate Bestätigungsmail + Outlook-Termin). Bei B2Run-Parents kommt pro Session eine Durchstarter-/Funstarter-Auswahl hinzu; meldet sich der User gleichzeitig für das Haupt-Event an, wird der dort gewählte Starter-Typ automatisch auf die Session-TN-Listen übernommen. Wenn der User nur Sessions wählt (Haupt-Event abgehakt), zeigt der Success-Screen einen Sessions-Only-Hinweis und in 'My Events' erscheint der Parent-Eintrag mit dem orangefarbenen Badge 'Nur Sessions'."
       />
     </div>
   );
