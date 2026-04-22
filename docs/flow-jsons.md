@@ -17,9 +17,37 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive UND Warteliste) + Nachrücken von Warteliste
-**Letztes Update:** 2026-04-20
+**Letztes Update:** 2026-04-22 (v6.6)
 
-**Änderungen 2026-04-20:**
+**Änderungen 2026-04-22 (v6.6) — Zwei-Pass-Sortierung:**
+
+Neuer Compose-Step `Sort_ByStatusPriority` zwischen `Count_Active` und `Generate_Indices`.
+Er liefert die Enrolled-Items in der gewünschten Reihenfolge: erst alle Angemeldeten
+(Status ∈ Angemeldet / QR versendet / Eingecheckt, sortiert nach RegistrationDate), dann
+alle Warteliste-Teilnehmer (auch nach RegistrationDate). Die Expression ist:
+
+```
+@union(
+  filter(body('Get_Enrolled_Participants')?['value'], not(equals(item()?['Status'], 'Warteliste'))),
+  filter(body('Get_Enrolled_Participants')?['value'], equals(item()?['Status'], 'Warteliste'))
+)
+```
+
+`Generate_Indices` zählt die Länge von `Sort_ByStatusPriority` statt von
+`Get_Enrolled_Participants`. `GenerateSPData` greift bei `ID` auf
+`outputs('Sort_ByStatusPriority')[item()]?['Id']` zu — also in Status-Priority-
+Reihenfolge. Die `TeilnehmerID` bleibt `add(item(), 1)`, d.h. Index+1.
+
+Ergebnis: Angemeldete bekommen IDs 1..N, Warteliste bekommt IDs N+1..N+M — saubere,
+lückenlose Sortierung. Beispiel mit 100 Plätzen: Wenn #98 (Angemeldet) abmeldet,
+werden #99 → #98, #100 → #99, #101 (alter Warteliste-Erster, wird durch Nachrücken
+auch Angemeldet) → #100, #102 (bleibt Warteliste) → #101 usw.
+
+**Änderungen 2026-04-22: zusätzlich `Filter_Non_Waitlist`** (Query-Action) —
+zählt Nicht-Warteliste-Items als Vorstufe zu `Count_Active`. Funktional identisch
+zum alten Inline-`length(filter(...))`, aber lesbarer.
+
+**Vorherige Änderungen 2026-04-20:**
 
 1. `Get_Active_Participants` umbenannt zu `Get_Enrolled_Participants`. Filter geändert von
    `(Status eq 'Angemeldet') or (Status eq 'QR versendet') or (Status eq 'Eingecheckt')`

@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, promotionEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate } from '../services/EmailTemplates';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -508,9 +508,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
     if (!myReg) return false;
 
-    // Typ des Abgemeldeten merken (fuer Nachruecker bei B2Run Split-Capacity)
-    const cancelledStarterType = myReg.StarterType || '';
-
     // Audit: wer klickt gerade 'Abmelden'? = der eingeloggte User. Bei Self-Cancel
     // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
     // "Abmeldung fuer andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
@@ -555,63 +552,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             );
           } catch (err) { console.warn('[DEX] queueOutlookEvent failed:', err); }
         }
-        // Nachrücken: Ersten Warteliste-Teilnehmer auf den freigewordenen Platz setzen.
-        // Bei B2Run-Split-Kapazitäten (getrennte Durchstarter-/Funstarter-Wartelisten,
-        // seit v6.5): nur den ersten Warteliste-Teilnehmer nachrücken, dessen
-        // PreferredStarterType mit dem freigewordenen Typ übereinstimmt. Damit wird
-        // ein abgemeldeter Durchstarter-Platz nicht an einen Funstarter-Warteliste-
-        // Teilnehmer vergeben und umgekehrt.
-        const isB2runSplitCancel = typeof event.durchstarterCapacity === 'number'
-          && typeof event.funstarterCapacity === 'number'
-          && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
-        try {
-          const promoted = await eventService.promoteFirstWaitlistItem(
-            subsiteUrl,
-            cancelledStarterType || undefined,
-            event.maxParticipants,
-            (isB2runSplitCancel && cancelledStarterType) ? cancelledStarterType : undefined
-          );
-          if (promoted && promoted.success && !event.disableEmails) {
-            // Nachrueck-E-Mail an den Nachruecker senden
-            try {
-              const lang = event.emailLanguage || 'EN';
-              // {{Name}}: nur Vorname. promoted.name ist "Vorname Nachname" -> erstes Token.
-              const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
-              const promoteVars = {
-                Name: promotedFirstName,
-                EventTitle: event.title,
-                Organizer: formatOrganizerList(event.organizers, lang),
-                AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-                WaitlistPosition: '',
-              };
-              let emailData: { subject: string; body: string };
-              // WICHTIG: TemplateType/EmailType-Choice ist ASCII 'Nachruecken'
-              // (sowohl im SharePoint-Choice-Feld als auch in DEX_EmailTemplates).
-              // Die Variante 'Nachrücken' mit Umlaut existiert nicht in der Liste
-              // und wuerde das Queuen der Nachrueck-E-Mail fehlschlagen lassen.
-              const spTplRaw = await eventService.getEmailTemplate('Nachruecken', lang).catch(() => null);
-              const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Nachruecken');
-              if (spTpl) {
-                emailData = buildEmailFromTemplate(spTpl, promoteVars);
-              } else {
-                emailData = promotionEmail(promotedFirstName, event.title);
-              }
-              if (promoted.email) {
-                await eventService.queueEmail(
-                  emailData.subject, promoted.email, promoted.name || '', emailData.body,
-                  'Nachruecken', event.title, eventId
-                );
-                // Outlook-Einladung fuer den Nachruecker
-                if (!event.disableOutlook) {
-                  await eventService.queueOutlookEvent(
-                    promoted.email, eventId, event.title, 'Einladen'
-                  );
-                }
-              }
-            } catch (err) { console.warn('[DEX] promote email failed:', err); }
-          }
-        } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
-        // ID-Reorder in Queue eintragen (nur fuer ID-Neuvergabe, nicht fuer Nachruecken)
+        // Nachrücken wird komplett vom Power-Automate-Flow DEX_IDReorder_TeilnehmerIDs
+        // übernommen (seit v6.7). Der Flow ist typen-bewusst für B2Run-Split-
+        // Wartelisten: er promotet den ersten Warteliste-Teilnehmer mit passendem
+        // PreferredStarterType und verschickt Nachrück-Mail + Outlook-Einladung.
+        // Die App macht nur noch Abmeldung + IDReorder-Queue-Trigger — keine
+        // parallele Client-Promote-Logik mehr (die vorher zu Race-Conditions mit
+        // dem Flow geführt hat).
+        // ID-Reorder in Queue eintragen (triggert den DEX_IDReorder-Flow, der
+        // danach ID-Neuvergabe + Nachrücken abwickelt).
         if (subsiteUrl) {
           try {
             const reorderOk = await eventService.queueIDReorder(
