@@ -16,10 +16,53 @@ Wird aktualisiert wenn Flows geändert werden.
 ## 1. DEX_IDReorder_TeilnehmerIDs
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
-**Zweck:** TeilnehmerIDs neu vergeben (Aktive UND Warteliste) + Nachrücken von Warteliste
-**Letztes Update:** 2026-04-22 (v6.6)
+**Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten)
+**Letztes Update:** 2026-04-22 (v6.7)
 
-**Änderungen 2026-04-22 (v6.6) — Zwei-Pass-Sortierung:**
+### Änderungen 2026-04-22 (v6.7) — Typ-bewusster Promote für B2Run-Split
+
+Die App (EventContext.cancelRegistration) macht seit v6.7 kein Client-seitiges Nachrücken mehr — der komplette Promote-Prozess läuft hier im Flow. Gleichzeitig wurde der Promote-Zweig typ-bewusst ausgebaut: bei B2Run-Split-Events (DurchstarterCapacity > 0 AND FunstarterCapacity > 0) gibt es zwei getrennte Promote-Pässe, einer pro Typ mit eigenem Warteliste-Filter.
+
+**Neue Flow-Struktur (nach Loop_Batches):**
+
+```
+Get_EventDetails
+ └── Is_B2RunSplit (DurchstarterCapacity > 0 AND FunstarterCapacity > 0)
+     ├── WENN JA (B2Run-Split-Event):
+     │   ├── Count_Active_Durchstarter (Compose)
+     │   ├── Check_Durchstarter_Free (Condition: aktive Durchstarter < DurchstarterCapacity)
+     │   │   └── WENN JA:
+     │   │       ├── Get_Waitlist_First_Durchstarter (SharePoint GET: $filter=Status eq 'Warteliste' and PreferredStarterType eq 'Durchstarter')
+     │   │       └── Has_Durchstarter_Waitlist (Condition: length > 0)
+     │   │           └── WENN JA:
+     │   │               ├── Promote_Durchstarter (MERGE: Status=Angemeldet + StarterType=Durchstarter)
+     │   │               ├── Get_Email_Template_Durchstarter
+     │   │               ├── Queue_Email_Durchstarter (Nachrücken-Mail)
+     │   │               └── Queue_Outlook_Durchstarter (Einladen)
+     │   ├── Count_Active_Funstarter (Compose, runAfter Check_Durchstarter_Free)
+     │   └── Check_Funstarter_Free (Condition: aktive Funstarter < FunstarterCapacity)
+     │       └── WENN JA:
+     │           ├── Get_Waitlist_First_Funstarter (SharePoint GET: $filter=PreferredStarterType eq 'Funstarter')
+     │           └── Has_Funstarter_Waitlist (Condition: length > 0)
+     │               └── WENN JA:
+     │                   ├── Promote_Funstarter (MERGE: Status=Angemeldet + StarterType=Funstarter)
+     │                   ├── Get_Email_Template_Funstarter
+     │                   ├── Queue_Email_Funstarter
+     │                   └── Queue_Outlook_Funstarter
+     └── WENN NEIN (normales Event):
+         └── Check_Nachrücken (unverändert alte Logik: Count_Active < MaxParticipants)
+             └── Get_Waitlist_First → Condition_1 → Promote_Waitlist + Queue_Email + Queue_Outlook + Get_Email_Template
+```
+
+`DEX_IDReorder.runAfter = Is_B2RunSplit: Succeeded` — läuft nach beiden Zweigen.
+
+**Wichtige Details:**
+- Im B2Run-Split-Zweig werden **beide Typen nacheinander** geprüft (Durchstarter zuerst, dann Funstarter). Wenn beide freie Plätze + passende Warteliste-Einträge haben, werden in einem einzigen Flow-Run zwei Teilnehmer nachgerückt.
+- Der `StarterType`-Filter in Count_Active_* nutzt `item()?['StarterType']?['Value']` — weil StarterType in der Teilnehmer-Liste ein Choice-Feld ist. Bei Warteliste-Teilnehmern ohne zugewiesenen StarterType greift `not(equals(..., 'Warteliste'))` — sie werden nicht mitgezählt.
+- `Promote_Durchstarter` / `Promote_Funstarter` setzen **Status=Angemeldet UND StarterType=<typ>** — der nachgerückte Warteliste-Teilnehmer bekommt automatisch den freigewordenen Typ zugewiesen.
+- `Queue_Email_*` füllen `{{Name}}` und `{{EventTitle}}` aus dem SharePoint-Template (DEX_EmailTemplates, TemplateType=`Nachruecken`, Language=EN/DE).
+
+### Änderungen 2026-04-22 (v6.6) — Zwei-Pass-Sortierung der Teilnehmer-IDs
 
 Neuer Compose-Step `Sort_ByStatusPriority` zwischen `Count_Active` und `Generate_Indices`.
 Er liefert die Enrolled-Items in der gewünschten Reihenfolge: erst alle Angemeldeten
@@ -43,9 +86,9 @@ lückenlose Sortierung. Beispiel mit 100 Plätzen: Wenn #98 (Angemeldet) abmelde
 werden #99 → #98, #100 → #99, #101 (alter Warteliste-Erster, wird durch Nachrücken
 auch Angemeldet) → #100, #102 (bleibt Warteliste) → #101 usw.
 
-**Änderungen 2026-04-22: zusätzlich `Filter_Non_Waitlist`** (Query-Action) —
-zählt Nicht-Warteliste-Items als Vorstufe zu `Count_Active`. Funktional identisch
-zum alten Inline-`length(filter(...))`, aber lesbarer.
+**Zusätzlich `Filter_Non_Waitlist`** (Query-Action) — zählt Nicht-Warteliste-Items als
+Vorstufe zu `Count_Active`. Funktional identisch zum alten Inline-`length(filter(...))`,
+aber lesbarer.
 
 **Vorherige Änderungen 2026-04-20:**
 
