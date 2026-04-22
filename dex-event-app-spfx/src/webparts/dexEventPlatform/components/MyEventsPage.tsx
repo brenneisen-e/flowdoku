@@ -612,7 +612,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration } = useEvents();
+  const { events, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForSubEvent, cancelSubEventRegistration, getAllRegistrations } = useEvents();
   const { t } = useLanguage();
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -1125,6 +1125,18 @@ export default function MyEventsPage(): React.ReactElement {
                   />
                 )}
 
+                {/* Sub-Events (Trainingssessions etc.) — nur wenn Event welche hat */}
+                {event.subEvents && event.subEvents.length > 0 && (
+                  <MyEventSubEvents
+                    event={event}
+                    registration={registration}
+                    registerForSubEvent={registerForSubEvent}
+                    cancelSubEventRegistration={cancelSubEventRegistration}
+                    getAllRegistrations={getAllRegistrations}
+                    onMutated={loadMyRegistrations}
+                  />
+                )}
+
                 {/* Registriert am + Aktionen */}
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
@@ -1180,6 +1192,143 @@ export default function MyEventsPage(): React.ReactElement {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ==================== Sub-Events im "My Events"-Tab ====================
+// Zeigt pro Event eine kompakte Session-Liste mit An-/Abmelden-Button. Nutzt
+// die aktuell gespeicherten SubEventIds aus der Registrierung (kein Reload
+// noetig) und ruft nach jeder Aktion onMutated auf, damit der Parent die
+// Registrierungen neu laedt.
+function MyEventSubEvents(props: {
+  event: DeloitteEvent;
+  registration: SPRegistration;
+  registerForSubEvent: (eventId: string, subEventId: string) => Promise<boolean>;
+  cancelSubEventRegistration: (eventId: string, subEventId: string) => Promise<boolean>;
+  getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  onMutated: () => Promise<void>;
+}): React.ReactElement | null {
+  const isDe = (props.event.emailLanguage || 'EN').toUpperCase() === 'DE';
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [localIds, setLocalIds] = React.useState<Set<string>>(() => {
+    try {
+      const arr = props.registration.SubEventIds ? JSON.parse(props.registration.SubEventIds) : [];
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch { return new Set<string>(); }
+  });
+  const [counts, setCounts] = React.useState<Record<string, number>>({});
+
+  React.useEffect(() => {
+    try {
+      const arr = props.registration.SubEventIds ? JSON.parse(props.registration.SubEventIds) : [];
+      setLocalIds(new Set(Array.isArray(arr) ? arr : []));
+    } catch { setLocalIds(new Set<string>()); }
+  }, [props.registration.SubEventIds]);
+
+  const refreshCounts = React.useCallback(async (): Promise<void> => {
+    try {
+      const all = await props.getAllRegistrations(props.event.id);
+      const c: Record<string, number> = {};
+      for (const r of all || []) {
+        const st = r.Status || '';
+        if (st !== 'Angemeldet' && st !== 'QR versendet' && st !== 'Eingecheckt') continue;
+        let ids: string[] = [];
+        try { if (r.SubEventIds) ids = JSON.parse(r.SubEventIds) || []; } catch { ids = []; }
+        for (const id of ids) c[id] = (c[id] || 0) + 1;
+      }
+      setCounts(c);
+    } catch { /* ignore */ }
+  }, [props.event.id]);
+
+  React.useEffect(() => { refreshCounts().catch(() => { /* ignore */ }); }, [refreshCounts]);
+
+  const fmt = (iso: string): string => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch { return iso; }
+  };
+
+  const handleToggle = async (subEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    setBusyId(subEventId);
+    try {
+      if (currentlyRegistered) {
+        const ok = await props.cancelSubEventRegistration(props.event.id, subEventId);
+        if (ok) {
+          setLocalIds(prev => { const s = new Set(prev); s.delete(subEventId); return s; });
+        }
+      } else {
+        const ok = await props.registerForSubEvent(props.event.id, subEventId);
+        if (ok) {
+          setLocalIds(prev => { const s = new Set(prev); s.add(subEventId); return s; });
+        }
+      }
+      await refreshCounts();
+      await props.onMutated();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const subs = props.event.subEvents || [];
+  if (subs.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+        {isDe ? 'Zusaetzliche Sessions' : 'Additional sessions'}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {subs.map(se => {
+          const isReg = localIds.has(se.id);
+          const isBusy = busyId === se.id;
+          const deadlinePassed = !!(se.registrationDeadline && new Date(se.registrationDeadline) < new Date());
+          const count = counts[se.id] || 0;
+          const hasCap = typeof se.maxParticipants === 'number' && se.maxParticipants > 0;
+          const isFull = hasCap && count >= (se.maxParticipants || 0);
+          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
+          return (
+            <div key={se.id} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+              padding: '8px 12px', borderRadius: 8,
+              background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
+              border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{se.title}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                  {se.startDate && <>{fmt(se.startDate)}{se.endDate ? ` – ${fmt(se.endDate)}` : ''}</>}
+                  {se.location && <>&nbsp;·&nbsp;{se.location}</>}
+                  {hasCap && (
+                    <>&nbsp;·&nbsp;<span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>{count}/{se.maxParticipants}</span></>
+                  )}
+                  {isReg && (
+                    <span style={{ marginLeft: 8, color: 'var(--dex-green)', fontWeight: 600 }}>
+                      ({isDe ? 'Angemeldet' : 'Registered'})
+                    </span>
+                  )}
+                  {isFull && !isReg && (
+                    <span style={{ marginLeft: 8, color: 'var(--dex-red, #c00)', fontWeight: 600 }}>
+                      ({isDe ? 'voll' : 'full'})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
+                style={{ fontSize: '0.75rem', padding: '4px 12px', minWidth: 92 }}
+                disabled={disabled}
+                onClick={() => handleToggle(se.id, isReg)}
+              >
+                {isBusy ? '...' : (isReg ? (isDe ? 'Abmelden' : 'Cancel') : (isDe ? 'Anmelden' : 'Register'))}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
