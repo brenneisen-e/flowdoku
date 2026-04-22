@@ -96,6 +96,14 @@ export default function AdminPage(): React.ReactElement {
     | { kind: 'no-promote'; name: string };
   const [adminToast, setAdminToast] = React.useState<AdminToast | null>(null);
 
+  // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
+  //  - columnOrder = geordnete Liste sichtbarer Spalten-IDs
+  //  - hiddenColumns = ausgeblendete Spalten-IDs (können übers "+ Spalte"-Popover wieder zugeschaltet werden)
+  // Die Spezialspalten 'id' / 'name' / 'action' sind alwaysVisible und können nicht ausgeblendet werden.
+  const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
+  const [hiddenColumns, setHiddenColumns] = React.useState<string[]>([]);
+  const [showColumnPicker, setShowColumnPicker] = React.useState(false);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
@@ -489,6 +497,100 @@ export default function AdminPage(): React.ReactElement {
   const userFieldIds = (selectedEvent?.eventSpecificFields || [])
     .filter(f => f.type === 'user')
     .map(f => f.id);
+
+  // v6.17: Verfügbare Spalten der Teilnehmer-Tabelle aufbauen. Die Liste hängt
+  // vom ausgewählten Event ab (Split-Kapazität, Zimmerpartner-Feld, Custom-Fields).
+  // Jede Spalte bekommt eine stabile ID, damit die localStorage-Config auch nach
+  // App-Updates korrekt rekonstruierbar ist. `alwaysVisible` verhindert das
+  // Ausblenden von Pflicht-Spalten (Nr, Name, Aktion).
+  const availableColumns = React.useMemo(() => {
+    const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
+      { id: 'id', label: '#', alwaysVisible: true },
+      { id: 'anrede', label: 'Anrede' },
+      { id: 'name', label: 'Name', alwaysVisible: true },
+      { id: 'email', label: 'Email' },
+      { id: 'jobTitle', label: 'Job Title' },
+      { id: 'location', label: 'Standort' },
+    ];
+    if (isSplitCapacity) cols.push({ id: 'starterType', label: 'Starter-Typ' });
+    cols.push({ id: 'status', label: 'Status' });
+    cols.push({ id: 'date', label: 'Registriert am' });
+    cols.push({ id: 'registeredBy', label: 'Registriert von' });
+    if (userFieldIds.length > 0) cols.push({ id: 'roommate', label: 'Zimmerpartner' });
+    for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
+      cols.push({ id: `cf-${f.id}`, label: f.label });
+    }
+    cols.push({ id: 'action', label: 'Aktion', alwaysVisible: true });
+    return cols;
+  }, [selectedEvent?.id, isSplitCapacity, userFieldIds.join(','), (selectedEvent?.eventSpecificFields || []).map(f => f.id).join(',')]);
+
+  // localStorage: beim Event-Wechsel Config laden; Defaults = alle Spalten in
+  // Standard-Reihenfolge sichtbar. Config-Key pro Event, damit verschiedene
+  // Events unterschiedliche Custom-Fields haben dürfen.
+  const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
+  React.useEffect(() => {
+    if (!selectedEvent) { setColumnOrder([]); setHiddenColumns([]); return; }
+    const allIds = availableColumns.map(c => c.id);
+    try {
+      const raw = localStorage.getItem(columnStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.hidden)) {
+          // Nur bekannte Spalten übernehmen, neue Spalten am Ende anhängen.
+          const knownOrder = parsed.order.filter((id: string) => allIds.indexOf(id) >= 0);
+          const missing = allIds.filter(id => knownOrder.indexOf(id) < 0);
+          setColumnOrder([...knownOrder, ...missing]);
+          setHiddenColumns(parsed.hidden.filter((id: string) => allIds.indexOf(id) >= 0));
+          return;
+        }
+      }
+    } catch { /* kaputte Config ignorieren */ }
+    // Default: alle Spalten sichtbar in Standard-Reihenfolge.
+    setColumnOrder(allIds);
+    setHiddenColumns([]);
+  }, [columnStorageKey, availableColumns.map(c => c.id).join(',')]);
+
+  // Persistieren bei Änderungen.
+  React.useEffect(() => {
+    if (!columnStorageKey || columnOrder.length === 0) return;
+    try {
+      localStorage.setItem(columnStorageKey, JSON.stringify({ order: columnOrder, hidden: hiddenColumns }));
+    } catch { /* quota exceeded oder private mode → ignorieren */ }
+  }, [columnStorageKey, columnOrder.join(','), hiddenColumns.join(',')]);
+
+  // Helper: Spalte ausblenden / wieder einblenden / verschieben.
+  const hideColumn = (id: string): void => {
+    const col = availableColumns.find(c => c.id === id);
+    if (!col || col.alwaysVisible) return;
+    if (hiddenColumns.indexOf(id) < 0) setHiddenColumns([...hiddenColumns, id]);
+  };
+  const showColumn = (id: string): void => {
+    setHiddenColumns(hiddenColumns.filter(h => h !== id));
+    // Falls noch nicht in der Reihenfolge: vor der "action"-Spalte einfügen,
+    // damit Aktionen immer zuletzt bleiben.
+    if (columnOrder.indexOf(id) < 0) {
+      const actionIdx = columnOrder.indexOf('action');
+      const next = [...columnOrder];
+      if (actionIdx >= 0) next.splice(actionIdx, 0, id); else next.push(id);
+      setColumnOrder(next);
+    }
+  };
+  const moveColumn = (id: string, direction: -1 | 1): void => {
+    const idx = columnOrder.indexOf(id);
+    if (idx < 0) return;
+    const target = idx + direction;
+    if (target < 0 || target >= columnOrder.length) return;
+    // Nie über die 'action'-Spalte hinaus bewegen — die bleibt immer letzte.
+    if (columnOrder[target] === 'action') return;
+    const next = [...columnOrder];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setColumnOrder(next);
+  };
+
+  // Render-Funktionen pro Spalte — als eine Map, damit der Header + die Body-Zeilen
+  // die gleiche stabile ID benutzen. Wird bei jedem Registration-Render neu aufgebaut,
+  // weil die renderCell-Lambdas auf aktuelle Closures (handleSort, sortIcon, …) angewiesen sind.
+  // Das ist günstig, weil die Funktion nur Pointer speichert.
   const roommateChoice: Record<string, { partnerEmail: string; partnerName: string }> = {};
   if (userFieldIds.length > 0) {
     const allActiveAndWaitlist = registrations.filter(r =>
@@ -1571,80 +1673,149 @@ export default function AdminPage(): React.ReactElement {
           <p style={{ color: 'var(--dex-gray-400)' }}>Noch keine Teilnehmer registriert.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                  {([['id', '#'], ['anrede', 'Anrede'], ['name', 'Name'], ['email', 'Email']] as const).map(([col, label]) => (
+            {(() => {
+              // v6.17: Spaltenkonfiguration — Header und Body-Zellen werden dynamisch
+              // anhand `columnOrder` (+ `hiddenColumns`) gerendert. So kann der User
+              // Spalten ein-/ausblenden und per Pfeilen umsortieren. Die Render-Logik
+              // selbst (Sort-Buttons, Badges, Custom-Field-Anzeige etc.) bleibt gleich,
+              // nur die Iteration ist umgebaut.
+              const visibleColumnIds = columnOrder.filter(id => hiddenColumns.indexOf(id) < 0);
+
+              const sortableCols: Record<string, 'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'> = {
+                id: 'id', anrede: 'anrede', name: 'name', email: 'email', status: 'status', date: 'date',
+              };
+
+              const hideButton = (id: string): React.ReactNode => {
+                const col = availableColumns.find(c => c.id === id);
+                if (!col || col.alwaysVisible) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); hideColumn(id); }}
+                    aria-label={`Spalte ${col.label} ausblenden`}
+                    title="Spalte ausblenden"
+                    style={{
+                      marginLeft: 6, padding: 0, width: 16, height: 16, lineHeight: '14px',
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      color: 'var(--dex-gray-400)', fontSize: '0.8rem', borderRadius: 3,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--dex-red, #c00)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--dex-gray-400)'; }}
+                  >
+                    ✕
+                  </button>
+                );
+              };
+
+              const renderHeader = (id: string): React.ReactNode => {
+                const baseStyle: React.CSSProperties = { textAlign: 'left', padding: 8, whiteSpace: 'nowrap' };
+                const sortable = sortableCols[id];
+                if (sortable) {
+                  return (
                     <th
-                      key={col}
-                      style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-                      onClick={() => handleSort(col)}
+                      key={id}
+                      style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort(sortable)}
                     >
-                      {label}{sortIcon(col)}
+                      {id === 'id' ? '#' : id === 'anrede' ? 'Anrede' : id === 'name' ? 'Name' : id === 'email' ? 'Email' : id === 'status' ? 'Status' : 'Registriert am'}
+                      {sortIcon(sortable)}
+                      {hideButton(id)}
                     </th>
-                  ))}
-                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Job Title</th>
-                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>Standort</th>
-                  {isSplitCapacity && (
-                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'.">Starter-Typ</th>
-                  )}
-                  {([['status', 'Status'], ['date', 'Registriert am']] as const).map(([col, label]) => (
-                    <th
-                      key={col}
-                      style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-                      onClick={() => handleSort(col)}
-                    >
-                      {label}{sortIcon(col)}
+                  );
+                }
+                if (id === 'jobTitle') return <th key={id} style={baseStyle}>Job Title{hideButton(id)}</th>;
+                if (id === 'location') return <th key={id} style={baseStyle}>Standort{hideButton(id)}</th>;
+                if (id === 'starterType') {
+                  return (
+                    <th key={id} style={baseStyle} title="Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'.">
+                      Starter-Typ{hideButton(id)}
                     </th>
-                  ))}
-                  <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">Registriert von</th>
-                  {userFieldIds.length > 0 && (
-                    <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }} title="Ausgewaehlter Zimmerpartner. Match = beide haben sich gegenseitig ausgewaehlt.">Zimmerpartner</th>
-                  )}
-                  {/* Custom Fields (nicht-user-type) als eigene Spalten */}
-                  {(selectedEvent?.eventSpecificFields || [])
-                    .filter(f => f.type !== 'user' && f.label && f.label.trim())
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    .map(f => (
-                      <th key={`cfh-${f.id}`} style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap', fontSize: '0.78rem' }} title={f.label}>
-                        {f.label.length > 22 ? f.label.substring(0, 20) + '…' : f.label}
-                      </th>
-                    ))}
-                  <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeRegs.map((reg, i) => (
-                  <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).JobTitle || '-'}</td>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).Location || '-'}</td>
-                    {isSplitCapacity && (
-                      <td style={{ padding: 8, fontSize: '0.8rem' }}>
-                        {(() => {
-                          // Tatsächlicher Startblock (StarterType) + Wunsch (PreferredStarterType).
-                          // Wenn beide identisch: nur einen anzeigen. Wenn unterschiedlich (z.B. per
-                          // Fallback-Dialog auf anderen Typ umgestiegen): Wunsch in Klammern daneben.
-                          const actual = reg.StarterType || '';
-                          const pref = reg.PreferredStarterType || '';
-                          if (!actual && !pref) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
-                          if (actual && pref && actual !== pref) {
-                            return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
-                          }
-                          return <span>{actual || `Wunsch: ${pref}`}</span>;
-                        })()}
-                      </td>
-                    )}
-                    <td style={{ padding: 8 }}>
+                  );
+                }
+                if (id === 'registeredBy') {
+                  return (
+                    <th key={id} style={baseStyle} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">
+                      Registriert von{hideButton(id)}
+                    </th>
+                  );
+                }
+                if (id === 'roommate') {
+                  return (
+                    <th key={id} style={baseStyle} title="Ausgewaehlter Zimmerpartner. Match = beide haben sich gegenseitig ausgewaehlt.">
+                      Zimmerpartner{hideButton(id)}
+                    </th>
+                  );
+                }
+                if (id === 'action') {
+                  return <th key={id} style={{ textAlign: 'left', padding: 8 }}>Aktion</th>;
+                }
+                if (id.indexOf('cf-') === 0) {
+                  const cfId = id.substring(3);
+                  const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
+                  if (!field) return null;
+                  const label = field.label || '';
+                  return (
+                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem' }} title={label}>
+                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {hideButton(id)}
+                    </th>
+                  );
+                }
+                return null;
+              };
+
+              const renderCell = (id: string, reg: SPRegistration, i: number): React.ReactNode => {
+                if (id === 'id') {
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>;
+                }
+                if (id === 'anrede') {
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
+                }
+                if (id === 'name') {
+                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>;
+                }
+                if (id === 'email') {
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>;
+                }
+                if (id === 'jobTitle') {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).JobTitle || '-'}</td>;
+                }
+                if (id === 'location') {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).Location || '-'}</td>;
+                }
+                if (id === 'starterType') {
+                  return (
+                    <td key={id} style={{ padding: 8, fontSize: '0.8rem' }}>
+                      {(() => {
+                        // Tatsächlicher Startblock (StarterType) + Wunsch (PreferredStarterType).
+                        // Wenn beide identisch: nur einen anzeigen. Wenn unterschiedlich (z.B. per
+                        // Fallback-Dialog auf anderen Typ umgestiegen): Wunsch in Klammern daneben.
+                        const actual = reg.StarterType || '';
+                        const pref = reg.PreferredStarterType || '';
+                        if (!actual && !pref) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
+                        if (actual && pref && actual !== pref) {
+                          return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
+                        }
+                        return <span>{actual || `Wunsch: ${pref}`}</span>;
+                      })()}
+                    </td>
+                  );
+                }
+                if (id === 'status') {
+                  return (
+                    <td key={id} style={{ padding: 8 }}>
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
                     </td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>
+                  );
+                }
+                if (id === 'date') {
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
+                }
+                if (id === 'registeredBy') {
+                  return (
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>
                       {(() => {
                         const actorEmail = (reg.RegisteredByEmail || '').toLowerCase();
                         const participantEmail = (reg.ParticipantEmail || '').toLowerCase();
@@ -1659,58 +1830,64 @@ export default function AdminPage(): React.ReactElement {
                         );
                       })()}
                     </td>
-                    {userFieldIds.length > 0 && (
-                      <td style={{ padding: 8, fontSize: '0.8rem' }}>
-                        {(() => {
-                          const info = getRoommateInfo(reg);
-                          if (!info) return <span style={{ color: 'var(--dex-gray-300)' }}>-</span>;
-                          return (
-                            <span>
-                              {info.partnerName}
-                              {info.mutual && (
-                                <span
-                                  className="badge"
-                                  style={{ marginLeft: 6, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
-                                  title="Beide haben sich gegenseitig als Zimmerpartner ausgewaehlt"
-                                >
-                                  Match
-                                </span>
-                              )}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                    )}
-                    {/* Custom-Fields-Werte (nicht-user-type) */}
-                    {(selectedEvent?.eventSpecificFields || [])
-                      .filter(f => f.type !== 'user' && f.label && f.label.trim())
-                      .map(f => {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const spName = (f as any).spInternalName || '';
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        let val: any = spName ? (reg as any)[spName] : undefined;
-                        if ((val === undefined || val === null || val === '') && reg.CustomData) {
-                          try {
-                            const cd = JSON.parse(reg.CustomData);
-                            val = cd[f.id];
-                          } catch { /* no-op */ }
-                        }
-                        let display: React.ReactNode = '-';
-                        if (val !== undefined && val !== null && val !== '') {
-                          if (f.type === 'checkbox') {
-                            const truthy = val === true || val === 'true' || val === 1 || val === '1';
-                            display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
-                          } else {
-                            display = String(val);
-                          }
-                        }
+                  );
+                }
+                if (id === 'roommate') {
+                  return (
+                    <td key={id} style={{ padding: 8, fontSize: '0.8rem' }}>
+                      {(() => {
+                        const info = getRoommateInfo(reg);
+                        if (!info) return <span style={{ color: 'var(--dex-gray-300)' }}>-</span>;
                         return (
-                          <td key={`cfv-${f.id}-${reg.Id}`} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(val || '')}>
-                            {display}
-                          </td>
+                          <span>
+                            {info.partnerName}
+                            {info.mutual && (
+                              <span
+                                className="badge"
+                                style={{ marginLeft: 6, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
+                                title="Beide haben sich gegenseitig als Zimmerpartner ausgewaehlt"
+                              >
+                                Match
+                              </span>
+                            )}
+                          </span>
                         );
-                      })}
-                    <td style={{ padding: 8, display: 'flex', gap: 4 }}>
+                      })()}
+                    </td>
+                  );
+                }
+                if (id.indexOf('cf-') === 0) {
+                  const cfId = id.substring(3);
+                  const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
+                  if (!field) return null;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const spName = (field as any).spInternalName || '';
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  let val: any = spName ? (reg as any)[spName] : undefined;
+                  if ((val === undefined || val === null || val === '') && reg.CustomData) {
+                    try {
+                      const cd = JSON.parse(reg.CustomData);
+                      val = cd[field.id];
+                    } catch { /* no-op */ }
+                  }
+                  let display: React.ReactNode = '-';
+                  if (val !== undefined && val !== null && val !== '') {
+                    if (field.type === 'checkbox') {
+                      const truthy = val === true || val === 'true' || val === 1 || val === '1';
+                      display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
+                    } else {
+                      display = String(val);
+                    }
+                  }
+                  return (
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(val || '')}>
+                      {display}
+                    </td>
+                  );
+                }
+                if (id === 'action') {
+                  return (
+                    <td key={id} style={{ padding: 8, display: 'flex', gap: 4 }}>
                       {reg.Status === 'Eingecheckt' ? (
                         <button
                           className="btn btn-secondary"
@@ -1862,10 +2039,132 @@ export default function AdminPage(): React.ReactElement {
                         Abmelden
                       </button>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  );
+                }
+                return null;
+              };
+
+              return (
+                <>
+                  {/* v6.17: Kontrollzeile mit Column-Picker-Button. Der Popover
+                      zeigt alle verfügbaren Spalten inkl. Checkbox zum Ein-/
+                      Ausblenden und Pfeilen zum Umsortieren. Die Config wird
+                      pro Event in localStorage persistiert (s. useEffect oben). */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 8, position: 'relative' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      onClick={() => setShowColumnPicker(!showColumnPicker)}
+                    >
+                      Spalten anpassen
+                    </button>
+                    {showColumnPicker && (
+                      <div
+                        style={{
+                          position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                          background: '#fff', border: '1px solid var(--dex-gray-200)',
+                          borderRadius: 8, padding: 12,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          width: 280, zIndex: 100, maxHeight: 400, overflowY: 'auto',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                          Spalten verwalten
+                        </div>
+                        {columnOrder.map((id, idx) => {
+                          const col = availableColumns.find(c => c.id === id);
+                          if (!col) return null;
+                          const isHidden = hiddenColumns.indexOf(id) >= 0;
+                          const isVisible = !isHidden;
+                          const canMoveUp = isVisible && idx > 0 && columnOrder[idx - 1] !== undefined;
+                          // "action" bleibt immer letzte → niemand darf unter "action" wandern
+                          // und "action" selbst darf nicht verschoben werden.
+                          const nextId = columnOrder[idx + 1];
+                          const canMoveDown = isVisible && idx < columnOrder.length - 1 && id !== 'action' && nextId !== 'action';
+                          return (
+                            <div
+                              key={id}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '4px 2px', fontSize: '0.82rem',
+                                opacity: isVisible ? 1 : 0.55,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isVisible}
+                                disabled={!!col.alwaysVisible}
+                                onChange={() => {
+                                  if (col.alwaysVisible) return;
+                                  if (isHidden) showColumn(id); else hideColumn(id);
+                                }}
+                                style={{ cursor: col.alwaysVisible ? 'not-allowed' : 'pointer' }}
+                                title={col.alwaysVisible ? 'Pflicht-Spalte — kann nicht ausgeblendet werden' : (isHidden ? 'Einblenden' : 'Ausblenden')}
+                              />
+                              <span style={{ flex: 1, color: 'var(--dex-gray-700)' }}>{col.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => moveColumn(id, -1)}
+                                disabled={!canMoveUp}
+                                aria-label="Spalte nach oben"
+                                title="Nach oben"
+                                style={{
+                                  border: 'none', background: 'transparent',
+                                  cursor: canMoveUp ? 'pointer' : 'not-allowed',
+                                  color: canMoveUp ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
+                                  fontSize: '0.9rem', padding: '0 4px',
+                                }}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveColumn(id, 1)}
+                                disabled={!canMoveDown}
+                                aria-label="Spalte nach unten"
+                                title="Nach unten"
+                                style={{
+                                  border: 'none', background: 'transparent',
+                                  cursor: canMoveDown ? 'pointer' : 'not-allowed',
+                                  color: canMoveDown ? 'var(--dex-gray-600)' : 'var(--dex-gray-300)',
+                                  fontSize: '0.9rem', padding: '0 4px',
+                                }}
+                              >
+                                ↓
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <div style={{ marginTop: 8, textAlign: 'right' }}>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                            onClick={() => setShowColumnPicker(false)}
+                          >
+                            Schließen
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                        {visibleColumnIds.map(id => renderHeader(id))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeRegs.map((reg, i) => (
+                        <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          {visibleColumnIds.map(id => renderCell(id, reg, i))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              );
+            })()}
           </div>
         )}
 
