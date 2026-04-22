@@ -70,23 +70,23 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
         steps: [
           {
             number: 1,
-            title: isDe ? 'Zuerst zum Hauptevent anmelden' : 'Register for the main event first',
+            title: isDe ? 'Sessions sind unabhängig vom Hauptevent' : 'Sessions are independent from the main event',
             description: (
               <>
                 {isDe
-                  ? 'Du meldest dich wie gewohnt zum Hauptevent an (persoenliche Daten + Event-spezifische Felder). Ohne Hauptevent-Anmeldung kannst du dich nicht zu Sub-Events anmelden.'
-                  : 'Register for the main event as usual (personal data + event-specific fields). Without a main-event registration you cannot sign up for sub-events.'}
+                  ? 'Seit v6.13 kannst du dich für Sessions an- und abmelden, ohne zwangsläufig am Hauptevent teilzunehmen. Auf der Registrierungsseite eines Events siehst du im linken Bereich die Session-Liste mit einem "Anmelden"-Button pro Session — du kannst dich direkt für einzelne Sessions anmelden, auch wenn du nicht auf "Jetzt anmelden" für das Hauptevent klickst. Umgekehrt kannst du das Hauptevent buchen ohne eine Session dazu.'
+                  : 'Since v6.13 you can register and cancel sessions independently of the main event. On the event registration page the session list appears in the left column with a "Register" button per session — you can sign up for individual sessions without submitting the main-event form. Conversely, you can register for the main event without picking any session.'}
               </>
             ),
           },
           {
             number: 2,
-            title: isDe ? 'Sessions direkt nach der Anmeldung waehlen' : 'Pick sessions right after registration',
+            title: isDe ? 'Sessions direkt auf der Registrierungsseite oder danach buchen' : 'Pick sessions on the registration page or right after',
             description: (
               <>
                 {isDe
-                  ? 'Wenn das Event Sub-Events hat, erscheint auf dem Bestaetigungsbildschirm automatisch die Liste aller Sessions mit einem "Anmelden"-Button pro Session. Pro Klick bekommst du eine eigene Bestaetigungsmail und einen separaten Outlook-Kalendereintrag — beides im Deloitte-Layout.'
-                  : 'If the event has sub-events, the confirmation screen automatically lists every session with a "Register" button. Each click triggers a dedicated confirmation email and a separate Outlook calendar entry — both in Deloitte layout.'}
+                  ? 'Die Session-Liste erscheint sowohl vor dem Absenden der Hauptevent-Anmeldung als auch auf dem Bestätigungsbildschirm — beide Stellen führen zum selben Ergebnis. Pro Klick bekommst du eine eigene Bestätigungsmail und einen separaten Outlook-Kalendereintrag — beides im Deloitte-Layout.'
+                  : 'The session list appears both before submitting the main registration and on the confirmation screen — both locations lead to the same result. Each click triggers a dedicated confirmation email and a separate Outlook calendar entry — both in Deloitte layout.'}
               </>
             ),
           },
