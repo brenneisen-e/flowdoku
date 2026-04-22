@@ -650,11 +650,10 @@ Trigger (DEX_Outlook, alle 5 Min, Concurrency 1)
 │   │   │       ├── Set_SubEvent_GraphEventId
 │   │   │       ├── Is_SubEvent_UpdateEvent (ActionType == UpdateEvent)
 │   │   │       │   ├── TRUE:  Build_SubEvent_Update_Body (Compose) → Patch_SubEvent_Update (Graph PATCH)
-│   │   │       │   └── FALSE: (leer)
-│   │   │       ├── Is_SubEvent_Einladen (ActionType == Einladen, runAfter Is_SubEvent_UpdateEvent: Succeeded)
-│   │   │       │   ├── TRUE:  Append_SubEvent_Attendee + Patch_SubEvent_Einladen
-│   │   │       │   └── FALSE: Filter_SubEvent_Attendees + Patch_SubEvent_Ausladen
-│   │   │       └── Update_item_1 (SP Update: Status=Sent, runAfter Is_SubEvent_Einladen: Succeeded)
+│   │   │       │   └── FALSE: Is_SubEvent_Einladen (ActionType == Einladen)
+│   │   │       │                ├── TRUE:  Append_SubEvent_Attendee + Patch_SubEvent_Einladen
+│   │   │       │                └── FALSE: Filter_SubEvent_Attendees + Patch_SubEvent_Ausladen
+│   │   │       └── Update_item_1 (SP Update: Status=Sent, runAfter Is_SubEvent_UpdateEvent: Succeeded)
 │   │   └── Terminate (Succeeded)
 │   └── FALSE: (nichts — Parent-Logik laeuft unten weiter)
 ├── Is_DeleteEvent (ActionType == DeleteEvent, runAfter Is_SubEvent: Succeeded)
@@ -693,13 +692,15 @@ Trigger (DEX_Outlook, alle 5 Min, Concurrency 1)
 - Body: `@outputs('Build_SubEvent_Update_Body')`
 - ContentType: `application/json`
 
-### Bekannte Nebenwirkung (nicht kritisch)
+### Sauberes Verzweigungs-Verhalten (seit 2026-04-22)
 
-`Is_SubEvent_UpdateEvent` und `Is_SubEvent_Einladen` sind derzeit **parallele Siblings** mit Run-After-Kette. Bei `ActionType=UpdateEvent`:
-1. `Is_SubEvent_UpdateEvent=TRUE` → `Patch_SubEvent_Update` (gewuenscht).
-2. Direkt danach `Is_SubEvent_Einladen=FALSE` (ActionType != 'Einladen') → Else-Branch → `Filter_SubEvent_Attendees` mit leerem Attendee filtert nichts weg → `Patch_SubEvent_Ausladen` sendet denselben Attendee-Array nochmal per PATCH.
+Jedes DEX_Outlook-Queue-Item fuehrt **genau einen** relevanten Graph-PATCH aus:
 
-In der Praxis: Microsoft Graph erkennt identische Attendee-Listen in der Regel als "kein Change" und verschickt **keine** doppelten "Updated meeting"-Mails. Falls das bei euch anders ist: `Is_SubEvent_Einladen` in den Else-Zweig von `Is_SubEvent_UpdateEvent` verschachteln (Cut+Paste), dann haengt `Update_item_1.runAfter` auf `Is_SubEvent_UpdateEvent: Succeeded` um — dann laeuft die Einladen/Ausladen-Logik nur noch bei ActionType != UpdateEvent.
+- `ActionType=UpdateEvent` → nur `Patch_SubEvent_Update` laeuft; `Is_SubEvent_Einladen` wird gar nicht evaluiert (im TRUE-Zweig von Is_SubEvent_UpdateEvent).
+- `ActionType=Einladen` → Is_SubEvent_UpdateEvent=FALSE → Else → Is_SubEvent_Einladen=TRUE → `Patch_SubEvent_Einladen`.
+- `ActionType=Ausladen` → Is_SubEvent_UpdateEvent=FALSE → Else → Is_SubEvent_Einladen=FALSE → `Patch_SubEvent_Ausladen`.
+
+Keine unnoetigen No-Op-PATCHes, keine potentiellen doppelten "Updated meeting"-Mails aus Graph.
 
 ### Parent-Event-Update (seit 2026-04-17, unveraendert — wird jetzt nach Is_SubEvent ausgefuehrt)
 

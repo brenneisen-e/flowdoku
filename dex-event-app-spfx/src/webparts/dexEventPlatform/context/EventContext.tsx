@@ -763,7 +763,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // ==================== Sub-Events ====================
 
   /**
-   * Sub-Event-Kurzbeschreibung (Datum/Ort) als HTML-Snippet fuer Mail- und Outlook-Body.
+   * Sub-Event-Kurzbeschreibung (Datum/Ort) als HTML-Snippet für Mail- und Outlook-Body.
    */
   function renderSubEventDetailsHtml(subEvent: {
     title: string; description?: string; location?: string; startDate: string; endDate: string;
@@ -786,6 +786,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (subEvent.startDate) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Start:</td><td>${esc(fmtDate(subEvent.startDate))}</td></tr>`);
     if (subEvent.endDate) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Ende:</td><td>${esc(fmtDate(subEvent.endDate))}</td></tr>`);
     if (subEvent.location) rows.push(`<tr><td style="color:#555;font-weight:600;padding-right:12px;">Ort:</td><td>${esc(subEvent.location)}</td></tr>`);
+    // Platzhalter-Titel falls Sub-Event ohne Titel gespeichert wurde (nur defensiv —
+    // die UI verhindert das eigentlich schon).
     rows.push('</table>');
     return rows.join('\n');
   }
@@ -822,25 +824,35 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const ok = await eventService.updateSubEventIds(subsiteUrl, myReg.Id, ids);
     if (!ok) return false;
 
-    // Mail: Anmeldung fuer Sub-Event (Deloitte-Layout)
+    // Mail: Anmeldung für Sub-Event (Deloitte-Layout)
     if (!event.disableEmails && !sub.disableEmails) {
       try {
         const lang = (event.emailLanguage || 'EN').toUpperCase();
         const isDe = lang === 'DE';
-        const heading = isDe ? 'Anmeldung bestaetigt' : 'Registration confirmed';
+        const heading = isDe ? 'Anmeldung bestätigt' : 'Registration confirmed';
         const subHeading = `${event.title} — ${sub.title}`;
+        // Organizer-Hinweis konsistent mit dem Parent-Anmeldungs-Template:
+        // bei organisatorischen Fragen an die Event-Organizer verweisen.
+        const organizerList = formatOrganizerList(event.organizers, lang);
+        const organizerHint = isDe
+          ? (organizerList
+            ? `<p style="color:#555;font-size:0.9rem;">Bei organisatorischen Fragen zum Event wende dich bitte an <strong>${organizerList}</strong>.</p>`
+            : '')
+          : (organizerList
+            ? `<p style="color:#555;font-size:0.9rem;">For organizational questions about the event, please reach out to <strong>${organizerList}</strong>.</p>`
+            : '');
         const inner = isDe
-          ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist jetzt fuer die folgende Session angemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Du bekommst eine separate Kalendereinladung fuer diese Session.</p><p style="margin-top:24px;"><strong>Viele Gruesse</strong><br><br><strong>Dein Event-Team</strong></p>`
-          : `<p>Hello ${currentUserFirstName || ''},</p><p>You're now registered for the following session:</p>${renderSubEventDetailsHtml(sub)}<p>You'll receive a separate calendar invite for this session.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
+          ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist jetzt für die folgende Session angemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Du bekommst eine separate Kalendereinladung für diese Session.</p>${organizerHint}<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+          : `<p>Hello ${currentUserFirstName || ''},</p><p>You're now registered for the following session:</p>${renderSubEventDetailsHtml(sub)}<p>You'll receive a separate calendar invite for this session.</p>${organizerHint}<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
         const body = wrapTemplate('#86bc25', heading, subHeading, inner);
         const subject = isDe
-          ? `Anmeldebestaetigung: ${event.title} — ${sub.title}`
+          ? `Anmeldebestätigung: ${event.title} — ${sub.title}`
           : `Registration confirmed: ${event.title} — ${sub.title}`;
         await eventService.queueEmail(subject, currentUserEmail, currentUserName, body, 'Anmeldung', `${event.title} / ${sub.title}`, eventId);
       } catch (err) { console.warn('[DEX] queueEmail (sub-event) failed:', err); }
     }
 
-    // Outlook: eigener Kalendereintrag fuer den Sub-Event (mit Override-Feldern)
+    // Outlook: eigener Kalendereintrag für den Sub-Event (mit Override-Feldern)
     if (!event.disableOutlook && !sub.disableOutlook) {
       try {
         const outlookBodyForSub = sub.outlookBody && sub.outlookBody.length > 0
@@ -869,7 +881,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const event = events.find(e => e.id === eventId);
     if (!event) return false;
     const sub = (event.subEvents || []).find(s => s.id === subEventId);
-    // Sub-Event kann inzwischen geloescht worden sein — Abmeldung trotzdem erlauben.
+    // Sub-Event kann inzwischen gelöscht worden sein — Abmeldung trotzdem erlauben.
 
     const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
     if (!myReg) return false;
@@ -888,11 +900,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         try {
           const lang = (event.emailLanguage || 'EN').toUpperCase();
           const isDe = lang === 'DE';
-          const heading = isDe ? 'Abmeldung bestaetigt' : 'Cancellation confirmed';
+          const heading = isDe ? 'Abmeldung bestätigt' : 'Cancellation confirmed';
           const subHeading = `${event.title} — ${sub.title}`;
+          const organizerList = formatOrganizerList(event.organizers, lang);
+          const organizerHint = isDe
+            ? (organizerList
+              ? `<p style="color:#555;font-size:0.9rem;">Bei organisatorischen Fragen zum Event wende dich bitte an <strong>${organizerList}</strong>.</p>`
+              : '')
+            : (organizerList
+              ? `<p style="color:#555;font-size:0.9rem;">For organizational questions about the event, please reach out to <strong>${organizerList}</strong>.</p>`
+              : '');
           const inner = isDe
-            ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist erfolgreich von der folgenden Session abgemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Die Kalendereinladung fuer diese Session wurde zurueckgezogen.</p><p style="margin-top:24px;"><strong>Viele Gruesse</strong><br><br><strong>Dein Event-Team</strong></p>`
-            : `<p>Hello ${currentUserFirstName || ''},</p><p>You've been successfully unregistered from the following session:</p>${renderSubEventDetailsHtml(sub)}<p>The calendar invitation for this session has been withdrawn.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
+            ? `<p>Hallo ${currentUserFirstName || ''},</p><p>du bist erfolgreich von der folgenden Session abgemeldet:</p>${renderSubEventDetailsHtml(sub)}<p>Die Kalendereinladung für diese Session wurde zurückgezogen.</p>${organizerHint}<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+            : `<p>Hello ${currentUserFirstName || ''},</p><p>You've been successfully unregistered from the following session:</p>${renderSubEventDetailsHtml(sub)}<p>The calendar invitation for this session has been withdrawn.</p>${organizerHint}<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
           const body = wrapTemplate('#86bc25', heading, subHeading, inner);
           const subject = isDe
             ? `Abmeldung: ${event.title} — ${sub.title}`
@@ -900,7 +920,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           await eventService.queueEmail(subject, currentUserEmail, currentUserName, body, 'Abmeldung', `${event.title} / ${sub.title}`, eventId);
         } catch (err) { console.warn('[DEX] queueEmail (sub-event cancel) failed:', err); }
       }
-      // Outlook-Termin zurueckziehen
+      // Outlook-Termin zurückziehen
       if (!event.disableOutlook && !sub.disableOutlook) {
         try {
           await eventService.queueOutlookEvent(

@@ -1279,7 +1279,7 @@ function MyEventSubEvents(props: {
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-        {isDe ? 'Zusaetzliche Sessions' : 'Additional sessions'}
+        {isDe ? 'Zusätzliche Sessions' : 'Additional sessions'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {subs.map(se => {
@@ -1298,7 +1298,7 @@ function MyEventSubEvents(props: {
               border: `1px solid ${isReg ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{se.title}</div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{se.title || (isDe ? 'Session ohne Titel' : 'Untitled session')}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                   {se.startDate && <>{fmt(se.startDate)}{se.endDate ? ` – ${fmt(se.endDate)}` : ''}</>}
                   {se.location && <>&nbsp;·&nbsp;{se.location}</>}

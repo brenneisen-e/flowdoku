@@ -1011,14 +1011,9 @@ function SubEventEnrollmentSection(props: {
 
   return (
     <div style={{ marginTop: 32, textAlign: 'left', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
-      <h3 style={{ marginTop: 0, marginBottom: 4 }}>
-        {t('reg.subevents.title') || (isDe ? 'Zusaetzliche Sessions' : 'Additional sessions')}
-      </h3>
+      <h3 style={{ marginTop: 0, marginBottom: 4 }}>{t('reg.subevents.title')}</h3>
       <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 16 }}>
-        {t('reg.subevents.hint')
-          || (isDe
-            ? 'Du kannst dich hier zusaetzlich fuer einzelne Sessions anmelden. Pro Session bekommst du eine eigene Bestaetigungs-E-Mail und einen eigenen Outlook-Kalendereintrag.'
-            : 'You can register for individual sessions here. You will receive a separate confirmation email and calendar invite per session.')}
+        {t('reg.subevents.hint')}
       </p>
       {props.subEvents.map(se => {
         const isReg = registeredSet.has(se.id);
@@ -1036,17 +1031,17 @@ function SubEventEnrollmentSection(props: {
             display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
           }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{se.title}</div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{se.title || t('reg.subevents.untitled')}</div>
               {se.description && (
                 <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>{se.description}</div>
               )}
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                {se.startDate && <><strong>{isDe ? 'Start' : 'Start'}:</strong> {fmt(se.startDate)} </>}
-                {se.endDate && <>&nbsp;·&nbsp;<strong>{isDe ? 'Ende' : 'End'}:</strong> {fmt(se.endDate)} </>}
-                {se.location && <>&nbsp;·&nbsp;<strong>{isDe ? 'Ort' : 'Location'}:</strong> {se.location}</>}
+                {se.startDate && <><strong>{t('reg.subevents.start')}:</strong> {fmt(se.startDate)} </>}
+                {se.endDate && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.end')}:</strong> {fmt(se.endDate)} </>}
+                {se.location && <>&nbsp;·&nbsp;<strong>{t('reg.subevents.location')}:</strong> {se.location}</>}
                 {hasCap && (
                   <>
-                    &nbsp;·&nbsp;<strong>{isDe ? 'Plaetze' : 'Capacity'}:</strong>{' '}
+                    &nbsp;·&nbsp;<strong>{t('reg.subevents.capacity')}:</strong>{' '}
                     <span style={{ color: isFull ? 'var(--dex-red, #c00)' : 'inherit' }}>
                       {count}/{se.maxParticipants}
                     </span>
@@ -1055,12 +1050,12 @@ function SubEventEnrollmentSection(props: {
               </div>
               {deadlinePassed && !isReg && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', marginTop: 4 }}>
-                  {isDe ? 'Anmeldeschluss fuer diese Session ist abgelaufen.' : 'Registration deadline for this session has passed.'}
+                  {t('reg.subevents.deadlinepassed')}
                 </div>
               )}
               {isFull && !isReg && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--dex-red, #c00)', marginTop: 4 }}>
-                  {isDe ? 'Diese Session ist voll.' : 'This session is full.'}
+                  {t('reg.subevents.sessionfull')}
                 </div>
               )}
             </div>
@@ -1072,9 +1067,7 @@ function SubEventEnrollmentSection(props: {
             >
               {isBusy
                 ? '...'
-                : (isReg
-                    ? (t('reg.subevents.cancel') || (isDe ? 'Abmelden' : 'Cancel'))
-                    : (t('reg.subevents.register') || (isDe ? 'Anmelden' : 'Register')))}
+                : (isReg ? t('reg.subevents.cancel') : t('reg.subevents.register'))}
             </button>
           </div>
         );
