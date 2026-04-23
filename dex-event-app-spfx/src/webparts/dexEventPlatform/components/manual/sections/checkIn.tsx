@@ -9,8 +9,8 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
     title: isDe ? 'Check-In & QR-Codes' : 'Check-in & QR codes',
     category: 'general',
     description: isDe
-      ? 'Wie das QR-basierte Check-In am Veranstaltungstag funktioniert.'
-      : 'How the QR-based check-in works on event day.',
+      ? 'Kompletter Ablauf für das QR-basierte Check-In am Veranstaltungstag — inklusive der wichtigen Hinweise, warum der Scanner nur im Mobil-Browser (nicht in der SharePoint-App!) funktioniert und wie du die Kamera-Berechtigung korrekt erteilst.'
+      : 'Full guide for QR-based check-in on event day — including the important notes on why the scanner only works in the mobile browser (NOT in the SharePoint app!) and how to grant camera permissions correctly.',
     visibleFor: ['User', 'Organizer', 'Admin'],
     perspectives: [
       {
@@ -44,10 +44,31 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
       },
       {
         perspective: 'organizer',
-        title: isDe ? 'Als Organizer:in' : 'As organizer',
+        title: isDe ? 'Als Organizer:in / QR-Scanner:in' : 'As organizer / QR scanner',
         steps: [
           {
             number: 1,
+            title: isDe ? 'WICHTIG: App am Event-Tag richtig öffnen' : 'IMPORTANT: open the app correctly on event day',
+            description: (
+              <>
+                {isDe
+                  ? 'Der Check-In läuft ausschließlich über dein Smartphone, weil nur das Handy die Kamera zum QR-Scannen liefert. Aber: Öffne den Link UNBEDINGT im Mobil-Browser (Edge oder Safari) — NICHT in der SharePoint-App. Die SharePoint-Mobile-App stellt aus Sicherheitsgründen keinen Kamera-Zugriff bereit; der Scanner bleibt dort dunkel und du bekommst die Meldung "Kamera-Zugriff nicht verfügbar".'
+                  : 'Check-in only runs on your smartphone (the phone provides the camera for scanning). But make sure to open the link in the mobile browser (Edge or Safari) — NOT inside the SharePoint app. The SharePoint mobile app blocks camera access for security reasons; the scanner stays dark and you get "camera access not available".'}
+              </>
+            ),
+            mockup: (
+              <Callout variant="warning" title={isDe ? 'SharePoint-App vorher deaktivieren oder löschen' : 'Disable or remove the SharePoint app beforehand'}>
+                {isDe
+                  ? 'Wenn du die SharePoint-App im Arbeitsprofil installiert hast, klickt Microsoft den Link automatisch DORT rein — am Browser vorbei. Lösung vor dem Event-Tag: SharePoint-App im Arbeitsprofil deaktivieren (Android: App-Einstellungen → Deaktivieren) oder komplett löschen. Danach öffnet der Link sauber in Edge/Safari.'
+                  : 'If the SharePoint app is installed on your work profile, Microsoft opens the link THERE by default — bypassing the browser. Fix before event day: disable the SharePoint app in the work profile (Android: app settings → Disable) or uninstall it entirely. The link then opens cleanly in Edge/Safari.'}
+              </Callout>
+            ),
+            tip: isDe
+              ? 'Tipp: Sende dir den Check-In-Link per Mail aufs Handy und klicke ihn ERST nach dem Deaktivieren der SharePoint-App an.'
+              : 'Tip: Email the check-in link to yourself on your phone, and open it ONLY after disabling the SharePoint app.',
+          },
+          {
+            number: 2,
             title: isDe ? 'QR-Codes an alle Teilnehmer versenden' : 'Send QR codes to attendees',
             description: (
               <>
@@ -59,7 +80,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
             mockup: <ClickPath label={isDe ? 'Admin Center' : 'Admin Center'} label2={isDe ? 'QR versenden' : 'Send QR'} hint={isDe ? 'Dauert pro Teilnehmer ca. 2-3 Sekunden.' : 'Takes about 2-3 seconds per attendee.'} />,
           },
           {
-            number: 2,
+            number: 3,
             title: isDe ? 'Scanner am Event-Tag öffnen' : 'Open the scanner on event day',
             description: (
               <>
@@ -71,7 +92,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
             mockup: <DemoCheckInScanner />,
           },
           {
-            number: 3,
+            number: 4,
             title: isDe ? 'Eingecheckt — fertig' : 'Checked in — done',
             description: (
               <>
@@ -86,7 +107,7 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
               : 'You can run multiple phones as scanners in parallel — they all see the current state.',
           },
           {
-            number: 4,
+            number: 5,
             title: isDe ? 'Manueller Check-In' : 'Manual check-in',
             description: (
               <>
