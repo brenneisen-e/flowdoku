@@ -76,6 +76,13 @@ function AppContent(): React.ReactElement {
             navigate('my-events');
           }
         }
+      } else if (action === 'manual') {
+        // v6.23: Deep-Link ins Handbuch. Optionaler `section`-Query-Parameter
+        // steuert die initial angezeigte Sektion (wird in ManualPage direkt aus
+        // der URL gelesen, damit kein zusätzlicher Navigation-State nötig ist).
+        // Beispiel: ?action=manual&section=check-in
+        didHandleDeepLink.current = true;
+        navigate('manual');
       }
     } catch { /* URL-Parsing fehlgeschlagen, ignorieren */ }
   }, [isEventsLoading, events]);
