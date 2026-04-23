@@ -14,6 +14,14 @@ export interface DeloitteEvent {
   status: EventStatus;
   organizers: string[];
   organizerEmails: string[]; // ';'-separiert in SharePoint (OrganizerEmail), hier als Array fuer Benachrichtigungen
+  /** Seit v6.19: QR-Code-Scanner pro Event. Diese User haben eingeschränkten Admin-Zugriff:
+   *  - Dürfen NICHT Teilnehmer bearbeiten, Event editieren, Mails versenden etc.
+   *  - Dürfen das QR-Code-Scanner-Tool nutzen + Check-In-KPIs ansehen (wie viele eingecheckt, wie viele ausstehen).
+   *  - Erscheinen NICHT in der Organizer-Liste auf MyEvents/RegistrationPage.
+   *  - Bekommen KEINE Organizer-Mails.
+   *  Persistenz: EmailTemplateOverrides._qrScanners (JSON). qrScannerNames + qrScannerEmails sind index-synchron. */
+  qrScannerNames: string[];
+  qrScannerEmails: string[];
   location: string;
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];

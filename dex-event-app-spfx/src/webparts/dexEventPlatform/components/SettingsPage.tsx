@@ -29,19 +29,19 @@ export default function SettingsPage(): React.ReactElement {
     const map: Record<string, string[]> = {};
     for (const role of roles) {
       if (role.role !== 'Organizer' && role.role !== 'Admin') continue;
-      const fullName = role.userName.toLowerCase();
-      // Heuristik: Nachname = letztes Wort
-      const lastName = fullName.split(/\s+/).pop() || fullName;
+      const emailLc = (role.userEmail || '').toLowerCase();
+      if (!emailLc) continue;
       const matched: string[] = [];
       for (const evt of events) {
-        if (!evt.organizers || evt.organizers.length === 0) continue;
-        const hits = evt.organizers.some(o => {
-          const ol = o.toLowerCase();
-          return ol.indexOf(fullName) >= 0 || ol.indexOf(lastName) >= 0;
-        });
-        if (hits) matched.push(evt.title);
+        // v6.20: strikt per E-Mail — kein Namens-Substring-Match mehr.
+        // Der alte Heuristik-Match per Nachname hat bei häufigen Nachnamen
+        // False-Positives produziert (z.B. Assistentin mit gleichem Nachnamen
+        // wie ein Organizer bekam Zugriff zugeordnet).
+        if (evt.organizerEmails && evt.organizerEmails.some(e => e.toLowerCase() === emailLc)) {
+          matched.push(evt.title);
+        }
       }
-      if (matched.length > 0) map[role.userEmail.toLowerCase()] = matched;
+      if (matched.length > 0) map[emailLc] = matched;
     }
     return map;
   }, [roles, events]);
