@@ -497,8 +497,6 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [qrScannerSearch, setQrScannerSearch] = React.useState('');
   const [qrScannerResults, setQrScannerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
-  const [isSearchingQrScanner, setIsSearchingQrScanner] = React.useState(false);
-  const qrScannerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -2015,33 +2013,31 @@ export default function EventCreationPage(): React.ReactElement {
                   onChange={e => {
                     const val = e.target.value;
                     setQrScannerSearch(val);
-                    if (qrScannerTimerRef.current) clearTimeout(qrScannerTimerRef.current);
-                    if (val.trim().length < 2) { setQrScannerResults([]); return; }
-                    qrScannerTimerRef.current = setTimeout(() => {
-                      (async () => {
-                        try {
-                          setIsSearchingQrScanner(true);
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          const hits: any[] = await searchUsers(val.trim());
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          setQrScannerResults((hits || []).slice(0, 50).map((u: any) => ({
-                            email: u.email || u.userEmail || '',
-                            displayName: u.displayName || u.userName || u.email || '',
-                            location: u.location || '',
-                          })));
-                        } catch { setQrScannerResults([]); }
-                        setIsSearchingQrScanner(false);
-                      })().catch(() => { /* ignore */ });
-                    }, 250);
+                    const lp = val.trim().toLowerCase();
+                    // v6.21: aus den vorhandenen Organizern/Admins (DEX_Roles) filtern,
+                    // statt Graph-API-Suche. Multi-Select per Klick + bereits-hinzugefügte
+                    // werden als ✓ markiert.
+                    const filtered = roles
+                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                      .filter(r => !lp || r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
+                      .slice(0, 50)
+                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                    setQrScannerResults(filtered);
+                  }}
+                  onFocus={() => {
+                    // Bei Fokus direkt alle verfügbaren Organizer/Admins anzeigen —
+                    // selbe UX wie beim Organizer-Picker.
+                    const filtered = roles
+                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
+                      .slice(0, 50)
+                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
+                    setQrScannerResults(filtered);
                   }}
                   onBlur={() => {
                     setTimeout(() => { setQrScannerSearch(''); setQrScannerResults([]); }, 150);
                   }}
                   placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben und aus der Liste auswählen'}
                 />
-                {isSearchingQrScanner && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
-                )}
                 {qrScannerResults.length > 0 && (
                   <div style={{
                     position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
