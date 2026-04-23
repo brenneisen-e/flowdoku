@@ -16,9 +16,24 @@ import QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
   const { events } = useEvents();
-  const { selectedEventId } = useNavigation();
+  const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { t } = useLanguage();
+  // v6.22: aktueller User-E-Mail aus SPFx-Kontext, brauchen wir für Organizer-/
+  // QR-Scanner-Zuordnung (statt nur tenant-weite isOrganizer/isAdmin-Flags).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spCtx = (window as any).__dexSpfxContext;
+  const currentEmailLc: string = (spCtx?.pageContext?.user?.email || '').toLowerCase();
+  // Events, die der aktuelle User einchecken darf: Admin = alle, sonst nur die
+  // Events in denen er Organizer oder QR-Code-Scanner ist (per E-Mail-Match).
+  const accessibleEvents = React.useMemo(() => {
+    return (events || []).filter(e => {
+      if (isAdmin) return true;
+      const orgMatch = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+      const qrMatch = (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+      return orgMatch || qrMatch;
+    });
+  }, [events, isAdmin, currentEmailLc]);
   const scannerRef = React.useRef<QrScanner | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [manualCode, setManualCode] = React.useState('');
@@ -335,10 +350,68 @@ export default function CheckInPage(): React.ReactElement {
     };
   }, []);
 
-  if (!isAdmin && !isOrganizer) {
+  // v6.22: Zugriffskontrolle — wer kein zugängliches Event hat UND nicht Admin ist,
+  // kommt gar nicht erst in die Scanner-Maske. Deckt User ohne Rolle ab UND auch
+  // Organizer/Admin ohne eigene Events.
+  if (!isAdmin && !isOrganizer && accessibleEvents.length === 0) {
     return (
       <div className="page-container text-center">
-        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>Admin / Organizer only.</p>
+        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>
+          {t('checkin.noaccess') || 'Du hast keinen Zugriff auf den Check-In. Wende dich an einen Admin, wenn du als Organizer oder QR-Scanner eingetragen werden solltest.'}
+        </p>
+        <button className="btn btn-secondary" onClick={() => navigate('landing')}>{t('reg.backtoevents') || 'Zurück'}</button>
+      </div>
+    );
+  }
+
+  // Kein Event ausgewählt → Event-Picker (nur relevante Events: nur die, die
+  // der User einchecken darf; bei exakt einem Event wird automatisch weiter
+  // navigiert, weil die LandingPage das schon macht. Wir fangen hier aber
+  // trotzdem den Fall ab, wenn jemand direkt via Header-Button ohne Eventauswahl
+  // herkommt.)
+  if (!selectedEvent) {
+    if (accessibleEvents.length === 1) {
+      // Auto-select: direkt weiterleiten statt Liste mit einem Eintrag zeigen.
+      navigate('check-in', accessibleEvents[0].id);
+      return (
+        <div className="page-container text-center">
+          <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>…</p>
+        </div>
+      );
+    }
+    return (
+      <div className="page-container" role="main">
+        <h2 className="mb-16">{t('checkin.title') || 'Check-In'}</h2>
+        <p style={{ color: 'var(--dex-gray-600)', marginBottom: 16, fontSize: '0.9rem' }}>
+          {t('checkin.pickevent') || 'Wähle das Event, für das du eincheckst:'}
+        </p>
+        {accessibleEvents.length === 0 ? (
+          <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+            {t('checkin.noevents') || 'Keine Events verfügbar.'}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {accessibleEvents.map(ev => (
+              <button
+                key={ev.id}
+                className="card"
+                onClick={() => navigate('check-in', ev.id)}
+                style={{
+                  textAlign: 'left', padding: 16,
+                  background: '#fff', border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 12, cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{ev.title}</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                  {ev.startDate ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+                  {ev.location ? ` · ${ev.location}` : ''}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
