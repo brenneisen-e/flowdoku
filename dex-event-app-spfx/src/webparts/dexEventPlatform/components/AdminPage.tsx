@@ -109,15 +109,17 @@ export default function AdminPage(): React.ReactElement {
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine + QR-Scanner-Events.
-  // QR-Scanner bekommen eingeschränkten Zugriff (nur QR-Tool + Check-In-KPIs) —
-  // werden weiter unten via isQRScannerOnly geprüft.
+  // Zugriff wird strikt per E-Mail geprüft — NICHT per Namens-Substring
+  // (hatte mehrere Jahre einen Match-per-Surname-Bug, der bei häufigen Nachnamen
+  // zu False-Positives führte: z.B. eine Assistentin "Frau Müller" konnte Events
+  // sehen, deren Organizer auf "Max Müller" hieß — weil "müller" in "max müller"
+  // vorkommt. Seit v6.20 nur noch exakt per currentUser.email gegen
+  // event.organizerEmails bzw. event.qrScannerEmails.)
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerFor = (ev: DeloitteEvent): boolean =>
     !!currentEmailLc && !!ev.qrScannerEmails && ev.qrScannerEmails.some(e => e.toLowerCase() === currentEmailLc);
-  const isOrganizerFor = (ev: DeloitteEvent): boolean => {
-    const fullName = `${currentUser.firstName} ${currentUser.surname}`.toLowerCase();
-    return ev.organizers.some(o => o.toLowerCase().includes(fullName) || o.toLowerCase().includes(currentUser.surname.toLowerCase()));
-  };
+  const isOrganizerFor = (ev: DeloitteEvent): boolean =>
+    !!currentEmailLc && !!ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc);
   const adminEvents = isAdmin
     ? events
     : events.filter(e => isOrganizerFor(e) || isQRScannerFor(e));
@@ -368,6 +370,28 @@ export default function AdminPage(): React.ReactElement {
     // Der Listenname ist in der SPEvent gespeichert, hier nutzen wir die events aus dem Context
     return `${base}/Lists`;
   };
+
+  // v6.20: Access-Gate — wer weder Admin noch Organizer eines Events noch QR-Scanner
+  // eines Events ist, darf die Admin-Seite gar nicht erst sehen. Zeigt eine klare
+  // "Kein Zugriff"-Meldung statt einer leeren Event-Liste.
+  if (!selectedEvent && !isAdmin && adminEvents.length === 0) {
+    return (
+      <div className="page-container" role="main">
+        <h2 className="mb-16">{t('admin.title')}</h2>
+        <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+          <p style={{ color: 'var(--dex-gray-700)', marginBottom: 8, fontWeight: 600 }}>
+            {t('admin.noaccess.title') || 'Kein Zugriff'}
+          </p>
+          <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', maxWidth: 520, margin: '0 auto' }}>
+            {t('admin.noaccess.msg') || 'Du bist weder Organizer noch QR-Scanner eines Events. Nur Admins und Event-Organizer/Scanner haben Zugriff auf diesen Bereich. Wende dich bei Bedarf an einen Admin.'}
+          </p>
+          <button className="btn btn-primary mt-24" onClick={() => navigate('landing')}>
+            {t('reg.backtoevents') || 'Zurück'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!selectedEvent) {
     // Event-Auswahl
@@ -788,6 +812,10 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
 
+        {/* Aktionen-Card (Edit-Event, Mails versenden, Export, Decline-Check etc.)
+            nur für Admins/Organizer sichtbar. QR-Scanner sehen stattdessen nur die
+            Event-Info + KPIs + "QR-Code scannen"-Button (siehe unten). */}
+        {!isQRScannerOnlyForSelected && (
         <div className="card" style={{ padding: 24 }}>
           <h3 className="mb-16">Aktionen</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -970,6 +998,7 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Zähler + QR/Check-in Aktionen */}
