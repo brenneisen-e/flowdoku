@@ -57,15 +57,35 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }, []);
 
   async function initRoles(): Promise<void> {
-    await spService.ensureRolesList();
+    // v6.34 (Security-Hotfix): ensureRolesList sagt uns, ob die Liste gerade
+    // frisch angelegt wurde. Nur dann (echte Erstinstallation) darf der erste
+    // User automatisch Admin werden. Sonst bleibt der Default 'User' — sonst
+    // gab es einen kritischen Bug: getRoles() liefert bei 403 Forbidden (oder
+    // Netzwerk-Fehler) [] zurück, und die alte Logik interpretierte das als
+    // "leere Liste → Erstinstallation" und beförderte JEDEN aufrufenden User
+    // zum Admin.
+    const { isNewlyCreated } = await spService.ensureRolesList();
     const spRoles = await spService.getRoles();
+
+    if (spRoles === null) {
+      // API-Fehler / Permission-Issue: KEINE Rolle zuordnen, als 'User' lassen.
+      // Sonst würde ein vorübergehender Read-Fehler die gesamte Access-Control
+      // umgehen. Besser: der User sieht nichts, als dass er plötzlich Admin ist.
+      setRoles([]);
+      setCurrentUserRole('User');
+      setIsRolesLoading(false);
+      console.warn('[DEX] RoleContext: DEX_Roles konnte nicht gelesen werden — User-Rolle bleibt auf "User" (keine Admin-Auto-Upgrade).');
+      return;
+    }
 
     const myRole = spRoles.find(
       r => r.Title && r.Title.toLowerCase() === currentUserEmail.toLowerCase()
     );
 
-    if (spRoles.length === 0) {
-      // Erste Ausfuehrung: aktuellen User als Admin eintragen
+    if (isNewlyCreated && spRoles.length === 0) {
+      // Echte Erstinstallation: Liste wurde gerade von ensureRolesList angelegt
+      // und ist erwartungsgemäß leer. Den aufrufenden User als Initial-Admin
+      // eintragen, damit überhaupt jemand weitere Rollen vergeben kann.
       await spService.addRole(currentUserEmail, currentUserName, 'Admin', '', 'System (Erstinstallation)');
       setCurrentUserRole('Admin');
       setRoles([{
@@ -74,6 +94,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         assignedDate: new Date().toISOString(),
       }]);
     } else {
+      // Normale Folge-Laufzeit: Rollen aus der Liste mappen, eigene Rolle
+      // setzen. Wenn der User NICHT in DEX_Roles steht, bleibt er bei 'User'.
       const mapped: RoleAssignment[] = spRoles.map(r => ({
         id: r.Id,
         userEmail: r.Title || '',
@@ -99,6 +121,14 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
 
   async function refreshRoles(): Promise<void> {
     const spRoles = await spService.getRoles();
+    // v6.34: Auch hier API-Fehler nicht als leere Liste interpretieren (siehe
+    // initRoles) — sonst würde ein Netzwerk-Fehler mitten in der App-Nutzung
+    // die Rolle des aktiven Users auf 'User' zurücksetzen (oder in einem
+    // anderen Code-Pfad auf Admin, was wir gerade gefixt haben).
+    if (spRoles === null) {
+      console.warn('[DEX] RoleContext.refresh: DEX_Roles nicht lesbar, bestehender State bleibt.');
+      return;
+    }
     const mapped: RoleAssignment[] = spRoles.map(r => ({
       id: r.Id, userEmail: r.Title || '', userName: r.UserName || '',
       role: migrateRole(r.Role), location: r.UserLocation || '',
