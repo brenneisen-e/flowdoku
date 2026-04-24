@@ -302,16 +302,35 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             mockup: (
-              <AppPreview
-                label={isDe ? 'Admin Center → Teilnehmertabelle mit Einchecken-Button (echte Ansicht)' : 'Admin center → participants table with check-in button (real view)'}
-                role="Organizer"
-                page="admin"
-                selectedEventId={DEMO_EVENT_ID}
-                width={1024}
-              >
-                <Header />
-                <AdminPage />
-              </AppPreview>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Callout variant="info" title={isDe ? 'Funktioniert am besten am Desktop' : 'Works best on desktop'}>
+                  {isDe
+                    ? 'Manueller Check-In über die Teilnehmertabelle ist eher eine Desktop-Aufgabe — die Tabelle mit Suchfeld, Status-Badge und Einchecken-Button pro Zeile ist am Laptop/Monitor übersichtlicher als auf dem Handy. Am Handy geht es zwar auch (horizontales Scrollen), bei größeren Teilnehmerlisten lohnt sich aber der Desktop.'
+                    : 'Manual check-in via the participant table is mostly a desktop task — the table with search box, status badge and check-in button per row is easier to scan on a laptop/monitor than on a phone. On the phone it works too (horizontal scrolling), but for larger participant lists a desktop is preferable.'}
+                </Callout>
+                <AppPreview
+                  label={isDe ? 'Desktop-Ansicht: Admin Center → Teilnehmertabelle' : 'Desktop view: admin center → participants table'}
+                  role="Organizer"
+                  page="admin"
+                  selectedEventId={DEMO_EVENT_ID}
+                  width={1024}
+                  device="laptop"
+                >
+                  <Header />
+                  <AdminPage />
+                </AppPreview>
+                <AppPreview
+                  label={isDe ? 'Mobile-Ansicht: gleiche Tabelle am Handy' : 'Mobile view: same table on phone'}
+                  role="Organizer"
+                  page="admin"
+                  selectedEventId={DEMO_EVENT_ID}
+                  width={430}
+                  device="phone"
+                >
+                  <Header />
+                  <AdminPage />
+                </AppPreview>
+              </div>
             ),
           },
           {

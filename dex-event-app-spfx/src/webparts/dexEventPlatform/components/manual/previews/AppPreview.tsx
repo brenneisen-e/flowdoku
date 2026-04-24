@@ -26,6 +26,9 @@ interface AppPreviewProps {
   selectedEventId?: string;
   /** Zusätzliche Demo-Events über das Default-Office-Event hinaus. */
   extraEvents?: DeloitteEvent[];
+  /** Device-Hülle: phone (schwarzer Bezel mit Notch) vs. laptop (Monitor +
+   *  schmaler Stand/Tastatur-Base). Default: phone bei width <= 768, sonst laptop. */
+  device?: 'phone' | 'laptop' | 'plain';
   children: React.ReactNode;
 }
 
@@ -143,49 +146,95 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
               padding: '24px 16px', display: 'flex', justifyContent: 'center',
               overflowX: 'auto', background: 'var(--dex-gray-100, #f5f5f5)',
             }}>
-              {width <= 768 ? (
-                <div style={{
-                  // Phone-Frame: schwarzer Bezel mit Notch
-                  width: width + 24, padding: '38px 12px 18px', borderRadius: 44,
-                  background: '#1a1a1a',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 0 0 2px #333',
-                  position: 'relative',
-                }}>
-                  {/* Notch */}
-                  <div style={{
-                    position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-                    width: 100, height: 18, background: '#000', borderRadius: 10,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#222', border: '1px solid #333' }} />
-                    <span style={{ width: 38, height: 4, borderRadius: 2, background: '#222' }} />
+              {(() => {
+                const device: 'phone' | 'laptop' | 'plain' = props.device
+                  || (width <= 768 ? 'phone' : 'laptop');
+                const innerFrame = (
+                  <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'text', width: '100%' }}>
+                    <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
+                      {props.children}
+                    </PreviewContextStack>
                   </div>
+                );
+                if (device === 'phone') {
+                  return (
+                    <div style={{
+                      // Phone-Frame: schwarzer Bezel mit Notch
+                      width: width + 24, padding: '38px 12px 18px', borderRadius: 44,
+                      background: '#1a1a1a',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 0 0 2px #333',
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+                        width: 100, height: 18, background: '#000', borderRadius: 10,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#222', border: '1px solid #333' }} />
+                        <span style={{ width: 38, height: 4, borderRadius: 2, background: '#222' }} />
+                      </div>
+                      <div style={{
+                        width, background: '#fff', borderRadius: 28,
+                        minHeight: 620, maxHeight: '72vh',
+                        overflowY: 'auto', overflowX: 'hidden',
+                      }}>
+                        {innerFrame}
+                      </div>
+                    </div>
+                  );
+                }
+                if (device === 'laptop') {
+                  // Laptop-Frame: schmaler Monitor-Bezel oben + seitlich, dicker unten
+                  // mit Kamera-Dot am oberen Rand; Stand/Tastatur-Base als breites
+                  // abgeflachtes Trapez darunter.
+                  return (
+                    <div style={{ position: 'relative', paddingBottom: 18 }}>
+                      <div style={{
+                        width: width + 24, padding: '20px 12px 12px',
+                        borderRadius: '14px 14px 6px 6px',
+                        background: '#1a1a1a',
+                        boxShadow: '0 8px 28px rgba(0,0,0,0.22)',
+                        position: 'relative',
+                      }}>
+                        <div style={{
+                          position: 'absolute', top: 7, left: '50%', transform: 'translateX(-50%)',
+                          width: 6, height: 6, borderRadius: '50%', background: '#333',
+                        }} />
+                        <div style={{
+                          width, background: '#fff', borderRadius: 4,
+                          minHeight: 560, maxHeight: '72vh',
+                          overflowY: 'auto', overflowX: 'hidden',
+                        }}>
+                          {innerFrame}
+                        </div>
+                      </div>
+                      <div style={{
+                        position: 'absolute', left: -24, right: -24, bottom: 0, height: 14,
+                        background: 'linear-gradient(180deg, #2a2a2a, #111)',
+                        borderRadius: '0 0 14px 14px',
+                      }} />
+                      <div style={{
+                        position: 'absolute', left: '40%', right: '40%', bottom: 10, height: 4,
+                        background: '#444', borderRadius: '0 0 6px 6px',
+                      }} />
+                    </div>
+                  );
+                }
+                return (
                   <div style={{
-                    width, background: '#fff', borderRadius: 28,
-                    minHeight: 620, maxHeight: '72vh',
-                    overflowY: 'auto', overflowX: 'hidden',
+                    width, maxWidth: '100%',
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 12, overflow: 'hidden',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
                   }}>
-                    <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'text', width: '100%' }}>
+                    <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
                       <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
                         {props.children}
                       </PreviewContextStack>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div style={{
-                  width, maxWidth: '100%',
-                  background: '#fff', border: '1px solid var(--dex-gray-200)',
-                  borderRadius: 12, overflow: 'hidden',
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                }}>
-                  <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
-                    <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
-                      {props.children}
-                    </PreviewContextStack>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
             <div style={{
               padding: '8px 16px', borderTop: '1px solid var(--dex-gray-200)',
