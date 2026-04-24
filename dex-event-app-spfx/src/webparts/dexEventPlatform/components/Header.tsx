@@ -134,7 +134,11 @@ export default function Header(): React.ReactElement {
             }} />
           </button>
         )}
-        {canCheckIn && !(isLanding && !isMobile) && (
+        {/* v7.2: QR-Code-Icon generell nur auf Mobile. Am Desktop ist
+            der Kamera-Scan nicht sinnvoll (keine Backkamera) und der
+            manuelle Check-In läuft am Desktop direkt über die Admin-
+            Center-Teilnehmertabelle. */}
+        {canCheckIn && isMobile && (
           <button
             className="header-icon-btn"
             onClick={() => navigate('check-in')}
@@ -153,12 +157,16 @@ export default function Header(): React.ReactElement {
             ...(currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : {}),
             // v6.36: Auf Desktop zusätzlich den Text "Handbuch" / "Handbook"
             // neben dem Icon, weil das Icon allein nicht selbsterklärend ist.
-            ...(isMobile ? {} : { width: 'auto', padding: '0 12px', gap: 8 }),
+            // v7.2: explizit flex + alignItems:center, damit Icon und Text
+            // vertikal auf derselben Baseline sitzen (vorher lag der Text
+            // leicht versetzt, weil der Button aus der CSS-Klasse keine
+            // Flex-Alignment-Regel bekommt, wenn wir width:auto setzen).
+            ...(isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }),
           }}
         >
           <Book size={20} />
           {!isMobile && (
-            <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
               {t('header.manual')}
             </span>
           )}

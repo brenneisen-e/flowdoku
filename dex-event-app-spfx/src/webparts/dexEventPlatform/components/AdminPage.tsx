@@ -46,7 +46,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
@@ -397,11 +397,22 @@ export default function AdminPage(): React.ReactElement {
             {t('admin.noaccess.title') || 'Kein Zugriff'}
           </p>
           <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', maxWidth: 520, margin: '0 auto' }}>
-            {t('admin.noaccess.msg') || 'Du bist weder Organizer noch QR-Scanner eines Events. Nur Admins und Event-Organizer/Scanner haben Zugriff auf diesen Bereich. Wende dich bei Bedarf an einen Admin.'}
+            {t('admin.noaccess.msg')}
           </p>
-          <button className="btn btn-primary mt-24" onClick={() => navigate('landing')}>
-            {t('reg.backtoevents') || 'Zurück'}
-          </button>
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {/* v7.2: Organizer ohne eigenes Event sehen hier einen direkten
+                Shortcut zum Event-Erstellen — sonst sitzen sie in dieser
+                Sackgasse ohne sichtbaren nächsten Schritt. Admins sehen den
+                Button nicht, weil sie bereits alle Events in adminEvents haben. */}
+            {currentUserRole !== 'User' && (
+              <button className="btn btn-primary" onClick={() => navigate('create-event')}>
+                + {t('admin.newevent')}
+              </button>
+            )}
+            <button className="btn btn-secondary" onClick={() => navigate('landing')}>
+              {t('reg.backtoevents') || 'Zurück'}
+            </button>
+          </div>
         </div>
       </div>
     );
