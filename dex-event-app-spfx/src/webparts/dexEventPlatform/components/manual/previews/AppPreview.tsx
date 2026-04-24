@@ -15,9 +15,10 @@ interface AppPreviewProps {
   /** Welche Rolle der Demo-User in diesem Preview hat. Steuert canCheckIn,
    *  isAdmin-Flags etc., damit z.B. die Check-In-Bubble im Header auftaucht. */
   role?: PreviewRole;
-  /** Viewport-Breite, mit der die Komponente simuliert wird. 390 = iPhone-14,
-   *  1024 = iPad/Desktop-nah. Erlaubt pro Preview gezielt das Mobile- oder
-   *  Desktop-Layout zu erzwingen. */
+  /** Viewport-Breite, mit der die Komponente simuliert wird. Default 430 =
+   *  iPhone 15 Pro Max (breit genug, damit die Landing-Card nicht rechts
+   *  abgeschnitten wird). Für knappere Previews 412 (Galaxy S23) oder 390
+   *  (iPhone Mini). 1024+ rendert das Desktop-Layout (ohne Phone-Frame). */
   width?: number;
   /** Navigation: aktuelle Seite (default 'landing'). */
   page?: string;
@@ -30,7 +31,7 @@ interface AppPreviewProps {
 
 export function AppPreview(props: AppPreviewProps): React.ReactElement {
   const [open, setOpen] = React.useState(false);
-  const width = props.width || 390;
+  const width = props.width || 430;
   // v6.28: Wenn das Modal auf < 768px "Mobile" getrimmt ist, setzen wir
   // das window-Flag `__dexForceMobile`, damit Komponenten wie <Header>
   // im Preview-Content tatsächlich ihre Mobile-Variante rendern — das echte
@@ -41,9 +42,28 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__dexForceMobile = true;
     }
+    // v6.29: Globaler Style-Override, solange das Preview-Modal offen ist.
+    // Grund: die echte App nutzt clamp(..vw, ..vh..) an vielen Stellen, das
+    // rechnet gegen den Browser-Viewport (Desktop = 1920+) und nicht gegen
+    // den Handy-Frame-Container im Modal. Deshalb werden Fonts/Orb-Größe/
+    // Paddings riesig. Wir zwingen hier im Scope '.dex-preview-scope' die
+    // mobile-freundlichen Werte.
+    const styleEl = document.createElement('style');
+    styleEl.id = 'dex-preview-style-override';
+    styleEl.textContent = `
+      .dex-preview-scope .landing { overflow: auto !important; height: auto !important; }
+      .dex-preview-scope .landing__hero { padding: 16px 12px !important; gap: 16px !important; }
+      .dex-preview-scope .landing__card { padding: 20px 16px !important; gap: 16px !important; border-radius: 16px !important; max-width: 100% !important; }
+      .dex-preview-scope .landing__text h1 { font-size: 1.35rem !important; line-height: 1.25 !important; }
+      .dex-preview-scope .landing__text p { font-size: 0.88rem !important; }
+      .dex-preview-scope .landing__orb { width: 180px !important; height: 180px !important; }
+    `;
+    document.head.appendChild(styleEl);
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { delete (window as any).__dexForceMobile; } catch { /* */ }
+      const el = document.getElementById('dex-preview-style-override');
+      if (el) el.remove();
     };
   }, [open, width]);
   return (
@@ -85,7 +105,11 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
             onClick={e => e.stopPropagation()}
             style={{
               background: 'var(--dex-gray-50)', borderRadius: 16,
-              maxWidth: Math.min(width + 32, 900), width: '100%',
+              // Bei Mobile-Previews muss Platz für den Phone-Frame-Bezel (24px + padding 24px)
+              // sein, sonst wird der Frame rechts abgeschnitten. Desktop-Previews brauchen
+              // nur 32px Zusatz-Padding.
+              maxWidth: width <= 768 ? Math.min(width + 100, 900) : Math.min(width + 32, 1100),
+              width: '100%',
               maxHeight: '90vh', overflow: 'auto',
               boxShadow: '0 16px 48px rgba(0,0,0,0.25)',
               display: 'flex', flexDirection: 'column',
@@ -129,10 +153,11 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
                     <span style={{ width: 38, height: 4, borderRadius: 2, background: '#222' }} />
                   </div>
                   <div style={{
-                    width, background: '#fff', borderRadius: 28, overflow: 'hidden',
-                    minHeight: 620, maxHeight: '72vh', overflowY: 'auto',
+                    width, background: '#fff', borderRadius: 28,
+                    minHeight: 620, maxHeight: '72vh',
+                    overflowY: 'auto', overflowX: 'hidden',
                   }}>
-                    <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
+                    <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'text', width: '100%' }}>
                       <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
                         {props.children}
                       </PreviewContextStack>
