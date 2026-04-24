@@ -41,7 +41,7 @@ function migrateRole(spRole: string): UserRole {
   return 'User';
 }
 
-const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
+export const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [roles, setRoles] = React.useState<RoleAssignment[]>([]);

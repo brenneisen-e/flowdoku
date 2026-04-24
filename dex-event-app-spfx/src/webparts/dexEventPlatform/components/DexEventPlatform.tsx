@@ -38,7 +38,7 @@ export interface IDexEventPlatformProps {
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
-  const { isAdmin } = useRoles();
+  const { isAdmin, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
@@ -171,6 +171,32 @@ function AppContent(): React.ReactElement {
 
   // Seitenauswahl basierend auf dem aktuellen State
   const renderPage = (): React.ReactElement => {
+    // v6.26: Boot-Loader. Auf der LandingPage entscheidet die Bubble "Jetzt
+    // einchecken" davon, ob der User Admin / Organizer / QR-Scanner von einem
+    // Event ist — das wissen wir erst, sobald BEIDE Context-Provider fertig
+    // geladen haben (DEX_Roles + DEX_Events). Vorher einen Vollbild-Spinner
+    // zeigen, damit der User nicht kurz die LandingPage ohne Bubble sieht,
+    // bevor die Bubble nachrutscht.
+    if (currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading)) {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          minHeight: 400, padding: 48, textAlign: 'center',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            border: '4px solid var(--dex-gray-200, #e5e5e5)',
+            borderTopColor: 'var(--dex-green, #86bc25)',
+            animation: 'dexOrbSpin 0.8s linear infinite',
+            marginBottom: 20,
+          }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dex-gray-800, #333)' }}>DEX Event Platform</div>
+          <div style={{ fontSize: 13, color: 'var(--dex-gray-500, #888)', marginTop: 6 }}>
+            Einen Moment, wir laden deine Events…
+          </div>
+        </div>
+      );
+    }
     // Deep-Link Cancel aktiv? Dann Lade-Spinner statt LandingPage zeigen,
     // solange wir noch nicht zu MyEventsPage navigiert sind.
     if (isCancelDeepLink && currentPage === 'landing') {

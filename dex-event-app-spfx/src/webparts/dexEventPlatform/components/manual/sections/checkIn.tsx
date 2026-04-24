@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
 import { DemoQRCode, DemoCheckInScanner, Callout, ClickPath } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import LandingPage from '../../LandingPage';
 
 export function checkInSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -113,11 +116,20 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Du öffnest die DEX-App im Mobil-Browser (nochmal: NICHT in der SharePoint-App, siehe Schritt 1). Seit v6.22 erscheint für User mit Check-In-Berechtigung (Admin / Organizer / QR-Scanner) direkt oben rechts auf der Landing-Page eine grüne Sprechblase "Geht\'s zum Check-in" mit einem QR-Icon daneben. Ein einziger Tap führt dich — ohne Umweg über Start → Admin-Center — direkt zum Scanner. Wenn du genau EIN Event einchecken darfst, springt der Shortcut sofort in die Scanner-Ansicht dieses Events; bei Admins oder Usern mit mehreren Events kommt erst der Event-Picker (siehe Schritt 5).'
-                  : 'You open the DEX app in the mobile browser (again: NOT in the SharePoint app, see step 1). Since v6.22, users with check-in permission (Admin / Organizer / QR scanner) see a green speech bubble "Go to check-in" with a QR icon next to it in the top-right corner of the landing page. A single tap — without the detour via Start → Admin center — takes you directly to the scanner. If you\'re only allowed to check in for ONE event, the shortcut jumps straight to the scanner view; for admins or users with multiple events, the event picker appears first (see step 5).'}
+                  ? 'Du öffnest die DEX-App im Mobil-Browser (nochmal: NICHT in der SharePoint-App, siehe Schritt 1). Seit v6.26 erscheint für User mit Check-In-Berechtigung (Admin / Organizer / QR-Scanner) direkt im Header neben dem QR-Code-Icon eine grüne Sprechblase "Jetzt einchecken". Ein einziger Tap führt dich — ohne Umweg über Start → Admin-Center — direkt zum Scanner. Wenn du genau EIN Event einchecken darfst, springt der Shortcut sofort in die Scanner-Ansicht dieses Events; bei Admins oder Usern mit mehreren Events kommt erst der Event-Picker (siehe Schritt 5).'
+                  : 'You open the DEX app in the mobile browser (again: NOT in the SharePoint app, see step 1). Since v6.26, users with check-in permission (Admin / Organizer / QR scanner) see a green speech bubble "Check in now" right in the header next to the QR code icon. A single tap — without the detour via Start → Admin center — takes you directly to the scanner. If you\'re only allowed to check in for ONE event, the shortcut jumps straight to the scanner view; for admins or users with multiple events, the event picker appears first (see step 5).'}
               </>
             ),
-            mockup: <DemoCheckInScanner />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Landing-Page mit "Jetzt einchecken"-Bubble' : 'Landing page with "Check in now" bubble'}
+                role="Organizer"
+                width={390}
+              >
+                <Header />
+                <LandingPage />
+              </AppPreview>
+            ),
             tip: isDe
               ? 'Der Shortcut erscheint ausschließlich auf Geräten mit Viewport ≤ 768px. Auf dem Desktop bleibt er versteckt — dort benutzt du weiter das Admin-Center (Button "Check-In").'
               : 'The shortcut only appears on devices with viewport ≤ 768px. On desktop it stays hidden — there you use the admin center as before (button "Check-in").',
