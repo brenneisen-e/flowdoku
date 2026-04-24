@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoRolesTable, Callout } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import SettingsPage from '../../SettingsPage';
 
 export function rolesSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +29,18 @@ export function rolesSection(locale: 'de' | 'en'): ManualSection {
                   : 'In Settings (gear icon) → "Role management". You see all users who are explicitly Organizer or Admin. Users without an entry are automatically "User".'}
               </>
             ),
-            mockup: <DemoRolesTable />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Settings → Rollenverwaltung (echte Ansicht)' : 'Settings → role management (real view)'}
+                role="Admin"
+                page="settings"
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <SettingsPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,

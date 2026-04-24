@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoEmailPreview, Callout, ClickPath } from '../ManualMockups';
+import { DemoEmailPreview, Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import AdminPage from '../../AdminPage';
 
 export function massMailSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +30,19 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
                   : 'The event admin center has an action "Mass email". A modal opens with subject, heading and content fields. The content uses a rich-text editor (bold, italic, links, lists).'}
               </>
             ),
-            mockup: <ClickPath label="Admin Center" label2={isDe ? 'Massenmail' : 'Mass email'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Massenmail-Button (echte Ansicht)' : 'Admin center → mass email button (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,

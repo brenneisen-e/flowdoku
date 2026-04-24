@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, ClickPath } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import RegistrationPage from '../../RegistrationPage';
 
 export function registerForOtherSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +30,19 @@ export function registerForOtherSection(locale: 'de' | 'en'): ManualSection {
                   : 'On an event\'s registration page, click "Register for someone else". Your own data clears and a search field appears.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Für andere' : 'For other'} hint={isDe ? 'Nur Organizer, Admins und Assistants sehen diesen Button.' : 'Only organizers, admins, and assistants see this button.'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Registrierung mit "Für andere Person anmelden" (echte Ansicht)' : 'Registration with "Register for another person" (real view)'}
+                role="Organizer"
+                page="registration"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <RegistrationPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,

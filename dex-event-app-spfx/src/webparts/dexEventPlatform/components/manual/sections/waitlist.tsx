@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, ClickPath } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import AdminPage from '../../AdminPage';
 
 export function waitlistSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -73,7 +77,19 @@ export function waitlistSection(locale: 'de' | 'en'): ManualSection {
                 </ol>
               </>
             ),
-            mockup: <ClickPath label="Admin" label2={isDe ? 'Teilnehmer abmelden' : 'Cancel participant'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Teilnehmer abmelden (echte Ansicht)' : 'Admin center → cancel participant (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,

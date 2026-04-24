@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoEmailPreview, Callout } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import SettingsPage from '../../SettingsPage';
 
 export function templatesSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -51,7 +54,18 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
                 </p>
               </>
             ),
-            mockup: <DemoEmailPreview />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Settings → Globale E-Mail-Templates (echte Ansicht)' : 'Settings → global email templates (real view)'}
+                role="Admin"
+                page="settings"
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <SettingsPage />
+              </AppPreview>
+            ),
           },
           {
             number: 3,
