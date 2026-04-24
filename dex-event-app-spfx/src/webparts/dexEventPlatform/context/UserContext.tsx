@@ -19,7 +19,7 @@ interface UserContextType {
   photoUrl: string;
 }
 
-const UserContext = React.createContext<UserContextType | undefined>(undefined);
+export const UserContext = React.createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [currentUser, setCurrentUser] = React.useState<User>({

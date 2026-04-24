@@ -22,7 +22,9 @@ interface NavigationContextType {
   clearIntent: () => void;
 }
 
-const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
+// Exportiert, damit Preview-Wrapper im Handbuch den Context mit Demo-Daten
+// überschreiben können (v6.27 App-Screenshots).
+export const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
 
 interface HistoryEntry {
   page: Page;

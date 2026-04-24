@@ -153,7 +153,7 @@ export interface CreateEventInput {
   customFields: CustomField[];
 }
 
-const EventContext = React.createContext<EventContextType | undefined>(undefined);
+export const EventContext = React.createContext<EventContextType | undefined>(undefined);
 
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
