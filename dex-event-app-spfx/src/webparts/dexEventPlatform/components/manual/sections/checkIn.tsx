@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoQRCode, Callout, ClickPath } from '../ManualMockups';
+import { DemoQRCode, Callout } from '../ManualMockups';
 import { AppPreview } from '../previews/AppPreview';
 import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
 import Header from '../../Header';
 import LandingPage from '../../LandingPage';
 import CheckInPage from '../../CheckInPage';
+import AdminPage from '../../AdminPage';
+import EventCreationPage from '../../EventCreationPage';
 import { DeloitteEvent } from '../../../types';
 
 // v6.28: Zweit-Demo-Event für den Check-In-Event-Picker — mit zwei
@@ -112,7 +114,18 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'Since v6.19 you can define explicit "QR code scanners" per event — in addition to the organizers. These are users who only help with check-in on event day; they have NO further rights (no participant editing, no email sending, no event edit). Scanners also receive no organizer emails and do not appear in the organizer list on MyEvents / registration page. The scanner pool only contains users who already have Organizer or Admin role in DEX_Roles — preventing accidental escalation of a plain user.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Event bearbeiten' : 'Edit event'} label2={isDe ? 'Reiter 3 → QR-Code-Scanner' : 'Step 3 → QR code scanners'} hint={isDe ? 'Orange Pills unter den grünen Organizer-Pills.' : 'Orange pills below the green organizer pills.'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Event-Editor → QR-Code-Scanner-Picker (echte Ansicht)' : 'Event editor → QR code scanner picker (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={960}
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
+            ),
             tip: isDe
               ? 'Ideal, wenn du das Check-In an eine Assistentin oder einen Event-Helfer delegieren möchtest, ohne ihnen parallel Event-Bearbeitungsrechte geben zu müssen.'
               : 'Ideal if you want to delegate check-in to an assistant or event helper without granting event-editing rights at the same time.',
@@ -127,7 +140,18 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'In the event\'s admin center click "Send QR codes". Only participants with status "Registered" are emailed — waitlist entries and cancelled ones are skipped. A confirmation dialog shows the count (e.g. "Send QR codes to 42 participants?") before the send. Then a personalized QR-code email is queued per participant via DEX_Emails, and the status moves from "Registered" to "QR sent" (visible in the purple KPI tile). Takes ~2-3 seconds per participant — progress is shown live next to the button. The QR codes contain NO sensitive data, they are plain event+attendee identifiers of the form "DEX|<EventNr>|<email>".'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Admin Center' : 'Admin Center'} label2={isDe ? 'QR-Codes versenden' : 'Send QR codes'} hint={isDe ? 'Status wechselt danach von Angemeldet → QR versendet.' : 'Status moves from Registered → QR sent afterwards.'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Event-Detailansicht (echte Ansicht)' : 'Admin center → event detail view (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
             tip: isDe
               ? 'Frühestens 1-2 Tage vor dem Event versenden, damit die Mail nicht in den älteren Posteingängen untergeht. Danach angemeldete Teilnehmer bekommen beim nächsten Klick auf den Button ebenfalls einen QR-Code — bereits verschickte werden übersprungen.'
               : 'Send no earlier than 1-2 days before the event, otherwise the email drowns in older inboxes. Participants who register afterwards get their QR code on the next click — already-sent ones are skipped.',
@@ -236,7 +260,18 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'If the camera absolutely refuses to start (e.g. embedded browser without live-video access, restricted corporate MDM), you can use "Upload photo" instead: take a photo of the QR code with the default camera app, pick it in the upload box — the app decodes the QR code from the image and processes the result just like a live scan. Result card green/orange/red identical to step 7.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Scanner-Maske' : 'Scanner page'} label2={isDe ? 'Foto hochladen' : 'Upload photo'} hint={isDe ? 'Langsamer als Live-Scan, aber funktioniert überall wo Dateizugriff geht.' : 'Slower than live scan, but works everywhere file access is allowed.'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Scanner-Maske mit Foto-Upload (echte Ansicht)' : 'Scanner page with photo upload (real view)'}
+                role="Organizer"
+                page="check-in"
+                selectedEventId={DEMO_EVENT_ID}
+                width={430}
+              >
+                <Header />
+                <CheckInPage />
+              </AppPreview>
+            ),
           },
           {
             number: 9,
@@ -266,7 +301,37 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'If an attendee arrives without a QR code (email deleted, no phone reception, just forgot), you find them in the admin center via the search field above the participant table. The search matches first name, last name, email and attendee ID in parallel — one term suffices. Each table row has an "Einchecken" button in the right-hand action column → one click and the attendee is on status "Checked-in". The live counter and KPI tile update immediately.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Admin Center → Teilnehmerliste' : 'Admin Center → participants'} label2={isDe ? 'Einchecken' : 'Check in'} hint={isDe ? 'Name, E-Mail oder TeilnehmerID funktionieren als Suchbegriff.' : 'Name, email or attendee ID all work as search term.'} />,
+            mockup: (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Callout variant="info" title={isDe ? 'Funktioniert am besten am Desktop' : 'Works best on desktop'}>
+                  {isDe
+                    ? 'Manueller Check-In über die Teilnehmertabelle ist eher eine Desktop-Aufgabe — die Tabelle mit Suchfeld, Status-Badge und Einchecken-Button pro Zeile ist am Laptop/Monitor übersichtlicher als auf dem Handy. Am Handy geht es zwar auch (horizontales Scrollen), bei größeren Teilnehmerlisten lohnt sich aber der Desktop.'
+                    : 'Manual check-in via the participant table is mostly a desktop task — the table with search box, status badge and check-in button per row is easier to scan on a laptop/monitor than on a phone. On the phone it works too (horizontal scrolling), but for larger participant lists a desktop is preferable.'}
+                </Callout>
+                <AppPreview
+                  label={isDe ? 'Desktop-Ansicht: Admin Center → Teilnehmertabelle' : 'Desktop view: admin center → participants table'}
+                  role="Organizer"
+                  page="admin"
+                  selectedEventId={DEMO_EVENT_ID}
+                  width={1024}
+                  device="laptop"
+                >
+                  <Header />
+                  <AdminPage />
+                </AppPreview>
+                <AppPreview
+                  label={isDe ? 'Mobile-Ansicht: gleiche Tabelle am Handy' : 'Mobile view: same table on phone'}
+                  role="Organizer"
+                  page="admin"
+                  selectedEventId={DEMO_EVENT_ID}
+                  width={430}
+                  device="phone"
+                >
+                  <Header />
+                  <AdminPage />
+                </AppPreview>
+              </div>
+            ),
           },
           {
             number: 11,

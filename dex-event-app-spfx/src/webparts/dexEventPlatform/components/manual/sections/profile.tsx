@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import ProfilePage from '../../ProfilePage';
 
 export function profileSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -52,12 +54,20 @@ export function profileSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             mockup: (
-              <Callout variant="info">
-                {isDe
-                  ? 'Die Plattform fragt dein Profil live bei SharePoint ab. Änderungen im AD sind in der App meist innerhalb weniger Minuten sichtbar.'
-                  : 'The platform queries your profile from SharePoint live. AD changes usually appear within minutes.'}
-              </Callout>
+              <AppPreview
+                label={isDe ? 'Profilseite (echte Ansicht)' : 'Profile page (real view)'}
+                role="User"
+                page="profile"
+                width={430}
+                device="phone"
+              >
+                <Header />
+                <ProfilePage />
+              </AppPreview>
             ),
+            tip: isDe
+              ? 'Die Plattform fragt dein Profil live bei SharePoint ab. Änderungen im AD sind in der App meist innerhalb weniger Minuten sichtbar.'
+              : 'The platform queries your profile from SharePoint live. AD changes usually appear within minutes.',
           },
         ],
       },

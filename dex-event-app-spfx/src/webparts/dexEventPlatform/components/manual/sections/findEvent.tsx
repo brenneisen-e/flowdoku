@@ -1,6 +1,11 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoEventCard, DemoFormField, Callout, DemoRoommatePicker, ClickPath } from '../ManualMockups';
+import { Callout, DemoRoommatePicker, ClickPath } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import EventListPage from '../../EventListPage';
+import RegistrationPage from '../../RegistrationPage';
 
 export function findEventSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +31,18 @@ export function findEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'On the "Registration" page you see every event visible to you. Toggle "Only active events" to hide past events. Click the card you\'re interested in.'}
               </>
             ),
-            mockup: <DemoEventCard />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Event-Übersicht (echte Ansicht)' : 'Event overview (real view)'}
+                role="User"
+                page="register"
+                width={430}
+                device="phone"
+              >
+                <Header />
+                <EventListPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,
@@ -39,12 +55,17 @@ export function findEventSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             mockup: (
-              <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 14 }}>
-                <DemoFormField label={isDe ? 'Anrede' : 'Salutation'} value="Herr" required type="select" />
-                <DemoFormField label={isDe ? 'Vorname' : 'First name'} value="Max" required />
-                <DemoFormField label={isDe ? 'Nachname' : 'Last name'} value="Mustermann" required />
-                <DemoFormField label="E-Mail" value="max.mustermann@deloitte.de" required />
-              </div>
+              <AppPreview
+                label={isDe ? 'Registrierungsformular (echte Ansicht)' : 'Registration form (real view)'}
+                role="User"
+                page="registration"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <RegistrationPage />
+              </AppPreview>
             ),
           },
           {

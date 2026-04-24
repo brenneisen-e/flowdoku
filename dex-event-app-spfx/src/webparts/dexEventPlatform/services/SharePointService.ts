@@ -45,7 +45,12 @@ export class SharePointService {
    * - AssignedBy (Text)
    * - AssignedDate (DateTime)
    */
-  public async ensureRolesList(): Promise<void> {
+  // v6.34: Return-Wert hinzugefügt — Caller muss wissen, ob die Liste gerade
+  // frisch angelegt wurde (Erstinstallation). Sonst gab es einen kritischen
+  // Auto-Admin-Bug: leere `getRoles`-Antwort (z.B. durch 403 Forbidden) wurde
+  // fälschlich als "Erstinstallation" interpretiert und der aufrufende User
+  // zum Admin befördert.
+  public async ensureRolesList(): Promise<{ isNewlyCreated: boolean }> {
     const listName = 'DEX_Roles';
     const exists = await this.listExists(listName);
 
@@ -74,7 +79,7 @@ export class SharePointService {
         );
       } catch { /* Choice-Update optional */ }
 
-      return;
+      return { isNewlyCreated: false };
     }
 
     // Liste erstellen
@@ -148,6 +153,7 @@ export class SharePointService {
 
     // Berechtigungen setzen: nur Site-Owners (SuperAdmins) duerfen die Liste sehen
     await this.setRolesListPermissions(listName);
+    return { isNewlyCreated: true };
   }
 
   /**
@@ -494,6 +500,10 @@ export class SharePointService {
   /**
    * Alle Rollen-Eintraege lesen
    */
+  // v6.34: Rückgabetyp erweitert — `null` bei API-Fehler (z.B. 403 Forbidden
+  // oder Netzwerk-Fehler), `[]` nur bei wirklich leerer Liste. Der Caller
+  // muss unterscheiden können, sonst löst ein Read-Fehler fälschlich die
+  // "Erstinstallation"-Logik aus und macht den aktuellen User zum Admin.
   public async getRoles(): Promise<Array<{
     Id: number;
     Title: string; // UserEmail
@@ -502,19 +512,19 @@ export class SharePointService {
     UserLocation: string;
     AssignedBy: string;
     AssignedDate: string;
-  }>> {
+  }> | null> {
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate&$orderby=Role,UserName`,
         SPHttpClient.configurations.v1
       );
 
-      if (!response.ok) return [];
+      if (!response.ok) return null;
 
       const data = await response.json();
       return data.value || [];
     } catch {
-      return [];
+      return null;
     }
   }
 

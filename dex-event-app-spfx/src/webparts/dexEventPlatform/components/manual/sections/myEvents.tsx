@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, DemoEventCard } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import MyEventsPage from '../../MyEventsPage';
 
 export function myEventsSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +29,18 @@ export function myEventsSection(locale: 'de' | 'en'): ManualSection {
                   : 'From the start screen or via the navigation you reach "My Events". Here you see every event you\'re registered for — including waitlist entries.'}
               </>
             ),
-            mockup: <DemoEventCard status={isDe ? 'Du bist angemeldet' : 'You are registered'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? '"Meine Events"-Seite (echte Ansicht)' : '"My Events" page (real view)'}
+                role="User"
+                page="my-events"
+                width={430}
+                device="phone"
+              >
+                <Header />
+                <MyEventsPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,
