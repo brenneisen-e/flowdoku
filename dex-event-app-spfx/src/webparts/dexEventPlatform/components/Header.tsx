@@ -10,6 +10,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, QrCode } from './Icons';
 
@@ -17,14 +18,42 @@ export default function Header(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, isAdmin, isOrganizer } = useRoles();
-  // Check-In-Button (Admin / Organizer): schneller Einstieg in den QR-Scanner
-  // ohne vorher ein konkretes Event auszuwaehlen. CheckInPage liest das Event
-  // aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
-  const canCheckIn = isAdmin || isOrganizer;
+  const { events } = useEvents();
+  // Check-In-Button (Admin / Organizer / QR-Scanner): schneller Einstieg in den
+  // QR-Scanner ohne vorher ein konkretes Event auszuwaehlen. CheckInPage liest
+  // das Event aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
+  // v6.26: Zugriff auch fuer User, die per E-Mail in event.qrScannerEmails
+  // mindestens eines Events eingetragen sind — ohne globale Organizer-Rolle.
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const isQRScannerOfAny = !!currentEmailLc && (events || []).some(
+    e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
+  );
+  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny;
   const { t } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
+
+  // v6.26: Mobile-Detection fuer die "Jetzt einchecken"-Sprechblase neben dem
+  // QR-Icon. Wird nur auf Mobilgeraeten angezeigt (Viewport <= 768px), auf
+  // Desktop bleibt der Header schlank.
+  const [isMobile, setIsMobile] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+  });
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      else mq.removeListener(handler);
+    };
+  }, []);
 
   // Titel-Mapping je nach aktuellem Seitenstatus
   const getTitle = (): string => {
@@ -74,6 +103,32 @@ export default function Header(): React.ReactElement {
         )}
       </div>
       <div className="header-right">
+        {canCheckIn && isLanding && isMobile && (
+          <button
+            type="button"
+            onClick={() => navigate('check-in')}
+            aria-label={t('header.checkin')}
+            style={{
+              background: 'var(--dex-green)', color: '#fff',
+              border: 'none', borderRadius: 12,
+              padding: '6px 10px',
+              fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.2,
+              cursor: 'pointer', marginRight: 6,
+              boxShadow: '0 2px 8px rgba(134,188,37,0.28)',
+              fontFamily: 'inherit', whiteSpace: 'nowrap',
+              position: 'relative',
+            }}
+          >
+            {t('header.checkin.bubble') || 'Jetzt einchecken'}
+            <span style={{
+              position: 'absolute', top: '50%', right: -6, transform: 'translateY(-50%)',
+              width: 0, height: 0,
+              borderTop: '6px solid transparent',
+              borderBottom: '6px solid transparent',
+              borderLeft: '6px solid var(--dex-green)',
+            }} />
+          </button>
+        )}
         {canCheckIn && (
           <button
             className="header-icon-btn"
