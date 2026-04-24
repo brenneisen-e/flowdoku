@@ -178,21 +178,31 @@ function AppContent(): React.ReactElement {
     // zeigen, damit der User nicht kurz die LandingPage ohne Bubble sieht,
     // bevor die Bubble nachrutscht.
     if (currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading)) {
+      // Denselben Orb-Look wie auf der Landing-Page, damit der Übergang
+      // Boot-Loader → LandingPage flüssig wirkt. Keyframes injizieren wir
+      // hier selbst, falls LandingPage noch nicht gemountet war.
+      if (typeof document !== 'undefined' && !document.getElementById('dex-orb-keyframes')) {
+        const style = document.createElement('style');
+        style.id = 'dex-orb-keyframes';
+        style.textContent = '@keyframes dexOrbSpin { to { transform: rotate(360deg); } }';
+        document.head.appendChild(style);
+      }
       return (
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          minHeight: 400, padding: 48, textAlign: 'center',
-        }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: '50%',
-            border: '4px solid var(--dex-gray-200, #e5e5e5)',
-            borderTopColor: 'var(--dex-green, #86bc25)',
-            animation: 'dexOrbSpin 0.8s linear infinite',
-            marginBottom: 20,
-          }} />
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dex-gray-800, #333)' }}>DEX Event Platform</div>
-          <div style={{ fontSize: 13, color: 'var(--dex-gray-500, #888)', marginTop: 6 }}>
-            Einen Moment, wir laden deine Events…
+        <div className="landing" style={{ position: 'relative' }}>
+          <div className="landing__hero">
+            <div className="landing__card" style={{ position: 'relative', textAlign: 'center' }}>
+              <div className="landing__orb">
+                <div className="landing__orb-inner" />
+              </div>
+              <div className="landing__text">
+                <h1 style={{ lineHeight: 1.25 }}>
+                  Willkommen auf der neuen <strong style={{ whiteSpace: 'nowrap' }}>Event Experience Platform.</strong>
+                </h1>
+                <p style={{ color: 'var(--dex-gray-500)', marginTop: 12, fontSize: '0.95rem' }}>
+                  Lade Informationen… Jeden Moment geht&apos;s los.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       );

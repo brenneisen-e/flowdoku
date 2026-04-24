@@ -35,8 +35,9 @@ const demoUser: User = {
   jobTitle: 'Senior',
 };
 
+export const DEMO_EVENT_ID = 'demo-event-1';
 const demoEvent: DeloitteEvent = {
-  id: 'demo-event-1',
+  id: DEMO_EVENT_ID,
   eventNumber: 42,
   title: 'Office Event Köln',
   type: 'Other',
@@ -70,10 +71,26 @@ const demoEvent: DeloitteEvent = {
 export function PreviewContextStack(props: {
   children: React.ReactNode;
   role?: PreviewRole;
+  /** Wenn gesetzt, startet NavigationContext mit dieser Page (statt 'landing').
+   *  Für Previews die nicht die Root-Page sondern eine konkrete Sub-Page
+   *  zeigen (z.B. CheckInPage). */
+  page?: string;
+  /** Wenn gesetzt, startet NavigationContext mit dieser selectedEventId.
+   *  Brauchen wir z.B. für die Scanner-Preview (CheckInPage mit Event
+   *  schon ausgewählt, damit das Scanner-UI statt des Event-Pickers rendert). */
+  selectedEventId?: string;
+  /** Zusätzliche Events über das Default-Demo-Event hinaus. */
+  extraEvents?: DeloitteEvent[];
 }): React.ReactElement {
   const role: PreviewRole = props.role || 'Organizer';
+  const allEvents = props.extraEvents ? [demoEvent, ...props.extraEvents] : [demoEvent];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nav: any = { currentPage: 'landing', selectedEventId: null, navIntent: undefined, navigate: noop, goBack: noop, clearIntent: noop };
+  const nav: any = {
+    currentPage: props.page || 'landing',
+    selectedEventId: props.selectedEventId || null,
+    navIntent: undefined,
+    navigate: noop, goBack: noop, clearIntent: noop,
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const user: any = { currentUser: demoUser, isLoading: false, photoUrl: '' };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,7 +105,7 @@ export function PreviewContextStack(props: {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const events: any = {
-    events: [demoEvent], topLevelEvents: [demoEvent],
+    events: allEvents, topLevelEvents: allEvents,
     childEventsOf: () => [], isEventsLoading: false,
     createEvent: async () => null, registerForEvent: asyncNoop,
     cancelRegistration: asyncNoop, getMyRegistration: asyncNull,
