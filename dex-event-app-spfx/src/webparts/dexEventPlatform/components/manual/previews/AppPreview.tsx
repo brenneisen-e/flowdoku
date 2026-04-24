@@ -32,6 +32,14 @@ interface AppPreviewProps {
 export function AppPreview(props: AppPreviewProps): React.ReactElement {
   const [open, setOpen] = React.useState(false);
   const width = props.width || 430;
+  // v6.30: Mobile-Flag SYNCHRON setzen (nicht erst im useEffect), damit der
+  // Header im Preview schon beim ersten Render die Mobile-Variante rendert.
+  // useState-Init in <Header> liest das Flag sonst BEVOR unser useEffect
+  // läuft, und die Check-In-Bubble fehlt.
+  if (open && width <= 768 && typeof window !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__dexForceMobile = true;
+  }
   // v6.28: Wenn das Modal auf < 768px "Mobile" getrimmt ist, setzen wir
   // das window-Flag `__dexForceMobile`, damit Komponenten wie <Header>
   // im Preview-Content tatsächlich ihre Mobile-Variante rendern — das echte
