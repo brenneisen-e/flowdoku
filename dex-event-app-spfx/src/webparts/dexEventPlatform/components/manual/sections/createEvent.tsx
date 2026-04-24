@@ -1,12 +1,31 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import {
-  DemoWizardProgress, DemoFormField, DemoOrganizerChips, DemoPillToggles, DemoToggle,
-  DemoDateTimePicker, Callout, ClickPath, DemoStepper,
-} from '../ManualMockups';
+import { ClickPath } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import EventCreationPage from '../../EventCreationPage';
 
 export function createEventSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
+
+  // Kleine Helfer-Factory, damit die 7 Wizard-Previews einheitlich aussehen.
+  // Jeder Preview öffnet die echte EventCreationPage im Create-Modus, setzt
+  // via initialStep den gewünschten Wizard-Schritt (0..6). Laptop-Frame, weil
+  // das Event-Anlegen auf dem Desktop stattfindet.
+  const wizardPreview = (stepIndex: number, stepLabel: string): React.ReactElement => (
+    <AppPreview
+      label={stepLabel}
+      role="Organizer"
+      page="create-event"
+      width={1024}
+      device="laptop"
+      initialStep={stepIndex}
+    >
+      <Header />
+      <EventCreationPage />
+    </AppPreview>
+  );
+
   return {
     id: 'create-event',
     title: isDe ? 'Event erstellen (7-Schritte-Wizard)' : 'Create an event (7-step wizard)',
@@ -21,8 +40,8 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
         intro: (
           <>
             {isDe
-              ? 'Die Event-Erstellung führt dich durch sieben Schritte. Nur Pflichtfelder (mit *) sind zum Weiterklicken erforderlich — den Rest kannst du jederzeit später ergänzen.'
-              : 'Event creation walks you through seven stages. Only required fields (marked *) need to be filled before advancing — everything else can be added later.'}
+              ? 'Die Event-Erstellung führt dich durch sieben Schritte. Nur Pflichtfelder (mit *) sind zum Weiterklicken erforderlich — den Rest kannst du jederzeit später ergänzen. Jeder Schritt unten hat unter "Vorschau der echten App" einen Button, der dir den jeweiligen Wizard-Step direkt öffnet.'
+              : 'Event creation walks you through seven stages. Only required fields (marked *) need to be filled before advancing — everything else can be added later. Each step below has a "Real app preview" button that opens the matching wizard step.'}
           </>
         ),
         steps: [
@@ -38,27 +57,15 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </p>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Organisatoren fügst du als Chips hinzu: ins Suchfeld tippen, aus der Liste wählen — der Chip erscheint oben. Reihenfolge per ◀ ▶, Entfernen per ×. Standardmäßig bist du selbst als erster Organizer eingetragen.'
-                    : 'Add organizers as chips: type in the search field, pick from the list — the chip appears above. Reorder via ◀ ▶, remove via ×. You\'re added as the first organizer by default.'}
+                    ? 'Organisatoren fügst du als Chips hinzu: ins Suchfeld tippen, aus der Liste wählen — der Chip erscheint oben. Reihenfolge per ◀ ▶, Entfernen per ×. Standardmäßig bist du selbst als erster Organizer eingetragen. In derselben Sektion findest du auch den QR-Code-Scanner-Picker (orange Pills) für Leute, die am Event-Tag nur einchecken sollen.'
+                    : 'Add organizers as chips: type in the search field, pick from the list — the chip appears above. Reorder via ◀ ▶, remove via ×. You\'re added as the first organizer by default. The same section holds the QR code scanner picker (orange pills) for people who should only handle check-in on event day.'}
                 </p>
               </>
             ),
-            mockup: (
-              <div>
-                <DemoWizardProgress activeStep={0} />
-                <div style={{ marginTop: 12, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 14 }}>
-                  <DemoFormField label={isDe ? 'Titel' : 'Title'} value="B2Run Frankfurt 2026" required info={isDe ? 'Name des Events' : 'Name of the event'} />
-                  <DemoFormField label={isDe ? 'Event-Typ' : 'Event type'} value="B2Run" required type="select" />
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6 }}>{isDe ? 'Organisatoren' : 'Organizers'}</div>
-                    <DemoOrganizerChips />
-                  </div>
-                </div>
-              </div>
-            ),
+            mockup: wizardPreview(0, isDe ? 'Wizard Schritt 1: Grundlagen (echte Ansicht)' : 'Wizard step 1: Basics (real view)'),
             tip: isDe
-              ? 'Nur Nutzer mit Rolle "Organizer" oder "Admin" erscheinen in der Organizer-Suche. Wenn jemand fehlt → Admin bitten, die Rolle zu setzen.'
-              : 'Only users with role "Organizer" or "Admin" appear in the search. If someone\'s missing → ask an admin to grant the role.',
+              ? 'Nur Nutzer mit Rolle "Organizer" oder "Admin" erscheinen in der Organizer- und Scanner-Suche. Wenn jemand fehlt → Admin bitten, die Rolle zu setzen.'
+              : 'Only users with role "Organizer" or "Admin" appear in the organizer and scanner search. If someone\'s missing → ask an admin to grant the role.',
           },
           {
             number: 2,
@@ -66,19 +73,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Möchtest du das Event nur für bestimmte Standorte sichtbar machen, wähl die entsprechenden Pills aus. Ohne Auswahl sehen alle Mitarbeiter das Event. Mit dem "Audience"-Feld kannst du zusätzlich E-Mail-Listen oder Unternehmensbereiche beschränken.'
-                  : 'To scope the event to specific locations, select the corresponding pills. Without selection, every employee sees the event. The "Audience" field lets you additionally restrict by email lists or business units.'}
+                  ? 'Weiter unten auf derselben Seite: Möchtest du das Event nur für bestimmte Standorte sichtbar machen, wähl die entsprechenden Pills aus. Ohne Auswahl sehen alle Mitarbeiter das Event. Mit dem "Audience"-Feld kannst du zusätzlich E-Mail-Listen oder Unternehmensbereiche beschränken.'
+                  : 'Further down the same page: to scope the event to specific locations, select the corresponding pills. Without selection, every employee sees the event. The "Audience" field lets you additionally restrict by email lists or business units.'}
               </>
             ),
-            mockup: (
-              <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 14 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6 }}>{isDe ? 'Standort-Filter' : 'Location filter'}</div>
-                <DemoPillToggles
-                  options={['Berlin', 'Frankfurt', 'Köln', 'München', 'Hamburg', 'Düsseldorf', 'Stuttgart']}
-                  selected={['Frankfurt', 'Köln']}
-                />
-              </div>
-            ),
+            mockup: wizardPreview(0, isDe ? 'Wizard Schritt 1: Standort-Filter (runterscrollen)' : 'Wizard step 1: Location filter (scroll down)'),
           },
           {
             number: 3,
@@ -90,19 +89,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Start and end date define the timespan (including time for the Outlook calendar). The app prevents start being after end. The location appears on the event card and in the confirmation email.'}
               </>
             ),
-            mockup: (
-              <div>
-                <DemoWizardProgress activeStep={1} />
-                <div style={{ marginTop: 12 }}>
-                  <DemoDateTimePicker
-                    label={isDe ? 'Start' : 'Start'}
-                    value="12.06.2026, 18:30"
-                    afterLabel={isDe ? 'Ende' : 'End'}
-                    afterValue="12.06.2026, 22:00"
-                  />
-                </div>
-              </div>
-            ),
+            mockup: wizardPreview(1, isDe ? 'Wizard Schritt 2: Zeit & Ort (echte Ansicht)' : 'Wizard step 2: Date & Location (real view)'),
             warning: isDe
               ? 'Datum und Uhrzeit gehen direkt in den Outlook-Termin — also sorgfältig prüfen, bevor Einladungen rausgehen.'
               : 'Date and time flow directly into the Outlook invite — double-check before invitations go out.',
@@ -113,21 +100,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Lege die maximale Teilnehmerzahl fest oder wähle "Unbegrenzt". Aktiviere optional die Warteliste — dann werden Anmeldungen nach Erreichen der Kapazität auf eine Warteschlange gelegt und automatisch nachgerückt, wenn jemand absagt. An- und Abmeldefristen erfassen Datum + Uhrzeit.'
-                  : 'Define the max participants or pick "Unlimited". Optionally enable the waitlist — extra registrations queue up and auto-promote when someone cancels. Registration and cancellation deadlines include both date and time.'}
+                  ? 'Lege die maximale Teilnehmerzahl fest oder wähle "Unbegrenzt". Aktiviere optional die Warteliste — dann werden Anmeldungen nach Erreichen der Kapazität auf eine Warteschlange gelegt und automatisch nachgerückt, wenn jemand absagt. An- und Abmeldefristen erfassen Datum + Uhrzeit. Für B2Run-Events findest du hier zusätzlich getrennte Durchstarter-/Funstarter-Kapazitäten + Starter-Typ→Startblock-Zuordnung + optional Leistungsnachweis-Pflicht.'
+                  : 'Define the max participants or pick "Unlimited". Optionally enable the waitlist — extra registrations queue up and auto-promote when someone cancels. Registration and cancellation deadlines include both date and time. For B2Run events you additionally find split Durchstarter/Funstarter capacities + starter-type → start-block mapping + optional proof-of-performance requirement.'}
               </>
             ),
-            mockup: (
-              <div>
-                <DemoWizardProgress activeStep={2} />
-                <div style={{ marginTop: 12, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <DemoToggle label={isDe ? 'Unbegrenzte Teilnehmer' : 'Unlimited participants'} on={false} hint="max 100" />
-                  <DemoToggle label={isDe ? 'Warteliste aktiviert' : 'Waitlist enabled'} on />
-                  <DemoDateTimePicker label={isDe ? 'Anmeldefrist' : 'Registration deadline'} value="10.06.2026, 23:59" />
-                  <DemoDateTimePicker label={isDe ? 'Letzte Abmeldung' : 'Last cancellation' } value="08.06.2026, 12:00" />
-                </div>
-              </div>
-            ),
+            mockup: wizardPreview(2, isDe ? 'Wizard Schritt 3: Kapazität (echte Ansicht)' : 'Wizard step 3: Capacity (real view)'),
           },
           {
             number: 5,
@@ -135,17 +112,14 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Hier definierst du die Zusatzfragen, die Teilnehmer bei der Anmeldung sehen: Textfelder, Dropdowns, Checkboxen, Datumsfelder, User-Picker (z.B. für Zimmerpartner). Pro Feld wählst du Typ, Label, Pflicht ja/nein und Sichtbarkeit.'
-                  : 'Here you define the additional questions attendees see during registration: text fields, dropdowns, checkboxes, date fields, user pickers (e.g. for roommates). Per field you choose: type, label, required yes/no, and visibility.'}
+                  ? 'Hier definierst du die Zusatzfragen, die Teilnehmer bei der Anmeldung sehen: Textfelder, Dropdowns, Checkboxen, Datumsfelder, User-Picker (z.B. für Zimmerpartner). Pro Feld wählst du Typ, Label, Pflicht ja/nein und Sichtbarkeit. Für B2Run-Events findest du hier zusätzlich den Startblock-Editor.'
+                  : 'Here you define the additional questions attendees see during registration: text fields, dropdowns, checkboxes, date fields, user pickers (e.g. for roommates). Per field you choose: type, label, required yes/no, and visibility. For B2Run events you also find the start-block editor here.'}
               </>
             ),
-            mockup: (
-              <Callout variant="tip" title={isDe ? 'Typen' : 'Field types'}>
-                {isDe
-                  ? 'Text / Textarea / Select / Date / Checkbox / User (Personen-Suche). Leere Labels werden automatisch nicht gespeichert.'
-                  : 'Text / Textarea / Select / Date / Checkbox / User (person search). Fields with empty labels are automatically dropped.'}
-              </Callout>
-            ),
+            mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Felder (echte Ansicht)' : 'Wizard step 4: Fields (real view)'),
+            tip: isDe
+              ? 'Typen: Text / Textarea / Select / Date / Checkbox / User (Personen-Suche). Leere Labels werden automatisch nicht gespeichert.'
+              : 'Types: Text / Textarea / Select / Date / Checkbox / User (person search). Fields with empty labels are automatically dropped.',
           },
           {
             number: 6,
@@ -153,17 +127,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Stelle die E-Mail-Sprache ein (DE oder EN), hinterlege einen optionalen Event-Logo für den Mail-Header, passe die Outlook-Terminbeschreibung an und editiere falls nötig die vier System-Templates: Anmeldung, Warteliste, Abmeldung, Nachrücken.'
-                  : 'Set the email language (DE or EN), upload an optional event logo for the email header, customize the Outlook invite description, and edit the four system templates if needed: Registration, Waitlist, Cancellation, Promotion.'}
+                  ? 'Stelle die E-Mail-Sprache ein (DE oder EN), hinterlege einen optionalen Event-Logo für den Mail-Header, passe die Outlook-Terminbeschreibung an und editiere falls nötig die vier System-Templates: Anmeldung, Warteliste, Abmeldung, Nachrücken. Darunter findest du die Sub-Event-Verwaltung (Trainingssessions etc.).'
+                  : 'Set the email language (DE or EN), upload an optional event logo for the email header, customize the Outlook invite description, and edit the four system templates if needed: Registration, Waitlist, Cancellation, Promotion. Below you find the sub-event (training session) management.'}
               </>
             ),
-            mockup: (
-              <Callout variant="info" title={isDe ? 'Sprach-Default' : 'Language default'}>
-                {isDe
-                  ? 'Seit v4.11 wird die E-Mail-Sprache automatisch auf deine UI-Sprache vorbelegt — du kannst sie pro Event überschreiben.'
-                  : 'Since v4.11 email language defaults to your UI locale — you can override per event.'}
-              </Callout>
-            ),
+            mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Kommunikation (echte Ansicht)' : 'Wizard step 5: Communication (real view)'),
           },
           {
             number: 7,
@@ -175,6 +143,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Upload PDFs or documents that attendees see before the event: agenda, travel info, safety notes. Documents are stored as attachments on the event item.'}
               </>
             ),
+            mockup: wizardPreview(5, isDe ? 'Wizard Schritt 6: Dokumente (echte Ansicht)' : 'Wizard step 6: Documents (real view)'),
           },
           {
             number: 8,
@@ -186,7 +155,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Optional: create a quiz for attendees to play before or during the event. Each question has 4 answer options and one marked correct. See "Quiz / Fun-Zone" for details.'}
               </>
             ),
-            mockup: <DemoStepper activeStep={6} />,
+            mockup: wizardPreview(6, isDe ? 'Wizard Schritt 7: Fun-Zone (echte Ansicht)' : 'Wizard step 7: Fun-Zone (real view)'),
           },
           {
             number: 9,
@@ -208,3 +177,4 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
     ],
   };
 }
+

@@ -671,7 +671,18 @@ export default function EventCreationPage(): React.ReactElement {
   // hält nur die noch leeren Zwischen-Buckets.
   const [pendingSections, setPendingSections] = React.useState<string[]>([]);
   const [draggedQuestionId, setDraggedQuestionId] = React.useState<string | null>(null);
-  const [currentStep, setCurrentStep] = React.useState(0);
+  // v6.35: Handbuch-Previews können einen bestimmten Wizard-Schritt gezielt
+  // zeigen, indem sie vor dem Mount `window.__dexPreviewInitialStep = <n>`
+  // setzen (0..6). Nur für Read-only-Previews; in der echten App ist das
+  // Flag nie gesetzt, dann bleibt der Default 0 (Step 1 "Grundlagen").
+  const [currentStep, setCurrentStep] = React.useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const init = (window as any).__dexPreviewInitialStep;
+      if (typeof init === 'number' && init >= 0 && init <= 6) return init;
+    }
+    return 0;
+  });
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
   // EventType wird bei neuen Events aus dem Template abgeleitet; bei Edit
   // bleibt der gespeicherte Wert erhalten.

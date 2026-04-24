@@ -29,6 +29,9 @@ interface AppPreviewProps {
   /** Device-Hülle: phone (schwarzer Bezel mit Notch) vs. laptop (Monitor +
    *  schmaler Stand/Tastatur-Base). Default: phone bei width <= 768, sonst laptop. */
   device?: 'phone' | 'laptop' | 'plain';
+  /** Nur für EventCreationPage-Previews: initialen Wizard-Schritt (0..6)
+   *  gezielt setzen, damit das Handbuch pro Step den passenden Inhalt zeigt. */
+  initialStep?: number;
   children: React.ReactNode;
 }
 
@@ -42,6 +45,12 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
   if (open && width <= 768 && typeof window !== 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__dexForceMobile = true;
+  }
+  // initialStep für EventCreationPage — genauso synchron wie das Mobile-Flag,
+  // damit useState(() => ...) den Wert beim ersten Render lesen kann.
+  if (open && typeof props.initialStep === 'number' && typeof window !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__dexPreviewInitialStep = props.initialStep;
   }
   // v6.28: Wenn das Modal auf < 768px "Mobile" getrimmt ist, setzen wir
   // das window-Flag `__dexForceMobile`, damit Komponenten wie <Header>
@@ -73,6 +82,8 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { delete (window as any).__dexForceMobile; } catch { /* */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { delete (window as any).__dexPreviewInitialStep; } catch { /* */ }
       const el = document.getElementById('dex-preview-style-override');
       if (el) el.remove();
     };

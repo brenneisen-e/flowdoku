@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, ClickPath } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import EventCreationPage from '../../EventCreationPage';
 
 export function b2runSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -37,7 +41,20 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
                   : 'When creating an event in step 3 (capacity & deadlines), you find the checkbox "Running event with split starter capacities". Activate it — and the classic "Max participants" input is replaced by two fields: Durchstarter capacity and Funstarter capacity. The sum is automatically the total capacity.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Event erstellen' : 'Create event'} label2={isDe ? 'Schritt 3: Split aktivieren' : 'Step 3: activate split'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Wizard Schritt 3: Split-Kapazitäten (echte Ansicht)' : 'Wizard step 3: Split capacities (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+                initialStep={2}
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
+            ),
           },
           {
             number: 3,
@@ -88,7 +105,20 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
                   : 'B2Run organizers often offer optional training sessions in the weeks before the run. The DEX app solves this via sub-events: in step 5 (communication) of the event editor you can add entries per session with title, date, location and capacity. Since v6.4, sub-events are managed as standalone DEX_Events items with parentEventId — they have their own participant list, their own Outlook appointment and their own emails. The participant first registers for the main event, then on the success screen for any sessions.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Event bearbeiten' : 'Edit event'} label2={isDe ? 'Reiter 5 Kommunikation → Sub-Events' : 'Step 5 communication → sub-events'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Wizard Schritt 5: Kommunikation + Sub-Events (echte Ansicht)' : 'Wizard step 5: Communication + sub-events (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+                initialStep={4}
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
+            ),
           },
           {
             number: 7,

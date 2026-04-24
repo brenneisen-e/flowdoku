@@ -1,6 +1,11 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, ClickPath } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import EventCreationPage from '../../EventCreationPage';
+import AdminPage from '../../AdminPage';
 
 export function editEventSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +31,19 @@ export function editEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'The admin area lists every event you organize (Admin: all events). Clicking "Edit" opens the same wizard as creation — all fields pre-populated.'}
               </>
             ),
-            mockup: <ClickPath label="Admin" label2={isDe ? 'Bearbeiten' : 'Edit'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Event-Detailansicht (echte Ansicht)' : 'Admin center → event detail view (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,
@@ -37,6 +54,19 @@ export function editEventSection(locale: 'de' | 'en'): ManualSection {
                   ? 'Jede Änderung wirkt sich sofort auf die Anmeldung aus — eine Titel-Änderung erscheint beim nächsten Laden der Registrierungsseite. Änderungen an Start-/Endzeit aktualisieren die Outlook-Termine aller bereits angemeldeten Teilnehmer.'
                   : 'Every change takes effect immediately for registrations — a title change appears on the next reload of the registration page. Start/end time changes update Outlook invites for all already-registered attendees.'}
               </>
+            ),
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Event-Wizard im Edit-Modus (echte Ansicht)' : 'Event wizard in edit mode (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
             ),
             warning: isDe
               ? 'Löschen eines Custom Fields löscht auch die Teilnehmer-Antworten dazu. Überlege gut, ob du ein Feld wirklich entfernen willst.'

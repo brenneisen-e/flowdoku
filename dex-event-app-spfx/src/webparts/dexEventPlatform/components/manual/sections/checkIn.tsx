@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoQRCode, Callout } from '../ManualMockups';
+import { DemoQRCode, DemoEmailPreview, Callout } from '../ManualMockups';
 import { AppPreview } from '../previews/AppPreview';
 import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
 import Header from '../../Header';
@@ -54,7 +54,44 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'As soon as the organizer sends out the QR codes (typically 1-2 days before the event), you receive an email containing your personal QR code. The code identifies you as a registered attendee and contains NO sensitive data — only your event and attendee ID.'}
               </>
             ),
-            mockup: <DemoQRCode label={isDe ? 'Dein Check-In-Code' : 'Your check-in code'} />,
+            mockup: (
+              // Email-Vorschau auf dem Handy: wie der Teilnehmer die
+              // Bestätigungsmail 1-2 Tage vor dem Event wirklich bekommt.
+              <div style={{ padding: '16px 8px', display: 'flex', justifyContent: 'center', background: 'var(--dex-gray-100)', borderRadius: 8 }}>
+                <div style={{
+                  width: 320, padding: '28px 10px 14px',
+                  borderRadius: 34, background: '#1a1a1a',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.24), inset 0 0 0 2px #333',
+                  position: 'relative',
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+                    width: 80, height: 14, background: '#000', borderRadius: 8,
+                  }} />
+                  <div style={{ background: '#fff', borderRadius: 22, overflow: 'hidden' }}>
+                    <DemoEmailPreview
+                      subject={isDe ? 'Dein Check-In-Code für B2Run Frankfurt 2026' : 'Your check-in code for B2Run Frankfurt 2026'}
+                      heading={isDe ? 'Dein persönlicher QR-Code' : 'Your personal QR code'}
+                      body={
+                        <>
+                          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            {isDe
+                              ? 'Hallo Max, zeige diesen QR-Code am Event-Tag am Einlass — das Orga-Team scannt ihn und du bist eingecheckt.'
+                              : 'Hi Max, please show this QR code at the entrance on event day — the team will scan it and check you in.'}
+                          </p>
+                          <div style={{ textAlign: 'center', margin: '12px 0' }}>
+                            <DemoQRCode size={160} label={isDe ? 'Dein Check-In-Code' : 'Your check-in code'} />
+                          </div>
+                          <p style={{ margin: '12px 0 0', fontSize: '0.72rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>
+                            DEX|42|max.mustermann@deloitte.de
+                          </p>
+                        </>
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ),
             tip: isDe
               ? 'Speichere den QR-Code am besten gleich als Screenshot auf dem Handy ab, damit du ihn am Event-Tag offline parat hast — nützlich, falls am Veranstaltungsort schlechter Empfang herrscht.'
               : 'Save the QR code as a screenshot on your phone so you have it offline on event day — useful if reception at the venue is poor.',
