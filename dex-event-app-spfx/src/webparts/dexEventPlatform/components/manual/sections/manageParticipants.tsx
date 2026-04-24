@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoAdminCenter, DemoParticipantTable, Callout } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import AdminPage from '../../AdminPage';
 
 export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -26,7 +30,19 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
                   : 'Admin area → your event card → "Admin Center". You\'ll see four metric tiles (Registered, Waitlist, Checked-in, Cancelled) and action buttons below.'}
               </>
             ),
-            mockup: <DemoAdminCenter />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → KPI-Kacheln + Aktionen (echte Ansicht)' : 'Admin center → KPI tiles + actions (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,
@@ -38,7 +54,19 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
                   : 'Use the search field to filter by name, email or attendee ID. Click a column header to sort ascending / descending.'}
               </>
             ),
-            mockup: <DemoParticipantTable />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Teilnehmertabelle mit Suche + Sortierung' : 'Admin center → participant table with search + sort'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 3,

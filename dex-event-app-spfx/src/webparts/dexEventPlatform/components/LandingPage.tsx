@@ -192,11 +192,11 @@ export default function LandingPage(): React.ReactElement {
           >
             {locale === 'de' ? 'Built by ' : 'Built by '}
             <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
-              <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" role={locale === 'de' ? 'Senior Consultant · Köln' : 'Senior Consultant · Cologne'} />
+              <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" />
               {', '}
-              <DevName name="Andreas Enk" email="aenk@deloitte.de" role={locale === 'de' ? 'Manager · München' : 'Manager · Munich'} />
+              <DevName name="Andreas Enk" email="aenk@deloitte.de" />
               {' '}{locale === 'de' ? 'und' : 'and'}{' '}
-              <DevName name="Nils Felten" email="nifelten@deloitte.de" role={locale === 'de' ? 'Consultant · Köln' : 'Consultant · Cologne'} />
+              <DevName name="Nils Felten" email="nifelten@deloitte.de" />
             </span>
           </div>
         </div>
@@ -309,13 +309,42 @@ export default function LandingPage(): React.ReactElement {
   );
 }
 
-// v6.36: Entwickler-Name mit Hover-Popover auf der LandingPage.
+// v7.1: Entwickler-Name mit Hover-Popover auf der LandingPage.
 // Analog zu OrganizerList: bei Hover erscheint ein kleines Popover mit
-// größerem Foto, Name und Rolle/Standort. SharePoint liefert das Foto
-// via /_layouts/15/userphoto.aspx?accountname=<email>&size=L.
-function DevName(props: { name: string; email: string; role: string }): React.ReactElement {
+// größerem Foto, Name und Rolle/Standort. Die Daten (jobTitle + location)
+// werden per SharePoint-User-Profil-Lookup live nachgeladen (einmalig
+// beim ersten Hover) — damit zeigen wir immer den aktuellen Rollen-Stand
+// aus dem AD, keine hardcoded Strings.
+function DevName(props: { name: string; email: string }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(null);
+  const loadedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hovered || loadedRef.current) return;
+    loadedRef.current = true;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ctx = (window as any).__dexSpfxContext;
+        if (!ctx) return;
+        const { SharePointService } = await import('../services/SharePointService');
+        const svc = new SharePointService(ctx);
+        const result = await svc.searchUserByEmail(props.email);
+        if (result) {
+          setProfile({
+            jobTitle: result.jobTitle || '',
+            location: result.location || '',
+          });
+        }
+      } catch { /* Profil-Lookup fehlgeschlagen — Fallback bleibt leer */ }
+    })().catch(() => { /* ignore */ });
+  }, [hovered, props.email]);
+
+  const roleLine = profile
+    ? [profile.jobTitle, profile.location].filter(Boolean).join(' · ')
+    : '';
+
   return (
     <span
       style={{ position: 'relative', cursor: 'default', display: 'inline-block' }}
@@ -354,7 +383,9 @@ function DevName(props: { name: string; email: string; role: string }): React.Re
           )}
           <span style={{ textAlign: 'left', fontSize: '0.82rem', lineHeight: 1.35 }}>
             <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{props.name}</span>
-            <span style={{ display: 'block', color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{props.role}</span>
+            {roleLine && (
+              <span style={{ display: 'block', color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{roleLine}</span>
+            )}
             <span style={{ display: 'block', color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>{props.email}</span>
           </span>
         </span>

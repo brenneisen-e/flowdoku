@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import AdminPage from '../../AdminPage';
 
 export function idReorderSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -27,12 +30,21 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             mockup: (
-              <Callout variant="warning" title={isDe ? 'Kann Teilnehmer-Mail-Flut auslösen' : 'May trigger an email flood'}>
-                {isDe
-                  ? 'Wenn viele Wartelistler nachrücken, gehen entsprechend viele Nachrück-Mails raus. Sinnvoll kurz vor dem Event-Tag.'
-                  : 'If many waitlisters promote, just as many promotion emails go out. Best used shortly before event day.'}
-              </Callout>
+              <AppPreview
+                label={isDe ? 'Admin Center → IDs neu vergeben / Spalten fixen (echte Ansicht)' : 'Admin center → reorder IDs / fix columns (real view)'}
+                role="Admin"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
             ),
+            warning: isDe
+              ? 'Wenn viele Wartelistler nachrücken, gehen entsprechend viele Nachrück-Mails raus. Sinnvoll kurz vor dem Event-Tag.'
+              : 'If many waitlisters promote, just as many promotion emails go out. Best used shortly before event day.',
           },
           {
             number: 2,
