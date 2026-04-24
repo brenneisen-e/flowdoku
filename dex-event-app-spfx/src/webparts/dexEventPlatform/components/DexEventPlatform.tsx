@@ -187,6 +187,14 @@ function AppContent(): React.ReactElement {
         style.textContent = '@keyframes dexOrbSpin { to { transform: rotate(360deg); } }';
         document.head.appendChild(style);
       }
+      // v6.29: Indeterminate Progress-Bar-Keyframes. Läuft endlos von links
+      // nach rechts durch eine 30%-breite Farbzone — hübscher als ein Text.
+      if (typeof document !== 'undefined' && !document.getElementById('dex-progress-keyframes')) {
+        const style = document.createElement('style');
+        style.id = 'dex-progress-keyframes';
+        style.textContent = '@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }';
+        document.head.appendChild(style);
+      }
       return (
         <div className="landing" style={{ position: 'relative' }}>
           <div className="landing__hero">
@@ -199,8 +207,24 @@ function AppContent(): React.ReactElement {
                   Willkommen auf der neuen <strong style={{ whiteSpace: 'nowrap' }}>Event Experience Platform.</strong>
                 </h1>
                 <p style={{ color: 'var(--dex-gray-500)', marginTop: 12, fontSize: '0.95rem' }}>
-                  Lade Informationen… Jeden Moment geht&apos;s los.
+                  Jeden Moment geht&apos;s los…
                 </p>
+              </div>
+              {/* Indeterminate-Progress-Bar (v6.29). Ersetzt den alten
+                  "Lade Informationen…"-Text durch eine animierte Leiste —
+                  signalisiert visuell dass im Hintergrund etwas passiert. */}
+              <div style={{
+                width: 'min(320px, 80%)',
+                height: 6, borderRadius: 3,
+                background: 'var(--dex-gray-200, #e5e5e5)',
+                overflow: 'hidden', position: 'relative',
+                marginTop: 8,
+              }}>
+                <div style={{
+                  position: 'absolute', top: 0, bottom: 0, width: '40%',
+                  background: 'linear-gradient(90deg, transparent, var(--dex-green, #86bc25), transparent)',
+                  animation: 'dexProgressSlide 1.4s ease-in-out infinite',
+                }} />
               </div>
             </div>
           </div>
@@ -266,9 +290,13 @@ function AppContent(): React.ReactElement {
     }
   };
 
+  // v6.29: Während der Boot-Loader läuft, Header verstecken. Sonst würde
+  // schon die "Jetzt einchecken"-Bubble / QR-Icon blinken bevor der eigentliche
+  // Welcome-Screen sichtbar ist.
+  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading);
   return (
     <div className="app-layout" ref={layoutRef}>
-      <Header />
+      {!isBootLoading && <Header />}
       <main className="main-content">
         {renderPage()}
       </main>
