@@ -1,6 +1,12 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, ClickPath } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import EventCreationPage from '../../EventCreationPage';
+import AdminPage from '../../AdminPage';
+import MyEventsPage from '../../MyEventsPage';
 
 export function subEventsSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -37,7 +43,20 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                   : 'In the event wizard, go to step 5 "Communication" — below the email template list you will find the "Sub-events" section. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Reiter 5 Kommunikation' : 'Step 5 Communication'} label2={isDe ? '+ Sub-Event hinzufuegen' : '+ Add sub-event'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Wizard Schritt 5: Sub-Events verwalten (echte Ansicht)' : 'Wizard step 5: Manage sub-events (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+                initialStep={4}
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
+            ),
           },
           {
             number: 3,
@@ -61,7 +80,19 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                   : 'The admin center shows an additional dropdown above the attendee list as soon as the event has sub-events. Filter by: "All" (complete list), "Main event only" (no session) or a specific sub-event. The dropdown displays the current capacity per session inline (e.g. "12/25").'}
               </>
             ),
-            mockup: <ClickPath label="Admin" label2={isDe ? 'Sub-Event-Filter' : 'Sub-event filter'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Sub-Event-Filter (echte Ansicht)' : 'Admin center → sub-event filter (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
         ],
       },
@@ -111,7 +142,18 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                   : 'Under "My Events" each event card lists your booked sessions. You can add or cancel individual sessions at any time — the main-event registration is not affected.'}
               </>
             ),
-            mockup: <ClickPath label="My Events" label2={isDe ? 'Session abmelden' : 'Cancel session'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? '"Meine Events" mit Sessions (echte Ansicht)' : '"My Events" with sessions (real view)'}
+                role="User"
+                page="my-events"
+                width={430}
+                device="phone"
+              >
+                <Header />
+                <MyEventsPage />
+              </AppPreview>
+            ),
           },
         ],
       },
