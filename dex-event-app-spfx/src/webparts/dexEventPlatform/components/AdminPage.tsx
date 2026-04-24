@@ -43,7 +43,7 @@ function getStatusColor(status: string): string {
 }
 
 export default function AdminPage(): React.ReactElement {
-  const { navigate } = useNavigation();
+  const { navigate, selectedEventId } = useNavigation();
   const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl } = useRoles();
@@ -359,6 +359,20 @@ export default function AdminPage(): React.ReactElement {
     }
     setIsLoadingRegs(false);
   };
+
+  // v6.31: wenn navigation.selectedEventId gesetzt ist beim Mount (z.B. vom
+  // Handbuch-Preview oder einem Deep-Link), direkt in die Detail-Ansicht
+  // springen statt auf die Event-Auswahl-Liste.
+  const didAutoSelectRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoSelectRef.current) return;
+    if (!selectedEventId || selectedEvent) return;
+    const match = adminEvents.find(e => e.id === selectedEventId);
+    if (match) {
+      didAutoSelectRef.current = true;
+      handleSelectEvent(match).catch(() => { /* Fehler wird intern gesetzt */ });
+    }
+  }, [selectedEventId, adminEvents, selectedEvent]);
 
   // Teilnehmerlisten-URL aus regListMap ableiten
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
