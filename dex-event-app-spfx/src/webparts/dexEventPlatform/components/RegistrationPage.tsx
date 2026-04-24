@@ -713,7 +713,11 @@ export default function RegistrationPage(): React.ReactElement {
               Funstarter-Auswahl, wenn der User sich NICHT gleichzeitig fürs
               Haupt-Event anmeldet (sonst wird der Haupt-Event-Starter-Typ
               automatisch auf die Session-Anmeldung übernommen). */}
-          {!registerForOther && (childEvents.length > 0 || true) && (
+          {/* v7.3: Selection-Block nur rendern, wenn es tatsächlich Sub-Events
+              gibt. Bei einem Event ohne Sessions ist die Checkbox "Haupt-Event"
+              redundant (es gibt nichts alternatives zum Abwählen), also
+              komplett weglassen. */}
+          {!registerForOther && childEvents.length > 0 && (
             <div style={{ marginTop: 16, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
               <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
@@ -1268,6 +1272,10 @@ export default function RegistrationPage(): React.ReactElement {
           <Send size={16} /> {(() => {
             if (isSubmitting) return t('reg.submitting');
             if (registerForOther) return t('reg.register');
+            // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
+            // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir
+            // detailliert an, was gerade submittet wird.
+            if (childEvents.length === 0) return t('reg.register');
             const parts: string[] = [];
             if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
             if (selectedSessions.size > 0) {
