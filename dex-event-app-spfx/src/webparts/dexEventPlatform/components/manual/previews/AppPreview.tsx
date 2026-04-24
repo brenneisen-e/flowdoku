@@ -8,6 +8,7 @@
  */
 import * as React from 'react';
 import { PreviewContextStack, PreviewRole } from './PreviewProviders';
+import { DeloitteEvent } from '../../../types';
 
 interface AppPreviewProps {
   label: string;
@@ -18,12 +19,33 @@ interface AppPreviewProps {
    *  1024 = iPad/Desktop-nah. Erlaubt pro Preview gezielt das Mobile- oder
    *  Desktop-Layout zu erzwingen. */
   width?: number;
+  /** Navigation: aktuelle Seite (default 'landing'). */
+  page?: string;
+  /** Navigation: vorausgewähltes Event (wichtig für Detail-Seiten). */
+  selectedEventId?: string;
+  /** Zusätzliche Demo-Events über das Default-Office-Event hinaus. */
+  extraEvents?: DeloitteEvent[];
   children: React.ReactNode;
 }
 
 export function AppPreview(props: AppPreviewProps): React.ReactElement {
   const [open, setOpen] = React.useState(false);
   const width = props.width || 390;
+  // v6.28: Wenn das Modal auf < 768px "Mobile" getrimmt ist, setzen wir
+  // das window-Flag `__dexForceMobile`, damit Komponenten wie <Header>
+  // im Preview-Content tatsächlich ihre Mobile-Variante rendern — das echte
+  // window.matchMedia liest sonst die Desktop-Breite des Handbuchs.
+  React.useEffect(() => {
+    if (!open) return;
+    if (width <= 768) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__dexForceMobile = true;
+    }
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { delete (window as any).__dexForceMobile; } catch { /* */ }
+    };
+  }, [open, width]);
   return (
     <>
       <button
@@ -81,26 +103,56 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
                 aria-label="Schließen"
               >×</button>
             </div>
-            {/* Scrollable Inner-Frame simuliert Mobile-/Desktop-Viewport */}
+            {/* Scrollable Inner-Frame simuliert Mobile-/Desktop-Viewport.
+                Unter 768px zeichnen wir einen stilisierten Handy-Rahmen mit
+                Notch + schwarzem Bezel, damit der Leser sofort erkennt,
+                dass es sich um die Mobile-Ansicht handelt. */}
             <div style={{
-              padding: 16, display: 'flex', justifyContent: 'center',
-              overflowX: 'auto',
+              padding: '24px 16px', display: 'flex', justifyContent: 'center',
+              overflowX: 'auto', background: 'var(--dex-gray-100, #f5f5f5)',
             }}>
-              <div style={{
-                width, maxWidth: '100%',
-                background: '#fff', border: '1px solid var(--dex-gray-200)',
-                borderRadius: 12, overflow: 'hidden',
-                boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-              }}>
-                {/* pointer-events:none neutralisiert ALLE Klicks in der echten
-                    Komponente — Read-only-Vorschau. Ausgewählt auf dem inner
-                    wrapper, nicht dem äußeren, damit das × weiterhin klickbar ist. */}
-                <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
-                  <PreviewContextStack role={props.role}>
-                    {props.children}
-                  </PreviewContextStack>
+              {width <= 768 ? (
+                <div style={{
+                  // Phone-Frame: schwarzer Bezel mit Notch
+                  width: width + 24, padding: '38px 12px 18px', borderRadius: 44,
+                  background: '#1a1a1a',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 0 0 2px #333',
+                  position: 'relative',
+                }}>
+                  {/* Notch */}
+                  <div style={{
+                    position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+                    width: 100, height: 18, background: '#000', borderRadius: 10,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#222', border: '1px solid #333' }} />
+                    <span style={{ width: 38, height: 4, borderRadius: 2, background: '#222' }} />
+                  </div>
+                  <div style={{
+                    width, background: '#fff', borderRadius: 28, overflow: 'hidden',
+                    minHeight: 620, maxHeight: '72vh', overflowY: 'auto',
+                  }}>
+                    <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
+                      <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
+                        {props.children}
+                      </PreviewContextStack>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{
+                  width, maxWidth: '100%',
+                  background: '#fff', border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 12, overflow: 'hidden',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                }}>
+                  <div style={{ pointerEvents: 'none', userSelect: 'text' }}>
+                    <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
+                      {props.children}
+                    </PreviewContextStack>
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{
               padding: '8px 16px', borderTop: '1px solid var(--dex-gray-200)',

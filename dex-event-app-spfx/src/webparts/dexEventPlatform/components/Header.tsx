@@ -37,8 +37,13 @@ export default function Header(): React.ReactElement {
   // v6.26: Mobile-Detection fuer die "Jetzt einchecken"-Sprechblase neben dem
   // QR-Icon. Wird nur auf Mobilgeraeten angezeigt (Viewport <= 768px), auf
   // Desktop bleibt der Header schlank.
+  // v6.28: Handbuch-Preview kann Mobile erzwingen (window.__dexForceMobile),
+  // damit die Bubble im Phone-Frame-Rahmen des AppPreview sichtbar ist —
+  // auch wenn der User das Handbuch am Desktop öffnet.
   const [isMobile, setIsMobile] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).__dexForceMobile) return true;
     return !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
   });
   React.useEffect(() => {

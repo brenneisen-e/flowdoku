@@ -1,9 +1,31 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { DemoQRCode, DemoCheckInScanner, Callout, ClickPath } from '../ManualMockups';
+import { DemoQRCode, Callout, ClickPath } from '../ManualMockups';
 import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
 import Header from '../../Header';
 import LandingPage from '../../LandingPage';
+import CheckInPage from '../../CheckInPage';
+import { DeloitteEvent } from '../../../types';
+
+// v6.28: Zweit-Demo-Event für den Check-In-Event-Picker — mit zwei
+// Events zu Auswahl wird die Picker-UI sichtbar (bei nur einem Event
+// würde die App automatisch weiterleiten).
+const demoSecondEvent: DeloitteEvent = {
+  id: 'demo-event-2', eventNumber: 43, title: 'Summer Party Düsseldorf',
+  type: 'Other', status: 'Active',
+  organizers: ['Musterfrau, Maja'], organizerEmails: ['maja.musterfrau@deloitte.de'],
+  qrScannerNames: [], qrScannerEmails: [],
+  location: 'Rheinterrasse Düsseldorf', locationAudience: ['Düsseldorf'],
+  audienceFilter: [], filterMode: 'OR',
+  startDate: '2026-07-04T18:00:00', endDate: '2026-07-04T23:00:00',
+  registrationDeadline: '2026-07-01T23:59:00', lastDeregisterDate: '2026-07-03T23:59:00',
+  description: 'Sommerfest am Rhein.',
+  maxParticipants: 200, currentParticipants: 134, waitlistCount: 0,
+  imageUrl: '', outlookBody: '', emailLanguage: 'DE',
+  agenda: [], transferTimes: [], documents: [], quiz: [],
+  eventSpecificFields: [],
+};
 
 export function checkInSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -144,7 +166,18 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'If you can check in for multiple events (e.g. as admin or organizer of several events), the check-in page first shows a list of all events relevant to you — each as a card with title, date and location. Tap to pick the event you want to scan for now. That event is then shown in the scanner header ("Check-in — <event title>"), and the KPI tiles + live counter refer exactly to the participant list of that event. With only one accessible event this picker is skipped.'}
               </>
             ),
-            mockup: <ClickPath label={isDe ? 'Check-In' : 'Check-in'} label2={isDe ? 'Event-Karte antippen' : 'Tap event card'} hint={isDe ? 'Bei einem einzigen Event wird automatisch weitergeleitet.' : 'With a single event you are redirected automatically.'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Check-In: Event-Picker (echte Ansicht)' : 'Check-in: event picker (real view)'}
+                role="Admin"
+                page="check-in"
+                extraEvents={[demoSecondEvent]}
+                width={390}
+              >
+                <Header />
+                <CheckInPage />
+              </AppPreview>
+            ),
           },
           {
             number: 6,
@@ -177,7 +210,18 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
                   : 'Point the camera at the QR code — recognition is instant, no shutter button. Depending on the attendee\'s state there are three possible outcomes, each shown as a colored result card at the top of the screen: GREEN = freshly checked in (status "Checked-in", CheckedIn counter +1, name + photo shown as confirmation). ORANGE = was already checked in (no double counter bump, just "Already checked in at …"). RED = code not recognized — e.g. QR from a different event or a cancelled registration. The card names the reason. The live counter top-right ("7 checked in") tracks per scanner session locally so you see at a glance how many you\'ve processed.'}
               </>
             ),
-            mockup: <DemoCheckInScanner scanned />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Check-In-Scanner-Ansicht (echte Ansicht)' : 'Check-in scanner view (real view)'}
+                role="Organizer"
+                page="check-in"
+                selectedEventId={DEMO_EVENT_ID}
+                width={390}
+              >
+                <Header />
+                <CheckInPage />
+              </AppPreview>
+            ),
             tip: isDe
               ? 'Neben dem lokalen Scanner-Counter aktualisieren sich im Admin Center in Echtzeit auch die KPI-Kacheln ("Eingecheckt" wird grün). Auf einem Tablet am Stand kannst du parallel die KPIs zeigen, während auf dem Handy gescannt wird.'
               : 'Besides the local scanner counter, the admin-center KPI tiles update in real time as well ("Checked-in" turns green). On a tablet at the booth you can show the KPIs while scanning on the phone.',
