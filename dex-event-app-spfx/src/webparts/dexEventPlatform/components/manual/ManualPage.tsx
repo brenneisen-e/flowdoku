@@ -38,9 +38,46 @@ export default function ManualPage(): React.ReactElement {
     return allSections.filter(s => s.visibleFor.indexOf(currentUserRole as 'User' | 'Organizer' | 'Admin') >= 0);
   }, [allSections, currentUserRole]);
 
-  const [activeId, setActiveId] = React.useState<string>(visibleSections[0]?.id || '');
+  // v6.23: Deep-Link-Support. Wenn die URL `?section=<id>` enthält (z.B.
+  // ?action=manual&section=check-in), starten wir direkt in dieser Sektion —
+  // sofern der User sie laut Rolle sehen darf. Andernfalls Default-Section.
+  const [activeId, setActiveId] = React.useState<string>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const sec = params.get('section');
+      if (sec && visibleSections.some(s => s.id === sec)) return sec;
+    } catch { /* URL-Parsing-Fehler ignorieren */ }
+    return visibleSections[0]?.id || '';
+  });
   const [search, setSearch] = React.useState('');
+  const [copiedLink, setCopiedLink] = React.useState(false);
   const activeSection = visibleSections.find(s => s.id === activeId) || visibleSections[0];
+
+  // Deep-Link zur aktuell offenen Sektion in die Zwischenablage kopieren.
+  // Entfernt bestehende action/section/event-Parameter, fügt action=manual
+  // + section=<activeId> sauber hinzu, damit die Ziel-URL immer auf diese
+  // Sektion zeigt (unabhängig davon, mit welchem Deep-Link der User gerade
+  // selbst hier ist).
+  const copyDeepLink = React.useCallback((): void => {
+    if (!activeSection) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('event');
+      url.searchParams.set('action', 'manual');
+      url.searchParams.set('section', activeSection.id);
+      const link = url.toString();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(() => {
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 2000);
+        }).catch(() => {
+          window.prompt(isDe ? 'Link kopieren:' : 'Copy link:', link);
+        });
+      } else {
+        window.prompt(isDe ? 'Link kopieren:' : 'Copy link:', link);
+      }
+    } catch { /* URL-Manipulation fehlgeschlagen — ignorieren */ }
+  }, [activeSection?.id, isDe]);
 
   const [activePerspective, setActivePerspective] = React.useState<ManualPerspective | null>(null);
   React.useEffect(() => {
@@ -140,7 +177,34 @@ export default function ManualPage(): React.ReactElement {
           <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
             {label(CATEGORY_LABEL[activeSection.category] || { de: activeSection.category, en: activeSection.category })}
           </div>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0 }}>{activeSection.title}</h1>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0 }}>{activeSection.title}</h1>
+            {/* v6.23: Deep-Link zur aktuellen Sektion in die Zwischenablage */}
+            <button
+              type="button"
+              onClick={copyDeepLink}
+              title={isDe ? 'Direkt-Link zu dieser Sektion kopieren' : 'Copy direct link to this section'}
+              style={{
+                flexShrink: 0,
+                background: copiedLink ? 'var(--dex-green)' : 'var(--dex-gray-100)',
+                color: copiedLink ? '#fff' : 'var(--dex-gray-600)',
+                border: '1px solid var(--dex-gray-200)',
+                borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: 500,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {copiedLink
+                ? (isDe ? 'Kopiert!' : 'Copied!')
+                : (isDe ? 'Link kopieren' : 'Copy link')}
+            </button>
+          </div>
           <p style={{ fontSize: '0.95rem', color: 'var(--dex-gray-600)', marginTop: 6, lineHeight: 1.5 }}>{activeSection.description}</p>
         </header>
 

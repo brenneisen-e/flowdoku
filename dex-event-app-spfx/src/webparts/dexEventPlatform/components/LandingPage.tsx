@@ -5,6 +5,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useEvents } from '../context/EventContext';
+import { useRoles } from '../context/RoleContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
@@ -13,7 +14,8 @@ export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
   const { currentUser } = useCurrentUser();
-  const { sendAdminInquiry } = useEvents();
+  const { sendAdminInquiry, events } = useEvents();
+  const { isAdmin } = useRoles();
   const [showInfo, setShowInfo] = React.useState(false);
   const [showInquiry, setShowInquiry] = React.useState(false);
   const userFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
@@ -61,6 +63,48 @@ export default function LandingPage(): React.ReactElement {
     }
   }, []);
 
+  // v6.22: Mobile-QR-Shortcut. Organizer/Admin/QR-Scanner sehen auf Mobile-
+  // Geräten oben rechts ein QR-Icon + Sprechblase "Geht's zum Check-in".
+  // Navigation:
+  //  - genau 1 Event zugänglich → direkt auf die Scanner-Seite
+  //  - >1 Event oder Admin → zur allgemeinen Check-In-Seite (Event-Picker)
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const checkInEvents = React.useMemo(() => {
+    if (!currentEmailLc && !isAdmin) return [];
+    return (events || []).filter(e => {
+      if (isAdmin) return true;
+      const orgMatch = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+      const qrMatch = (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+      return orgMatch || qrMatch;
+    });
+  }, [events, currentEmailLc, isAdmin]);
+  const [isMobile, setIsMobile] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  });
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
+    // addEventListener bevorzugt; addListener als Fallback für ältere Browser
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      else mq.removeListener(handler);
+    };
+  }, []);
+  const showCheckInShortcut = isMobile && checkInEvents.length > 0;
+  const goToCheckIn = (): void => {
+    if (checkInEvents.length === 1 && !isAdmin) {
+      navigate('check-in', checkInEvents[0].id);
+    } else {
+      navigate('check-in');
+    }
+  };
+
   return (
     <div className="landing" style={{ position: 'relative' }}>
       <span style={{
@@ -69,6 +113,71 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
+
+      {/* v6.22: Mobile-QR-Shortcut für Organizer/Admin/QR-Scanner.
+          Sprechblase + QR-Icon oben rechts — ein Tap führt direkt zum Check-In
+          (oder zum Event-Picker, wenn mehrere Events eingecheckt werden können). */}
+      {showCheckInShortcut && (
+        <div style={{
+          position: 'absolute', top: 30, right: 12, zIndex: 10,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <button
+            type="button"
+            onClick={goToCheckIn}
+            style={{
+              background: 'var(--dex-green)', color: '#fff',
+              padding: '8px 12px', borderRadius: 12,
+              fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.2,
+              border: 'none', cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(134,188,37,0.28)',
+              position: 'relative',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+            aria-label={locale === 'de' ? 'Zum Check-in' : 'Go to check-in'}
+          >
+            {locale === 'de' ? "Geht's zum Check-in" : 'Go to check-in'}
+            {/* Kleines Dreieck als Sprechblasen-Spitze */}
+            <span style={{
+              position: 'absolute', top: '50%', right: -6, transform: 'translateY(-50%)',
+              width: 0, height: 0,
+              borderTop: '6px solid transparent',
+              borderBottom: '6px solid transparent',
+              borderLeft: '6px solid var(--dex-green)',
+            }} />
+          </button>
+          <button
+            type="button"
+            onClick={goToCheckIn}
+            style={{
+              background: 'var(--dex-green)', color: '#fff',
+              border: 'none', borderRadius: '50%',
+              width: 44, height: 44,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(134,188,37,0.35)',
+              padding: 0,
+              flexShrink: 0,
+            }}
+            aria-label={locale === 'de' ? 'Zum Check-in' : 'Go to check-in'}
+          >
+            {/* Inline QR-Icon (quadratisches QR-Muster) */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+              <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+              <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2" />
+              <rect x="6" y="6" width="1.5" height="1.5" fill="currentColor" />
+              <rect x="17" y="6" width="1.5" height="1.5" fill="currentColor" />
+              <rect x="6" y="17" width="1.5" height="1.5" fill="currentColor" />
+              <rect x="14" y="14" width="2" height="2" fill="currentColor" />
+              <rect x="18" y="14" width="2" height="2" fill="currentColor" />
+              <rect x="14" y="18" width="2" height="2" fill="currentColor" />
+              <rect x="18" y="18" width="2" height="2" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      )}
       <div className="landing__hero">
         <div className="landing__card" style={{ position: 'relative' }}>
           {/* Sprachauswahl - oben links in der weissen Card */}
