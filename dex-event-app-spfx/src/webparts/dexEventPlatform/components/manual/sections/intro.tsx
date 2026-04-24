@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { ManualSection } from '../types';
-import { Callout, DemoEventCard } from '../ManualMockups';
+import { Callout } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import Header from '../../Header';
+import LandingPage from '../../LandingPage';
 
 export function introSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -59,7 +62,17 @@ export function introSection(locale: 'de' | 'en'): ManualSection {
                   : 'Events can be location-scoped. An event visible only for Cologne and Düsseldorf won\'t show up if your office is Berlin. Events without a location filter are visible to everyone.'}
               </>
             ),
-            mockup: <DemoEventCard />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Landing-Page der DEX-App (echte Ansicht)' : 'Landing page of the DEX app (real view)'}
+                role="User"
+                width={430}
+                device="phone"
+              >
+                <Header />
+                <LandingPage />
+              </AppPreview>
+            ),
           },
           {
             number: 3,
