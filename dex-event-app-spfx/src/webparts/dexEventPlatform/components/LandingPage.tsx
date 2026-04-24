@@ -191,9 +191,13 @@ export default function LandingPage(): React.ReactElement {
             }}
           >
             {locale === 'de' ? 'Built by ' : 'Built by '}
-            <strong style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
-              Eike Brenneisen, Andreas Enk {locale === 'de' ? 'und' : 'and'} Nils Felten
-            </strong>
+            <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
+              <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" role={locale === 'de' ? 'Senior Consultant · Köln' : 'Senior Consultant · Cologne'} />
+              {', '}
+              <DevName name="Andreas Enk" email="aenk@deloitte.de" role={locale === 'de' ? 'Manager · München' : 'Manager · Munich'} />
+              {' '}{locale === 'de' ? 'und' : 'and'}{' '}
+              <DevName name="Nils Felten" email="nifelten@deloitte.de" role={locale === 'de' ? 'Consultant · Köln' : 'Consultant · Cologne'} />
+            </span>
           </div>
         </div>
       </div>
@@ -302,5 +306,59 @@ export default function LandingPage(): React.ReactElement {
         </div>
       )}
     </div>
+  );
+}
+
+// v6.36: Entwickler-Name mit Hover-Popover auf der LandingPage.
+// Analog zu OrganizerList: bei Hover erscheint ein kleines Popover mit
+// größerem Foto, Name und Rolle/Standort. SharePoint liefert das Foto
+// via /_layouts/15/userphoto.aspx?accountname=<email>&size=L.
+function DevName(props: { name: string; email: string; role: string }): React.ReactElement {
+  const [hovered, setHovered] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+  return (
+    <span
+      style={{ position: 'relative', cursor: 'default', display: 'inline-block' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{ textDecoration: hovered ? 'underline' : 'none', textDecorationColor: 'var(--dex-green)' }}>
+        {props.name}
+      </span>
+      {hovered && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#fff', borderRadius: 10, padding: '10px 12px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          whiteSpace: 'nowrap', zIndex: 20, pointerEvents: 'none',
+          border: '1px solid var(--dex-gray-200)',
+        }}>
+          {failed ? (
+            <span style={{
+              width: 48, height: 48, borderRadius: '50%',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: 'linear-gradient(135deg, #86bc25, #0076a8)',
+              color: '#fff', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0,
+            }}>
+              {props.name.split(' ').map(p => p[0]).slice(0, 2).join('')}
+            </span>
+          ) : (
+            <img
+              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(props.email)}&size=L`}
+              alt={props.name}
+              onError={() => setFailed(true)}
+              style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--dex-gray-200)' }}
+            />
+          )}
+          <span style={{ textAlign: 'left', fontSize: '0.82rem', lineHeight: 1.35 }}>
+            <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{props.name}</span>
+            <span style={{ display: 'block', color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{props.role}</span>
+            <span style={{ display: 'block', color: 'var(--dex-gray-400)', fontSize: '0.72rem' }}>{props.email}</span>
+          </span>
+        </span>
+      )}
+    </span>
   );
 }

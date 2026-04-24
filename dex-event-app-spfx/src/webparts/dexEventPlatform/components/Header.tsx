@@ -134,7 +134,7 @@ export default function Header(): React.ReactElement {
             }} />
           </button>
         )}
-        {canCheckIn && (
+        {canCheckIn && !(isLanding && !isMobile) && (
           <button
             className="header-icon-btn"
             onClick={() => navigate('check-in')}
@@ -149,9 +149,19 @@ export default function Header(): React.ReactElement {
           className="header-icon-btn"
           onClick={() => navigate('manual')}
           title={t('header.manual')}
-          style={currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : {}}
+          style={{
+            ...(currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : {}),
+            // v6.36: Auf Desktop zusätzlich den Text "Handbuch" / "Handbook"
+            // neben dem Icon, weil das Icon allein nicht selbsterklärend ist.
+            ...(isMobile ? {} : { width: 'auto', padding: '0 12px', gap: 8 }),
+          }}
         >
           <Book size={20} />
+          {!isMobile && (
+            <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+              {t('header.manual')}
+            </span>
+          )}
         </button>
         {!isLanding && (
           <button

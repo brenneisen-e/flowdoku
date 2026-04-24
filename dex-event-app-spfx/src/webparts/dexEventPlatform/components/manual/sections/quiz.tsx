@@ -2,8 +2,13 @@ import * as React from 'react';
 import { ManualSection } from '../types';
 import {
   DemoQuizQuestion, DemoQuizEditor, DemoQuizResult, DemoQuizScoreboard, DemoQuizStart,
-  DemoWizardProgress, Callout, ClickPath, NumberedList,
+  Callout, NumberedList,
 } from '../ManualMockups';
+import { AppPreview } from '../previews/AppPreview';
+import { DEMO_EVENT_ID } from '../previews/PreviewProviders';
+import Header from '../../Header';
+import EventCreationPage from '../../EventCreationPage';
+import AdminPage from '../../AdminPage';
 
 export function quizSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
@@ -38,10 +43,18 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             mockup: (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <DemoWizardProgress activeStep={6} />
-                <ClickPath label={isDe ? 'Schritt 7' : 'Step 7'} label2={isDe ? 'Frage hinzufügen' : 'Add question'} />
-              </div>
+              <AppPreview
+                label={isDe ? 'Wizard Schritt 7: Fun-Zone (echte Ansicht)' : 'Wizard step 7: Fun-Zone (real view)'}
+                role="Organizer"
+                page="edit-event"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+                initialStep={6}
+              >
+                <Header />
+                <EventCreationPage />
+              </AppPreview>
             ),
           },
           {
@@ -241,7 +254,19 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
                   : 'In the event admin center you\'ll find a "Quiz results" tab at the top. Below it you see a sorted leaderboard, total participants, average score, and range.'}
               </>
             ),
-            mockup: <ClickPath label="Admin Center" label2={isDe ? 'Quiz-Tab' : 'Quiz tab'} />,
+            mockup: (
+              <AppPreview
+                label={isDe ? 'Admin Center → Quiz-Tab (echte Ansicht)' : 'Admin center → Quiz tab (real view)'}
+                role="Organizer"
+                page="admin"
+                selectedEventId={DEMO_EVENT_ID}
+                width={1024}
+                device="laptop"
+              >
+                <Header />
+                <AdminPage />
+              </AppPreview>
+            ),
           },
           {
             number: 2,
