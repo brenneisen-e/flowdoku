@@ -278,7 +278,7 @@ function QuizPlayer({
           }}
         >
           <Icon iconName="Game" style={{ fontSize: 20 }} />
-          Fun-Zone: {resumeLabel}
+          {resumeLabel}
         </button>
       </div>
     );
