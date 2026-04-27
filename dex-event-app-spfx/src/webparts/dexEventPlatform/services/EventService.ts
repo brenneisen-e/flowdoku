@@ -237,6 +237,9 @@ export interface CustomField {
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */
   helpText?: string;
+  /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
+   *  einen der `values` als Antwort hat. */
+  showIf?: { fieldId: string; values: string[] };
   /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
    * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
   externalLinks?: Array<{ label: string; url: string }>;

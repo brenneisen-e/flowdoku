@@ -13,6 +13,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { ManualSection, ManualPerspectiveBlock, ManualStep, ManualPerspective } from './types';
 import { PlaceholderShot } from './ManualMockups';
 import { getManualSections } from './handbookContent';
+import { APP_VERSION } from '../../version';
 
 const PERSPECTIVE_LABEL: Record<ManualPerspective, { de: string; en: string }> = {
   user: { de: 'Als User:in', en: 'As User' },
@@ -108,7 +109,7 @@ export default function ManualPage(): React.ReactElement {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', gap: 24, padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Sidebar */}
       <aside style={{ position: 'sticky', top: 72, alignSelf: 'start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
             {isDe ? 'Handbuch' : 'Handbook'}
           </h2>
@@ -133,10 +134,13 @@ export default function ManualPage(): React.ReactElement {
             >EN</button>
           </div>
         </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 14 }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
           {isDe
             ? `Rolle: ${currentUserRole} · ${visibleSections.length} Kapitel`
             : `Role: ${currentUserRole} · ${visibleSections.length} chapters`}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginBottom: 14 }}>
+          {isDe ? 'App-Version' : 'App version'} <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{APP_VERSION}</strong>
         </div>
         <input
           className="form-input"

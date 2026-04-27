@@ -354,6 +354,18 @@ export default function RegistrationPage(): React.ReactElement {
             if (eventSpecific['b2run_infoservice'] !== 'true') return false;
             return !eventSpecific[f.id]?.trim();
           }
+          // v7.21: Felder mit nicht erfuellter Sichtbarkeitsbedingung sind
+          // ausgeblendet und duerfen die Validation nicht blockieren.
+          if (f.showIf && f.showIf.fieldId) {
+            const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+            const answers = !raw
+              ? []
+              : raw.indexOf(' | ') >= 0
+                ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+                : [raw];
+            const conditionMet = answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+            if (!conditionMet) return false;
+          }
           if (!f.required) return false;
           return f.type === 'checkbox'
             ? eventSpecific[f.id] !== 'true'
@@ -1152,6 +1164,18 @@ export default function RegistrationPage(): React.ReactElement {
                 .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
                 // v6.15: Startblock ausblenden, wenn er automatisch aus dem Starter-Typ abgeleitet wird
                 .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+                // v7.21: Sichtbarkeitsbedingung — nur anzeigen wenn das Quell-Feld
+                // einen der konfigurierten Werte als Antwort hat. Multi-Select-Quelle:
+                // " | "-getrennt; reicht wenn EIN Wert in values vorkommt.
+                .filter(f => {
+                  if (!f.showIf || !f.showIf.fieldId) return true;
+                  const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+                  if (!raw) return false;
+                  const answers = raw.indexOf(' | ') >= 0
+                    ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+                    : [raw];
+                  return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+                })
                 .map(fRaw => {
                   // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
                   // Mobilnummer Pflicht.

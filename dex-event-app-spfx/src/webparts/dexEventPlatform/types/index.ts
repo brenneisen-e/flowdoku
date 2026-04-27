@@ -119,6 +119,13 @@ export interface EventSpecificField {
    *  in `eventSpecificData[id]` als " | "-getrennter String gespeichert (Pipe
    *  mit Spaces, damit Optionen mit Komma im Label nicht zerrissen werden). */
   multi?: boolean;
+  /** v7.21: Sichtbarkeitsbedingung. Wenn gesetzt, wird das Feld nur dann
+   *  angezeigt, wenn das Quell-Feld (`fieldId`) einen der `values` als
+   *  Antwort hat. Beispiel: Roommate-Feld nur sichtbar wenn Zimmerart =
+   *  "Doppelzimmer". Bei Multi-Select-Quelle reicht es, wenn EINE der
+   *  Quell-Antworten in `values` enthalten ist. Bei Checkbox-Quelle ist
+   *  values = ['true'] oder ['false']. */
+  showIf?: { fieldId: string; values: string[] };
 }
 
 export interface Registration {
