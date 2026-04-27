@@ -3196,12 +3196,12 @@ export default function EventCreationPage(): React.ReactElement {
                           fontWeight: 600,
                         }}
                       >
-                        <option value="text">Text</option>
-                        <option value="select">Dropdown</option>
-                        <option value="number">Zahl</option>
-                        <option value="checkbox">Checkbox</option>
-                        <option value="user">Person (Suche)</option>
-                        <option value="roommate">Roommate (Doppelzimmer)</option>
+                        <option value="text">{isDe ? 'Text' : 'Text'}</option>
+                        <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
+                        <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
+                        <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                        <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
+                        <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
                       </select>
                       <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
@@ -3217,17 +3217,19 @@ export default function EventCreationPage(): React.ReactElement {
                     {field.type === 'select' && (
                       <div style={{ marginLeft: 32, paddingTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>Dropdown-Optionen:</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{isDe ? 'Dropdown-Optionen:' : 'Dropdown options:'}</div>
                           <label
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer', color: 'var(--dex-gray-700)' }}
-                            title="Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien)."
+                            title={isDe
+                              ? 'Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien).'
+                              : 'When enabled, attendees can select multiple options at the same time (e.g. multiple allergies).'}
                           >
                             <input
                               type="checkbox"
                               checked={!!field.multi}
                               onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
                             />
-                            Mehrfachauswahl erlauben
+                            {isDe ? 'Mehrfachauswahl erlauben' : 'Allow multiple selection'}
                           </label>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
