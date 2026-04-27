@@ -32,19 +32,59 @@ interface AppPreviewProps {
   /** Nur für EventCreationPage-Previews: initialen Wizard-Schritt (0..6)
    *  gezielt setzen, damit das Handbuch pro Step den passenden Inhalt zeigt. */
   initialStep?: number;
+  /** v7.7: Wenn der User im Modal auf Handy/Laptop umschalten kann, wird diese
+   *  Breite fuer die Mobile-Variante genutzt (default 412 = Galaxy S23). Die
+   *  laptopWidth = Hauptprop `width`. So kann jede Sektion im Handbuch beide
+   *  Ansichten anbieten ohne zwei AppPreviews nebeneinander einzublenden. */
+  mobileWidth?: number;
+  /** v7.7: Wenn true, blendet AppPreview im Modal-Header einen Toggle ein
+   *  (Laptop ⇄ Handy). Default: true sobald `width >= 1024` (also wenn die
+   *  Standard-Ansicht Desktop ist und es Sinn macht, zusaetzlich Mobile zu
+   *  zeigen). Auf reinen Handy-Sektionen (width <= 768) bleibt der Toggle aus,
+   *  weil das Feature in dem Kontext eh nur mobil existiert. */
+  allowDeviceToggle?: boolean;
   children: React.ReactNode;
 }
 
 export function AppPreview(props: AppPreviewProps): React.ReactElement {
   const [open, setOpen] = React.useState(false);
-  const width = props.width || 430;
+  const propWidth = props.width || 430;
+  const mobileWidth = props.mobileWidth || 412;
+  // v7.7: Default-Mode aus der Width-Prop ableiten — <=768 ist Handy-Default
+  // (z.B. Check-In-Scanner, Landing-Bubble), >768 ist Laptop-Default
+  // (Event-Wizard, Admin-Center, etc.). Ueberschreibbar durch props.device.
+  const initialMode: 'phone' | 'laptop' = props.device === 'phone'
+    ? 'phone'
+    : props.device === 'laptop'
+      ? 'laptop'
+      : (propWidth <= 768 ? 'phone' : 'laptop');
+  const [mode, setMode] = React.useState<'phone' | 'laptop'>(initialMode);
+  // Bei jedem neuen Open auf den Initial-Mode der Section zurueckspringen,
+  // damit der Toggle-Zustand nicht zwischen Sektionen rueberblutet.
+  React.useEffect(() => {
+    if (open) setMode(initialMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  // Toggle nur sinnvoll, wenn die Section eine Desktop-Variante hat (also
+  // propWidth >= 1024 oder explizit allowDeviceToggle gesetzt). Auf reinen
+  // Mobile-Sections (Bubble, Scanner) bleibt er aus — dort wuerde das
+  // Desktop-Layout das Feature ja gar nicht zeigen.
+  const allowDeviceToggle = props.allowDeviceToggle !== undefined
+    ? props.allowDeviceToggle
+    : (propWidth >= 1024 || props.device === 'laptop');
+  // Aktuelle Render-Breite: im Phone-Mode = mobileWidth, im Laptop-Mode = propWidth.
+  const width = mode === 'phone' ? mobileWidth : propWidth;
   // v6.30: Mobile-Flag SYNCHRON setzen (nicht erst im useEffect), damit der
   // Header im Preview schon beim ersten Render die Mobile-Variante rendert.
   // useState-Init in <Header> liest das Flag sonst BEVOR unser useEffect
-  // läuft, und die Check-In-Bubble fehlt.
-  if (open && width <= 768 && typeof window !== 'undefined') {
+  // läuft, und die Check-In-Bubble fehlt. Greift jetzt auf `mode` zurueck,
+  // damit auch ein Toggle mid-modal die Mobile-Variante des Headers triggert.
+  if (open && mode === 'phone' && typeof window !== 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__dexForceMobile = true;
+  } else if (open && mode === 'laptop' && typeof window !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    try { delete (window as any).__dexForceMobile; } catch { /* */ }
   }
   // initialStep für EventCreationPage — genauso synchron wie das Mobile-Flag,
   // damit useState(() => ...) den Wert beim ersten Render lesen kann.
@@ -58,9 +98,12 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
   // window.matchMedia liest sonst die Desktop-Breite des Handbuchs.
   React.useEffect(() => {
     if (!open) return;
-    if (width <= 768) {
+    if (mode === 'phone') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__dexForceMobile = true;
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { delete (window as any).__dexForceMobile; } catch { /* */ }
     }
     // v6.29: Globaler Style-Override, solange das Preview-Modal offen ist.
     // Grund: die echte App nutzt clamp(..vw, ..vh..) an vielen Stellen, das
@@ -87,7 +130,7 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
       const el = document.getElementById('dex-preview-style-override');
       if (el) el.remove();
     };
-  }, [open, width]);
+  }, [open, mode, width]);
   return (
     <>
       <button
@@ -143,11 +186,65 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
               background: '#fff',
             }}>
               <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{props.label}</div>
-              <button
-                type="button" onClick={() => setOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--dex-gray-500)' }}
-                aria-label="Schließen"
-              >×</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {allowDeviceToggle && (
+                  <div
+                    role="group"
+                    aria-label="Geräte-Ansicht umschalten"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      background: 'var(--dex-gray-100, #f3f4f6)',
+                      borderRadius: 999, padding: 2, gap: 2,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setMode('laptop')}
+                      title="Laptop-Ansicht"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', borderRadius: 999,
+                        border: 'none', cursor: 'pointer', fontSize: '0.75rem',
+                        fontWeight: 600, fontFamily: 'inherit',
+                        background: mode === 'laptop' ? '#fff' : 'transparent',
+                        color: mode === 'laptop' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+                        boxShadow: mode === 'laptop' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="18" height="12" x="3" y="4" rx="2" ry="2" /><line x1="2" x2="22" y1="20" y2="20" />
+                      </svg>
+                      Laptop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('phone')}
+                      title="Handy-Ansicht"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', borderRadius: 999,
+                        border: 'none', cursor: 'pointer', fontSize: '0.75rem',
+                        fontWeight: 600, fontFamily: 'inherit',
+                        background: mode === 'phone' ? '#fff' : 'transparent',
+                        color: mode === 'phone' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+                        boxShadow: mode === 'phone' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" />
+                      </svg>
+                      Handy
+                    </button>
+                  </div>
+                )}
+                <button
+                  type="button" onClick={() => setOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--dex-gray-500)' }}
+                  aria-label="Schließen"
+                >×</button>
+              </div>
             </div>
             {/* Scrollable Inner-Frame simuliert Mobile-/Desktop-Viewport.
                 Unter 768px zeichnen wir einen stilisierten Handy-Rahmen mit
@@ -158,8 +255,12 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
               overflowX: 'auto', background: 'var(--dex-gray-100, #f5f5f5)',
             }}>
               {(() => {
-                const device: 'phone' | 'laptop' | 'plain' = props.device
-                  || (width <= 768 ? 'phone' : 'laptop');
+                // v7.7: device folgt dem dynamischen `mode` (vom Toggle), damit
+                // ein Klick auf Laptop/Handy die Hülle live tauscht. Plain bleibt
+                // explizit über props.device steuerbar.
+                const device: 'phone' | 'laptop' | 'plain' = props.device === 'plain'
+                  ? 'plain'
+                  : mode;
                 const innerFrame = (
                   <div className="dex-preview-scope" style={{ pointerEvents: 'none', userSelect: 'text', width: '100%' }}>
                     <PreviewContextStack role={props.role} page={props.page} selectedEventId={props.selectedEventId} extraEvents={props.extraEvents}>
