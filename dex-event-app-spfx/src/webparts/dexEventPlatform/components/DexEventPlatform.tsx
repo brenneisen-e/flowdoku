@@ -40,6 +40,32 @@ function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
+
+  // v7.5: Boot-Progress. Wir mappen die zwei Lade-Phasen auf Prozentwerte
+  // und animieren sanft dazwischen, damit der User auf der Landing-Page
+  // den Fortschritt nicht nur als unbestimmten Balken, sondern konkret
+  // als "X %" sieht. Die Phasen:
+  //   - Rollen + Events laden noch: Target 30%
+  //   - Rollen fertig, Events laden: Target 70%
+  //   - alles fertig: Target 100% (Loader verschwindet sowieso)
+  const [bootProgress, setBootProgress] = React.useState<number>(8);
+  React.useEffect(() => {
+    let target: number;
+    if (isRolesLoading && isEventsLoading) target = 30;
+    else if (isRolesLoading) target = 50;
+    else if (isEventsLoading) target = 75;
+    else target = 100;
+    // Sanft hochzählen alle 60ms in Richtung Target — fühlt sich
+    // weniger ruckelig an als ein direkter setBootProgress(target).
+    const id = setInterval(() => {
+      setBootProgress(prev => {
+        if (prev >= target) return target;
+        const delta = Math.max(1, Math.round((target - prev) * 0.18));
+        return Math.min(target, prev + delta);
+      });
+    }, 60);
+    return () => clearInterval(id);
+  }, [isRolesLoading, isEventsLoading]);
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
@@ -210,21 +236,33 @@ function AppContent(): React.ReactElement {
                   Jeden Moment geht&apos;s los…
                 </p>
               </div>
-              {/* Indeterminate-Progress-Bar (v6.29). Ersetzt den alten
-                  "Lade Informationen…"-Text durch eine animierte Leiste —
-                  signalisiert visuell dass im Hintergrund etwas passiert. */}
+              {/* Determinate-Progress-Bar (v7.5). Die Phasen Rollen-Load
+                  und Events-Load werden auf Prozentwerte gemappt; der Wert
+                  zählt sanft in Richtung des aktuellen Phasen-Targets,
+                  damit der User auf einen Blick sieht "wie weit die App ist". */}
               <div style={{
                 width: 'min(320px, 80%)',
-                height: 6, borderRadius: 3,
-                background: 'var(--dex-gray-200, #e5e5e5)',
-                overflow: 'hidden', position: 'relative',
-                marginTop: 8,
+                marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6,
               }}>
                 <div style={{
-                  position: 'absolute', top: 0, bottom: 0, width: '40%',
-                  background: 'linear-gradient(90deg, transparent, var(--dex-green, #86bc25), transparent)',
-                  animation: 'dexProgressSlide 1.4s ease-in-out infinite',
-                }} />
+                  height: 6, borderRadius: 3,
+                  background: 'var(--dex-gray-200, #e5e5e5)',
+                  overflow: 'hidden', position: 'relative',
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 0, bottom: 0, left: 0,
+                    width: `${bootProgress}%`,
+                    background: 'var(--dex-green, #86bc25)',
+                    transition: 'width 240ms ease-out',
+                    borderRadius: 3,
+                  }} />
+                </div>
+                <div style={{
+                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
+                  textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {bootProgress} %
+                </div>
               </div>
             </div>
           </div>

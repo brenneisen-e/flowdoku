@@ -12,7 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -1214,7 +1214,10 @@ export default function EventCreationPage(): React.ReactElement {
       // Outlook-spezifisches Logo direkt in den Body einbetten (Flow ersetzt {{ORB_URL}}
       // nur mit EmailImageBase64 — das ist fuer Mails. Fuer Outlook haben wir ein eigenes
       // Logo, also hier resolven).
-      updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '');
+      // v7.5: Fallback auf den globalen DEX-Orb-Cache, wenn der Organizer kein
+      // event-spezifisches Outlook-Logo hochgeladen hat — sonst rendert
+      // <img src=""> ein leeres Bildkasten und der Termin sieht halbfertig aus.
+      updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || getCachedOrbBase64() || '');
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -1447,7 +1450,9 @@ export default function EventCreationPage(): React.ReactElement {
           const resolvedHeading = outlookHeading ? replacePlaceholders(outlookHeading, vars) : title;
           const resolvedSub = outlookSubheading ? replacePlaceholders(outlookSubheading, vars) : undefined;
           const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub);
-          return wrapped.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '');
+          // v7.5: gleicher Fallback wie im Update-Pfad — globaler DEX-Orb,
+          // damit der Termin nie ohne Hero-Bild rauskommt.
+          return wrapped.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || getCachedOrbBase64() || '');
         })(),
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
