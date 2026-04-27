@@ -2041,6 +2041,11 @@ export default function AdminPage(): React.ReactElement {
                     if (field.type === 'checkbox') {
                       const truthy = val === true || val === 'true' || val === 1 || val === '1';
                       display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
+                    } else if (field.type === 'select' && field.multi) {
+                      // v7.11: Mehrfachauswahl wird " | "-getrennt gespeichert.
+                      // In der Admin-Tabelle als Komma-Liste anzeigen, damit
+                      // der Spalten-Inhalt sauberer scanbar ist.
+                      display = String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', ');
                     } else {
                       display = String(val);
                     }

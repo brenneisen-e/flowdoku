@@ -151,6 +151,9 @@ interface CustomFieldInput {
   options: string[];
   visible: boolean;
   externalLinks?: Array<{ label: string; url: string }>;
+  /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
+   *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
+  multi?: boolean;
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -538,6 +541,9 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.eventSpecificFields.map(f => ({
       id: f.id, label: f.label, type: f.type, required: f.required,
       options: f.options ? [...f.options] : [], visible: true,
+      // v7.11: multi-Flag aus dem persistierten Feld uebernehmen, damit der
+      // Editor den Status "Mehrfachauswahl erlauben" korrekt anzeigt.
+      ...(f.multi ? { multi: true } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -1179,7 +1185,7 @@ export default function EventCreationPage(): React.ReactElement {
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
             id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
           }))),
       };
 
@@ -1315,7 +1321,7 @@ export default function EventCreationPage(): React.ReactElement {
                 id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 spInternalName: (f as any).spInternalName || '',
-                ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+                ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
               }));
             const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
               isB2Run: isB2runTemplate,
@@ -1491,7 +1497,7 @@ export default function EventCreationPage(): React.ReactElement {
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
             id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean) } : {}),
+            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
           })),
       });
 
@@ -1659,7 +1665,17 @@ export default function EventCreationPage(): React.ReactElement {
                 customFields.filter(f => f.label).map(field => (
                   <div className="form-group" key={field.id}>
                     <label className="form-label">{field.required && <span className="required">*</span>}{field.label}</label>
-                    {field.type === 'select' ? (
+                    {field.type === 'select' && field.multi ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8, border: '1px solid var(--dex-gray-200)', borderRadius: 6, background: '#fff' }}>
+                        {field.options.map(o => o.trim()).filter(Boolean).map(opt => (
+                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                            <input type="checkbox" disabled />
+                            <span>{opt}</span>
+                          </label>
+                        ))}
+                        <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>Mehrere Auswahl möglich</span>
+                      </div>
+                    ) : field.type === 'select' ? (
                       <select className="form-select" disabled><option>Please select</option>{field.options.map(o => o.trim()).filter(Boolean).map(opt => <option key={opt}>{opt}</option>)}</select>
                     ) : field.type === 'checkbox' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
@@ -3181,7 +3197,20 @@ export default function EventCreationPage(): React.ReactElement {
                     {/* Dropdown-Optionen als Tag-Liste */}
                     {field.type === 'select' && (
                       <div style={{ marginLeft: 32, paddingTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 8, fontWeight: 600 }}>Dropdown-Optionen:</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>Dropdown-Optionen:</div>
+                          <label
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer', color: 'var(--dex-gray-700)' }}
+                            title="Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien)."
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!field.multi}
+                              onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
+                            />
+                            Mehrfachauswahl erlauben
+                          </label>
+                        </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                           {/* Alle Optionen aus dem Array rendern (auch leere Slots) */}
                           {(field.options || []).map((opt, optIdx) => (

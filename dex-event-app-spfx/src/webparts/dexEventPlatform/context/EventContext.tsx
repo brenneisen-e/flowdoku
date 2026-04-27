@@ -343,6 +343,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         helpText: '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         spInternalName: (cf as any).spInternalName || '',
+        // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        multi: !!(cf as any).multi,
+        // externalLinks ebenfalls durchreichen, damit AGB-Links fuer B2Run-Datenschutz
+        // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
+        // RegistrationPage abgesichert).
+        externalLinks: cf.externalLinks,
       })),
     };
   }
