@@ -234,6 +234,9 @@ export interface CustomField {
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;
+  /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
+   *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */
+  helpText?: string;
   /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
    * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
   externalLinks?: Array<{ label: string; url: string }>;
