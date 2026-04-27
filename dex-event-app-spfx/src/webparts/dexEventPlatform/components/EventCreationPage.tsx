@@ -1194,16 +1194,27 @@ export default function EventCreationPage(): React.ReactElement {
         StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
       };
-      const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, outlookVars) : '';
+      // v7.4: Auch wenn der User keinen Outlook-Body eingegeben hat, IMMER
+      // das Outlook-Mail-Layout (buildOutlookBody) verwenden + einen
+      // Default-Body einsetzen, der den Empfänger an die Organizer
+      // verweist. Sonst kommt der Termin ganz ohne Body — wirkt
+      // unprofessionell und der Teilnehmer hat keinen Ansprechpartner
+      // bei organisatorischen Rückfragen.
+      const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
+      const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const defaultOutlookBody = emailLanguage === 'EN'
+        ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p><p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
+        : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p><p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+      const resolvedBody = outlookBody
+        ? replacePlaceholders(outlookBody, outlookVars)
+        : defaultOutlookBody;
       const resolvedOlHeading = outlookHeading ? replacePlaceholders(outlookHeading, outlookVars) : title;
       const resolvedOlSub = outlookSubheading ? replacePlaceholders(outlookSubheading, outlookVars) : undefined;
-      const wrappedOutlook = resolvedBody ? buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub) : '';
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub);
       // Outlook-spezifisches Logo direkt in den Body einbetten (Flow ersetzt {{ORB_URL}}
       // nur mit EmailImageBase64 — das ist fuer Mails. Fuer Outlook haben wir ein eigenes
       // Logo, also hier resolven).
-      updates['OutlookBody'] = wrappedOutlook
-        ? wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '')
-        : '';
+      updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || '');
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -1415,7 +1426,10 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: organizerEmails.join(';'),
         outlookEventId: '',
         outlookBody: (() => {
-          if (!outlookBody) return '';
+          // v7.4: Auch wenn der User keinen Outlook-Body geschrieben hat,
+          // immer das Outlook-Layout mit einem Default-Body erzeugen,
+          // der auf den Organizer für organisatorische Fragen verweist
+          // (analog zur Anmeldebestätigungs-Mail).
           const vars = {
             EventTitle: title,
             Organizer: organizer,
@@ -1424,7 +1438,12 @@ export default function EventCreationPage(): React.ReactElement {
             StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           };
-          const resolvedBody = replacePlaceholders(outlookBody, vars);
+          const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
+          const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const defaultBody = emailLanguage === 'EN'
+            ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p><p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
+            : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p><p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+          const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, vars) : defaultBody;
           const resolvedHeading = outlookHeading ? replacePlaceholders(outlookHeading, vars) : title;
           const resolvedSub = outlookSubheading ? replacePlaceholders(outlookSubheading, vars) : undefined;
           const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub);
