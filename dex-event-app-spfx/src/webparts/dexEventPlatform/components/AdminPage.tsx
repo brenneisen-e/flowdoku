@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
@@ -40,6 +40,102 @@ function getStatusColor(status: string): string {
     case 'Cancelled': return 'var(--dex-red)';
     default: return 'var(--dex-orange)';
   }
+}
+
+// v7.6: Wiederverwendbare Action-Kachel fuer den Aktionen-Bereich.
+// Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
+// Deloitte-Gruen. Unterstuetzt Button (onClick), Link (href, oeffnet in neuem
+// Tab) und passive Wrapper (children-Mode fuer Spezialfaelle wie das
+// Excel-Dropdown). Badge zeigt zwingend "Organizer" (gruener Tint) oder
+// "Nur Admin" (oranger Tint), damit auf einen Blick klar ist, fuer welche
+// Rolle die Aktion gedacht ist.
+interface ActionTileProps {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  badge: 'organizer' | 'admin';
+  onClick?: () => void;
+  href?: string;
+  disabled?: boolean;
+  busy?: boolean;
+  result?: string | null;
+  resultIsError?: boolean;
+  // children: zusaetzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
+  // gerendert wird (z.B. das Excel-Dropdown-Menue).
+  children?: React.ReactNode;
+}
+function ActionTile(props: ActionTileProps): React.ReactElement {
+  const [hover, setHover] = React.useState(false);
+  const isInteractive = !props.disabled && !props.busy;
+  const greenAccent = isInteractive && hover;
+  const borderColor = greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)';
+  const bg = greenAccent ? 'rgba(134,188,37,0.06)' : '#fff';
+  const iconColor = greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
+  const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
+  const badgeColors = props.badge === 'admin'
+    ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
+    : { bg: 'rgba(134,188,37,0.12)', fg: 'var(--dex-green-dark, #4a7c1f)' };
+  const sharedStyle: React.CSSProperties = {
+    textAlign: 'left', textDecoration: 'none', color: 'inherit',
+    background: bg, border: `1px solid ${borderColor}`,
+    borderRadius: 12, padding: 14,
+    cursor: isInteractive ? 'pointer' : 'not-allowed',
+    opacity: isInteractive ? 1 : 0.55,
+    display: 'flex', flexDirection: 'column', gap: 8,
+    fontFamily: 'inherit', fontSize: 'inherit',
+    transition: 'all 0.15s ease',
+    boxShadow: greenAccent ? '0 4px 12px rgba(134,188,37,0.18)' : 'none',
+  };
+  const inner = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: iconColor, transition: 'color 0.15s ease' }}>
+          {props.icon}
+          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800, #1f2937)' }}>{props.title}</span>
+        </span>
+        <span style={{
+          fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
+          background: badgeColors.bg, color: badgeColors.fg, fontWeight: 600,
+          whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
+        }}>{badgeLabel}</span>
+      </div>
+      <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--dex-gray-600, #4b5563)', lineHeight: 1.45 }}>{props.desc}</p>
+      {props.result && (
+        <p style={{
+          margin: 0, fontSize: '0.72rem',
+          color: props.resultIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)',
+          fontStyle: 'italic',
+        }}>{props.result}</p>
+      )}
+      {props.children}
+    </>
+  );
+  if (props.href) {
+    return (
+      <a
+        href={props.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={sharedStyle}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!isInteractive}
+      onClick={props.onClick}
+      style={sharedStyle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      {inner}
+    </button>
+  );
 }
 
 export default function AdminPage(): React.ReactElement {
@@ -837,32 +933,47 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Aktionen-Card (Edit-Event, Mails versenden, Export, Decline-Check etc.)
-            nur für Admins/Organizer sichtbar. QR-Scanner sehen stattdessen nur die
-            Event-Info + KPIs + "QR-Code scannen"-Button (siehe unten). */}
+        {/* v7.6: Aktionen-Bereich als Kachel-Grid (auto-fit ab 220px, max 4
+            pro Zeile auf Desktop). Default Grau, beim Hover Deloitte-Gruen mit
+            leichtem Schatten. Jede Kachel zeigt SVG-Icon + Titel + ausfuehrliche
+            Beschreibung + Rollen-Badge ("Organizer" oder "Nur Admin"). Die
+            ehemals in der TN-Toolbar versteckten Wartungs-Aktionen (IDs neu
+            vergeben, Spalten fixen, Felder reparieren, Profile neu laden) sind
+            seit v7.6 hier integriert — der Organizer/Admin findet alle Event-
+            relevanten Aktionen an einem Ort. QR-Scanner sehen den ganzen Block
+            nicht. */}
         {!isQRScannerOnlyForSelected && (
         <div className="card" style={{ padding: 24 }}>
           <h3 className="mb-16">Aktionen</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button
-              className="btn btn-primary btn-block"
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 12,
+          }}>
+            {/* 1. Event bearbeiten */}
+            <ActionTile
+              icon={<Pencil size={18} />}
+              title={t('admin.editbutton') || 'Event bearbeiten'}
+              desc="Öffnet das Event im 7-Schritte-Wizard. Titel, Datum, Ort, Kapazität, Custom-Fields, E-Mail-Templates und Quiz nachträglich anpassen."
+              badge="organizer"
               onClick={() => navigate('edit-event', selectedEvent.id)}
-            >
-              <FileText size={16} /> {t('admin.editbutton')}
-            </button>
-            <a
-              href={selectedEvent.subsiteUrl
-                ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx`
-                : `${siteUrl}/Lists`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-primary btn-block"
-              style={{ textDecoration: 'none', textAlign: 'center' }}
-            >
-              <FileText size={16} /> {t('admin.opensp')}
-            </a>
-            <button
-              className="btn btn-secondary btn-block"
+            />
+
+            {/* 2. Teilnehmerliste in SharePoint öffnen */}
+            <ActionTile
+              icon={<ExternalLink size={18} />}
+              title={t('admin.opensp') || 'In SharePoint öffnen'}
+              desc="Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View)."
+              badge="organizer"
+              href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
+            />
+
+            {/* 3. E-Mail-Adressen kopieren */}
+            <ActionTile
+              icon={<Copy size={18} />}
+              title={copiedEmails ? (t('admin.copied') || 'Kopiert') : (t('admin.copyemails') || 'E-Mails kopieren')}
+              desc="Legt alle aktiven Teilnehmer-Mails (Semikolon-getrennt) in die Zwischenablage. Direkt in Outlook-Empfänger oder externe Tools einfügbar."
+              badge="organizer"
               onClick={() => {
                 const emails = registrations
                   .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
@@ -872,109 +983,36 @@ export default function AdminPage(): React.ReactElement {
                   navigator.clipboard.writeText(emails).then(() => {
                     setCopiedEmails(true);
                     setTimeout(() => setCopiedEmails(false), 2000);
-                  }).catch(() => {
-                    // Fallback: prompt
-                    window.prompt('E-Mail-Adressen kopieren:', emails);
-                  });
+                  }).catch(() => { window.prompt('E-Mail-Adressen kopieren:', emails); });
                 }
               }}
-            >
-              <Copy size={16} /> {copiedEmails ? t('admin.copied') : t('admin.copyemails')}
-            </button>
-            <button
-              className="btn btn-secondary btn-block"
+            />
+
+            {/* 4. Massenmail an alle aktiven Teilnehmer */}
+            <ActionTile
+              icon={<Mail size={18} />}
+              title={t('admin.emailall') || 'Massenmail senden'}
+              desc="Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete)."
+              badge="organizer"
               onClick={() => {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
                 setShowEmailModal(true);
               }}
-            >
-              <Mail size={16} /> {t('admin.emailall')}
-            </button>
-            {isAdmin && (
-              <button
-                className="btn btn-secondary btn-block"
-                disabled={isCheckingDeclines || !selectedEvent}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent) return;
-                  setIsCheckingDeclines(true);
-                  setDeclineResult(null);
-                  setDeclineCopied(false);
-                  try {
-                    const result = await eventServiceRef.getDeclinedAttendees(selectedEvent.id);
-                    if (result.ok) {
-                      // Aktive Teilnehmer: nur Status ∈ {Angemeldet, QR versendet, Eingecheckt}
-                      // werden gegen die Outlook-Decliner gematched. Wer bereits abgemeldet
-                      // oder auf der Warteliste ist, ist hier nicht interessant.
-                      const activeByEmail = new Map<string, SPRegistration>();
-                      for (const r of registrations) {
-                        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
-                          activeByEmail.set(String(r.ParticipantEmail || '').toLowerCase(), r);
-                        }
-                      }
-                      const hits: Array<{ email: string; name: string; reg: SPRegistration }> = [];
-                      for (const d of result.attendees) {
-                        const reg = activeByEmail.get(d.email);
-                        if (reg) hits.push({ email: d.email, name: d.name, reg });
-                      }
-                      setDeclineResult({
-                        declinedAndRegistered: hits,
-                        declinedTotal: result.attendees.length,
-                        error: null,
-                      });
-                      setShowDeclineModal(true);
-                    } else {
-                      // result.message aus EventService hat Prioritaet (enthaelt Diagnose-Infos wie EventId),
-                      // sonst Fallback auf generische Texte pro Reason.
-                      let msg = result.message || 'Unbekannter Fehler beim Lesen des Outlook-Termins.';
-                      if (!result.message) {
-                        if (result.reason === 'no-pointer') {
-                          msg = 'Für dieses Event ist kein Outlook-Termin verknüpft (OutlookEventId / CalendarLink fehlen).';
-                        } else if (result.reason === 'not-found') {
-                          msg = 'Outlook-Termin wurde im Postfach no_reply.events@deloitte.de nicht gefunden.';
-                        } else if (result.reason === 'forbidden') {
-                          msg = 'Graph-API-Zugriff abgelehnt (HTTP 403). Zwei Dinge müssen erfüllt sein:\n\n'
-                            + '1) Tenant-Admin muss die Permission "Calendars.Read.Shared" im SharePoint Admin Center genehmigen:\n'
-                            + '   SharePoint Admin Center → Advanced → API access → Pending requests → "Calendars.Read.Shared" → Approve\n\n'
-                            + '2) Dein User muss Exchange-seitig Lese-Zugriff auf den Kalender von no_reply.events@deloitte.de haben. Der Exchange-Admin führt dafür aus:\n'
-                            + '   Add-MailboxFolderPermission -Identity "no_reply.events@deloitte.de:\\Calendar" -User "<deine-email>" -AccessRights Reviewer\n\n'
-                            + 'Beide Schritte sind einmalig nötig.';
-                        }
-                      }
-                      setDeclineResult({ declinedAndRegistered: [], declinedTotal: 0, error: msg });
-                      setShowDeclineModal(true);
-                    }
-                  } catch (err) {
-                    setDeclineResult({
-                      declinedAndRegistered: [],
-                      declinedTotal: 0,
-                      error: err instanceof Error ? err.message : String(err),
-                    });
-                    setShowDeclineModal(true);
-                  }
-                  setIsCheckingDeclines(false);
-                }}
-              >
-                <Users size={16} /> {isCheckingDeclines ? 'Outlook wird geprüft...' : 'Outlook-Absagen prüfen'}
-              </button>
-            )}
-            {/* Excel-Export-Dropdown: Deloitte-View oder B2Run-View */}
+            />
+
+            {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View) */}
             <div style={{ position: 'relative' }}>
-              <button
-                className="btn btn-block"
+              <ActionTile
+                icon={<Download size={18} />}
+                title="Excel-Export"
+                desc={selectedEvent && selectedEvent.type === 'B2Run'
+                  ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
+                  : "Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events."}
+                badge="organizer"
                 onClick={() => setShowExportMenu(!showExportMenu)}
-                title="Teilnehmerliste als Excel herunterladen"
-                style={{
-                  background: 'var(--dex-green-dark, #4a7c1f)',
-                  color: '#fff',
-                  fontWeight: 600,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}
-              >
-                <Download size={16} /> Download als Excel
-                <span style={{ fontSize: '0.7rem', marginLeft: 4 }}>{showExportMenu ? '▴' : '▾'}</span>
-              </button>
+              />
               {showExportMenu && (
                 <div style={{
                   position: 'absolute', top: '100%', left: 0, right: 0,
@@ -996,7 +1034,7 @@ export default function AdminPage(): React.ReactElement {
                   >
                     <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>Deloitte Felder</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
-                      Alle internen Felder: Name, E-Mail, Department, Location, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.
+                      Alle internen Felder: Name, E-Mail, Department, Standort, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.
                     </div>
                   </button>
                   {selectedEvent && selectedEvent.type === 'B2Run' && (
@@ -1021,6 +1059,310 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               )}
             </div>
+
+            {/* 6. Outlook-Absagen prüfen — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<AlertCircle size={18} />}
+                title={isCheckingDeclines ? 'Outlook wird geprüft…' : 'Outlook-Absagen prüfen'}
+                desc="Liest die Outlook-Absagen aus dem no_reply.events-Postfach und matched sie gegen aktive Teilnehmer. Zeigt, wer den Termin abgelehnt hat, aber noch in der Liste steht."
+                badge="admin"
+                busy={isCheckingDeclines}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent) return;
+                  setIsCheckingDeclines(true);
+                  setDeclineResult(null);
+                  setDeclineCopied(false);
+                  try {
+                    const result = await eventServiceRef.getDeclinedAttendees(selectedEvent.id);
+                    if (result.ok) {
+                      const activeByEmail = new Map<string, SPRegistration>();
+                      for (const r of registrations) {
+                        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+                          activeByEmail.set(String(r.ParticipantEmail || '').toLowerCase(), r);
+                        }
+                      }
+                      const hits: Array<{ email: string; name: string; reg: SPRegistration }> = [];
+                      for (const d of result.attendees) {
+                        const reg = activeByEmail.get(d.email);
+                        if (reg) hits.push({ email: d.email, name: d.name, reg });
+                      }
+                      setDeclineResult({
+                        declinedAndRegistered: hits,
+                        declinedTotal: result.attendees.length,
+                        error: null,
+                      });
+                      setShowDeclineModal(true);
+                    } else {
+                      let msg = result.message || 'Unbekannter Fehler beim Lesen des Outlook-Termins.';
+                      if (!result.message) {
+                        if (result.reason === 'no-pointer') {
+                          msg = 'Für dieses Event ist kein Outlook-Termin verknüpft (OutlookEventId / CalendarLink fehlen).';
+                        } else if (result.reason === 'not-found') {
+                          msg = 'Outlook-Termin wurde im Postfach no_reply.events@deloitte.de nicht gefunden.';
+                        } else if (result.reason === 'forbidden') {
+                          msg = 'Graph-API-Zugriff abgelehnt (HTTP 403). Tenant-Admin muss "Calendars.Read.Shared" genehmigen, und der User braucht Reviewer-Rechte auf dem Postfach-Kalender.';
+                        }
+                      }
+                      setDeclineResult({ declinedAndRegistered: [], declinedTotal: 0, error: msg });
+                      setShowDeclineModal(true);
+                    }
+                  } catch (err) {
+                    setDeclineResult({
+                      declinedAndRegistered: [],
+                      declinedTotal: 0,
+                      error: err instanceof Error ? err.message : String(err),
+                    });
+                    setShowDeclineModal(true);
+                  }
+                  setIsCheckingDeclines(false);
+                }}
+              />
+            )}
+
+            {/* 7. TeilnehmerIDs neu vergeben — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Hash size={18} />}
+                title={isReorderingIDs ? 'IDs werden vergeben…' : 'IDs neu vergeben'}
+                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch."
+                badge="admin"
+                busy={isReorderingIDs}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={reorderResult}
+                resultIsError={!!reorderResult && reorderResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.')) return;
+                  setIsReorderingIDs(true);
+                  setReorderResult(null);
+                  try {
+                    const result = await eventServiceRef.reorderParticipantIDs(selectedEvent.subsiteUrl);
+                    setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  } catch {
+                    setReorderResult('Fehler beim Neuvergeben der IDs');
+                  }
+                  setIsReorderingIDs(false);
+                }}
+              />
+            )}
+
+            {/* 8. Spalten fixen — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Columns size={18} />}
+                title={isFixingColumns ? 'Spalten werden gefixt…' : 'Spalten fixen'}
+                desc="Legt fehlende SP-Spalten in der Teilnehmerliste an, entfernt überflüssige (z.B. StarterType bei Nicht-B2Run-Events) und korrigiert die Default-View-Reihenfolge."
+                badge="admin"
+                busy={isFixingColumns}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={fixColumnsResult}
+                resultIsError={!!fixColumnsResult && fixColumnsResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  setIsFixingColumns(true);
+                  setFixColumnsResult(null);
+                  try {
+                    const isB2Run = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity);
+                    const hasQuiz = !!(selectedEvent.quiz && selectedEvent.quiz.length > 0);
+                    const customFields = (selectedEvent.eventSpecificFields || []).map(f => ({
+                      id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
+                      visible: true,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      spInternalName: (f as any).spInternalName || '',
+                    }));
+                    const result = await eventServiceRef.fixRegistrationListColumns(
+                      selectedEvent.subsiteUrl,
+                      { isB2Run, hasQuiz, customFields }
+                    );
+                    const msgs: string[] = [];
+                    if (result.added.length > 0) msgs.push(`Spalten hinzugefügt: ${result.added.join(', ')}`);
+                    if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
+                    if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
+                    if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const updatedCf = (customFields as any[]).map(f => {
+                        const sp = result.customFieldMap![f.id];
+                        return sp ? { ...f, spInternalName: sp } : f;
+                      });
+                      try {
+                        await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(updatedCf) });
+                        msgs.push(`Custom-Field-Zuordnung aktualisiert (${Object.keys(result.customFieldMap).length})`);
+                      } catch {
+                        msgs.push('WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden');
+                      }
+                    }
+                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Änderungen nötig');
+                  } catch {
+                    setFixColumnsResult('Fehler beim Fixen der Spalten');
+                  }
+                  setIsFixingColumns(false);
+                }}
+              />
+            )}
+
+            {/* 9. Felder reparieren — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                title={isFixingFields ? 'Felder werden repariert…' : 'Felder reparieren'}
+                desc="Normalisiert Custom-Fields: AGB/Datenschutz → Checkbox, T-Shirt → 'Kein T-Shirt'-Option, B2Run-Spezialfelder ergänzen, redundante '(Pflicht)'-Suffixe entfernen."
+                badge="admin"
+                busy={isFixingFields}
+                disabled={!selectedEvent}
+                result={fixFieldsResult}
+                resultIsError={!!fixFieldsResult && (fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl'))}
+                onClick={async () => {
+                  if (!selectedEvent) return;
+                  setIsFixingFields(true);
+                  setFixFieldsResult(null);
+                  try {
+                    const changes: string[] = [];
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
+                    const hasField = (id: string): boolean => raw.some(f => f.id === id);
+                    const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
+                    if (isB2Run) {
+                      if (!hasField('b2run_infoservice')) {
+                        raw.push({ id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergänzt: 'Infoservice'");
+                      }
+                      if (!hasField('b2run_anonym')) {
+                        raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
+                        changes.push("Feld ergänzt: 'Anonym teilnehmen'");
+                      }
+                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
+                      if (!hasLaufshirt) {
+                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
+                        changes.push("Feld ergänzt: 'Deloitte-Laufshirt' (Pflicht)");
+                      }
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const fixed = raw.map((f: any) => {
+                      const nf = { ...f };
+                      const label = String(nf.label || '');
+                      const lowLabel = label.toLowerCase();
+                      const isConsent = lowLabel.indexOf('zustimmung') >= 0
+                        || lowLabel.indexOf('agb') >= 0
+                        || lowLabel.indexOf('datenschutz') >= 0;
+                      const isB2RunCheckbox = ['b2run_infoservice', 'b2run_anonym', 'b2run_datenschutz'].indexOf(nf.id) >= 0;
+                      if ((isConsent || isB2RunCheckbox) && nf.type !== 'checkbox') {
+                        nf.type = 'checkbox';
+                        nf.options = [];
+                        changes.push(`${label} -> Checkbox`);
+                      }
+                      const isShirt = lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0;
+                      if (isShirt && nf.type === 'select') {
+                        const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                        const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
+                        if (!hasNo) {
+                          opts.unshift('Ohne T-Shirt');
+                          nf.options = opts;
+                          changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
+                        }
+                        if (nf.required) {
+                          nf.required = false;
+                          changes.push(`${label} -> optional`);
+                        }
+                      }
+                      const stripped = label.replace(/\s*\((?:pflicht|mandatory|required)\)\s*$/i, '').trim();
+                      if (stripped && stripped !== label) {
+                        nf.label = stripped;
+                        changes.push(`Label "${label}" -> "${stripped}"`);
+                      }
+                      if (nf.id === 'b2run_mobilnummer') {
+                        if (nf.required) { nf.required = false; changes.push('Mobilnummer -> optional'); }
+                        if (nf.label === 'Mobilnummer') {
+                          nf.label = 'Mobilnummer (nur bei aktiviertem Infoservice)';
+                          changes.push("Mobilnummer-Label präzisiert");
+                        }
+                      }
+                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benoetigt') >= 0) {
+                        nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
+                        changes.push('Infoservice-Label modernisiert');
+                      }
+                      if (nf.id === 'b2run_datenschutz') {
+                        const needLinks = !Array.isArray(nf.externalLinks) || nf.externalLinks.length === 0;
+                        if (needLinks) {
+                          nf.externalLinks = [
+                            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+                            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+                          ];
+                          changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergänzt');
+                        }
+                      }
+                      if (nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label)) {
+                        if (!nf.required) {
+                          nf.required = true;
+                          changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
+                        }
+                        if (nf.type === 'select') {
+                          const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
+                          const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
+                          if (!hasNo) {
+                            opts.unshift('Habe bereits ein Laufshirt');
+                            nf.options = opts;
+                            changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefügt`);
+                          }
+                        }
+                      }
+                      return nf;
+                    });
+                    const dsIdx = fixed.findIndex((f: { id: string }) => f.id === 'b2run_datenschutz');
+                    if (dsIdx >= 0 && dsIdx !== fixed.length - 1) {
+                      const [ds] = fixed.splice(dsIdx, 1);
+                      fixed.push(ds);
+                      changes.push('Zustimmung-Checkbox ans Ende verschoben');
+                    }
+                    const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
+                    if (ok) {
+                      setFixFieldsResult(changes.length > 0
+                        ? `Geändert: ${changes.join(' | ')}`
+                        : 'Keine Änderungen nötig.');
+                    } else {
+                      setFixFieldsResult('Update fehlgeschlagen.');
+                    }
+                  } catch (err) {
+                    setFixFieldsResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                  }
+                  setIsFixingFields(false);
+                }}
+              />
+            )}
+
+            {/* 10. Profile neu laden — Admin only */}
+            {isAdmin && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                title={isRefreshingProfiles ? 'Profile werden geladen…' : 'Profile neu laden'}
+                desc="Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind."
+                badge="admin"
+                busy={isRefreshingProfiles}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={refreshProfilesResult}
+                resultIsError={!!refreshProfilesResult && refreshProfilesResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const ans = prompt('Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)', '20');
+                  if (!ans) return;
+                  const n = parseInt(ans, 10);
+                  if (isNaN(n) || n <= 0) { alert('Bitte eine positive Zahl eingeben.'); return; }
+                  setIsRefreshingProfiles(true);
+                  setRefreshProfilesResult(null);
+                  try {
+                    const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
+                    setRefreshProfilesResult(`${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  } catch {
+                    setRefreshProfilesResult('Fehler beim Auffrischen der Profile');
+                  }
+                  setIsRefreshingProfiles(false);
+                }}
+              />
+            )}
           </div>
         </div>
         )}
@@ -1486,267 +1828,6 @@ export default function AdminPage(): React.ReactElement {
               onChange={e => setSearchQuery(e.target.value)}
               style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
             />
-            {isAdmin && (
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                disabled={isReorderingIDs || !selectedEvent?.subsiteUrl}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, ...)? Sortierung nach Erstellungsreihenfolge.')) return;
-                  setIsReorderingIDs(true);
-                  setReorderResult(null);
-                  try {
-                    const result = await eventServiceRef.reorderParticipantIDs(selectedEvent.subsiteUrl);
-                    setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
-                  } catch {
-                    setReorderResult('Fehler beim Neuvergeben der IDs');
-                  }
-                  setIsReorderingIDs(false);
-                }}
-              >
-                {isReorderingIDs ? 'IDs werden vergeben...' : 'IDs neu vergeben'}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                disabled={isFixingColumns || !selectedEvent?.subsiteUrl}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  setIsFixingColumns(true);
-                  setFixColumnsResult(null);
-                  try {
-                    // Feature-Flags fuer das konkrete Event: steuert welche Spalten
-                    // noetig sind und welche aktiv entfernt werden (StarterType auf
-                    // Nicht-B2Run-Event, Quiz-Spalten auf Event ohne Quiz).
-                    const isB2Run = !!(selectedEvent.durchstarterCapacity || selectedEvent.funstarterCapacity);
-                    const hasQuiz = !!(selectedEvent.quiz && selectedEvent.quiz.length > 0);
-                    const customFields = (selectedEvent.eventSpecificFields || []).map(f => ({
-                      id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
-                      // EventSpecificField hat kein `visible` — default true fuer den Fix
-                      visible: true,
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      spInternalName: (f as any).spInternalName || '',
-                    }));
-                    const result = await eventServiceRef.fixRegistrationListColumns(
-                      selectedEvent.subsiteUrl,
-                      { isB2Run, hasQuiz, customFields }
-                    );
-                    const msgs: string[] = [];
-                    if (result.added.length > 0) msgs.push(`Spalten hinzugefuegt: ${result.added.join(', ')}`);
-                    if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
-                    if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
-
-                    // Wenn neue spInternalNames fuer Custom-Fields angelegt wurden,
-                    // ins DEX_Events-Item zurueckschreiben, damit upsertParticipant
-                    // die Werte in die richtigen SP-Spalten schreiben kann.
-                    if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const updatedCf = (customFields as any[]).map(f => {
-                        const sp = result.customFieldMap![f.id];
-                        return sp ? { ...f, spInternalName: sp } : f;
-                      });
-                      try {
-                        await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(updatedCf) });
-                        msgs.push(`Custom-Field-Zuordnung aktualisiert (${Object.keys(result.customFieldMap).length})`);
-                      } catch {
-                        msgs.push('WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden');
-                      }
-                    }
-
-                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Aenderungen noetig');
-                  } catch {
-                    setFixColumnsResult('Fehler beim Fixen der Spalten');
-                  }
-                  setIsFixingColumns(false);
-                }}
-              >
-                {isFixingColumns ? 'Spalten werden gefixt...' : 'Spalten fixen'}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                disabled={isFixingFields || !selectedEvent}
-                onClick={async () => {
-                  if (!selectedEvent) return;
-                  setIsFixingFields(true);
-                  setFixFieldsResult(null);
-                  try {
-                    // Normalisiert die Custom-Fields-Typen (Zustimmung/AGB -> checkbox,
-                    // T-Shirt-Feld -> 'Kein T-Shirt benoetigt'-Option), und entfernt das
-                    // redundante '(Pflicht)'-Suffix aus Labels, da das rote Sternchen den
-                    // Pflicht-Status schon visualisiert.
-                    const changes: string[] = [];
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const raw: any[] = (selectedEvent.eventSpecificFields || []).map((f: any) => ({ ...f }));
-                    // B2Run: fehlende Infoservice/Anonym-Checkbox-Felder ergaenzen
-                    const hasField = (id: string): boolean => raw.some(f => f.id === id);
-                    const isB2Run = raw.some(f => String(f.id || '').indexOf('b2run_') === 0);
-                    if (isB2Run) {
-                      if (!hasField('b2run_infoservice')) {
-                        raw.push({ id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true });
-                        changes.push("Feld ergaenzt: 'Infoservice'");
-                      }
-                      if (!hasField('b2run_anonym')) {
-                        raw.push({ id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true });
-                        changes.push("Feld ergaenzt: 'Anonym teilnehmen'");
-                      }
-                      // Laufshirt: ggf. als b2run_laufshirt anlegen, wenn weder das Feld
-                      // noch ein gleichnamiges existiert
-                      const hasLaufshirt = raw.some(f => f.id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || '')));
-                      if (!hasLaufshirt) {
-                        raw.push({ id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true });
-                        changes.push("Feld ergaenzt: 'Deloitte-Laufshirt' (Pflicht)");
-                      }
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const fixed = raw.map((f: any) => {
-                      const nf = { ...f };
-                      const label = String(nf.label || '');
-                      const lowLabel = label.toLowerCase();
-                      // Zustimmung / AGB / Datenschutz -> checkbox
-                      const isConsent = lowLabel.indexOf('zustimmung') >= 0
-                        || lowLabel.indexOf('agb') >= 0
-                        || lowLabel.indexOf('datenschutz') >= 0;
-                      const isB2RunCheckbox = ['b2run_infoservice', 'b2run_anonym', 'b2run_datenschutz'].indexOf(nf.id) >= 0;
-                      if ((isConsent || isB2RunCheckbox) && nf.type !== 'checkbox') {
-                        nf.type = 'checkbox';
-                        nf.options = [];
-                        changes.push(`${label} -> Checkbox`);
-                      }
-                      // T-Shirt: 'Kein T-Shirt benoetigt' als Option hinzu, required=false
-                      const isShirt = lowLabel.indexOf('t-shirt') >= 0 || lowLabel.indexOf('tshirt') >= 0 || lowLabel.indexOf('shirt') >= 0;
-                      if (isShirt && nf.type === 'select') {
-                        const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                        const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
-                        if (!hasNo) {
-                          opts.unshift('Ohne T-Shirt');
-                          nf.options = opts;
-                          changes.push(`${label} -> 'Ohne T-Shirt'-Option`);
-                        }
-                        if (nf.required) {
-                          nf.required = false;
-                          changes.push(`${label} -> optional`);
-                        }
-                      }
-                      // '(Pflicht)'-Suffix aus Labels entfernen
-                      const stripped = label.replace(/\s*\((?:pflicht|mandatory|required)\)\s*$/i, '').trim();
-                      if (stripped && stripped !== label) {
-                        nf.label = stripped;
-                        changes.push(`Label "${label}" -> "${stripped}"`);
-                      }
-                      // B2Run-spezifische Korrekturen
-                      if (nf.id === 'b2run_mobilnummer') {
-                        if (nf.required) { nf.required = false; changes.push('Mobilnummer -> optional'); }
-                        if (nf.label === 'Mobilnummer') {
-                          nf.label = 'Mobilnummer (nur bei aktiviertem Infoservice)';
-                          changes.push("Mobilnummer-Label praezisiert");
-                        }
-                      }
-                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benoetigt') >= 0) {
-                        nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
-                        changes.push('Infoservice-Label modernisiert');
-                      }
-                      if (nf.id === 'b2run_datenschutz') {
-                        const needLinks = !Array.isArray(nf.externalLinks) || nf.externalLinks.length === 0;
-                        if (needLinks) {
-                          nf.externalLinks = [
-                            { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-                            { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-                          ];
-                          changes.push('B2Run-Datenschutz: AGB + Datenschutz Links ergaenzt');
-                        }
-                      }
-                      // Deloitte-Laufshirt / Laufshirt: immer Pflicht + 'Kein Laufshirt benoetigt'
-                      // als Option, damit man explizit keines waehlen kann ohne das
-                      // Pflichtfeld leer zu lassen.
-                      if (nf.id === 'b2run_laufshirt' || /laufshirt/i.test(label)) {
-                        if (!nf.required) {
-                          nf.required = true;
-                          changes.push(`${label || nf.id}: als Pflichtfeld markiert`);
-                        }
-                        if (nf.type === 'select') {
-                          const opts: string[] = Array.isArray(nf.options) ? nf.options.slice() : [];
-                          const hasNo = opts.some((o: string) => o.toLowerCase().indexOf('kein') >= 0);
-                          if (!hasNo) {
-                            opts.unshift('Habe bereits ein Laufshirt');
-                            nf.options = opts;
-                            changes.push(`${label || nf.id}: 'Habe bereits ein Laufshirt'-Option hinzugefuegt`);
-                          }
-                        }
-                      }
-                      return nf;
-                    });
-                    // B2Run-Datenschutz-Checkbox ans Ende schieben
-                    const dsIdx = fixed.findIndex((f: { id: string }) => f.id === 'b2run_datenschutz');
-                    if (dsIdx >= 0 && dsIdx !== fixed.length - 1) {
-                      const [ds] = fixed.splice(dsIdx, 1);
-                      fixed.push(ds);
-                      changes.push('Zustimmung-Checkbox ans Ende verschoben');
-                    }
-                    // Speichert zurueck in DEX_Events. Die SP-Spalte heisst 'CustomFields'
-                    // (PascalCase) und enthaelt die Felder als JSON-String.
-                    const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
-                    if (ok) {
-                      setFixFieldsResult(changes.length > 0
-                        ? `Geaendert: ${changes.join(' | ')}`
-                        : 'Keine Aenderungen noetig.');
-                    } else {
-                      setFixFieldsResult('Update fehlgeschlagen.');
-                    }
-                  } catch (err) {
-                    setFixFieldsResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
-                  }
-                  setIsFixingFields(false);
-                }}
-              >
-                {isFixingFields ? 'Felder werden repariert...' : 'Felder reparieren'}
-              </button>
-            )}
-            {fixFieldsResult && (
-              <span style={{ fontSize: '0.75rem', color: fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') ? 'var(--dex-red)' : 'var(--dex-gray-500)' }}>
-                {fixFieldsResult}
-              </span>
-            )}
-            {isAdmin && (
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                disabled={isRefreshingProfiles || !selectedEvent?.subsiteUrl}
-                onClick={async () => {
-                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  // Frage wie viele der letzten Teilnehmer aufgefrischt werden sollen
-                  const ans = prompt('Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)', '20');
-                  if (!ans) return;
-                  const n = parseInt(ans, 10);
-                  if (isNaN(n) || n <= 0) { alert('Bitte eine positive Zahl eingeben.'); return; }
-                  setIsRefreshingProfiles(true);
-                  setRefreshProfilesResult(null);
-                  try {
-                    const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
-                    setRefreshProfilesResult(`${result.scanned} geprueft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
-                  } catch {
-                    setRefreshProfilesResult('Fehler beim Auffrischen der Profile');
-                  }
-                  setIsRefreshingProfiles(false);
-                }}
-              >
-                {isRefreshingProfiles ? 'Profile werden geladen...' : 'Profile neu laden'}
-              </button>
-            )}
-            {(reorderResult || fixColumnsResult || refreshProfilesResult) && (
-              <span style={{ fontSize: '0.75rem', color: (reorderResult || fixColumnsResult || refreshProfilesResult || '').includes('Fehler') ? 'var(--dex-red)' : 'var(--dex-green)' }}>
-                {reorderResult || fixColumnsResult || refreshProfilesResult}
-              </span>
-            )}
           </div>
         </div>
 
