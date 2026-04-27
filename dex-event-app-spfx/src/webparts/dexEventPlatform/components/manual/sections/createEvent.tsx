@@ -112,14 +112,40 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Hier definierst du die Zusatzfragen, die Teilnehmer bei der Anmeldung sehen: Textfelder, Dropdowns, Checkboxen, Datumsfelder, User-Picker (z.B. für Zimmerpartner). Pro Feld wählst du Typ, Label, Pflicht ja/nein und Sichtbarkeit. Für B2Run-Events findest du hier zusätzlich den Startblock-Editor.'
-                  : 'Here you define the additional questions attendees see during registration: text fields, dropdowns, checkboxes, date fields, user pickers (e.g. for roommates). Per field you choose: type, label, required yes/no, and visibility. For B2Run events you also find the start-block editor here.'}
+                  ? 'Hier definierst du die Zusatzfragen, die Teilnehmer bei der Anmeldung sehen. Pro Feld stellst du folgendes ein: '
+                  : 'Here you define the additional questions attendees see during registration. Per field you can configure: '}
+                <ul style={{ marginTop: 6, marginBottom: 6, paddingLeft: 18, lineHeight: 1.55 }}>
+                  <li>{isDe
+                    ? 'Feldtyp: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer). Roommate ist seit v7.17 ein eigener Typ — nur er löst beim Anmelden eine automatische "Zimmerpartner-Anfrage"-Mail an die ausgewählte Person aus.'
+                    : 'Field type: text, number, dropdown, checkbox, people search or roommate (double room). Roommate is its own type since v7.17 — only it triggers an automatic "roommate request" email to the picked person on registration.'}</li>
+                  <li>{isDe
+                    ? 'Mehrfachauswahl bei Dropdowns (z.B. mehrere Allergien anhaken). Werte werden " | "-getrennt gespeichert.'
+                    : 'Multi-select for dropdowns (e.g. tick multiple allergies). Values are stored " | "-separated.'}</li>
+                  <li>{isDe
+                    ? 'Pflichtfeld (rotes Sternchen, Anmeldung blockiert wenn leer)'
+                    : 'Required (red asterisk, blocks submit when empty)'}</li>
+                  <li>{isDe
+                    ? 'Beschreibung pro Feld — landet als „i"-Tooltip neben dem Label'
+                    : 'Description per field — appears as „i" tooltip next to the label'}</li>
+                  <li>{isDe
+                    ? 'Sichtbarkeitsbedingung: Feld nur dann anzeigen wenn eine andere Frage einen bestimmten Wert hat. Beispiel: „Roommate" nur fragen wenn „Zimmerart = Doppelzimmer". Versteckte Felder blockieren auch die Pflichtfeld-Validierung nicht.'
+                    : 'Visibility condition: only show the field when another question has a specific value. Example: "Roommate" only asked when "Room type = Double". Hidden fields also do not block required-field validation.'}</li>
+                  <li>{isDe
+                    ? 'Reihenfolge per Drag-Handle oder ▲▼-Pfeile — Nummerierung passt sich automatisch an'
+                    : 'Reordering via drag handle or ▲▼ arrows — numbering updates automatically'}</li>
+                  <li>{isDe
+                    ? 'Vorlagen: „Vorgeschlagene Felder" (Katalog mit T-Shirt, Allergien, Hotel, Roommate, …) und das vollständige B2Run-Template mit Startblock, Gruppe, Altersklasse, Datenschutz-Checkbox + Links.'
+                    : 'Templates: "Suggested fields" (catalogue with t-shirt, allergies, hotel, roommate, …) and the full B2Run template with start block, group, age category, privacy checkbox + links.'}</li>
+                </ul>
+                {isDe
+                  ? 'Datenschutz-Hinweis oben: Erhebe nur Daten die zwingend für das Event nötig sind — bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'
+                  : 'Privacy notice on top: only collect data strictly necessary for the event — in case of doubt, always check with the data-protection officer.'}
               </>
             ),
             mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Felder (echte Ansicht)' : 'Wizard step 4: Fields (real view)'),
             tip: isDe
-              ? 'Typen: Text / Textarea / Select / Date / Checkbox / User (Personen-Suche). Leere Labels werden automatisch nicht gespeichert.'
-              : 'Types: Text / Textarea / Select / Date / Checkbox / User (person search). Fields with empty labels are automatically dropped.',
+              ? 'Mit dem Vorschau-Button rechts oben siehst du jederzeit live wie das Anmeldeformular für den Teilnehmer aussehen wird — inklusive Sichtbarkeitsbedingungen und i-Tooltips.'
+              : 'Use the preview button top right to see live what the attendee\'s registration form will look like — including visibility conditions and i-tooltips.',
           },
           {
             number: 6,

@@ -4934,6 +4934,13 @@ export default function EventCreationPage(): React.ReactElement {
             required: f.required,
             visible: f.visible !== false,
             options: f.type === 'select' ? f.options : undefined,
+            // v7.24: helpText, multi und showIf an die Live-Preview weiterreichen,
+            // damit die echte RegistrationPage genau das rendert was der
+            // Teilnehmer spaeter sieht (i-Tooltip, Multi-Select-Liste,
+            // Sichtbarkeitsbedingung).
+            helpText: f.helpText,
+            multi: f.multi,
+            showIf: f.showIf,
           })),
           isFictive,
         }}

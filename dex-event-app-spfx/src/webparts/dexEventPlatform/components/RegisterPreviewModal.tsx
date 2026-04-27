@@ -1,16 +1,23 @@
 /**
- * Preview-Modal, das dem Organizer zeigt, wie die Registrierungsseite des
- * aktuellen Events den Teilnehmern erscheinen wird — rendered aus dem
- * aktuellen Form-State (noch nicht gespeichert).
+ * Register-Page-Preview-Modal — v7.24 grosse Vorschau:
  *
- * Einfache Variante der RegistrationPage ohne Absend-Logik: Event-Card,
- * Organizer-Liste, Standard-Felder (Anrede/Vorname/Nachname/E-Mail) und
- * alle konfigurierten Custom-Fields.
+ * Vorher: hand-gebaute Mockup-Cards (links Event-Info, rechts Form-Mock).
+ * Jetzt: das ECHTE <RegistrationPage>-Component wird gerendert, mit einem
+ * synthetischen DeloitteEvent aus dem Wizard-Form-State und den dazugehoerigen
+ * Preview-Provider-Stubs (kein Live-API-Call). Wrapper hat pointer-events:none,
+ * damit der Organizer schauen, aber nicht interagieren kann.
+ *
+ * Ziel: was der Organizer hier sieht, ist 1:1 das was der Teilnehmer im echten
+ * Anmeldeformular bekommt — inklusive Sichtbarkeitsbedingungen, Multi-Select,
+ * Roommate-Picker, helpText-Tooltips und Custom-Field-Reihenfolge.
  */
 
 import * as React from 'react';
 import { X } from './Icons';
-import OrganizerList from './OrganizerList';
+import { PreviewContextStack } from './manual/previews/PreviewProviders';
+import RegistrationPage from './RegistrationPage';
+import Header from './Header';
+import { DeloitteEvent } from '../types';
 
 export interface RegisterPreviewData {
   title: string;
@@ -31,6 +38,9 @@ export interface RegisterPreviewData {
     required: boolean;
     visible: boolean;
     options?: string[];
+    helpText?: string;
+    multi?: boolean;
+    showIf?: { fieldId: string; values: string[] };
   }>;
   isFictive?: boolean;
 }
@@ -41,44 +51,95 @@ export interface RegisterPreviewModalProps {
   data: RegisterPreviewData;
 }
 
-function formatLocal(v: string): string {
-  if (!v) return '—';
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return v;
-  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// Synthetischen DeloitteEvent aus dem Wizard-Form-State bauen, sodass
+// RegistrationPage ihn ueber den EventContext finden kann.
+function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
+  const id = '__preview_synth_event__';
+  return {
+    id,
+    eventNumber: 0,
+    title: data.title || '(kein Titel)',
+    type: 'Other',
+    status: 'Active',
+    organizers: data.organizers || [],
+    organizerEmails: data.organizerEmails || [],
+    qrScannerNames: [],
+    qrScannerEmails: [],
+    location: data.location || '',
+    locationAddress: data.locationAddress
+      ? {
+          street: data.locationAddress.street || '',
+          houseNo: data.locationAddress.houseNo || '',
+          zip: data.locationAddress.zip || '',
+          city: data.locationAddress.city || '',
+        }
+      : undefined,
+    locationAudience: [],
+    audienceFilter: [],
+    filterMode: 'OR',
+    startDate: data.startDate ? new Date(data.startDate).toISOString() : '',
+    endDate: data.endDate ? new Date(data.endDate).toISOString() : '',
+    registrationDeadline: '',
+    lastDeregisterDate: '',
+    description: data.description || '',
+    maxParticipants: data.unlimitedParticipants ? 0 : (data.maxParticipants || 0),
+    currentParticipants: 0,
+    waitlistCount: 0,
+    imageUrl: data.imagePreview || '',
+    outlookBody: '',
+    emailLanguage: 'DE',
+    isFictive: !!data.isFictive,
+    agenda: [],
+    transferTimes: [],
+    documents: [],
+    quiz: [],
+    eventSpecificFields: (data.customFields || [])
+      .filter(f => f.visible !== false && f.label && f.label.trim().length > 0)
+      .map(f => ({
+        id: f.id,
+        label: f.label,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        type: (f.type as any) || 'text',
+        required: !!f.required,
+        options: f.options,
+        helpText: f.helpText || '',
+        ...(f.multi ? { multi: true } : {}),
+        ...(f.showIf ? { showIf: f.showIf } : {}),
+      })),
+  };
 }
 
 export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open, onClose, data }) => {
   if (!open) return null;
-
-  const addr = data.locationAddress || {};
-  const hasAddr = !!(addr.street || addr.houseNo || addr.zip || addr.city);
-  const visibleFields = data.customFields.filter(f => f.visible !== false && f.label && f.label.trim());
+  const synthEvent = React.useMemo(() => buildSynthEvent(data), [data]);
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 1300,
         background: 'rgba(0,0,0,0.55)',
         display: 'flex', alignItems: 'stretch', justifyContent: 'center',
         padding: '24px 16px', overflowY: 'auto',
       }}
-      onClick={onClose}
     >
       <div
+        onClick={e => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 1100,
+          width: '100%', maxWidth: 1280,
           background: '#fff', borderRadius: 'var(--dex-radius, 12px)',
           boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           maxHeight: 'calc(100vh - 48px)',
         }}
-        onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 20px', borderBottom: '1px solid var(--dex-gray-200)',
+          background: '#fff', flexShrink: 0,
         }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
             Registrierungsseite — Vorschau
@@ -87,6 +148,9 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                 TEST-EVENT
               </span>
             )}
+            <span style={{ marginLeft: 10, fontSize: '0.7rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
+              · Read-only Vorschau · Klicks deaktiviert
+            </span>
           </h3>
           <button
             type="button"
@@ -98,167 +162,62 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
           </button>
         </div>
 
-        <div style={{ padding: 24, overflowY: 'auto', background: 'var(--dex-gray-50, #f8f9fa)' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr)',
-            gap: 20,
-          }}>
-            {/* LINKS: Event-Info */}
-            <section>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--dex-red, #da291c)', marginBottom: 8 }}>
-                Ausgewähltes Event
-              </div>
+        {/* Laptop-Frame (Desktop-Look): subtle dark bezel + subtle keyboard-base
+            damit auf einen Blick klar ist dass das die Desktop-Ansicht ist. */}
+        <div style={{
+          flex: 1,
+          padding: '24px 24px 36px',
+          overflow: 'auto',
+          background: 'var(--dex-gray-100, #f4f4f5)',
+          display: 'flex', justifyContent: 'center',
+        }}>
+          <div style={{ width: '100%', maxWidth: 1200, position: 'relative', paddingBottom: 14 }}>
+            <div style={{
+              padding: '14px 14px 12px', borderRadius: '12px 12px 6px 6px',
+              background: '#1a1a1a',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.2)',
+              position: 'relative',
+            }}>
               <div style={{
-                background: '#fff', borderRadius: 10, overflow: 'hidden',
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                {data.imagePreview ? (
-                  <img src={data.imagePreview} alt={data.title} style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ height: 140, background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }} />
-                )}
-                <div style={{ padding: 16 }}>
-                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{data.title || '(kein Titel)'}</h4>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
-                    📅 {formatLocal(data.startDate)} – {formatLocal(data.endDate)}
-                  </div>
-                  {(data.location || hasAddr) && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 8 }}>
-                      {data.location && <div style={{ fontWeight: 700, color: 'var(--dex-gray-700)' }}>📍 {data.location}</div>}
-                      {hasAddr && (
-                        <div style={{ paddingLeft: 18 }}>
-                          {[addr.street, addr.houseNo].filter(Boolean).join(' ')}
-                          {(addr.zip || addr.city) && <br />}
-                          {[addr.zip, addr.city].filter(Boolean).join(' ')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {data.organizers.length > 0 && (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
-                      <OrganizerList names={data.organizers} emails={data.organizerEmails} size="sm" />
-                    </div>
-                  )}
-                  {!data.unlimitedParticipants && data.maxParticipants > 0 && (
-                    <div style={{ marginTop: 10, fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
-                      {data.maxParticipants} / {data.maxParticipants} Plätze frei
-                    </div>
-                  )}
-                  {data.description && (
-                    <div style={{ marginTop: 12, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 8, fontSize: '0.85rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
-                      {data.description}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* RECHTS: Anmeldeformular (disabled) */}
-            <section>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 8 }}>
-                Anmeldeformular
-              </div>
-              <div style={{
-                background: '#fff', borderRadius: 10, padding: 16,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                {/* Standard-Felder */}
-                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-                  Persönliche Informationen
-                </div>
-                {[
-                  { label: 'Anrede', value: 'Bitte wählen', required: true, type: 'select' },
-                  { label: 'Vorname', value: 'Max', required: true, disabled: true },
-                  { label: 'Nachname', value: 'Mustermann', required: true, disabled: true },
-                  { label: 'E-Mail', value: 'max.mustermann@deloitte.de', required: true, disabled: true },
-                ].map(f => (
-                  <div key={f.label} style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 3 }}>
-                      {f.required && <span style={{ color: 'var(--dex-red, #c9302c)', marginRight: 3 }}>*</span>}
-                      {f.label}
-                    </label>
-                    <div style={{
-                      border: '1px solid var(--dex-gray-300)', borderRadius: 6,
-                      padding: '6px 10px', fontSize: '0.85rem',
-                      color: 'var(--dex-gray-500)',
-                      background: f.disabled ? 'var(--dex-gray-50)' : '#fff',
-                    }}>
-                      {f.value}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Custom Fields */}
-                {visibleFields.length > 0 && (
-                  <>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 16, marginBottom: 8 }}>
-                      Event-spezifische Informationen
-                    </div>
-                    {visibleFields.map(f => (
-                      <div key={f.id} style={{ marginBottom: 10 }}>
-                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 3 }}>
-                          {f.required && <span style={{ color: 'var(--dex-red, #c9302c)', marginRight: 3 }}>*</span>}
-                          {f.label}
-                        </label>
-                        {f.type === 'select' ? (
-                          <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', color: 'var(--dex-gray-400)', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>Bitte wählen {f.options && f.options.length > 0 ? `(${f.options.length} Optionen)` : ''}</span>
-                            <span>▾</span>
-                          </div>
-                        ) : f.type === 'checkbox' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
-                            <input type="checkbox" disabled style={{ width: 16, height: 16 }} />
-                            <span>Zustimmen</span>
-                          </div>
-                        ) : f.type === 'textarea' ? (
-                          <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', color: 'var(--dex-gray-400)', minHeight: 60 }}>
-                            …
-                          </div>
-                        ) : f.type === 'date' ? (
-                          <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
-                            📅 TT.MM.JJJJ
-                          </div>
-                        ) : f.type === 'user' ? (
-                          <>
-                            <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
-                              Name oder E-Mail suchen…
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
-                              Die ausgewählte Person wird per E-Mail über deine Auswahl informiert.
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>
-                            …
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                <button
-                  type="button"
-                  disabled
-                  style={{
-                    marginTop: 16, width: '100%', padding: '10px 16px',
-                    background: 'var(--dex-green, #86bc25)', color: '#fff',
-                    border: 'none', borderRadius: 8, fontSize: '0.95rem', fontWeight: 600,
-                    cursor: 'not-allowed', opacity: 0.75,
-                  }}
+                position: 'absolute', top: 5, left: '50%', transform: 'translateX(-50%)',
+                width: 6, height: 6, borderRadius: '50%', background: '#333',
+              }} />
+              <div
+                className="dex-preview-scope"
+                style={{
+                  background: '#fff', borderRadius: 4,
+                  pointerEvents: 'none', userSelect: 'text',
+                  minHeight: 560, maxHeight: '70vh', overflow: 'auto',
+                }}
+              >
+                <PreviewContextStack
+                  role="User"
+                  page="register"
+                  selectedEventId={synthEvent.id}
+                  extraEvents={[synthEvent]}
                 >
-                  Anmelden (Vorschau)
-                </button>
+                  <Header />
+                  <RegistrationPage />
+                </PreviewContextStack>
               </div>
-            </section>
+            </div>
+            {/* Laptop-Stand */}
+            <div style={{
+              position: 'absolute', left: -12, right: -12, bottom: 0, height: 12,
+              background: 'linear-gradient(180deg, #2a2a2a, #111)',
+              borderRadius: '0 0 12px 12px',
+            }} />
+            <div style={{
+              position: 'absolute', left: '40%', right: '40%', bottom: 8, height: 4,
+              background: '#444', borderRadius: '0 0 6px 6px',
+            }} />
           </div>
         </div>
 
         <div style={{
           display: 'flex', justifyContent: 'flex-end', gap: 8,
           padding: '12px 20px', borderTop: '1px solid var(--dex-gray-200)',
+          background: '#fff', flexShrink: 0,
         }}>
           <button type="button" className="btn btn-primary" onClick={onClose}>Schließen</button>
         </div>
