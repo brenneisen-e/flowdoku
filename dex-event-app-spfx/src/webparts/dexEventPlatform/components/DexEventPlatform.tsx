@@ -41,31 +41,34 @@ function AppContent(): React.ReactElement {
   const { isAdmin, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
 
-  // v7.5: Boot-Progress. Wir mappen die zwei Lade-Phasen auf Prozentwerte
-  // und animieren sanft dazwischen, damit der User auf der Landing-Page
-  // den Fortschritt nicht nur als unbestimmten Balken, sondern konkret
-  // als "X %" sieht. Die Phasen:
-  //   - Rollen + Events laden noch: Target 30%
-  //   - Rollen fertig, Events laden: Target 70%
-  //   - alles fertig: Target 100% (Loader verschwindet sowieso)
+  // v7.5/7.6: Boot-Progress. Zeitbasiert + asymptotisch: über die ersten ~3-4
+  // Sekunden steigt der Wert relativ schnell, danach immer langsamer Richtung
+  // 95%. Sobald BEIDE Provider (Rollen + Events) fertig sind, springt der
+  // Wert auf 100%. Dadurch ist der Übergang nicht mehr klobig phasenbasiert
+  // (vorher 30 → 75 → 100), sondern fühlt sich wie eine echte Lade-Anzeige an.
   const [bootProgress, setBootProgress] = React.useState<number>(8);
+  const bootLoadingRef = React.useRef({ roles: true, events: true });
+  bootLoadingRef.current = { roles: isRolesLoading, events: isEventsLoading };
   React.useEffect(() => {
-    let target: number;
-    if (isRolesLoading && isEventsLoading) target = 30;
-    else if (isRolesLoading) target = 50;
-    else if (isEventsLoading) target = 75;
-    else target = 100;
-    // Sanft hochzählen alle 60ms in Richtung Target — fühlt sich
-    // weniger ruckelig an als ein direkter setBootProgress(target).
+    const start = Date.now();
     const id = setInterval(() => {
-      setBootProgress(prev => {
-        if (prev >= target) return target;
-        const delta = Math.max(1, Math.round((target - prev) * 0.18));
-        return Math.min(target, prev + delta);
-      });
+      if (!bootLoadingRef.current.roles && !bootLoadingRef.current.events) {
+        setBootProgress(100);
+        clearInterval(id);
+        return;
+      }
+      const elapsed = Date.now() - start;
+      // Asymptotisch zu 95% — Tau 6.5s. Beobachtete Boot-Zeit liegt bei
+      // ~9-10 Sekunden; bei dieser Kurve ist der User dann bei ~75-78%
+      // angekommen, springt am Ende auf 100% (sieht dann nicht so aus,
+      // als hätte er bei 30% noch ewig gewartet). Frühe Sekunden
+      // klettern langsamer (~14% nach 1s, ~26% nach 2s) — fühlt sich
+      // realistischer an als die alte schnelle Kurve.
+      const target = Math.round(95 * (1 - Math.exp(-elapsed / 6500)));
+      setBootProgress(prev => Math.max(prev, target));
     }, 60);
     return () => clearInterval(id);
-  }, [isRolesLoading, isEventsLoading]);
+  }, []);
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
