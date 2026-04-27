@@ -49,11 +49,105 @@ export default function CheckInPage(): React.ReactElement {
     regId: number; status: string; department?: string; jobTitle?: string; location?: string; photoUrl?: string;
   } | null>(null);
 
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const context = (window as any).__dexSpfxContext;
   const eventService = React.useMemo(() => context ? new EventService(context) : null, []);
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
+
+  // v7.12: Name-Suche fuer manuelles Einchecken — wenn der QR-Scanner in der
+  // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
+  // QR-Code nicht zur Hand hat, kann der Helfer nach Namen / E-Mail suchen
+  // und per Tap "Einchecken" ausloesen. Die Registrierungen werden pro Event
+  // lazy nachgeladen und in `searchRegsCache` zwischengespeichert.
+  const [nameSearchQuery, setNameSearchQuery] = React.useState('');
+  const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
+  const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
+  const [isLoadingSearchRegs, setIsLoadingSearchRegs] = React.useState(false);
+  const [searchLoadError, setSearchLoadError] = React.useState('');
+  React.useEffect(() => {
+    if (selectedEventId && !nameSearchEventId) setNameSearchEventId(selectedEventId);
+  }, [selectedEventId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadRegsForSearch = React.useCallback(async (eventId: string): Promise<void> => {
+    if (!eventId || !eventService) return;
+    if (searchRegsCache[eventId]) return; // bereits geladen
+    const ev = events.find(e => e.id === eventId);
+    if (!ev || !ev.subsiteUrl) {
+      setSearchLoadError('Event nicht gefunden oder ohne Subsite.');
+      return;
+    }
+    setIsLoadingSearchRegs(true);
+    setSearchLoadError('');
+    try {
+      const regs = await eventService.getAllRegistrations(ev.subsiteUrl);
+      setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
+    } catch {
+      setSearchLoadError('Teilnehmerliste konnte nicht geladen werden.');
+    }
+    setIsLoadingSearchRegs(false);
+  }, [eventService, events, searchRegsCache]);
+
+  const onSearchFocus = (): void => {
+    if (nameSearchEventId) loadRegsForSearch(nameSearchEventId);
+  };
+  React.useEffect(() => {
+    if (nameSearchQuery && nameSearchEventId && !searchRegsCache[nameSearchEventId]) {
+      loadRegsForSearch(nameSearchEventId);
+    }
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, loadRegsForSearch]);
+
+  const searchHits = React.useMemo(() => {
+    const q = nameSearchQuery.trim().toLowerCase();
+    if (q.length < 2 || !nameSearchEventId) return [];
+    const regs = searchRegsCache[nameSearchEventId] || [];
+    const matches = regs.filter(r => {
+      const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
+      return full.indexOf(q) >= 0;
+    });
+    return matches.slice(0, 8);
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache]);
+
+  const startManualCheckInFromSearch = (reg: import('../services/EventService').SPRegistration): void => {
+    const ev = events.find(e => e.id === nameSearchEventId);
+    if (!ev || !ev.subsiteUrl) return;
+    if (reg.Status === 'Abgemeldet') {
+      setResultMessage(`${reg.ParticipantName || reg.ParticipantEmail} — ${t('checkin.cancelled')}`);
+      setResultType('error');
+      return;
+    }
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail);
+    let photoUrl = '';
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (ctx) {
+        const siteBase = ctx.pageContext.web.absoluteUrl;
+        photoUrl = `${siteBase}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(reg.ParticipantEmail || '')}`;
+      }
+    } catch { /* */ }
+    setPendingCheckIn({
+      name,
+      email: reg.ParticipantEmail || '',
+      event: { subsiteUrl: ev.subsiteUrl, title: ev.title },
+      regId: reg.Id,
+      status: reg.Status,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      department: (reg as any).Department || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      jobTitle: (reg as any).JobTitle || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      location: (reg as any).Location || '',
+      photoUrl,
+    });
+    setResultMessage('');
+    setResultType('');
+    setNameSearchQuery('');
+    setTimeout(() => {
+      confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  };
 
   // Erkennen ob die App in der SharePoint Mobile App laeuft
   const isSharePointMobileApp = React.useMemo(() => {
@@ -637,6 +731,105 @@ export default function CheckInPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v7.12: Name-Suche + Manuell einchecken — als Fallback wenn kein QR
+          zur Hand ist oder die Camera-API in der SP-App blockiert ist. */}
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <h3 style={{ marginBottom: 12 }}>Nach Name suchen</h3>
+        {accessibleEvents.length > 1 && (
+          <select
+            className="form-input"
+            value={nameSearchEventId}
+            onChange={e => { setNameSearchEventId(e.target.value); setNameSearchQuery(''); }}
+            style={{ marginBottom: 10, padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
+          >
+            <option value="">— Event auswählen —</option>
+            {accessibleEvents.map(ev => (
+              <option key={ev.id} value={ev.id}>{ev.title}</option>
+            ))}
+          </select>
+        )}
+        <input
+          className="form-input"
+          value={nameSearchQuery}
+          onFocus={onSearchFocus}
+          onChange={e => setNameSearchQuery(e.target.value)}
+          placeholder="Vorname, Nachname oder E-Mail eingeben…"
+          disabled={!nameSearchEventId}
+          style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
+        />
+        {!nameSearchEventId && accessibleEvents.length > 1 && (
+          <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+            Bitte zuerst ein Event wählen.
+          </p>
+        )}
+        {isLoadingSearchRegs && (
+          <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+            Teilnehmerliste wird geladen…
+          </p>
+        )}
+        {searchLoadError && (
+          <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-red)' }}>
+            {searchLoadError}
+          </p>
+        )}
+        {nameSearchQuery.trim().length >= 2 && (
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {searchHits.length === 0 && !isLoadingSearchRegs && (
+              <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>
+                Kein Treffer — bitte anders schreiben oder per QR-Code einchecken.
+              </p>
+            )}
+            {searchHits.map(reg => {
+              const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
+              const status = reg.Status;
+              const alreadyIn = status === 'Eingecheckt';
+              const cancelled = status === 'Abgemeldet';
+              const waitlist = status === 'Warteliste';
+              const statusBg = alreadyIn ? 'rgba(134,188,37,0.15)'
+                : cancelled ? 'rgba(204,0,0,0.10)'
+                : waitlist ? 'rgba(237,139,0,0.12)'
+                : 'rgba(21,101,192,0.10)';
+              const statusFg = alreadyIn ? 'var(--dex-green-dark, #4a7c1f)'
+                : cancelled ? 'var(--dex-red, #c00)'
+                : waitlist ? 'var(--dex-orange, #ed8b00)'
+                : '#1565c0';
+              return (
+                <div
+                  key={reg.Id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 10, background: '#fff',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--dex-gray-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {reg.ParticipantEmail}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
+                    background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
+                  }}>{status}</span>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    disabled={alreadyIn || cancelled || isProcessing}
+                    onClick={() => startManualCheckInFromSearch(reg)}
+                  >
+                    {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Manuelle Eingabe */}
       <div className="card" style={{ padding: 24 }}>
