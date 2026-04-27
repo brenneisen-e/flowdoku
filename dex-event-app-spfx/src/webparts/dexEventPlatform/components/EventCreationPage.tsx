@@ -3282,6 +3282,40 @@ export default function EventCreationPage(): React.ReactElement {
                         </div>
                       </div>
                     )}
+                    {/* v7.18: Roommate-Hinweis — wenn der Organizer einen
+                        Roommate-Picker anlegt, sollte er den Teilnehmer auch
+                        fragen ob ueberhaupt ein Doppelzimmer gewuenscht ist
+                        (Einzel/Doppel-Auswahl). Heuristik: andere Custom-Fields
+                        nach Optionen / Label durchsuchen, die "Einzelzimmer",
+                        "Doppelzimmer", "single room" oder "double room"
+                        enthalten — gibt es so ein Feld, ist der Hinweis nicht
+                        noetig. */}
+                    {field.type === 'roommate' && (() => {
+                      const roomKeywords = ['einzelzimmer', 'doppelzimmer', 'single room', 'double room', 'zimmerart', 'room type'];
+                      const hasRoomTypeField = customFields.some(other => {
+                        if (other.id === field.id) return false;
+                        const lbl = (other.label || '').toLowerCase();
+                        const opts = (other.options || []).join(' ').toLowerCase();
+                        return roomKeywords.some(k => lbl.indexOf(k) >= 0 || opts.indexOf(k) >= 0);
+                      });
+                      if (hasRoomTypeField) return null;
+                      return (
+                        <div style={{
+                          marginLeft: 32, marginTop: 10, padding: '10px 12px',
+                          background: 'rgba(237,139,0,0.08)',
+                          border: '1px solid var(--dex-orange, #ed8b00)',
+                          borderRadius: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)',
+                          lineHeight: 1.45,
+                        }}>
+                          <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
+                            {isDe ? 'Tipp:' : 'Tip:'}
+                          </strong>{' '}
+                          {isDe
+                            ? 'Du fragst nach einem Zimmerpartner — bisher gibt es aber kein Feld, das fragt OB der Teilnehmer ein Doppelzimmer möchte oder lieber ein Einzelzimmer. Lege ein zusätzliches Dropdown-Feld an (z.B. „Zimmerart" mit Optionen „Einzelzimmer / Doppelzimmer"), sonst können Teilnehmer ohne Doppelzimmer-Wunsch trotzdem einen Roommate angeben.'
+                            : 'You\'re asking for a roommate — but there is no field yet that asks WHETHER the attendee actually wants a double room (vs. a single room). Add an additional dropdown field (e.g. "Room type" with options "Single / Double"), otherwise attendees who don\'t want a double room can still pick a roommate.'}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
