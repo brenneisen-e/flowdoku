@@ -340,7 +340,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         type: cf.type,
         required: cf.required,
         options: cf.options,
-        helpText: '',
+        // v7.20: helpText durchreichen, damit das Registrierungsformular ihn
+        // im "i"-Tooltip neben dem Label anzeigen kann.
+        helpText: cf.helpText || '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         spInternalName: (cf as any).spInternalName || '',
         // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
