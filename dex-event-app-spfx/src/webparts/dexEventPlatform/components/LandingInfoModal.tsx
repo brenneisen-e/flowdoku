@@ -216,8 +216,8 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
           <SectionHeading>{isDE ? 'Aktueller Status' : 'Current status'}</SectionHeading>
           <p style={{ fontSize: '0.9rem', color: GRAY_700, lineHeight: 1.6, margin: 0 }}>
             {isDE
-              ? 'DEX ist aktuell in der Pilotphase mit mehreren Flagship-Events: Assistenz Meeting 2026 (130 Teilnehmer), SR&T P/MD/D Meeting (450 Teilnehmer), Sommerfest Berlin 2026, verschiedene B2Run-Läufe. Neue Events und Funktionen kommen laufend dazu.'
-              : 'DEX is currently in pilot with several flagship events: Assistenz Meeting 2026 (130 participants), SR&T P/MD/D Meeting (450 participants), Summer party Berlin 2026, several B2Run races. New events and features are added continuously.'}
+              ? 'DEX ist aktuell in der Pilotphase mit mehreren Flagship-Events: SAP All Hands Event (ca. 1000 Teilnehmer), SR&T P/MD/D Meeting (450 Teilnehmer), Assistenz Meeting 2026 (130 Teilnehmer), Sommerfest Berlin 2026, verschiedene B2Run-Läufe. Neue Events und Funktionen kommen laufend dazu.'
+              : 'DEX is currently in pilot with several flagship events: SAP All Hands Event (~1000 participants), SR&T P/MD/D Meeting (450 participants), Assistenz Meeting 2026 (130 participants), Summer party Berlin 2026, several B2Run races. New events and features are added continuously.'}
           </p>
 
           {/* Interesse? */}
