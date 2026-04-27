@@ -491,12 +491,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           templateType, event.title, eventId
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
-      // Roommate-Benachrichtigung: alle Custom-Fields vom Typ 'user' durchsuchen,
-      // deren Wert eine E-Mail enthaelt (Format "Name <email>"). Fuer jede solche
-      // Adresse eine Info-Mail im Deloitte-Template queuen.
+      // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
+      // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-
+      // Felder, was bei "Assistent"-, "Mentor"- etc. Pickern zu ungewollten
+      // Roommate-Mails fuehrte). Fuer jede ausgewaehlte E-Mail eine Roommate-
+      // Anfrage-Mail im Deloitte-Template queuen.
       if (!event.disableEmails) {
         for (const f of event.eventSpecificFields) {
-          if (f.type !== 'user') continue;
+          if (f.type !== 'roommate') continue;
           const v = customData[f.id];
           if (!v) continue;
           const m = v.match(/<([^>]+@[^>]+)>/);

@@ -230,7 +230,7 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;

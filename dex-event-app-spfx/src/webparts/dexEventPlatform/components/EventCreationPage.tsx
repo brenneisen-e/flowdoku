@@ -145,7 +145,7 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
   required: boolean;
   // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
   options: string[];
@@ -787,7 +787,7 @@ export default function EventCreationPage(): React.ReactElement {
       key: 'roommate',
       label: 'Bevorzugter Zimmerpartner',
       description: 'Personen-Suche; Match-Erkennung im Admin Center',
-      build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true }),
+      build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true }),
     },
   ] : [
     {
@@ -824,7 +824,7 @@ export default function EventCreationPage(): React.ReactElement {
       key: 'roommate',
       label: 'Preferred roommate',
       description: 'People search; match detection in the admin center',
-      build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'user', required: false, options: [], visible: true }),
+      build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'roommate', required: false, options: [], visible: true }),
     },
   ];
 
@@ -1027,7 +1027,7 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
       { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
       { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
-      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'user', required: false, options: [], visible: true },
+      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true },
     ]);
   };
 
@@ -3177,14 +3177,33 @@ export default function EventCreationPage(): React.ReactElement {
                           >▼</button>
                         </div>
                       </div>
-                      <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
-                      <select className="form-select" value={field.type} onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })} style={{ flex: 1, maxWidth: 140 }}>
+                      {/* v7.17: Typ-Dropdown nach links (vor das Label) und
+                          breiter, damit "Person (Suche)" und "Roommate (Doppelzimmer)"
+                          nicht abgeschnitten werden. Roommate ist seit v7.17 ein
+                          eigener Feldtyp — nur bei dem geht beim Anmelden eine
+                          Roommate-Mail an die ausgewaehlte Person raus. */}
+                      <select
+                        className="form-select"
+                        value={field.type}
+                        onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                        style={{
+                          flex: '0 0 220px', minWidth: 220,
+                          // v7.17: gruene Faerbung damit der Typ-Selector im
+                          // Editor visuell hervorsticht (Hauptmerkmal des Felds).
+                          background: 'rgba(134,188,37,0.08)',
+                          border: '1px solid var(--dex-green, #86bc25)',
+                          color: 'var(--dex-green-dark, #4a7c1f)',
+                          fontWeight: 600,
+                        }}
+                      >
                         <option value="text">Text</option>
                         <option value="select">Dropdown</option>
                         <option value="number">Zahl</option>
                         <option value="checkbox">Checkbox</option>
                         <option value="user">Person (Suche)</option>
+                        <option value="roommate">Roommate (Doppelzimmer)</option>
                       </select>
+                      <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         <input type="checkbox" checked={field.required} onChange={e => updateCustomField(field.id, { required: e.target.checked })} />
                         {t('create.required')}
