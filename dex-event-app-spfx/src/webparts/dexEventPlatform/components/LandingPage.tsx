@@ -119,9 +119,6 @@ export default function LandingPage(): React.ReactElement {
               <strong style={{ whiteSpace: 'nowrap' }}>{t('landing.platform')}.</strong>
             </h1>
             <p>{t('landing.subtitle')}</p>
-            <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 8 }}>
-              {t('landing.devby')}
-            </p>
           </div>
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
             {t('landing.start')}
@@ -193,7 +190,7 @@ export default function LandingPage(): React.ReactElement {
               lineHeight: 1.3,
             }}
           >
-            {locale === 'de' ? 'Built by ' : 'Built by '}
+            {locale === 'de' ? 'Entwickelt von ' : 'Built by '}
             <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
               <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" />
               {', '}
