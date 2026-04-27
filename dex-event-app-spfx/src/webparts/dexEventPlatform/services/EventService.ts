@@ -263,6 +263,10 @@ export interface SPRegistration {
   CancellationDate: string;
   CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgeloest hat
   CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+  /** v7.16: Check-In-Audit — gesetzt sobald checkInParticipant() aufgerufen wird. */
+  CheckedInDate?: string;      // ISO-DateTime, wann der Teilnehmer eingecheckt wurde
+  CheckedInByName?: string;    // Name des Helfers, der den Check-In ausgeloest hat
+  CheckedInByEmail?: string;   // E-Mail des Helfers, der den Check-In ausgeloest hat
   CustomData: string; // JSON mit Custom Field Werten
 }
 
@@ -2475,6 +2479,9 @@ export class EventService {
       { title: 'CancellationDate', type: 4 },
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+      { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
+      { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
+      { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
       { title: 'CustomData', type: 3 },
     ];
 
@@ -3246,6 +3253,9 @@ export class EventService {
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+      { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
+      { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
+      { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(
@@ -3654,16 +3664,28 @@ export class EventService {
   }
 
   /**
-   * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen)
+   * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen).
+   * v7.16: Erfasst zusaetzlich, WANN und VON WEM der Check-In ausgeloest
+   * wurde (CheckedInDate / CheckedInByName / CheckedInByEmail). Diese
+   * Spalten werden bei neuen Events ueber createRegistrationList() automatisch
+   * angelegt; fuer bestehende Events muss der Admin einmalig die Kachel
+   * "Spalten fixen" im Admin-Center klicken, damit der Check-In nicht mit
+   * HTTP 400 fehlschlaegt.
    */
   public async checkInParticipant(
     subsiteUrl: string,
     itemId: number
   ): Promise<boolean> {
     try {
+      const me = this.context.pageContext.user;
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
-        { 'Status': 'Eingecheckt' }
+        {
+          'Status': 'Eingecheckt',
+          'CheckedInDate': new Date().toISOString(),
+          'CheckedInByName': me.displayName || '',
+          'CheckedInByEmail': me.email || me.loginName || '',
+        }
       );
       return response.ok;
     } catch {
