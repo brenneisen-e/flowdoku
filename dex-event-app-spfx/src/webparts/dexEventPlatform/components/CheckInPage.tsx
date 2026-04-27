@@ -36,7 +36,6 @@ export default function CheckInPage(): React.ReactElement {
   }, [events, isAdmin, currentEmailLc]);
   const scannerRef = React.useRef<QrScanner | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [manualCode, setManualCode] = React.useState('');
   const [resultMessage, setResultMessage] = React.useState('');
   const [resultType, setResultType] = React.useState<'success' | 'error' | 'info' | ''>('');
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -89,24 +88,43 @@ export default function CheckInPage(): React.ReactElement {
     setIsLoadingSearchRegs(false);
   }, [eventService, events, searchRegsCache]);
 
-  const onSearchFocus = (): void => {
-    if (nameSearchEventId) loadRegsForSearch(nameSearchEventId);
-  };
+  // v7.14: Sobald nameSearchEventId gesetzt ist, Teilnehmerliste vorab laden,
+  // damit die Live-Liste ohne Vorab-Tippen sichtbar ist.
   React.useEffect(() => {
-    if (nameSearchQuery && nameSearchEventId && !searchRegsCache[nameSearchEventId]) {
+    if (nameSearchEventId && !searchRegsCache[nameSearchEventId]) {
       loadRegsForSearch(nameSearchEventId);
     }
-  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, loadRegsForSearch]);
+  }, [nameSearchEventId, searchRegsCache, loadRegsForSearch]);
 
+  // v7.14: Live-Filter ueber die ganze Liste — leerer Query zeigt alle
+  // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
   const searchHits = React.useMemo(() => {
-    const q = nameSearchQuery.trim().toLowerCase();
-    if (q.length < 2 || !nameSearchEventId) return [];
+    if (!nameSearchEventId) return [];
     const regs = searchRegsCache[nameSearchEventId] || [];
-    const matches = regs.filter(r => {
-      const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
-      return full.indexOf(q) >= 0;
+    const q = nameSearchQuery.trim().toLowerCase();
+    const filtered = q.length === 0
+      ? regs
+      : regs.filter(r => {
+          const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
+          return full.indexOf(q) >= 0;
+        });
+    // Sortierung: Angemeldet/QR versendet zuerst, dann Eingecheckt, dann
+    // Warteliste, dann Abgemeldet. Innerhalb der Gruppe alphabetisch nach
+    // Nachname.
+    const statusRank = (s: string): number => {
+      if (s === 'Angemeldet' || s === 'QR versendet') return 0;
+      if (s === 'Eingecheckt') return 1;
+      if (s === 'Warteliste') return 2;
+      return 3; // Abgemeldet & Sonstige
+    };
+    return filtered.slice().sort((a, b) => {
+      const sa = statusRank(a.Status);
+      const sb = statusRank(b.Status);
+      if (sa !== sb) return sa - sb;
+      const na = (a.Nachname || a.ParticipantName || '').toLowerCase();
+      const nb = (b.Nachname || b.ParticipantName || '').toLowerCase();
+      return na.localeCompare(nb);
     });
-    return matches.slice(0, 8);
   }, [nameSearchQuery, nameSearchEventId, searchRegsCache]);
 
   const startManualCheckInFromSearch = (reg: import('../services/EventService').SPRegistration): void => {
@@ -429,11 +447,6 @@ export default function CheckInPage(): React.ReactElement {
     processingRef.current = false;
   };
 
-  const handleManualSubmit = async (): Promise<void> => {
-    if (!manualCode.trim()) return;
-    await processCode(manualCode.trim());
-    setManualCode('');
-  };
 
   React.useEffect(() => {
     return () => {
@@ -732,10 +745,12 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       )}
 
-      {/* v7.12: Name-Suche + Manuell einchecken — als Fallback wenn kein QR
-          zur Hand ist oder die Camera-API in der SP-App blockiert ist. */}
+      {/* v7.14: Live-Teilnehmerliste mit Foto / Position / Standort + Filter.
+          Liste wird sofort beim Auswaehlen des Events geladen, kein "ab 2
+          Zeichen tippen" mehr — der Helfer sieht direkt alle Leute, kann den
+          gesuchten Eintrag scrollen oder das Suchfeld zum Filtern nutzen. */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Nach Name suchen</h3>
+        <h3 style={{ marginBottom: 12 }}>Teilnehmer einchecken</h3>
         {accessibleEvents.length > 1 && (
           <select
             className="form-input"
@@ -752,9 +767,8 @@ export default function CheckInPage(): React.ReactElement {
         <input
           className="form-input"
           value={nameSearchQuery}
-          onFocus={onSearchFocus}
           onChange={e => setNameSearchQuery(e.target.value)}
-          placeholder="Vorname, Nachname oder E-Mail eingeben…"
+          placeholder="Filter: Vorname, Nachname oder E-Mail…"
           disabled={!nameSearchEventId}
           style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
         />
@@ -773,86 +787,125 @@ export default function CheckInPage(): React.ReactElement {
             {searchLoadError}
           </p>
         )}
-        {nameSearchQuery.trim().length >= 2 && (
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {searchHits.length === 0 && !isLoadingSearchRegs && (
+        {nameSearchEventId && !isLoadingSearchRegs && (
+          <div style={{ marginTop: 12 }}>
+            {searchHits.length === 0 ? (
               <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: 0 }}>
-                Kein Treffer — bitte anders schreiben oder per QR-Code einchecken.
+                {nameSearchQuery.trim().length > 0
+                  ? 'Kein Treffer — bitte anders schreiben oder per QR-Code einchecken.'
+                  : 'Keine Teilnehmer für dieses Event.'}
               </p>
-            )}
-            {searchHits.map(reg => {
-              const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
-              const status = reg.Status;
-              const alreadyIn = status === 'Eingecheckt';
-              const cancelled = status === 'Abgemeldet';
-              const waitlist = status === 'Warteliste';
-              const statusBg = alreadyIn ? 'rgba(134,188,37,0.15)'
-                : cancelled ? 'rgba(204,0,0,0.10)'
-                : waitlist ? 'rgba(237,139,0,0.12)'
-                : 'rgba(21,101,192,0.10)';
-              const statusFg = alreadyIn ? 'var(--dex-green-dark, #4a7c1f)'
-                : cancelled ? 'var(--dex-red, #c00)'
-                : waitlist ? 'var(--dex-orange, #ed8b00)'
-                : '#1565c0';
-              return (
-                <div
-                  key={reg.Id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
-                    borderRadius: 10, background: '#fff',
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--dex-gray-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {name}
-                    </div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {reg.ParticipantEmail}
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
-                    background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
-                  }}>{status}</span>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                    disabled={alreadyIn || cancelled || isProcessing}
-                    onClick={() => startManualCheckInFromSearch(reg)}
-                  >
-                    {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
-                  </button>
+            ) : (
+              <>
+                <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-400)', marginBottom: 6 }}>
+                  {searchHits.length} {searchHits.length === 1 ? 'Teilnehmer' : 'Teilnehmer'}
+                  {nameSearchQuery.trim().length > 0 ? ' (gefiltert)' : ''}
                 </div>
-              );
-            })}
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  // Maximalhoehe + Scroll, damit lange Events nicht die ganze Seite sprengen.
+                  maxHeight: 480, overflowY: 'auto',
+                  paddingRight: 4,
+                }}>
+                  {searchHits.map(reg => {
+                    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
+                    const status = reg.Status;
+                    const alreadyIn = status === 'Eingecheckt';
+                    const cancelled = status === 'Abgemeldet';
+                    const waitlist = status === 'Warteliste';
+                    const statusBg = alreadyIn ? 'rgba(134,188,37,0.15)'
+                      : cancelled ? 'rgba(204,0,0,0.10)'
+                      : waitlist ? 'rgba(237,139,0,0.12)'
+                      : 'rgba(21,101,192,0.10)';
+                    const statusFg = alreadyIn ? 'var(--dex-green-dark, #4a7c1f)'
+                      : cancelled ? 'var(--dex-red, #c00)'
+                      : waitlist ? 'var(--dex-orange, #ed8b00)'
+                      : '#1565c0';
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const jobTitle = (reg as any).JobTitle || '';
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const location = (reg as any).Location || '';
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const ctx = (window as any).__dexSpfxContext;
+                    const photoSrc = ctx && reg.ParticipantEmail
+                      ? `${ctx.pageContext.web.absoluteUrl}/_layouts/15/userphoto.aspx?size=S&accountname=${encodeURIComponent(reg.ParticipantEmail)}`
+                      : '';
+                    return (
+                      <div
+                        key={reg.Id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
+                          borderRadius: 10, background: '#fff',
+                        }}
+                      >
+                        {/* Foto-Avatar mit Initials-Fallback. Initialen liegen
+                            im Hintergrund, das <img> deckt sie ab — schlaegt
+                            der Image-Load fehl, kommen sie zum Vorschein. */}
+                        <div style={{
+                          position: 'relative',
+                          width: 44, height: 44, borderRadius: '50%',
+                          flexShrink: 0, overflow: 'hidden',
+                          background: 'var(--dex-gray-100)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-500)',
+                        }}>
+                          <span style={{ pointerEvents: 'none' }}>
+                            {(`${(reg.Vorname || reg.ParticipantName || '').charAt(0)}${(reg.Nachname || '').charAt(0)}`.toUpperCase()) || '?'}
+                          </span>
+                          {photoSrc && (
+                            <img
+                              src={photoSrc}
+                              alt={name}
+                              style={{
+                                position: 'absolute', inset: 0,
+                                width: '100%', height: '100%', objectFit: 'cover',
+                              }}
+                              onError={e => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--dex-gray-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {name}
+                          </div>
+                          {(jobTitle || location) && (
+                            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {[jobTitle, location].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {reg.ParticipantEmail}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
+                          background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
+                        }}>{status}</span>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                          disabled={alreadyIn || cancelled || isProcessing}
+                          onClick={() => startManualCheckInFromSearch(reg)}
+                        >
+                          {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {/* Manuelle Eingabe */}
-      <div className="card" style={{ padding: 24 }}>
-        <h3 style={{ marginBottom: 12 }}>{t('checkin.manual')}</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            className="form-input"
-            value={manualCode}
-            onChange={e => setManualCode(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleManualSubmit(); }}
-            placeholder="DEX|1|email@deloitte.de"
-            style={{ flex: 1 }}
-            disabled={isProcessing}
-          />
-          <button
-            className="btn btn-secondary"
-            onClick={handleManualSubmit}
-            disabled={isProcessing || !manualCode.trim()}
-          >
-            {t('checkin.checkinbtn')}
-          </button>
-        </div>
-      </div>
+      {/* v7.14: Die alte "Manuell QR-Code als String tippen"-Card ist raus.
+          Die Live-Teilnehmerliste oben deckt das Manuelle Einchecken
+          benutzerfreundlicher ab. */}
     </div>
   );
 }
