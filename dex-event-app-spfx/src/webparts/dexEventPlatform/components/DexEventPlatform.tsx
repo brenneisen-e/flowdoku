@@ -58,13 +58,13 @@ function AppContent(): React.ReactElement {
         return;
       }
       const elapsed = Date.now() - start;
-      // Asymptotisch zu 95% — Tau 6.5s. Beobachtete Boot-Zeit liegt bei
-      // ~9-10 Sekunden; bei dieser Kurve ist der User dann bei ~75-78%
-      // angekommen, springt am Ende auf 100% (sieht dann nicht so aus,
-      // als hätte er bei 30% noch ewig gewartet). Frühe Sekunden
-      // klettern langsamer (~14% nach 1s, ~26% nach 2s) — fühlt sich
-      // realistischer an als die alte schnelle Kurve.
-      const target = Math.round(95 * (1 - Math.exp(-elapsed / 6500)));
+      // v7.10: Linearer Fortschritt — nach 10 Sekunden bei 100%. Wenn das
+      // Laden frueher fertig ist, setzt der Done-Branch oben sofort auf 100%
+      // und stoppt das Intervall. Sollte Roles/Events laenger als 10s
+      // brauchen, friert der Balken bei 99% ein, bis das Done-Signal kommt
+      // — sonst stuende der Balken auf 100%, obwohl die App noch nicht
+      // bereit ist (das wirkt verwirrend / "haengend").
+      const target = Math.min(99, Math.round((elapsed / 10000) * 100));
       setBootProgress(prev => Math.max(prev, target));
     }, 60);
     return () => clearInterval(id);
