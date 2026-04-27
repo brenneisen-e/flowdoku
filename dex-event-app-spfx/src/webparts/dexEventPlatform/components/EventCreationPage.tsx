@@ -1766,6 +1766,44 @@ export default function EventCreationPage(): React.ReactElement {
   const errorBorderStyle = (fieldName: string): React.CSSProperties =>
     fieldHasError(fieldName) ? { borderColor: 'var(--dex-red)', boxShadow: '0 0 0 2px rgba(218,41,28,0.15)' } : {};
 
+  // v7.23: Intro-Hilfsbox pro Wizard-Step. Zeigt eine Liste was der User in
+  // diesem Schritt einstellen kann + Verweis aufs Handbuch. DE/EN bilingual.
+  const renderStepIntro = (bulletsDe: string[], bulletsEn: string[]): React.ReactElement => (
+    <div style={{
+      padding: '14px 16px', marginBottom: 12,
+      background: 'var(--dex-gray-50, #f8f9fa)',
+      border: '1px solid var(--dex-gray-200)',
+      borderRadius: 'var(--dex-radius, 12px)',
+      fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+      lineHeight: 1.5,
+    }}>
+      <div style={{ marginBottom: 6 }}>
+        <strong style={{ color: 'var(--dex-gray-800)', fontSize: '0.88rem' }}>
+          {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
+        </strong>
+      </div>
+      <ul style={{ margin: '0 0 8px 18px', padding: 0, lineHeight: 1.6 }}>
+        {(isDe ? bulletsDe : bulletsEn).map((b, i) => <li key={i}>{b}</li>)}
+      </ul>
+      <div>
+        {isDe ? 'Eine ausführliche Anleitung steht' : 'A full guide is in the'}{' '}
+        <button
+          type="button"
+          onClick={() => navigate('manual')}
+          style={{
+            background: 'none', border: 'none', padding: 0,
+            color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
+            textDecoration: 'underline', cursor: 'pointer',
+            fontSize: '0.82rem',
+          }}
+        >
+          {isDe ? 'im Handbuch' : 'manual'}
+        </button>
+        .
+      </div>
+    </div>
+  );
+
   return (
     <div className="page-container">
       <div>
@@ -1833,6 +1871,25 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 0: Grundlagen ===== */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+
+              {renderStepIntro(
+                [
+                  'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
+                  'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
+                  'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+                  'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
+                  'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
+                  'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
+                ],
+                [
+                  'Event title and description — shown on the event list and registration page',
+                  'Upload an event image (used at the top of the detail page and in emails)',
+                  'Flag as test event — only visible to admins / test users',
+                  'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
+                  'Optional: QR scanner users for check-in on event day (no further editing rights)',
+                  'Set location filter and audience — who sees the event in the list',
+                ]
+              )}
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2507,6 +2564,20 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 1: Zeit & Ort ===== */}
               <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Veranstaltungsort und Adresse erfassen',
+                  'Start- und End-Datum (mit Uhrzeit) festlegen',
+                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
+                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+                ],
+                [
+                  'Set event location and address',
+                  'Set start and end date (incl. time)',
+                  'Set the registration deadline — no new registrations after this date',
+                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+                ]
+              )}
               <div className="form-group">
                 <label className="form-label">
                   {t('create.location')}
@@ -2783,6 +2854,20 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 2: Kapazität & Fristen ===== */}
               <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
+                  'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
+                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
+                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
+                ],
+                [
+                  'Set the maximum number of attendees (or Unlimited)',
+                  'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
+                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
+                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
+                ]
+              )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
@@ -3031,6 +3116,25 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 3: Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+
+              {renderStepIntro(
+                [
+                  'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
+                  'Mehrfachauswahl bei Dropdowns (z.B. mehrere Allergien anhaken)',
+                  'Pflichtfeld setzen (rotes Sternchen, Anmeldung blockiert wenn leer)',
+                  'Beschreibung pro Feld — landet als „i"-Tooltip neben dem Feld-Label',
+                  'Sichtbarkeitsbedingung: Feld nur dann anzeigen wenn eine andere Frage einen bestimmten Wert hat (z.B. „Zimmerart nur fragen wenn Hotel = ja")',
+                  'Reihenfolge per Drag oder Pfeilen — die Nummerierung passt sich automatisch an',
+                ],
+                [
+                  'Pick a field type: text, number, dropdown, checkbox, people search or roommate (double room)',
+                  'Multi-select for dropdowns (e.g. tick multiple allergies)',
+                  'Mark required (red asterisk, blocks submit when empty)',
+                  'Description per field — appears as „i" tooltip next to the field label',
+                  'Visibility condition: only show this field when another question has a specific value (e.g. „Only ask room type if Hotel = yes")',
+                  'Reordering via drag or arrows — numbering updates automatically',
+                ]
+              )}
 
               {/* v7.21: Datenschutz-Hinweis ueber der Template-Auswahl —
                   links angeordnet, orangener Akzent damit der Organizer beim
@@ -3383,35 +3487,47 @@ export default function EventCreationPage(): React.ReactElement {
                       return (
                         <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
                           {!field.showIf ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (candidateSources.length === 0) {
-                                  alert(isDe
-                                    ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
-                                    : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
-                                  return;
-                                }
-                                const first = candidateSources[0];
-                                updateCustomField(field.id, {
-                                  showIf: {
-                                    fieldId: first.id,
-                                    values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
-                                  },
-                                });
-                              }}
-                              style={{
-                                background: 'none', border: 'none', padding: 0,
-                                color: 'var(--dex-green-dark, #4a7c1f)',
-                                fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                              }}
-                            >
-                              + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
-                            </button>
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (candidateSources.length === 0) {
+                                    alert(isDe
+                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
+                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
+                                    return;
+                                  }
+                                  const first = candidateSources[0];
+                                  updateCustomField(field.id, {
+                                    showIf: {
+                                      fieldId: first.id,
+                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
+                                    },
+                                  });
+                                }}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0,
+                                  color: 'var(--dex-green-dark, #4a7c1f)',
+                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
+                              </button>
+                              <InfoTooltip
+                                text={isDe
+                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
+                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
+                              />
+                            </span>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                                 {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
+                                <InfoTooltip
+                                  text={isDe
+                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
+                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
+                                />
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                 <select
@@ -3610,6 +3726,22 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 4: Kommunikation ===== */}
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+                {renderStepIntro(
+                  [
+                    'E-Mail-Sprache (DE/EN) für die automatischen Mails an die Teilnehmer wählen',
+                    'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
+                    'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
+                    'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
+                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+                  ],
+                  [
+                    'Pick the email language (DE/EN) for automatic emails to attendees',
+                    'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
+                    'Upload a custom logo / header image for the email and Outlook event',
+                    'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
+                    'Optionally disable notifications entirely — e.g. for internal test events',
+                  ]
+                )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
                 <div className="form-group">
@@ -4108,6 +4240,18 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 5: Dokumente ===== */}
               <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+                {renderStepIntro(
+                  [
+                    'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
+                    'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
+                    'Dokumente hochladen (PDF) — Teilnehmer sehen sie auf MyEvents als Inline-Vorschau oder Download',
+                  ],
+                  [
+                    'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
+                    'Transfer times — bus / shuttle / train to and from the venue',
+                    'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
+                  ]
+                )}
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
                   {t('create.documents.hint')}
                 </p>
@@ -4149,6 +4293,22 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 6: Fun-Zone ===== */}
               <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+                {renderStepIntro(
+                  [
+                    'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
+                    'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
+                    'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
+                    'Cluster-Größe steuern: wie viele Fragen pro „Spielblock" angezeigt werden — Teilnehmer kann zwischenspeichern und später weitermachen',
+                    'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
+                  ],
+                  [
+                    'Create quiz questions for the event — multiple choice with any number of answer options',
+                    'Optionally upload an image per question (logo, photo quiz, etc.)',
+                    'Multiple correct answers are supported — all of them must be picked for full points',
+                    'Control cluster size: how many questions per „play block" — attendees can save progress and continue later',
+                    'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
+                  ]
+                )}
                 <h3 className="mb-16">{t('create.step.funzone')}</h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
                   {t('create.funzone.hint')}
