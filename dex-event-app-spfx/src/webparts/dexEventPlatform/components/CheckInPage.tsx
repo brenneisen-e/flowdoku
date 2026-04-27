@@ -96,18 +96,41 @@ export default function CheckInPage(): React.ReactElement {
     }
   }, [nameSearchEventId, searchRegsCache, loadRegsForSearch]);
 
+  // v7.16: Quick-Filter "Nur offene" — wenn aktiv, werden Eingecheckte,
+  // Wartelistler und Abgemeldete aus der Liste ausgeblendet, sodass der
+  // Helfer am Eingang nur die noch offenen Anmeldungen sieht.
+  const [onlyOpen, setOnlyOpen] = React.useState(false);
+
+  // KPI-Zaehler: angemeldet (= Status Angemeldet/QR versendet/Eingecheckt)
+  // und eingecheckt. Wird im KPI-Bereich der Check-In-Page angezeigt.
+  const checkInKpis = React.useMemo(() => {
+    if (!nameSearchEventId) return { registered: 0, checkedIn: 0 };
+    const regs = searchRegsCache[nameSearchEventId] || [];
+    let registered = 0;
+    let checkedIn = 0;
+    for (const r of regs) {
+      if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') registered++;
+      if (r.Status === 'Eingecheckt') checkedIn++;
+    }
+    return { registered, checkedIn };
+  }, [nameSearchEventId, searchRegsCache]);
+
   // v7.14: Live-Filter ueber die ganze Liste — leerer Query zeigt alle
   // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
   const searchHits = React.useMemo(() => {
     if (!nameSearchEventId) return [];
     const regs = searchRegsCache[nameSearchEventId] || [];
     const q = nameSearchQuery.trim().toLowerCase();
-    const filtered = q.length === 0
+    const matchesQuery = q.length === 0
       ? regs
       : regs.filter(r => {
           const full = `${r.Vorname || ''} ${r.Nachname || ''} ${r.ParticipantName || ''} ${r.ParticipantEmail || ''}`.toLowerCase();
           return full.indexOf(q) >= 0;
         });
+    // v7.16: optionaler Quick-Filter "nur offene Anmeldungen"
+    const filtered = onlyOpen
+      ? matchesQuery.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet')
+      : matchesQuery;
     // Sortierung: Angemeldet/QR versendet zuerst, dann Eingecheckt, dann
     // Warteliste, dann Abgemeldet. Innerhalb der Gruppe alphabetisch nach
     // Nachname.
@@ -125,7 +148,7 @@ export default function CheckInPage(): React.ReactElement {
       const nb = (b.Nachname || b.ParticipantName || '').toLowerCase();
       return na.localeCompare(nb);
     });
-  }, [nameSearchQuery, nameSearchEventId, searchRegsCache]);
+  }, [nameSearchQuery, nameSearchEventId, searchRegsCache, onlyOpen]);
 
   const startManualCheckInFromSearch = (reg: import('../services/EventService').SPRegistration): void => {
     const ev = events.find(e => e.id === nameSearchEventId);
@@ -313,22 +336,6 @@ export default function CheckInPage(): React.ReactElement {
       scannerRef.current = null;
     }
     setIsScanning(false);
-  };
-
-  // Foto-Upload: QR-Code aus Bild lesen
-  const handlePhotoUpload = async (file: File): Promise<void> => {
-    try {
-      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
-      if (result && result.data) {
-        await processCode(result.data);
-      } else {
-        setResultMessage('Kein QR-Code im Bild erkannt.');
-        setResultType('error');
-      }
-    } catch {
-      setResultMessage('Kein QR-Code im Bild erkannt. Bitte erneut versuchen.');
-      setResultType('error');
-    }
   };
 
   // Code verarbeiten und einchecken
@@ -654,7 +661,13 @@ export default function CheckInPage(): React.ReactElement {
                 {t('checkin.scan')}
               </button>
               {cameraError && (
-                <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', marginTop: 12 }}>{cameraError}</p>
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ color: 'var(--dex-orange)', fontSize: '0.85rem', margin: 0 }}>{cameraError}</p>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 8, fontWeight: 600 }}>
+                    Alternativ: Du kannst Teilnehmer auch in der Liste unten suchen
+                    und per Klick auf &quot;Einchecken&quot; manuell einchecken.
+                  </p>
+                </div>
               )}
             </div>
           </>
@@ -696,54 +709,10 @@ export default function CheckInPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* Foto-Upload — nur sichtbar wenn Live-Scanner NICHT aktiv */}
-      {!isScanning && (
-        <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-          <h3 style={{ marginBottom: 8 }}>QR-Code scannen</h3>
-          <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
-            Alternativ: QR-Code fotografieren oder aus der Galerie wählen.
-          </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              padding: '14px 24px', borderRadius: 12, border: 'none',
-              background: 'var(--dex-green)', color: '#fff', cursor: 'pointer',
-              fontSize: '0.95rem', fontWeight: 700, flex: '1 1 180px',
-            }}>
-              Kamera öffnen
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  const file = e.target.files && e.target.files[0];
-                  if (file) handlePhotoUpload(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              padding: '14px 24px', borderRadius: 12, border: '2px solid var(--dex-gray-300)',
-              background: '#fff', color: 'var(--dex-gray-700)', cursor: 'pointer',
-              fontSize: '0.95rem', fontWeight: 600, flex: '1 1 180px',
-            }}>
-              Aus Galerie wählen
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  const file = e.target.files && e.target.files[0];
-                  if (file) handlePhotoUpload(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          </div>
-        </div>
-      )}
+      {/* v7.16: Foto-Upload-Fallback (Galerie / Kamera-Capture per File-Input)
+          ist raus. Wenn der Live-Scanner nicht startet, weisen wir in der
+          Camera-Error-Message direkt auf die Live-Teilnehmerliste hin —
+          dort kann man per Klick manuell einchecken. */}
 
       {/* v7.14: Live-Teilnehmerliste mit Foto / Position / Standort + Filter.
           Liste wird sofort beim Auswaehlen des Events geladen, kein "ab 2
@@ -764,14 +733,69 @@ export default function CheckInPage(): React.ReactElement {
             ))}
           </select>
         )}
-        <input
-          className="form-input"
-          value={nameSearchQuery}
-          onChange={e => setNameSearchQuery(e.target.value)}
-          placeholder="Filter: Vorname, Nachname oder E-Mail…"
-          disabled={!nameSearchEventId}
-          style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
-        />
+        {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
+            "Nur offene anzeigen" der die Liste auf Angemeldet/QR versendet
+            reduziert. Sichtbar nur wenn Event gewaehlt + Liste geladen. */}
+        {nameSearchEventId && (searchRegsCache[nameSearchEventId] || []).length > 0 && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+            marginBottom: 10,
+          }}>
+            <div style={{
+              padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(21,101,192,0.08)', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1565c0', lineHeight: 1 }}>
+                {checkInKpis.registered}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                Angemeldet
+              </div>
+            </div>
+            <div style={{
+              padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(134,188,37,0.12)', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', lineHeight: 1 }}>
+                {checkInKpis.checkedIn}
+                <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)', fontWeight: 500 }}>
+                  /{checkInKpis.registered}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                Eingecheckt
+              </div>
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            className="form-input"
+            value={nameSearchQuery}
+            onChange={e => setNameSearchQuery(e.target.value)}
+            placeholder="Filter: Vorname, Nachname oder E-Mail…"
+            disabled={!nameSearchEventId}
+            style={{ flex: '1 1 200px', padding: '10px 14px', fontSize: '0.95rem' }}
+          />
+          <button
+            type="button"
+            onClick={() => setOnlyOpen(v => !v)}
+            disabled={!nameSearchEventId}
+            title={onlyOpen ? 'Alle Teilnehmer zeigen' : 'Nur offene Anmeldungen zeigen (Eingecheckte ausblenden)'}
+            style={{
+              padding: '8px 14px', borderRadius: 10,
+              border: `1px solid ${onlyOpen ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+              background: onlyOpen ? 'rgba(134,188,37,0.10)' : '#fff',
+              color: onlyOpen ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+              cursor: nameSearchEventId ? 'pointer' : 'not-allowed',
+              fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit',
+              whiteSpace: 'nowrap', flexShrink: 0,
+              opacity: nameSearchEventId ? 1 : 0.5,
+            }}
+          >
+            {onlyOpen ? '✓ Nur offene' : 'Nur offene'}
+          </button>
+        </div>
         {!nameSearchEventId && accessibleEvents.length > 1 && (
           <p style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
             Bitte zuerst ein Event wählen.
