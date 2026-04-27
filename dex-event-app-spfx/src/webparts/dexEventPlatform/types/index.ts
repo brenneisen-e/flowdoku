@@ -107,7 +107,7 @@ export interface EventDocument {
 export interface EventSpecificField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
   required: boolean;
   options?: string[];
   helpText?: string;

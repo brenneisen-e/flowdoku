@@ -1231,14 +1231,19 @@ export default function RegistrationPage(): React.ReactElement {
                       <option value="">{t('reg.pleaseselect')}</option>
                       {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
-                  ) : field.type === 'user' ? (
+                  ) : field.type === 'user' || field.type === 'roommate' ? (
+                    // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
+                    // einzige Unterschied ist dass 'roommate' beim Anmelden
+                    // automatisch eine Zimmerpartner-Mail an die ausgewaehlte
+                    // Person triggert (siehe EventContext). 'user' ist der
+                    // generische Personen-Picker ohne Mail-Versand.
                     <UserFieldPicker
                       value={eventSpecific[field.id] || ''}
                       onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
                       searchUsers={searchUsers}
                       placeholder={t('reg.userfield.placeholder')}
                       errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
-                      hint={t('reg.userfield.notifyhint')}
+                      hint={field.type === 'roommate' ? t('reg.userfield.notifyhint') : undefined}
                     />
                   ) : field.type === 'checkbox' ? (
                     <label

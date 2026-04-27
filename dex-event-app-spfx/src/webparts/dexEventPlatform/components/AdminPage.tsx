@@ -245,7 +245,7 @@ export default function AdminPage(): React.ReactElement {
       && typeof selectedEvent.funstarterCapacity === 'number'
       && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
     const userIds = (selectedEvent?.eventSpecificFields || [])
-      .filter(f => f.type === 'user')
+      .filter(f => f.type === 'user' || f.type === 'roommate')
       .map(f => f.id);
     const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
       { id: 'id', label: '#', alwaysVisible: true },
