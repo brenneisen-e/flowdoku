@@ -114,6 +114,11 @@ export interface EventSpecificField {
   spInternalName?: string;
   /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
   externalLinks?: Array<{ label: string; url: string }>;
+  /** v7.11: Wenn `type === 'select'` und `multi === true`, wird das Feld als
+   *  Mehrfachauswahl gerendert (Checkbox-Liste). Mehrere gewählte Werte werden
+   *  in `eventSpecificData[id]` als " | "-getrennter String gespeichert (Pipe
+   *  mit Spaces, damit Optionen mit Komma im Label nicht zerrissen werden). */
+  multi?: boolean;
 }
 
 export interface Registration {

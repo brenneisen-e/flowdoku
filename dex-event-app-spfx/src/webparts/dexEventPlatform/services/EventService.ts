@@ -237,6 +237,9 @@ export interface CustomField {
   /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
    * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
   externalLinks?: Array<{ label: string; url: string }>;
+  /** v7.11: Bei type=select erlaubt true Mehrfachauswahl. Wert wird in der
+   *  Teilnehmerliste " | "-getrennt gespeichert. */
+  multi?: boolean;
 }
 
 export interface SPRegistration {
