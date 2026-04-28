@@ -204,6 +204,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [audienceShowAll, setAudienceShowAll] = React.useState(false);
   const [audienceChipSearch, setAudienceChipSearch] = React.useState('');
 
+  // Nutzungsbedingungen: Beim Erstellen eines neuen Events muss der Organizer
+  // zuerst eine Bestaetigungs-Maske mit den Nutzungs- und Datenschutz-
+  // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
+  const [tcAccepted, setTcAccepted] = React.useState(false);
+  const [tcCheckbox, setTcCheckbox] = React.useState(false);
+
   const addAudienceItem = (value: string): void => {
     const list = audience.split(',').map(s => s.trim()).filter(Boolean);
     if (list.indexOf(value) >= 0) return;
@@ -1840,8 +1846,177 @@ export default function EventCreationPage(): React.ReactElement {
     );
   };
 
+  // Nutzungsbedingungen-Modal: zeigt sich beim ersten Aufruf der
+  // Create-Event-Seite. Nach Akzeptieren wird die Maske weggeklappt; bei
+  // Bearbeiten bestehender Events (isEditMode) wird sie nicht angezeigt.
+  const showTermsModal = !isEditMode && !tcAccepted;
+
   return (
     <div className="page-container">
+      {showTermsModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: '100%', maxWidth: 720, maxHeight: '90vh', overflow: 'auto',
+              padding: 28, borderRadius: 16, background: '#fff',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+          >
+            <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem' }}>
+              Deloitte Event Experience Platform — Nutzungsbedingungen (Deutschland)
+            </h2>
+            <p style={{ margin: '0 0 20px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+              Letzte Überarbeitung: 24.09.2025
+            </p>
+
+            <div style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-800)' }}>
+              <p>
+                Der Zugang zur Event Experience Platform wird dir als Mitarbeiter von Deloitte Deutschland gewährt,
+                damit du das Teilnehmermanagement für Veranstaltungen, Events, Workshops oder andere Termine
+                organisieren kannst.
+              </p>
+
+              <p style={{ marginBottom: 6 }}>Die Plattform dient zur Koordination von:</p>
+              <ul style={{ marginTop: 0 }}>
+                <li>Internen Deloitte Veranstaltungen</li>
+                <li>Externen Veranstaltungen, bei denen das Teilnehmermanagement für Deloitte-Mitarbeiter organisiert wird (bspw. Laufveranstaltungen wie B2Run, oder JPMorgan)</li>
+              </ul>
+
+              <p>
+                <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
+                nicht koordiniert und erhalten keinen Zugang zur Plattform.
+              </p>
+
+              <p>
+                Bitte beachte, dass neue Events immer im Voraus angemeldet und genehmigt werden müssen:<br />
+                Kontakt für neue Events: <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a>
+              </p>
+
+              <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
+
+              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Wichtige Datenschutzhinweise</h3>
+              <ul style={{ marginTop: 0 }}>
+                <li>Die Teilnahme an Events ist immer freiwillig und darf nicht erzwungen werden.</li>
+                <li>Vermeide die Sammlung personenbezogener Daten so weit wie möglich.</li>
+                <li>Sammle nur die Daten, die du unbedingt benötigst, um den Zweck des Events zu erreichen.</li>
+                <li>Reduziere Freitextfelder auf das absolute Minimum, um individuelle Informationen zur Identifizierung von Personen zu vermeiden.</li>
+                <li>Verwende gesammelte Daten ausschließlich für den definierten und genehmigten Zweck. Falls Abweichungen notwendig sind, wende dich im Voraus an das Datenschutz-Team.</li>
+              </ul>
+
+              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Berechtigungen und Datenzugriff</h3>
+              <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Als Event-Ersteller / Administrator:</strong></p>
+              <ul style={{ marginTop: 0 }}>
+                <li>Du erhältst Admin-Funktionalitäten für dein spezifisches Event.</li>
+                <li>Du kannst auf die gesamte Teilnehmerliste deines Events zugreifen.</li>
+                <li>Diese Berechtigung gilt ausschließlich für das von dir erstellte Event.</li>
+                <li>Du darfst Teilnehmerinformationen nicht mit anderen teilen oder für andere Zwecke verwenden.</li>
+              </ul>
+
+              <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
+              <ul style={{ marginTop: 0 }}>
+                <li>Du kannst dich für Events an- oder abmelden.</li>
+                <li>Du erhältst Informationen zum jeweiligen Event.</li>
+                <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
+                <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
+              </ul>
+
+              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Datenschutzbestimmungen im Detail</h3>
+              <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Beschränkung der Sammlung personenbezogener und vertraulicher Daten:</strong></p>
+              <ul style={{ marginTop: 0 }}>
+                <li>Nur was unbedingt erforderlich ist, um den beabsichtigten Zweck zu erreichen.</li>
+                <li>Offene Fragen auf das Minimum reduzieren (um die Sammlung unnötiger oder nicht autorisierter Daten zu vermeiden).</li>
+              </ul>
+
+              <p>
+                <strong>Sammle keine sensiblen personenbezogenen Daten</strong> — das heißt: keine Daten bezüglich
+                Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen,
+                Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände
+                oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible
+                personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter
+                {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
+              </p>
+
+              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Besondere Bestimmungen für das Teilnehmermanagement</h3>
+              <ul style={{ marginTop: 0 }}>
+                <li>Teilnehmerdaten dürfen nur für das spezifische Event verwendet werden, für das sie gesammelt wurden.</li>
+                <li>Die Weitergabe von Teilnehmerlisten an Dritte ist untersagt.</li>
+                <li>Teilnehmerdaten anderer Events sind nicht einsehbar.</li>
+                <li>Nach Abschluss des Events sind Teilnehmerdaten gemäß den Deloitte-Richtlinien zu behandeln.</li>
+              </ul>
+
+              <p>
+                Ermögliche anonyme Antworten, wann immer möglich. Verwende personenbezogene und vertrauliche Daten,
+                die in einem Event gesammelt wurden, nicht für andere Zwecke als den ursprünglich angegebenen.
+                Sprich dich mit dem Datenschutz-Team ab, falls eine andere Nutzung der Daten beabsichtigt ist
+                (du benötigst die vorherige schriftliche Einwilligung der betroffenen Personen / Teilnehmer
+                unter Verwendung einer entsprechenden Vorlage).
+              </p>
+
+              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
+              <ul style={{ marginTop: 0 }}>
+                <li>Neue Events anmelden: <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a></li>
+                <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+              </ul>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                Diese Richtlinien gelten für alle Arten von Events, einschließlich Workshops, Seminare,
+                Webinare, Konferenzen und andere Veranstaltungen, deren Teilnehmermanagement für
+                Deloitte-Mitarbeiter über die Event Experience Platform organisiert wird.
+              </p>
+            </div>
+
+            <label
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                marginTop: 20, padding: 14,
+                background: tcCheckbox ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #f8f9fa)',
+                border: `1px solid ${tcCheckbox ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)'}`,
+                borderRadius: 10, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={tcCheckbox}
+                onChange={e => setTcCheckbox(e.target.checked)}
+                style={{ marginTop: 2, width: 18, height: 18, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
+                Ich habe die Nutzungs- und Datenschutzbedingungen gelesen und akzeptiere sie. Ich
+                bestätige, dass ich das geplante Event vorab über{' '}
+                <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a>{' '}
+                angemeldet habe (oder dies unmittelbar tun werde) und mich an die Datenschutz-
+                bestimmungen halten werde.
+              </span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => goBack()}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!tcCheckbox}
+                onClick={() => setTcAccepted(true)}
+                style={{ opacity: tcCheckbox ? 1 : 0.5, cursor: tcCheckbox ? 'pointer' : 'not-allowed' }}
+              >
+                <Check size={16} /> Akzeptieren & weiter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div>
         {/* ===== Step Progress Bar ===== */}
         <div style={{ marginBottom: 32 }}>
@@ -4759,23 +4934,14 @@ export default function EventCreationPage(): React.ReactElement {
                   {t('create.next')}
                 </button>
               ) : (
-                <>
-                  <button
-                    className="btn btn-secondary"
-                    disabled={!title}
-                    onClick={() => setShowPreview(true)}
-                  >
-                    {t('create.preview')}
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={!title || !description}
-                    onClick={handleSubmit}
-                    style={{ opacity: !title || !description ? 0.5 : 1 }}
-                  >
-                    <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
-                  </button>
-                </>
+                <button
+                  className="btn btn-primary"
+                  disabled={!title || !description}
+                  onClick={handleSubmit}
+                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                >
+                  <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+                </button>
               )}
             </div>
             </>
