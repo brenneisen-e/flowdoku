@@ -85,6 +85,7 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
     fontFamily: 'inherit', fontSize: 'inherit',
     transition: 'all 0.15s ease',
     boxShadow: greenAccent ? '0 4px 12px rgba(134,188,37,0.18)' : 'none',
+    position: 'relative',
   };
   const inner = (
     <>
@@ -99,7 +100,6 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
           whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
         }}>{badgeLabel}</span>
       </div>
-      <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--dex-gray-600, #4b5563)', lineHeight: 1.45 }}>{props.desc}</p>
       {props.result && (
         <p style={{
           margin: 0, fontSize: '0.72rem',
@@ -108,6 +108,30 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
         }}>{props.result}</p>
       )}
       {props.children}
+      {hover && props.desc && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            background: 'var(--dex-gray-900, #1f2937)',
+            color: '#fff',
+            padding: '10px 12px',
+            borderRadius: 8,
+            fontSize: '0.76rem',
+            lineHeight: 1.45,
+            fontWeight: 400,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            pointerEvents: 'none',
+            whiteSpace: 'normal',
+          }}
+        >
+          {props.desc}
+        </div>
+      )}
     </>
   );
   if (props.href) {
@@ -145,6 +169,7 @@ export default function AdminPage(): React.ReactElement {
   const { isAdmin, siteUrl, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
+  const [imageOrientation, setImageOrientation] = React.useState<'landscape' | 'portrait' | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
@@ -444,6 +469,7 @@ export default function AdminPage(): React.ReactElement {
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
+    setImageOrientation(null);
     setIsLoadingRegs(true);
     setRegLoadError('');
     try {
@@ -858,47 +884,77 @@ export default function AdminPage(): React.ReactElement {
           >
             ←
           </button>
-          <h2 style={{ margin: 0 }}>{selectedEvent.title}</h2>
-          <span className="badge" style={{
-            background: getStatusColor(selectedEvent.status) + '22',
-            color: getStatusColor(selectedEvent.status),
-          }}>
-            {selectedEvent.status}
-          </span>
         </div>
       </div>
 
-      {/* Event-Bild - eigene kleine Kachel, Original-Aufloesung */}
-      {selectedEvent.imageUrl && (
-        <div
-          className="card"
-          style={{
-            padding: 12,
-            marginBottom: 24,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            maxWidth: 360,
-            background: 'var(--dex-gray-50, #fafafa)',
-          }}
-        >
-          <img
-            src={selectedEvent.imageUrl}
-            alt={selectedEvent.title}
-            style={{
-              display: 'block',
-              maxWidth: '100%',
-              maxHeight: 220,
-              borderRadius: 'var(--dex-radius, 12px)',
-              objectFit: 'contain',
-            }}
-          />
-        </div>
-      )}
-
-      {/* Event-Info + Aktionen */}
+      {/* Event-Info + Aktionen
+          Bei Hochformat-Bildern: Bild links neben den Detail-Rows.
+          Bei Querformat-Bildern (oder solange die Orientierung noch
+          unbekannt ist): Bild als Banner ueber den Detail-Rows. */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
         <div className="card" style={{ padding: 24 }}>
+          {/* Header: Event-Titel + Status-Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
+            <span className="badge" style={{
+              background: getStatusColor(selectedEvent.status) + '22',
+              color: getStatusColor(selectedEvent.status),
+            }}>
+              {selectedEvent.status}
+            </span>
+          </div>
+          {selectedEvent.imageUrl && (
+            imageOrientation === 'portrait' ? (
+              <div
+                style={{
+                  float: 'left',
+                  width: 130,
+                  marginRight: 16,
+                  marginBottom: 8,
+                  borderRadius: 'var(--dex-radius, 12px)',
+                  overflow: 'hidden',
+                  background: 'var(--dex-gray-50, #fafafa)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={selectedEvent.imageUrl}
+                  alt={selectedEvent.title}
+                  onLoad={e => {
+                    const img = e.currentTarget;
+                    setImageOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
+                  }}
+                  style={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain' }}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 'var(--dex-radius, 12px)',
+                  overflow: 'hidden',
+                  background: 'var(--dex-gray-50, #fafafa)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  maxHeight: 180,
+                }}
+              >
+                <img
+                  src={selectedEvent.imageUrl}
+                  alt={selectedEvent.title}
+                  onLoad={e => {
+                    const img = e.currentTarget;
+                    setImageOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    maxHeight: 180,
+                    objectFit: 'contain',
+                  }}
+                />
+              </div>
+            )
+          )}
           <h3 className="mb-16">Event-Details</h3>
           <div className="settings-info">
             <div className="settings-info__row">
