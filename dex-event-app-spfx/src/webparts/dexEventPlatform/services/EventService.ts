@@ -3228,6 +3228,12 @@ export class EventService {
       } catch { errors++; }
     }
 
+    // v7.31: Counter auf den neuen Max-Wert syncen — syncCounterToMax liest
+    // intern den aktuellen Max neu, damit eine parallele Anmeldung (die
+    // gerade waehrend des Reorders eingetroffen ist) den Counter nicht
+    // wieder auf einen niedrigen Wert ueberschreibt.
+    try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
+
     return { success, errors };
   }
 
@@ -3685,6 +3691,13 @@ export class EventService {
         // Fallback ohne Audit-Felder (Subsite-Liste hat die Spalten noch nicht)
         console.warn('[DEX] cancelRegistration with audit failed (' + response.status + '), retrying without audit fields');
         response = await this._merge(url, corePayload);
+      }
+      // v7.31: Counter mit aktuellem Max syncen, damit er nicht "davonrast"
+      // wenn der hoechste ID-Inhaber sich abmeldet. Best-effort, blockiert
+      // die Abmeldung nicht wenn's fehlschlaegt. syncCounterToMax liest den
+      // Max-Wert intern frisch (race-frei gegen parallele Anmeldungen).
+      if (response.ok) {
+        try { await this.syncCounterToMax(subsiteUrl); } catch { /* */ }
       }
       return response.ok;
     } catch (err) {
@@ -4549,6 +4562,50 @@ export class EventService {
       if (items.length > 0 && items[0].TeilnehmerID != null) return items[0].TeilnehmerID;
     } catch { /* */ }
     return 0;
+  }
+
+  // v7.31: Counter auf den aktuellen Max-Wert syncen — wird bei Cancel und
+  // nach Reorder gerufen, damit der NextValue nicht "davonrast" ohne Bezug
+  // zur tatsaechlich vergebenen hoechsten ID. ETag-basiertes optimistic
+  // concurrency mit Retry.
+  //
+  // WICHTIG: newMax wird in JEDEM Retry-Versuch neu aus der Teilnehmerliste
+  // gelesen — nicht als Parameter uebergeben. Damit kann eine Anmeldung,
+  // die WAEHREND des Syncs eingetroffen ist (und dabei den Counter schon
+  // hochgesetzt hat), nicht durch eine falsche niedrigere Sync-Schreibung
+  // ueberschrieben werden. Ohne dieses "live re-read" wuerde die Counter-
+  // Vergabe spaeter den Wert kollidieren lassen mit der just-eingetragenen
+  // neuen ID.
+  //
+  // Wir setzen nur "down": wenn der Counter eh schon <= aktuellem Max ist,
+  // ist nichts zu tun (eine Anmeldung ist gleich schnell oder schneller
+  // gewesen — sie hat eine hoehere ID, der Counter darf nicht runter).
+  private async syncCounterToMax(subsiteUrl: string): Promise<void> {
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // Re-Read auf JEDEM Versuch: aktueller Max kommt frisch aus der
+      // Teilnehmerliste, NICHT vom Aufrufer als Parameter.
+      const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+      let getResp: SPHttpClientResponse;
+      try {
+        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+      } catch {
+        return; // Counter-Liste fehlt → kein Sync moeglich, ignorieren
+      }
+      if (!getResp.ok) return;
+      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+      if (!etag) return;
+      let data;
+      try { data = await getResp.json(); } catch { return; }
+      const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
+      if (current <= liveMax) return; // bereits konsistent oder Anmeldung war schneller
+      const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': liveMax }, etag);
+      if (patchResp.ok) return;
+      if (patchResp.status !== 412) return;
+      // 412 = jemand war zwischenzeitlich schneller (Anmeldung oder Sync) → retry
+      await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+    }
+    // Nach 5 Retries aufgeben — der Sync ist nur "Komfort", keine Pflicht.
   }
 
   private async _delete(url: string): Promise<SPHttpClientResponse> {
