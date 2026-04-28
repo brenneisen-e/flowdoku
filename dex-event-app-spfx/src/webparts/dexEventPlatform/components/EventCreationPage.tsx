@@ -686,8 +686,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [audience, setAudience] = React.useState(
     editEvent && editEvent.audienceFilter ? editEvent.audienceFilter.join(', ') : ''
   );
+  // Default fuer neue Events: 'OR' — konsistent mit EventContext-Read-Fallback
+  // und konservativer (UND-Verknuepfung kann Mitarbeiter unbeabsichtigt
+  // ausschliessen). Bestehende Events behalten ihren gespeicherten Wert.
   const [filterMode, setFilterMode] = React.useState<'AND' | 'OR'>(
-    editEvent ? editEvent.filterMode : 'AND'
+    editEvent ? editEvent.filterMode : 'OR'
   );
   const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
   // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
@@ -2900,8 +2903,8 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe
-                    ? <>Hier kannst du gezielt <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler / Security-Gruppen aus Entra</strong> hinzufügen. Diese sehen das Event zusätzlich — unabhängig vom Standortfilter oben.</>
-                    : <>Here you can add <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. These will see the event in addition to the location filter above.</>}
+                    ? <>Wähle hier <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus, die für dieses Event berücksichtigt werden sollen. Wie sich diese Auswahl mit dem Standortfilter oben verbindet (UND-/ODER-Verknüpfung), kannst du weiter unten festlegen, sobald beide Bereiche gefüllt sind.</>
+                    : <>Pick <strong>individual people</strong> or entire <strong>mailing lists or security groups from Entra</strong> to be considered for this event. How this selection combines with the location filter above (AND/OR) can be configured below, once both sections are filled.</>}
                 </p>
                 {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
                     Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
@@ -3073,52 +3076,70 @@ export default function EventCreationPage(): React.ReactElement {
                     Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
                   </p>
                 </div>
-                {/* Sichtbarkeit-Pruefen-Button: erst hier am Ende beider
-                    Bloecke (Standortfilter + Mailverteiler) sinnvoll, weil
-                    der Organizer typischerweise erst beide Angaben machen
-                    will, bevor er die kombinierte Sichtbarkeit prueft. */}
-                {(locationFilter || audience) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-outline"
-                      style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
-                      onClick={() => setShowEmailModal(true)}
-                      type="button"
-                    >
-                      <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
-                    </button>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
-                      {isDe
-                        ? 'Öffnet eine Vorschau aller Personen, die das Event tatsächlich sehen werden — basierend auf dem Standortfilter und den hinzugefügten Mailverteilern / Einzelusern. So kannst du die kombinierte Sichtbarkeit vor dem Speichern verifizieren.'
-                        : 'Opens a preview of all people who will actually see the event — based on the location filter and the added mailing lists / individual users. Lets you verify the combined visibility before saving.'}
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {/* UND/ODER Verknüpfung (kein Step-Badge — ist Zusatz von Section 4+5) */}
+              {/* Filterverknuepfung: nur sichtbar wenn beide Bereiche
+                  (Standortfilter + Mailverteiler) Werte haben — sonst gibt
+                  es nichts zu kombinieren. */}
               {locationFilter && audience && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', paddingLeft: 30 }}>
                   <label className="form-label">
-                    Filterverknüpfung
+                    {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                   </label>
                   <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                    Bestimmt, wie Standort-Filter und Zielgruppen-Filter kombiniert werden.<br />
-                    <em>Beispiel ODER: Standort = Köln, Zielgruppe = SAPALL → Jeder der in Köln sitzt ODER in der SAP-Gruppe ist, sieht das Event.<br />
-                    Beispiel UND: Nur wer in Köln sitzt UND in der SAP-Gruppe ist, sieht das Event.</em>
+                    {isDe ? (
+                      <>
+                        Bestimmt, wie Standortfilter und Mailverteiler / einzelne User kombiniert werden.<br />
+                        <em>Beispiel ODER: Standort = Köln, Verteiler = SAPALL → Jeder, der in Köln sitzt ODER in der SAP-Gruppe ist, sieht das Event.<br />
+                        Beispiel UND: Nur wer in Köln sitzt UND in der SAP-Gruppe ist, sieht das Event.</em>
+                      </>
+                    ) : (
+                      <>
+                        Defines how the location filter and the mailing list / individual user selection are combined.<br />
+                        <em>Example OR: Location = Cologne, list = SAPALL → Anyone in Cologne OR in the SAP group sees the event.<br />
+                        Example AND: Only people in Cologne AND in the SAP group see the event.</em>
+                      </>
+                    )}
                   </p>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                       <input type="radio" name="filterMode" value="OR" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} />
-                      <strong>ODER</strong>
-                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Einer der Filter reicht</span>
+                      <strong>{isDe ? 'ODER' : 'OR'}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>
+                        – {isDe ? 'Einer der Filter reicht' : 'one filter is enough'}
+                      </span>
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                       <input type="radio" name="filterMode" value="AND" checked={filterMode === 'AND'} onChange={() => setFilterMode('AND')} />
-                      <strong>UND</strong>
-                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– Beides muss zutreffen</span>
+                      <strong>{isDe ? 'UND' : 'AND'}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>
+                        – {isDe ? 'Beides muss zutreffen' : 'both must match'}
+                      </span>
                     </label>
                   </div>
+                </div>
+              )}
+
+              {/* Sichtbarkeit-Pruefen-Button: ans Ende der gesamten
+                  Sichtbarkeits-Sektion (nach Standortfilter, Mailverteiler
+                  und Filterverknuepfung), weil der Organizer typischerweise
+                  erst alles befuellt, bevor er die kombinierte Sichtbarkeit
+                  in einer Vorschau gegen-prueft. */}
+              {(locationFilter || audience) && (
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+                    onClick={() => setShowEmailModal(true)}
+                    type="button"
+                  >
+                    <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
+                  </button>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
+                    {isDe
+                      ? 'Öffnet eine Vorschau, mit der du anhand einer Testperson verifizieren kannst, ob die kombinierte Sichtbarkeit (Standortfilter + Mailverteiler/User + Verknüpfung) wirklich passt — bevor du das Event speicherst.'
+                      : 'Opens a preview where you can use a test person to verify whether the combined visibility (location filter + mailing lists/users + AND/OR combination) really matches — before you save the event.'}
+                  </p>
                 </div>
               )}
 
@@ -5776,24 +5797,32 @@ export default function EventCreationPage(): React.ReactElement {
               </button>
             </div>
 
+            <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {isDe
+                ? 'Hier kannst du verifizieren, ob die kombinierte Sichtbarkeit (Standortfilter + Mailverteiler / einzelne User + Verknüpfung) wirklich zu der Person passt, die das Event sehen soll. Tippe Name oder E-Mail einer Testperson ein und klick „Suchen" — die Tabelle darunter zeigt, ob sie das Event in ihrer Übersicht sieht und woher die Sichtbarkeit kommt (Standort-Match oder Mitgliedschaft in einem Verteiler).'
+                : 'Use this to verify whether the combined visibility (location filter + mailing lists / individual users + the AND/OR mode) actually matches the person you want to reach. Type a test person\'s name or email and click "Search" — the table below shows whether they can see the event and where the visibility comes from (location match or membership in a list).'}
+            </p>
+
             <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', fontSize: '0.85rem' }}>
               <div style={{ marginBottom: 6 }}>
-                <strong>Standort-Filter:</strong>{' '}
+                <strong>{isDe ? 'Standortfilter:' : 'Location filter:'}</strong>{' '}
                 {locationFilter ? locationFilter.split(',').map(s => s.trim()).map(s => (
                   <span key={s} className="badge badge-green" style={{ marginRight: 6 }}>{s}</span>
-                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine' : 'None'}</span>}
               </div>
               <div style={{ marginBottom: 6 }}>
-                <strong>Zielgruppen-Filter:</strong>{' '}
+                <strong>{isDe ? 'Mailverteiler / einzelne User:' : 'Mailing lists / individual users:'}</strong>{' '}
                 {audience ? audience.split(',').map(s => s.trim()).map(s => (
                   <span key={s} className="badge badge-orange" style={{ marginRight: 6 }}>{s}</span>
-                )) : <span style={{ color: 'var(--dex-gray-400)' }}>Keine</span>}
+                )) : <span style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine' : 'None'}</span>}
               </div>
               {locationFilter && audience && (
                 <div>
-                  <strong>Verknüpfung:</strong>{' '}
+                  <strong>{isDe ? 'Verknüpfung:' : 'Combination:'}</strong>{' '}
                   <span className={`badge ${filterMode === 'AND' ? 'badge-red' : 'badge-green'}`}>
-                    {filterMode === 'AND' ? 'UND (beide müssen zutreffen)' : 'ODER (eines reicht)'}
+                    {filterMode === 'AND'
+                      ? (isDe ? 'UND (beide müssen zutreffen)' : 'AND (both must match)')
+                      : (isDe ? 'ODER (eines reicht)' : 'OR (one is enough)')}
                   </span>
                 </div>
               )}
