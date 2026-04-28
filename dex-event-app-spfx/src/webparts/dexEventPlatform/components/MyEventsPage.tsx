@@ -15,6 +15,7 @@ import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
+import { RefreshCw } from './Icons';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -617,8 +618,15 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForEvent, getAllRegistrations } = useEvents();
-  const { t } = useLanguage();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForEvent, getAllRegistrations, refreshEvents } = useEvents();
+  const [isRefreshingEvents, setIsRefreshingEvents] = React.useState(false);
+  const handleRefreshMyEvents = async (): Promise<void> => {
+    if (isRefreshingEvents) return;
+    setIsRefreshingEvents(true);
+    try { await refreshEvents(); } finally { setIsRefreshingEvents(false); }
+  };
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
@@ -819,7 +827,32 @@ export default function MyEventsPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      <h2 className="mb-16">{t('myevents.title')}</h2>
+      <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0 }}>{t('myevents.title')}</h2>
+        <button
+          type="button"
+          onClick={handleRefreshMyEvents}
+          disabled={isRefreshingEvents || isEventsLoading}
+          title={isDe ? 'Meine Events neu laden' : 'Refresh my events'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: '0.78rem', padding: '6px 12px',
+            background: '#fff',
+            border: '1px solid var(--dex-gray-300, #d1d5db)',
+            borderRadius: 6, color: 'var(--dex-gray-700)',
+            cursor: (isRefreshingEvents || isEventsLoading) ? 'not-allowed' : 'pointer',
+            opacity: (isRefreshingEvents || isEventsLoading) ? 0.6 : 1,
+          }}
+        >
+          <span style={{ display: 'inline-flex', animation: isRefreshingEvents ? 'dex-spin 0.8s linear infinite' : 'none' }}>
+            <RefreshCw size={14} />
+          </span>
+          {isRefreshingEvents
+            ? (isDe ? 'Wird geladen…' : 'Loading…')
+            : (isDe ? 'Aktualisieren' : 'Refresh')}
+        </button>
+      </div>
 
       {loadError && (
         <div className="card" style={{ padding: 16, marginBottom: 16, color: 'var(--dex-red)' }}>

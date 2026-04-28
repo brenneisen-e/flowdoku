@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useNavigation } from '../context/NavigationContext';
 import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { RefreshCw } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import EventCard from './EventCard';
 
@@ -113,10 +114,17 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents } = useEvents();
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const handleRefresh = async (): Promise<void> => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try { await refreshEvents(); } finally { setIsRefreshing(false); }
+  };
   const { currentUser } = useCurrentUser();
   const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   const [onlyActive, setOnlyActive] = React.useState(true);
   // View-Mode (Cards | List) - persistiert in localStorage
   const [viewMode, setViewMode] = React.useState<'cards' | 'list'>(() => {
@@ -183,12 +191,40 @@ export default function EventListPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      {/* Debug-Panel fuer mobiles Testen */}
-      {canCreateEvents && (
-      <div style={{ marginBottom: 8, textAlign: 'right' }}>
-        <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
+      {/* Toolbar: Refresh-Button immer sichtbar (User koennen die Liste
+          frisch laden ohne die App zu reloaden), Debug-Button nur fuer
+          Organizer/Admin. */}
+      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isRefreshing || isEventsLoading}
+          title={isDe ? 'Events neu laden' : 'Refresh events'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: '0.78rem', padding: '4px 10px',
+            background: '#fff',
+            border: '1px solid var(--dex-gray-300, #d1d5db)',
+            borderRadius: 6, color: 'var(--dex-gray-700)',
+            cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
+            opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+          }}
+        >
+          <span style={{
+            display: 'inline-flex',
+            animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none',
+          }}>
+            <RefreshCw size={14} />
+          </span>
+          {isRefreshing
+            ? (isDe ? 'Wird geladen…' : 'Loading…')
+            : (isDe ? 'Aktualisieren' : 'Refresh')}
+        </button>
+        {canCreateEvents && (
+          <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
+        )}
       </div>
-      )}
+      <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {showDebug && (
         <div style={{ background: '#1e1e1e', color: '#0f0', padding: 12, borderRadius: 8, fontSize: '0.7rem', fontFamily: 'monospace', marginBottom: 16, maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
           {`User: ${currentUser.email}

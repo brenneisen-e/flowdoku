@@ -97,6 +97,31 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
               </Callout>
             ),
           },
+          {
+            number: 5,
+            title: isDe ? 'Teilnehmer in der App bearbeiten (v8.0)' : 'Edit attendee in the app (v8.0)',
+            description: (
+              <>
+                {isDe
+                  ? 'Neben jedem Teilnehmer findet sich seit v8.0 ein "Bearbeiten"-Button. Klick darauf öffnet ein Modal, in dem du Anrede, Vor-/Nachname, E-Mail, Telefon, Department, Standort, JobTitle, Status sowie alle event-spezifischen Felder direkt anpassen kannst — ohne Umweg über die SharePoint-Liste. Praktisch z.B. wenn ein Teilnehmer einen Tippfehler in der Anmeldung hatte oder seinen Standort geändert hat. Jede Änderung wird automatisch im "ChangeLog" der Teilnehmer-Zeile mit Datum + deinem Namen + Vorher-/Nachher-Wert protokolliert. Außerdem wird "LastModifiedDate" auf jetzt gesetzt.'
+                  : 'Since v8.0 every attendee row has an "Edit" button. Clicking it opens a modal where you can change salutation, first/last name, email, phone, department, location, job title, status and all event-specific fields directly — no detour via the SharePoint list. Useful e.g. when an attendee had a typo during registration or has changed location. Every change is automatically logged in the row\'s "ChangeLog" with date + your name + before/after value, and "LastModifiedDate" is set to now.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Vorteil gegenüber direktem Editieren in SharePoint: keine Datums-Format-Probleme, automatische Audit-Spur, keine Schulung der Organizer auf SP-UI nötig.'
+              : 'Advantage over direct editing in SharePoint: no date-format issues, automatic audit trail, no need to train organizers on the SP UI.',
+          },
+          {
+            number: 6,
+            title: isDe ? 'Aktualisieren-Button (v7.37+)' : 'Refresh button (v7.37+)',
+            description: (
+              <>
+                {isDe
+                  ? 'Oben rechts in jeder Übersicht (Eventliste, MyEvents, Admin Center) gibt es einen "Aktualisieren"-Button mit Refresh-Icon. Damit kannst du die Daten frisch aus SharePoint laden, ohne die App neu starten zu müssen — sinnvoll z.B. wenn ein anderer Organizer parallel etwas geändert hat oder wenn der Power-Automate-Flow gerade einen Nachrücker promotet hat und du das Ergebnis sehen willst. Im Admin Center werden bei selektiertem Event auch dessen Teilnehmer neu geladen.'
+                  : 'In every overview (event list, MyEvents, admin center) there\'s a "Refresh" button with a reload icon at the top right. It pulls fresh data from SharePoint without restarting the app — useful e.g. when another organizer has changed something in parallel or when the Power Automate flow has just promoted a waitlister and you want to see the result. In the admin center with a selected event, that event\'s attendees are also reloaded.'}
+              </>
+            ),
+          },
         ],
       },
     ],

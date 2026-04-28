@@ -3131,6 +3131,84 @@ export class EventService {
   }
 
   /**
+   * v8.0: Admin/Organizer kann Teilnehmerdaten direkt aus dem Admin Center
+   * editieren. Erlaubt das Aendern von Anrede/Vorname/Nachname/Email/Phone/
+   * Department/Location/JobTitle/Status sowie aller Custom-Felder. Schreibt
+   * automatisch ChangeLog-Eintrag mit Wer/Wann/Was-Diff und setzt
+   * LastModifiedDate.
+   *
+   * patch: Nur die echten Spalten-Werte (keine __metadata noetig — _merge
+   * sendet odata=nometadata).
+   * actor: Audit-Info des aufrufenden Users.
+   * oldValues: zum Diff-Bauen, nur Felder mit oldValues[key] !== patch[key]
+   * landen im ChangeLog.
+   * fieldLabelMap: optional, mappt internal column name -> display label.
+   */
+  public async adminUpdateRegistration(
+    subsiteUrl: string,
+    itemId: number,
+    patch: Record<string, unknown>,
+    actor: { name: string; email: string },
+    oldValues?: Record<string, unknown>,
+    fieldLabelMap?: Record<string, string>
+  ): Promise<boolean> {
+    try {
+      const changes: string[] = [];
+      const now = new Date().toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+      if (oldValues) {
+        for (const key of Object.keys(patch)) {
+          const oldV = oldValues[key];
+          const newV = patch[key];
+          // Vergleich als String, damit number vs string nicht stoert
+          const oldStr = oldV === null || oldV === undefined ? '' : String(oldV);
+          const newStr = newV === null || newV === undefined ? '' : String(newV);
+          if (oldStr !== newStr) {
+            const label = (fieldLabelMap && fieldLabelMap[key]) || key;
+            changes.push(`${label}: "${oldStr}" → "${newStr}"`);
+          }
+        }
+      }
+      const changeEntry = changes.length > 0
+        ? `[${now}] ${actor.name || actor.email}: ${changes.join(', ')}`
+        : '';
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = { ...patch, 'LastModifiedDate': new Date().toISOString() };
+
+      // ChangeLog anhaengen (bestehenden Log behalten, neuestes oben)
+      if (changeEntry) {
+        try {
+          const existing = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
+            SPHttpClient.configurations.v1
+          );
+          if (existing.ok) {
+            const data = await existing.json();
+            const oldLog = data.ChangeLog || data.d?.ChangeLog || '';
+            body['ChangeLog'] = oldLog ? `${changeEntry}\n${oldLog}` : changeEntry;
+          } else {
+            body['ChangeLog'] = changeEntry;
+          }
+        } catch {
+          body['ChangeLog'] = changeEntry;
+        }
+      }
+
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        body
+      );
+      return response.ok;
+    } catch (err) {
+      console.warn('[DEX] adminUpdateRegistration error:', err);
+      return false;
+    }
+  }
+
+  /**
    * Eigene Registrierung fuer ein Event laden
    */
   public async getMyRegistration(

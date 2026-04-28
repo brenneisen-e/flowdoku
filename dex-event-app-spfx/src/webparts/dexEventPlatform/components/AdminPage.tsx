@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
@@ -164,10 +164,26 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
-  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
+  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents } = useEvents();
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const handleRefresh = async (): Promise<void> => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshEvents();
+      // Wenn ein Event gerade selektiert ist, auch dessen Registrations neu laden
+      if (selectedEvent) {
+        try {
+          const regs = await getAllRegistrations(selectedEvent.id);
+          setRegistrations(regs);
+        } catch { /* */ }
+      }
+    } finally { setIsRefreshing(false); }
+  };
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl, currentUserRole } = useRoles();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
@@ -215,6 +231,109 @@ export default function AdminPage(): React.ReactElement {
     | { kind: 'promoted'; name: string; email: string; type?: string }
     | { kind: 'no-promote'; name: string };
   const [adminToast, setAdminToast] = React.useState<AdminToast | null>(null);
+
+  // v8.0: In-App-Edit-Modal fuer Teilnehmer (Admin/Organizer kann jeden
+  // Teilnehmer-Eintrag direkt aus der Liste editieren — Anrede, Name, Email,
+  // Phone, Department, Location, JobTitle, Status, plus alle Custom-Felder).
+  // Beim Save wird eine Audit-Zeile in ChangeLog geschrieben (wer/wann/was)
+  // und LastModifiedDate gesetzt — kein direkter SP-Edit mehr noetig, was
+  // gleichzeitig das deutsche Datumsformat-Problem in SP umgeht.
+  const [editingReg, setEditingReg] = React.useState<SPRegistration | null>(null);
+  const [editForm, setEditForm] = React.useState<Record<string, string>>({});
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+  const [editError, setEditError] = React.useState('');
+  const openEditModal = (reg: SPRegistration): void => {
+    setEditError('');
+    setEditingReg(reg);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = reg as any;
+    const initial: Record<string, string> = {
+      Anrede: r.Anrede || '',
+      Vorname: r.Vorname || '',
+      Nachname: r.Nachname || '',
+      ParticipantEmail: r.ParticipantEmail || '',
+      Phone: r.Phone || '',
+      Department: r.Department || '',
+      Location: r.Location || '',
+      JobTitle: r.JobTitle || '',
+      Status: r.Status || '',
+    };
+    // Custom-Field-Werte aus dem reg laden (sie sind als SP-Spalten gespeichert)
+    if (selectedEvent?.eventSpecificFields) {
+      for (const f of selectedEvent.eventSpecificFields) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sp = (f as any).spInternalName || '';
+        if (sp) initial[sp] = (r[sp] !== undefined && r[sp] !== null) ? String(r[sp]) : '';
+      }
+    }
+    setEditForm(initial);
+  };
+  const closeEditModal = (): void => {
+    setEditingReg(null);
+    setEditForm({});
+    setEditError('');
+  };
+  const saveEdit = async (): Promise<void> => {
+    if (!editingReg || !eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setIsSavingEdit(true);
+    setEditError('');
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = editingReg as any;
+      const oldValues: Record<string, unknown> = {};
+      const patch: Record<string, unknown> = {};
+      const fieldLabelMap: Record<string, string> = {
+        Anrede: isDe ? 'Anrede' : 'Salutation',
+        Vorname: isDe ? 'Vorname' : 'First name',
+        Nachname: isDe ? 'Nachname' : 'Last name',
+        ParticipantEmail: 'E-Mail',
+        Phone: isDe ? 'Telefon' : 'Phone',
+        Department: 'Department',
+        Location: isDe ? 'Standort' : 'Location',
+        JobTitle: 'Job Title',
+        Status: 'Status',
+      };
+      for (const key of Object.keys(editForm)) {
+        oldValues[key] = r[key] !== undefined && r[key] !== null ? String(r[key]) : '';
+        patch[key] = editForm[key];
+      }
+      // ParticipantName synchron halten wenn Vor-/Nachname geaendert wurde
+      if (editForm.Vorname && editForm.Nachname) {
+        patch.ParticipantName = `${editForm.Vorname} ${editForm.Nachname}`;
+      }
+      // Custom-Field-Labels in Map ergaenzen
+      if (selectedEvent?.eventSpecificFields) {
+        for (const f of selectedEvent.eventSpecificFields) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const sp = (f as any).spInternalName || '';
+          if (sp) fieldLabelMap[sp] = f.label;
+        }
+      }
+      const actor = {
+        name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email,
+        email: currentUser.email,
+      };
+      const ok = await eventServiceRef.adminUpdateRegistration(
+        selectedEvent.subsiteUrl, editingReg.Id, patch, actor, oldValues, fieldLabelMap
+      );
+      if (!ok) {
+        setEditError(isDe
+          ? 'Speichern fehlgeschlagen. Bitte erneut versuchen.'
+          : 'Save failed. Please try again.');
+        return;
+      }
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+      closeEditModal();
+    } catch (err) {
+      console.warn('[DEX] saveEdit error:', err);
+      setEditError(isDe
+        ? 'Unerwarteter Fehler beim Speichern.'
+        : 'Unexpected error while saving.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
   //  - columnOrder = geordnete Liste sichtbarer Spalten-IDs
@@ -542,7 +661,32 @@ export default function AdminPage(): React.ReactElement {
     // Event-Auswahl
     return (
       <div className="page-container" role="main">
-        <h2 className="mb-16">{t('admin.title')}</h2>
+        <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>{t('admin.title')}</h2>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isEventsLoading}
+            title={isDe ? 'Events neu laden' : 'Refresh events'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: '0.78rem', padding: '6px 12px',
+              background: '#fff',
+              border: '1px solid var(--dex-gray-300, #d1d5db)',
+              borderRadius: 6, color: 'var(--dex-gray-700)',
+              cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
+              opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+            }}
+          >
+            <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
+              <RefreshCw size={14} />
+            </span>
+            {isRefreshing
+              ? (isDe ? 'Wird geladen…' : 'Loading…')
+              : (isDe ? 'Aktualisieren' : 'Refresh')}
+          </button>
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {isAdmin && (
             <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
@@ -883,6 +1027,28 @@ export default function AdminPage(): React.ReactElement {
             ←
           </button>
         </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isRefreshing || isEventsLoading}
+          title={isDe ? 'Event + Teilnehmerdaten neu laden' : 'Reload event + attendee data'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: '0.78rem', padding: '6px 12px',
+            background: '#fff',
+            border: '1px solid var(--dex-gray-300, #d1d5db)',
+            borderRadius: 6, color: 'var(--dex-gray-700)',
+            cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
+            opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+          }}
+        >
+          <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
+            <RefreshCw size={14} />
+          </span>
+          {isRefreshing
+            ? (isDe ? 'Wird geladen…' : 'Loading…')
+            : (isDe ? 'Aktualisieren' : 'Refresh')}
+        </button>
       </div>
 
       {/* Event-Info + Aktionen
@@ -930,7 +1096,7 @@ export default function AdminPage(): React.ReactElement {
               </div>
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 className="mb-16">Event-Details</h3>
+              <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
               {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
                   buendig). Das globale .settings-info SCSS macht stattdessen
                   space-between (also Wert rechts-buendig) — hier wollen wir
@@ -949,37 +1115,37 @@ export default function AdminPage(): React.ReactElement {
                 return (
                   <>
                     <div style={rowStyle}>
-                      <span style={labelStyle}>Zeitraum</span>
+                      <span style={labelStyle}>{isDe ? 'Zeitraum' : 'Time period'}</span>
                       <span style={valueStyle}>{formatDate(selectedEvent.startDate)} - {formatDate(selectedEvent.endDate)}</span>
                     </div>
                     <div style={rowStyle}>
-                      <span style={labelStyle}>Organizer</span>
+                      <span style={labelStyle}>{isDe ? 'Organizer' : 'Organizer'}</span>
                       <span style={valueStyle}>{selectedEvent.organizers.map(o => {
                         const parts = o.split(',').map(s => s.trim());
                         return parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
                       }).join(', ')}</span>
                     </div>
                     <div style={rowStyle}>
-                      <span style={labelStyle}>Ort</span>
+                      <span style={labelStyle}>{isDe ? 'Ort' : 'Location'}</span>
                       <span style={valueStyle}>{selectedEvent.location || '-'}</span>
                     </div>
                     <div style={rowStyle}>
-                      <span style={labelStyle}>Max. Teilnehmer</span>
-                      <span style={valueStyle}>{selectedEvent.maxParticipants || 'Unbegrenzt'}</span>
+                      <span style={labelStyle}>{isDe ? 'Max. Teilnehmer' : 'Max. attendees'}</span>
+                      <span style={valueStyle}>{selectedEvent.maxParticipants || (isDe ? 'Unbegrenzt' : 'Unlimited')}</span>
                     </div>
                     <div style={rowStyle}>
-                      <span style={labelStyle}>Aktuell registriert</span>
+                      <span style={labelStyle}>{isDe ? 'Aktuell registriert' : 'Currently registered'}</span>
                       <span style={valueStyle}>{activeRegs.length}</span>
                     </div>
                     {waitlistRegs.length > 0 && (
                       <div style={rowStyle}>
-                        <span style={labelStyle}>Warteliste</span>
+                        <span style={labelStyle}>{isDe ? 'Warteliste' : 'Waitlist'}</span>
                         <span style={valueStyle}>{waitlistRegs.length}</span>
                       </div>
                     )}
                     {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
                       <div style={{ ...rowStyle, alignItems: 'flex-start', borderBottom: 'none' }}>
-                        <span style={labelStyle}>Abgefragte Felder</span>
+                        <span style={labelStyle}>{isDe ? 'Abgefragte Felder' : 'Requested fields'}</span>
                         <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {selectedEvent.eventSpecificFields.map(f => (
                             <span
@@ -2136,7 +2302,15 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'action') {
                   return (
-                    <td key={id} style={{ padding: 8, display: 'flex', gap: 4 }}>
+                    <td key={id} style={{ padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                        title={isDe ? 'Teilnehmer-Daten bearbeiten' : 'Edit attendee data'}
+                        onClick={() => openEditModal(reg)}
+                      >
+                        <Pencil size={12} /> {isDe ? 'Bearbeiten' : 'Edit'}
+                      </button>
                       {reg.Status === 'Eingecheckt' ? (
                         <button
                           className="btn btn-secondary"
@@ -2531,6 +2705,148 @@ export default function AdminPage(): React.ReactElement {
           </>
         )}
       </div>
+
+      {/* ===== TEILNEHMER-EDIT MODAL (v8.0) ===== */}
+      {editingReg && selectedEvent && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={() => { if (!isSavingEdit) closeEditModal(); }}
+        >
+          <div
+            className="card"
+            style={{
+              width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto',
+              padding: 24, borderRadius: 16, background: '#fff',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Pencil size={18} />{' '}
+                {isDe ? 'Teilnehmer bearbeiten' : 'Edit attendee'}
+                {' — '}
+                <span style={{ color: 'var(--dex-green-dark)' }}>
+                  {editForm.Vorname} {editForm.Nachname}
+                </span>
+              </h3>
+              <button
+                onClick={closeEditModal}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}
+                aria-label={isDe ? 'Schließen' : 'Close'}
+                disabled={isSavingEdit}
+              ><X size={20} /></button>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+              {isDe
+                ? 'Änderungen werden mit Datum und deinem Namen automatisch im ChangeLog des Teilnehmers protokolliert.'
+                : 'Changes are automatically logged in the attendee\'s ChangeLog with date and your name.'}
+            </p>
+
+            {(() => {
+              const fieldDefs: Array<{ key: string; label: string; type?: 'select' | 'email' }> = [
+                { key: 'Anrede', label: isDe ? 'Anrede' : 'Salutation' },
+                { key: 'Vorname', label: isDe ? 'Vorname' : 'First name' },
+                { key: 'Nachname', label: isDe ? 'Nachname' : 'Last name' },
+                { key: 'ParticipantEmail', label: 'E-Mail', type: 'email' },
+                { key: 'Phone', label: isDe ? 'Telefon' : 'Phone' },
+                { key: 'Department', label: 'Department' },
+                { key: 'Location', label: isDe ? 'Standort' : 'Location' },
+                { key: 'JobTitle', label: 'Job Title' },
+                { key: 'Status', label: 'Status', type: 'select' },
+              ];
+              const statusOptions = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste', 'Abgemeldet'];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {fieldDefs.map(f => (
+                    <div key={f.key} style={{ gridColumn: f.key === 'ParticipantEmail' ? '1 / -1' : 'auto' }}>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                        {f.label}
+                      </label>
+                      {f.type === 'select' ? (
+                        <select
+                          className="form-select"
+                          value={editForm[f.key] || ''}
+                          onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          style={{ width: '100%' }}
+                        >
+                          {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          className="form-input"
+                          type={f.type === 'email' ? 'email' : 'text'}
+                          value={editForm[f.key] || ''}
+                          onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          style={{ width: '100%' }}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Custom Fields des Events */}
+                  {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
+                    <div style={{ gridColumn: '1 / -1', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: 'var(--dex-gray-700)' }}>
+                        {isDe ? 'Event-spezifische Felder' : 'Event-specific fields'}
+                      </h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        {selectedEvent.eventSpecificFields.map(cf => {
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const sp = (cf as any).spInternalName || '';
+                          if (!sp) return null;
+                          return (
+                            <div key={cf.id}>
+                              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                                {cf.label}{cf.required && <span style={{ color: 'var(--dex-red, #c00)' }}> *</span>}
+                              </label>
+                              <input
+                                className="form-input"
+                                value={editForm[sp] || ''}
+                                onChange={e => setEditForm(prev => ({ ...prev, [sp]: e.target.value }))}
+                                style={{ width: '100%' }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {editError && (
+              <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)', borderRadius: 6, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
+                {editError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={closeEditModal}
+                disabled={isSavingEdit}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={saveEdit}
+                disabled={isSavingEdit}
+                style={{ opacity: isSavingEdit ? 0.6 : 1 }}
+              >
+                {isSavingEdit ? (isDe ? 'Speichert…' : 'Saving…') : (isDe ? 'Speichern' : 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
       {showEmailModal && selectedEvent && (() => {
