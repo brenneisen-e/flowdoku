@@ -209,6 +209,7 @@ export default function EventCreationPage(): React.ReactElement {
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
   const [tcAccepted, setTcAccepted] = React.useState(false);
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
+  const [tcExpanded, setTcExpanded] = React.useState(false);
 
   const addAudienceItem = (value: string): void => {
     const list = audience.split(',').map(s => s.trim()).filter(Boolean);
@@ -1733,6 +1734,109 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
 
+  // Hint-Bullets pro Step. Werden ueber das i-Icon in der Progress-Bar
+  // (Mouseover) als Tooltip eingeblendet — vorher wurden sie als
+  // dauerhafte gruene Hinweis-Box am Anfang jedes Steps angezeigt
+  // (renderStepIntro), das war fuer geuebte Organizer zu viel Rauschen.
+  const STEP_HINTS_DE: string[][] = [
+    [
+      'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
+      'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
+      'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+      'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
+      'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
+      'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
+    ],
+    [
+      'Veranstaltungsort und Adresse erfassen',
+      'Start- und End-Datum (mit Uhrzeit) festlegen',
+      'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
+      'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+    ],
+    [
+      'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
+      'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
+      'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
+      'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
+    ],
+    [
+      'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
+      'Mehrfachauswahl bei Dropdowns (z.B. mehrere Allergien anhaken)',
+      'Pflichtfeld setzen (rotes Sternchen, Anmeldung blockiert wenn leer)',
+      'Beschreibung pro Feld — landet als „i"-Tooltip neben dem Feld-Label',
+      'Sichtbarkeitsbedingung: Feld nur dann anzeigen wenn eine andere Frage einen bestimmten Wert hat (z.B. „Zimmerart nur fragen wenn Hotel = ja")',
+      'Reihenfolge per Drag oder Pfeilen — die Nummerierung passt sich automatisch an',
+    ],
+    [
+      'E-Mail-Sprache (DE/EN) für die automatischen Mails an die Teilnehmer wählen',
+      'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
+      'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
+      'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
+      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+    ],
+    [
+      'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
+      'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
+      'Dokumente hochladen (PDF) — Teilnehmer sehen sie auf MyEvents als Inline-Vorschau oder Download',
+    ],
+    [
+      'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
+      'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
+      'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
+      'Cluster-Größe steuern: wie viele Fragen pro „Spielblock" angezeigt werden — Teilnehmer kann zwischenspeichern und später weitermachen',
+      'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
+    ],
+  ];
+  const STEP_HINTS_EN: string[][] = [
+    [
+      'Event title and description — shown on the event list and registration page',
+      'Upload an event image (used at the top of the detail page and in emails)',
+      'Flag as test event — only visible to admins / test users',
+      'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
+      'Optional: QR scanner users for check-in on event day (no further editing rights)',
+      'Set location filter and audience — who sees the event in the list',
+    ],
+    [
+      'Set event location and address',
+      'Set start and end date (incl. time)',
+      'Set the registration deadline — no new registrations after this date',
+      'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+    ],
+    [
+      'Set the maximum number of attendees (or Unlimited)',
+      'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
+      'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
+      'Optional: require proof of performance for fast-runners (checkbox during registration)',
+    ],
+    [
+      'Pick a field type: text, number, dropdown, checkbox, people search or roommate (double room)',
+      'Multi-select for dropdowns (e.g. tick multiple allergies)',
+      'Mark required (red asterisk, blocks submit when empty)',
+      'Description per field — appears as „i" tooltip next to the field label',
+      'Visibility condition: only show this field when another question has a specific value (e.g. „Only ask room type if Hotel = yes")',
+      'Reordering via drag or arrows — numbering updates automatically',
+    ],
+    [
+      'Pick the email language (DE/EN) for automatic emails to attendees',
+      'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
+      'Upload a custom logo / header image for the email and Outlook event',
+      'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
+      'Optionally disable notifications entirely — e.g. for internal test events',
+    ],
+    [
+      'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
+      'Transfer times — bus / shuttle / train to and from the venue',
+      'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
+    ],
+    [
+      'Create quiz questions for the event — multiple choice with any number of answer options',
+      'Optionally upload an image per question (logo, photo quiz, etc.)',
+      'Multiple correct answers are supported — all of them must be picked for full points',
+      'Control cluster size: how many questions per „play block" — attendees can save progress and continue later',
+      'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
+    ],
+  ];
+
   const steps = [
     { label: t('create.step.basics'), icon: '1' },
     { label: t('create.step.datetime'), icon: '2' },
@@ -1742,6 +1846,9 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.documents'), icon: '6' },
     { label: t('create.step.funzone'), icon: '7' },
   ];
+
+  // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
+  const [hintStepIdx, setHintStepIdx] = React.useState<number | null>(null);
 
   const getStepErrors = (): string[] => {
     const errors: string[] = [];
@@ -1778,73 +1885,12 @@ export default function EventCreationPage(): React.ReactElement {
   // Zeilen mit gruenem Check-Icon (statt klassischer Disc-Bullets).
   // v7.26: Items in einem auto-fit-Grid (bis zu 3 Spalten ab Wide-Screen),
   // damit die Box nicht extrem lang wird wenn viele Items drin sind.
-  const renderStepIntro = (bulletsDe: string[], bulletsEn: string[]): React.ReactElement => {
-    const items = isDe ? bulletsDe : bulletsEn;
-    return (
-      <div style={{
-        padding: '14px 18px', marginBottom: 16,
-        maxWidth: 980,
-        background: 'rgba(134,188,37,0.07)',
-        border: '1px solid rgba(134,188,37,0.35)',
-        borderRadius: 'var(--dex-radius, 12px)',
-        fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-        lineHeight: 1.5,
-        boxShadow: '0 1px 2px rgba(134,188,37,0.06)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 24, height: 24, borderRadius: 6,
-            background: 'var(--dex-green, #86bc25)', color: '#fff',
-            fontSize: '0.85rem', fontWeight: 700,
-          }} aria-hidden="true">✓</span>
-          <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.92rem' }}>
-            {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
-          </strong>
-        </div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: 8,
-        }}>
-          {items.map((b, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10,
-              padding: '8px 10px',
-              background: 'rgba(255,255,255,0.6)',
-              borderRadius: 8,
-              border: '1px solid rgba(134,188,37,0.18)',
-            }}>
-              <span style={{
-                flexShrink: 0, marginTop: 2,
-                width: 14, height: 14, borderRadius: '50%',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--dex-green, #86bc25)', color: '#fff',
-                fontSize: '0.65rem', fontWeight: 700,
-              }} aria-hidden="true">✓</span>
-              <span>{b}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 10, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
-          {isDe ? 'Eine ausführliche Anleitung steht' : 'A full guide is in the'}{' '}
-          <button
-            type="button"
-            onClick={() => navigate('manual')}
-            style={{
-              background: 'none', border: 'none', padding: 0,
-              color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
-              textDecoration: 'underline', cursor: 'pointer',
-              fontSize: '0.76rem',
-            }}
-          >
-            {isDe ? 'im Handbuch' : 'manual'}
-          </button>
-          .
-        </div>
-      </div>
-    );
-  };
+  // No-Op seit v7.36: die Hint-Box wird nicht mehr inline am Step-Anfang
+  // gerendert. Stattdessen liegen die Hints in STEP_HINTS_DE/EN und werden
+  // ueber das i-Icon in der Progress-Bar (Mouseover) angezeigt. Funktion
+  // bleibt aus Kompatibilitaetsgruenden mit den 7 bestehenden Call-Sites.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const renderStepIntro = (_bulletsDe: string[], _bulletsEn: string[]): React.ReactElement | null => null;
 
   // Nutzungsbedingungen-Modal: zeigt sich beim ersten Aufruf der
   // Create-Event-Seite. Nach Akzeptieren wird die Maske weggeklappt; bei
@@ -1871,105 +1917,141 @@ export default function EventCreationPage(): React.ReactElement {
             <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem' }}>
               Deloitte Event Experience Platform — Nutzungsbedingungen (Deutschland)
             </h2>
-            <p style={{ margin: '0 0 20px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-              Letzte Überarbeitung: 24.09.2025
+            <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+              Letzte Überarbeitung: 28.04.2026
             </p>
 
-            <div style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-800)' }}>
-              <p>
-                Der Zugang zur Event Experience Platform wird dir als Mitarbeiter von Deloitte Deutschland gewährt,
-                damit du das Teilnehmermanagement für Veranstaltungen, Events, Workshops oder andere Termine
-                organisieren kannst.
-              </p>
-
-              <p style={{ marginBottom: 6 }}>Die Plattform dient zur Koordination von:</p>
-              <ul style={{ marginTop: 0 }}>
-                <li>Internen Deloitte Veranstaltungen</li>
-                <li>Externen Veranstaltungen, bei denen das Teilnehmermanagement für Deloitte-Mitarbeiter organisiert wird (bspw. Laufveranstaltungen wie B2Run, oder JPMorgan)</li>
-              </ul>
-
-              <p>
-                <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
-                nicht koordiniert und erhalten keinen Zugang zur Plattform.
-              </p>
-
-              <p>
-                Bitte beachte, dass neue Events immer im Voraus angemeldet und genehmigt werden müssen:<br />
-                Kontakt für neue Events: <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a>
-              </p>
-
-              <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
-
-              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Wichtige Datenschutzhinweise</h3>
-              <ul style={{ marginTop: 0 }}>
-                <li>Die Teilnahme an Events ist immer freiwillig und darf nicht erzwungen werden.</li>
-                <li>Vermeide die Sammlung personenbezogener Daten so weit wie möglich.</li>
-                <li>Sammle nur die Daten, die du unbedingt benötigst, um den Zweck des Events zu erreichen.</li>
-                <li>Reduziere Freitextfelder auf das absolute Minimum, um individuelle Informationen zur Identifizierung von Personen zu vermeiden.</li>
-                <li>Verwende gesammelte Daten ausschließlich für den definierten und genehmigten Zweck. Falls Abweichungen notwendig sind, wende dich im Voraus an das Datenschutz-Team.</li>
-              </ul>
-
-              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Berechtigungen und Datenzugriff</h3>
-              <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Als Event-Ersteller / Administrator:</strong></p>
-              <ul style={{ marginTop: 0 }}>
-                <li>Du erhältst Admin-Funktionalitäten für dein spezifisches Event.</li>
-                <li>Du kannst auf die gesamte Teilnehmerliste deines Events zugreifen.</li>
-                <li>Diese Berechtigung gilt ausschließlich für das von dir erstellte Event.</li>
-                <li>Du darfst Teilnehmerinformationen nicht mit anderen teilen oder für andere Zwecke verwenden.</li>
-              </ul>
-
-              <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
-              <ul style={{ marginTop: 0 }}>
-                <li>Du kannst dich für Events an- oder abmelden.</li>
-                <li>Du erhältst Informationen zum jeweiligen Event.</li>
-                <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
-                <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
-              </ul>
-
-              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Datenschutzbestimmungen im Detail</h3>
-              <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Beschränkung der Sammlung personenbezogener und vertraulicher Daten:</strong></p>
-              <ul style={{ marginTop: 0 }}>
-                <li>Nur was unbedingt erforderlich ist, um den beabsichtigten Zweck zu erreichen.</li>
-                <li>Offene Fragen auf das Minimum reduzieren (um die Sammlung unnötiger oder nicht autorisierter Daten zu vermeiden).</li>
-              </ul>
-
-              <p>
-                <strong>Sammle keine sensiblen personenbezogenen Daten</strong> — das heißt: keine Daten bezüglich
-                Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen,
-                Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände
-                oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible
-                personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter
-                {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
-              </p>
-
-              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Besondere Bestimmungen für das Teilnehmermanagement</h3>
-              <ul style={{ marginTop: 0 }}>
-                <li>Teilnehmerdaten dürfen nur für das spezifische Event verwendet werden, für das sie gesammelt wurden.</li>
-                <li>Die Weitergabe von Teilnehmerlisten an Dritte ist untersagt.</li>
-                <li>Teilnehmerdaten anderer Events sind nicht einsehbar.</li>
-                <li>Nach Abschluss des Events sind Teilnehmerdaten gemäß den Deloitte-Richtlinien zu behandeln.</li>
-              </ul>
-
-              <p>
-                Ermögliche anonyme Antworten, wann immer möglich. Verwende personenbezogene und vertrauliche Daten,
-                die in einem Event gesammelt wurden, nicht für andere Zwecke als den ursprünglich angegebenen.
-                Sprich dich mit dem Datenschutz-Team ab, falls eine andere Nutzung der Daten beabsichtigt ist
-                (du benötigst die vorherige schriftliche Einwilligung der betroffenen Personen / Teilnehmer
-                unter Verwendung einer entsprechenden Vorlage).
-              </p>
-
-              <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
-              <ul style={{ marginTop: 0 }}>
-                <li>Neue Events anmelden: <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a></li>
-                <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
-              </ul>
-
-              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                Diese Richtlinien gelten für alle Arten von Events, einschließlich Workshops, Seminare,
-                Webinare, Konferenzen und andere Veranstaltungen, deren Teilnehmermanagement für
-                Deloitte-Mitarbeiter über die Event Experience Platform organisiert wird.
-              </p>
+            {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
+                ueber den Toggle ausklappen. Die Checkbox-Bestaetigung ist
+                trotzdem Pflicht (siehe weiter unten). */}
+            <div
+              style={{
+                background: 'var(--dex-gray-50, #f8f9fa)',
+                border: '1px solid var(--dex-gray-200, #e5e7eb)',
+                borderRadius: 10,
+                padding: '12px 14px',
+                fontSize: '0.88rem',
+                lineHeight: 1.5,
+                color: 'var(--dex-gray-700)',
+              }}
+            >
+              Bitte gehe sorgfältig mit personenbezogenen Daten der Teilnehmer um, sammle nur
+              das absolut Nötige, nutze die Daten ausschließlich für den vereinbarten Event-Zweck
+              und beachte die Datenschutzregeln von Deloitte Deutschland. Volltext über den
+              Button unten einsehen.
             </div>
+
+            <button
+              type="button"
+              onClick={() => setTcExpanded(v => !v)}
+              style={{
+                marginTop: 10,
+                background: 'none',
+                border: 'none',
+                color: 'var(--dex-green-dark, #4a7c1f)',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                padding: '4px 0',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {tcExpanded ? '▲ Vollständige Bedingungen einklappen' : '▼ Vollständige Bedingungen anzeigen'}
+            </button>
+
+            {tcExpanded && (
+              <div style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-800)', marginTop: 12 }}>
+                <p>
+                  Der Zugang zur Event Experience Platform wird dir als Mitarbeiter von Deloitte Deutschland gewährt,
+                  damit du das Teilnehmermanagement für Veranstaltungen, Events, Workshops oder andere Termine
+                  organisieren kannst.
+                </p>
+
+                <p style={{ marginBottom: 6 }}>Die Plattform dient zur Koordination von:</p>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Internen Deloitte Veranstaltungen</li>
+                  <li>Externen Veranstaltungen, bei denen das Teilnehmermanagement für Deloitte-Mitarbeiter organisiert wird (bspw. Laufveranstaltungen wie B2Run, oder JPMorgan)</li>
+                </ul>
+
+                <p>
+                  <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
+                  nicht koordiniert und erhalten keinen Zugang zur Plattform.
+                </p>
+
+                <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
+
+                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Wichtige Datenschutzhinweise</h3>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Die Teilnahme an Events ist immer freiwillig und darf nicht erzwungen werden.</li>
+                  <li>Vermeide die Sammlung personenbezogener Daten so weit wie möglich.</li>
+                  <li>Sammle nur die Daten, die du unbedingt benötigst, um den Zweck des Events zu erreichen.</li>
+                  <li>Reduziere Freitextfelder auf das absolute Minimum, um individuelle Informationen zur Identifizierung von Personen zu vermeiden.</li>
+                  <li>Verwende gesammelte Daten ausschließlich für den definierten und genehmigten Zweck. Falls Abweichungen notwendig sind, wende dich im Voraus an das Datenschutz-Team.</li>
+                </ul>
+
+                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Berechtigungen und Datenzugriff</h3>
+                <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Als Event-Ersteller / Administrator:</strong></p>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Du erhältst Admin-Funktionalitäten für dein spezifisches Event.</li>
+                  <li>Du kannst auf die gesamte Teilnehmerliste deines Events zugreifen.</li>
+                  <li>Diese Berechtigung gilt ausschließlich für das von dir erstellte Event.</li>
+                  <li>Du darfst Teilnehmerinformationen nicht mit anderen teilen oder für andere Zwecke verwenden.</li>
+                </ul>
+
+                <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Du kannst dich für Events an- oder abmelden.</li>
+                  <li>Du erhältst Informationen zum jeweiligen Event.</li>
+                  <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
+                  <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
+                </ul>
+
+                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Datenschutzbestimmungen im Detail</h3>
+                <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Beschränkung der Sammlung personenbezogener und vertraulicher Daten:</strong></p>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Nur was unbedingt erforderlich ist, um den beabsichtigten Zweck zu erreichen.</li>
+                  <li>Offene Fragen auf das Minimum reduzieren (um die Sammlung unnötiger oder nicht autorisierter Daten zu vermeiden).</li>
+                </ul>
+
+                <p>
+                  <strong>Sammle keine sensiblen personenbezogenen Daten</strong> — das heißt: keine Daten bezüglich
+                  Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen,
+                  Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände
+                  oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible
+                  personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter
+                  {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
+                </p>
+
+                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Besondere Bestimmungen für das Teilnehmermanagement</h3>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Teilnehmerdaten dürfen nur für das spezifische Event verwendet werden, für das sie gesammelt wurden.</li>
+                  <li>Die Weitergabe von Teilnehmerlisten an Dritte ist untersagt.</li>
+                  <li>Teilnehmerdaten anderer Events sind nicht einsehbar.</li>
+                  <li>Nach Abschluss des Events sind Teilnehmerdaten gemäß den Deloitte-Richtlinien zu behandeln.</li>
+                </ul>
+
+                <p>
+                  Ermögliche anonyme Antworten, wann immer möglich. Verwende personenbezogene und vertrauliche Daten,
+                  die in einem Event gesammelt wurden, nicht für andere Zwecke als den ursprünglich angegebenen.
+                  Sprich dich mit dem Datenschutz-Team ab, falls eine andere Nutzung der Daten beabsichtigt ist
+                  (du benötigst die vorherige schriftliche Einwilligung der betroffenen Personen / Teilnehmer
+                  unter Verwendung einer entsprechenden Vorlage).
+                </p>
+
+                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
+                <ul style={{ marginTop: 0 }}>
+                  <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                </ul>
+
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                  Diese Richtlinien gelten für alle Arten von Events, einschließlich Workshops, Seminare,
+                  Webinare, Konferenzen und andere Veranstaltungen, deren Teilnehmermanagement für
+                  Deloitte-Mitarbeiter über die Event Experience Platform organisiert wird.
+                </p>
+              </div>
+            )}
 
             <label
               style={{
@@ -1989,10 +2071,8 @@ export default function EventCreationPage(): React.ReactElement {
               />
               <span style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
                 Ich habe die Nutzungs- und Datenschutzbedingungen gelesen und akzeptiere sie. Ich
-                bestätige, dass ich das geplante Event vorab über{' '}
-                <a href="mailto:eventexperience@deloitte.de">eventexperience@deloitte.de</a>{' '}
-                angemeldet habe (oder dies unmittelbar tun werde) und mich an die Datenschutz-
-                bestimmungen halten werde.
+                bestätige, dass ich mich beim Anlegen und Verwalten dieses Events an die
+                Datenschutzbestimmungen halten werde.
               </span>
             </label>
 
@@ -2050,8 +2130,69 @@ export default function EventCreationPage(): React.ReactElement {
                   fontSize: '0.75rem', fontWeight: idx === currentStep ? 700 : 500,
                   color: idx <= currentStep ? 'var(--dex-green)' : 'var(--dex-gray-400)',
                   transition: 'color 0.3s ease',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}>
                   {step.label}
+                  {/* i-Icon mit Hint-Tooltip — zeigt beim Mouseover die
+                      Bullets fuer diesen Step. Klick stoppt die Step-
+                      Navigation, Hover triggert den Tooltip. */}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={isDe ? 'Hinweise zu diesem Schritt' : 'Hints for this step'}
+                    onMouseEnter={() => setHintStepIdx(idx)}
+                    onMouseLeave={() => setHintStepIdx(null)}
+                    onFocus={() => setHintStepIdx(idx)}
+                    onBlur={() => setHintStepIdx(null)}
+                    onClick={e => { e.stopPropagation(); setHintStepIdx(prev => prev === idx ? null : idx); }}
+                    style={{
+                      position: 'relative',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 16, height: 16, borderRadius: '50%',
+                      background: hintStepIdx === idx ? 'var(--dex-green)' : 'transparent',
+                      color: hintStepIdx === idx ? '#fff' : 'var(--dex-gray-500)',
+                      border: `1px solid ${hintStepIdx === idx ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+                      fontSize: '0.65rem', fontWeight: 700, fontStyle: 'italic',
+                      cursor: 'help',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    i
+                    {hintStepIdx === idx && (
+                      <div
+                        role="tooltip"
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 8px)',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 320,
+                          maxWidth: '90vw',
+                          background: 'var(--dex-gray-900, #1f2937)',
+                          color: '#fff',
+                          padding: '12px 14px',
+                          borderRadius: 8,
+                          boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
+                          fontSize: '0.78rem',
+                          lineHeight: 1.5,
+                          fontWeight: 400,
+                          fontStyle: 'normal',
+                          textAlign: 'left',
+                          zIndex: 200,
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.92)' }}>
+                          {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: 18 }}>
+                          {(isDe ? STEP_HINTS_DE : STEP_HINTS_EN)[idx]?.map((b, bi) => (
+                            <li key={bi} style={{ marginBottom: 4 }}>{b}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </span>
                 </span>
               </div>
             ))}
@@ -3347,10 +3488,13 @@ export default function EventCreationPage(): React.ReactElement {
                 ]
               )}
 
-              {/* v7.21: Datenschutz-Hinweis ueber der Template-Auswahl —
-                  links angeordnet, orangener Akzent damit der Organizer beim
-                  Anlegen neuer Felder bewusst entscheidet, was wirklich
-                  abgefragt werden muss. */}
+              {/* Datenschutz-Hinweis ueber der Template-Auswahl — links
+                  angeordnet, orangener Akzent damit der Organizer beim Anlegen
+                  neuer Felder bewusst entscheidet, was wirklich abgefragt
+                  werden muss. Seit v7.35 deckungsgleich mit dem Hinweis aus
+                  den Nutzungsbedingungen (Sammeln keiner sensiblen Daten),
+                  damit Organizer den selben Wortlaut wie bei der initialen
+                  Bestaetigung sehen. */}
               <div style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10,
                 padding: '12px 14px', marginBottom: 16,
@@ -3366,11 +3510,11 @@ export default function EventCreationPage(): React.ReactElement {
                 }}>⚠</span>
                 <div>
                   <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
-                    {isDe ? 'Datenschutz-Hinweis:' : 'Privacy notice:'}
+                    {isDe ? 'Sammle keine sensiblen personenbezogenen Daten' : 'Do not collect sensitive personal data'}
                   </strong>{' '}
                   {isDe
-                    ? 'Es dürfen nur Daten erhoben werden, die zwingend für das Event benötigt werden. Bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'
-                    : 'Only collect data that is strictly necessary for the event. In case of doubt, always check with the data-protection officer first.'}
+                    ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
+                    : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
                 </div>
               </div>
 
