@@ -29,7 +29,7 @@ export default function Header(): React.ReactElement {
     e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
   );
   const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny;
-  const { t } = useLanguage();
+  const { t, locale, setLocale } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
@@ -171,6 +171,48 @@ export default function Header(): React.ReactElement {
             </span>
           )}
         </button>
+        {/* v7.26: Sprach-Toggle DE/EN — laesst den User auch im laufenden
+            Tool zwischen Deutsch und Englisch wechseln. Visuell ein kleiner
+            Pill-Toggle im Header-Style. */}
+        <div
+          role="group"
+          aria-label={locale === 'de' ? 'Sprache wechseln' : 'Switch language'}
+          style={{
+            display: 'inline-flex', alignItems: 'center',
+            background: 'var(--dex-gray-100, #f3f4f6)',
+            borderRadius: 999, padding: 2, gap: 2,
+            height: 30, alignSelf: 'center',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setLocale('de')}
+            title="Deutsch"
+            style={{
+              padding: '3px 10px', borderRadius: 999,
+              border: 'none', cursor: 'pointer',
+              fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
+              background: locale === 'de' ? '#fff' : 'transparent',
+              color: locale === 'de' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+              boxShadow: locale === 'de' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >DE</button>
+          <button
+            type="button"
+            onClick={() => setLocale('en')}
+            title="English"
+            style={{
+              padding: '3px 10px', borderRadius: 999,
+              border: 'none', cursor: 'pointer',
+              fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
+              background: locale === 'en' ? '#fff' : 'transparent',
+              color: locale === 'en' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+              boxShadow: locale === 'en' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >EN</button>
+        </div>
         {!isLanding && (
           <button
             className="header-icon-btn"
