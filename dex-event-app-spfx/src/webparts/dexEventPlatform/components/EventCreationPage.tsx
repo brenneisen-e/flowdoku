@@ -1768,41 +1768,72 @@ export default function EventCreationPage(): React.ReactElement {
 
   // v7.23: Intro-Hilfsbox pro Wizard-Step. Zeigt eine Liste was der User in
   // diesem Schritt einstellen kann + Verweis aufs Handbuch. DE/EN bilingual.
-  const renderStepIntro = (bulletsDe: string[], bulletsEn: string[]): React.ReactElement => (
-    <div style={{
-      padding: '14px 16px', marginBottom: 12,
-      background: 'var(--dex-gray-50, #f8f9fa)',
-      border: '1px solid var(--dex-gray-200)',
-      borderRadius: 'var(--dex-radius, 12px)',
-      fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-      lineHeight: 1.5,
-    }}>
-      <div style={{ marginBottom: 6 }}>
-        <strong style={{ color: 'var(--dex-gray-800)', fontSize: '0.88rem' }}>
-          {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
-        </strong>
+  // v7.25: pastell-gruener Hintergrund (statt grau), maxWidth 720px
+  // (vorher Vollbreite), Feature-Items als kompakte Zeilen mit gruenem Check-
+  // Icon (statt klassischer Disc-Bullets) — moderner und freundlicher Look.
+  const renderStepIntro = (bulletsDe: string[], bulletsEn: string[]): React.ReactElement => {
+    const items = isDe ? bulletsDe : bulletsEn;
+    return (
+      <div style={{
+        padding: '14px 18px', marginBottom: 16,
+        maxWidth: 720,
+        background: 'rgba(134,188,37,0.07)',
+        border: '1px solid rgba(134,188,37,0.35)',
+        borderRadius: 'var(--dex-radius, 12px)',
+        fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+        lineHeight: 1.5,
+        boxShadow: '0 1px 2px rgba(134,188,37,0.06)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 24, height: 24, borderRadius: 6,
+            background: 'var(--dex-green, #86bc25)', color: '#fff',
+            fontSize: '0.85rem', fontWeight: 700,
+          }} aria-hidden="true">✓</span>
+          <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.92rem' }}>
+            {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
+          </strong>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {items.map((b, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '6px 10px',
+              background: 'rgba(255,255,255,0.6)',
+              borderRadius: 8,
+              border: '1px solid rgba(134,188,37,0.18)',
+            }}>
+              <span style={{
+                flexShrink: 0, marginTop: 2,
+                width: 14, height: 14, borderRadius: '50%',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--dex-green, #86bc25)', color: '#fff',
+                fontSize: '0.65rem', fontWeight: 700,
+              }} aria-hidden="true">✓</span>
+              <span>{b}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+          {isDe ? 'Eine ausführliche Anleitung steht' : 'A full guide is in the'}{' '}
+          <button
+            type="button"
+            onClick={() => navigate('manual')}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
+              textDecoration: 'underline', cursor: 'pointer',
+              fontSize: '0.76rem',
+            }}
+          >
+            {isDe ? 'im Handbuch' : 'manual'}
+          </button>
+          .
+        </div>
       </div>
-      <ul style={{ margin: '0 0 8px 18px', padding: 0, lineHeight: 1.6 }}>
-        {(isDe ? bulletsDe : bulletsEn).map((b, i) => <li key={i}>{b}</li>)}
-      </ul>
-      <div>
-        {isDe ? 'Eine ausführliche Anleitung steht' : 'A full guide is in the'}{' '}
-        <button
-          type="button"
-          onClick={() => navigate('manual')}
-          style={{
-            background: 'none', border: 'none', padding: 0,
-            color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600,
-            textDecoration: 'underline', cursor: 'pointer',
-            fontSize: '0.82rem',
-          }}
-        >
-          {isDe ? 'im Handbuch' : 'manual'}
-        </button>
-        .
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="page-container">
