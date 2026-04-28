@@ -1768,15 +1768,16 @@ export default function EventCreationPage(): React.ReactElement {
 
   // v7.23: Intro-Hilfsbox pro Wizard-Step. Zeigt eine Liste was der User in
   // diesem Schritt einstellen kann + Verweis aufs Handbuch. DE/EN bilingual.
-  // v7.25: pastell-gruener Hintergrund (statt grau), maxWidth 720px
-  // (vorher Vollbreite), Feature-Items als kompakte Zeilen mit gruenem Check-
-  // Icon (statt klassischer Disc-Bullets) — moderner und freundlicher Look.
+  // v7.25: pastell-gruener Hintergrund (statt grau), Feature-Items als kompakte
+  // Zeilen mit gruenem Check-Icon (statt klassischer Disc-Bullets).
+  // v7.26: Items in einem auto-fit-Grid (bis zu 3 Spalten ab Wide-Screen),
+  // damit die Box nicht extrem lang wird wenn viele Items drin sind.
   const renderStepIntro = (bulletsDe: string[], bulletsEn: string[]): React.ReactElement => {
     const items = isDe ? bulletsDe : bulletsEn;
     return (
       <div style={{
         padding: '14px 18px', marginBottom: 16,
-        maxWidth: 720,
+        maxWidth: 980,
         background: 'rgba(134,188,37,0.07)',
         border: '1px solid rgba(134,188,37,0.35)',
         borderRadius: 'var(--dex-radius, 12px)',
@@ -1795,11 +1796,15 @@ export default function EventCreationPage(): React.ReactElement {
             {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
           </strong>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: 8,
+        }}>
           {items.map((b, i) => (
             <div key={i} style={{
               display: 'flex', alignItems: 'flex-start', gap: 10,
-              padding: '6px 10px',
+              padding: '8px 10px',
               background: 'rgba(255,255,255,0.6)',
               borderRadius: 8,
               border: '1px solid rgba(134,188,37,0.18)',
