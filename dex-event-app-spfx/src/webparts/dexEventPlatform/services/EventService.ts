@@ -2908,9 +2908,13 @@ export class EventService {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
       // Lade die ParticipantEmail aus dem zu reaktivierenden Item und pruefe,
       // ob der aktuelle User dafuer berechtigt ist. Plus Deadline-Check.
+      // v7.30: Wir laden hier zusaetzlich die existierende TeilnehmerID, damit
+      // beim Reaktivieren die alte ID erhalten bleibt — Counter wird NUR
+      // dann angefasst, wenn die alte ID null/0 ist (Legacy-Edge).
+      let existingTeilnehmerId = 0;
       try {
         const itemResp = await this.context.spHttpClient.get(
-          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail`,
+          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail,TeilnehmerID`,
           SPHttpClient.configurations.v1
         );
         const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
@@ -2918,6 +2922,8 @@ export class EventService {
         if (itemResp.ok) {
           const itemData = await itemResp.json();
           targetEmail = (itemData.ParticipantEmail || itemData.d?.ParticipantEmail || '').toLowerCase();
+          const tnId = itemData.TeilnehmerID ?? itemData.d?.TeilnehmerID;
+          if (typeof tnId === 'number' && tnId > 0) existingTeilnehmerId = tnId;
         }
 
         // Check A: fuer andere Person registrieren?
@@ -2970,21 +2976,20 @@ export class EventService {
       } catch { /* bei Load-Fehler konservativ: weitermachen */ }
       // ---- Ende Permission-Checks ----
 
-      // v7.28: Naechste TeilnehmerID atomar ueber den Subsite-Counter holen
-      // (verhindert Race-Conditions bei parallelen Anmeldungen). Fallback
-      // auf das alte max+1, wenn die Counter-Liste fuer dieses Event noch
-      // nicht existiert (legacy ohne "Spalten fixen"-Lauf).
-      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
-      if (nextId === undefined) {
-        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
-      }
-
+      // v7.30: Bei Reaktivierung wird die TeilnehmerID NICHT gesetzt — sie
+      // bleibt null (wie nach cancelRegistration). Der DEX_IDReorder_-
+      // TeilnehmerIDs-Flow vergibt beim naechsten Lauf eine sequentielle
+      // ID zurueck. So bleibt die Liste lueckenlos und das Nachruecker-
+      // Pattern bleibt konsistent: Abgemeldete + Reaktivierte sind ID-los,
+      // bis der Flow renumeriert. Counter wird hier deshalb absichtlich
+      // nicht inkrementiert.
+      // existingTeilnehmerId ist daher hier nur informativ (Logging).
+      void existingTeilnehmerId;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
         'Vorname': firstName,
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
-        'TeilnehmerID': nextId,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
