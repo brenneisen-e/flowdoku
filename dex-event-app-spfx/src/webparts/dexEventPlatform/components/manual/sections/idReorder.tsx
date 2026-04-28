@@ -71,6 +71,20 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
               ? 'Das Tool ist idempotent — du kannst es beliebig oft pro Event ausführen, ohne Daten zu verlieren.'
               : 'The tool is idempotent — you can re-run it any number of times without data loss.',
           },
+          {
+            number: 4,
+            title: isDe ? 'Reaktivierung & TeilnehmerIDs' : 'Reactivation & participant IDs',
+            description: (
+              <>
+                {isDe
+                  ? 'Wenn sich ein zuvor abgemeldeter User erneut anmeldet, wird sein bestehender Listen-Eintrag wiederverwendet (statt ein neues Item anzulegen) — ChangeLog und Audit-Historie bleiben so erhalten. Die TeilnehmerID wird dabei direkt aus dem Subsite-Counter neu gezogen: wer mal #12 war, bekommt nach der Reaktivierung die nächst-freie ID am Ende der Liste (z.B. #87). Logisch passt das, weil die Reihenfolge der RegistrationDate folgt — und bei einer Reaktivierung ist das eben das aktuelle Datum.'
+                  : 'When a previously cancelled user re-registers, their existing list item is reused (instead of creating a new one) — preserving the change log and audit history. The TeilnehmerID is freshly pulled from the subsite counter: someone who was #12 before will get the next available ID at the end of the list after reactivation (e.g. #87). This matches the registration-date order — and on reactivation, that order entry is "now".'}
+              </>
+            ),
+            tip: isDe
+              ? 'Soll die Liste nach mehreren Reaktivierungen wieder lückenlos durchnummeriert sein, einmal "IDs neu vergeben" klicken — der Flow sortiert Aktive (1..N) und Warteliste (N+1..N+M) sauber.'
+              : 'After several reactivations, click "Renumber IDs" once to get a gap-free sequence — the flow sorts active (1..N) and waitlist (N+1..N+M) cleanly.',
+          },
         ],
       },
     ],
