@@ -2570,14 +2570,36 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+              {/* Zwischenüberschrift: alle Sichtbarkeits-Steuerungen
+                  (Standortfilter + Mailverteiler/einzelne User) gruppieren,
+                  damit der Organizer auf einen Blick versteht, dass es hier
+                  um die Frage geht: wer darf das Event ueberhaupt sehen. */}
+              <div style={{
+                paddingBottom: 12, marginBottom: 16,
+                borderBottom: '2px solid var(--dex-gray-100)',
+              }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon iconName="Hide3" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                  Sichtbarkeit
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  Standardmäßig können sich <strong>alle Personen aus Deloitte Deutschland</strong> zu diesem
+                  Event anmelden. Wenn du das nicht möchtest, kannst du die Sichtbarkeit über die
+                  beiden Bereiche unten einschränken — dann sehen Personen, die nicht in den
+                  ausgewählten Standorten oder Mailverteilern/Einzeluser-Listen enthalten sind, das
+                  Event gar nicht erst in ihrer Übersicht und können sich entsprechend auch nicht
+                  anmelden.
+                </p>
+              </div>
+
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={4} />
-                  Standort-Filter
+                  Standortfilter
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Standardmäßig können <strong>alle Mitarbeiter</strong> dieses Event sehen. Wenn du hier Standorte auswählst, wird das Event <strong>nur für Mitarbeiter dieser Standorte</strong> sichtbar.<br />
-                  <em>Beispiel: Du wählst &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit Standort Köln oder Düsseldorf sehen das Event in ihrer Übersicht. Alle anderen sehen es nicht.</em>
+                  Wählst du hier einen oder mehrere Standorte aus, sehen <strong>nur Mitarbeiter mit diesen Standorten</strong> das Event.<br />
+                  <em>Beispiel: &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit diesen Standorten sehen das Event. Alle anderen sehen es nicht.</em>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {locationOptions.map(loc => {
@@ -2633,10 +2655,10 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={5} />
-                  Zielgruppen-Filter
+                  Mailverteiler / einzelne User
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Suche nach <strong>Personen oder Gruppen</strong> (Verteilerlisten / Security Groups aus Entra) — diese sehen das Event zusätzlich, unabhängig vom Standort.
+                  Hier kannst du gezielt <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler / Security-Gruppen aus Entra</strong> hinzufügen. Diese sehen das Event zusätzlich — unabhängig vom Standortfilter oben.
                 </p>
                 {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
                     Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}

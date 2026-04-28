@@ -164,7 +164,22 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
-  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent } = useEvents();
+  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents } = useEvents();
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const handleRefresh = async (): Promise<void> => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshEvents();
+      // Wenn ein Event gerade selektiert ist, auch dessen Registrations neu laden
+      if (selectedEvent) {
+        try {
+          const regs = await getAllRegistrations(selectedEvent.id);
+          setRegistrations(regs);
+        } catch { /* */ }
+      }
+    } finally { setIsRefreshing(false); }
+  };
   const { currentUser } = useCurrentUser();
   const { isAdmin, siteUrl, currentUserRole } = useRoles();
   const { t } = useLanguage();
@@ -542,7 +557,30 @@ export default function AdminPage(): React.ReactElement {
     // Event-Auswahl
     return (
       <div className="page-container" role="main">
-        <h2 className="mb-16">{t('admin.title')}</h2>
+        <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>{t('admin.title')}</h2>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isEventsLoading}
+            title="Events neu laden"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: '0.78rem', padding: '6px 12px',
+              background: '#fff',
+              border: '1px solid var(--dex-gray-300, #d1d5db)',
+              borderRadius: 6, color: 'var(--dex-gray-700)',
+              cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
+              opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+            }}
+          >
+            <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
+              <RefreshCw size={14} />
+            </span>
+            {isRefreshing ? 'Wird geladen…' : 'Aktualisieren'}
+          </button>
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {isAdmin && (
             <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
@@ -883,6 +921,26 @@ export default function AdminPage(): React.ReactElement {
             ←
           </button>
         </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isRefreshing || isEventsLoading}
+          title="Event + Teilnehmerdaten neu laden"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: '0.78rem', padding: '6px 12px',
+            background: '#fff',
+            border: '1px solid var(--dex-gray-300, #d1d5db)',
+            borderRadius: 6, color: 'var(--dex-gray-700)',
+            cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
+            opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+          }}
+        >
+          <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
+            <RefreshCw size={14} />
+          </span>
+          {isRefreshing ? 'Wird geladen…' : 'Aktualisieren'}
+        </button>
       </div>
 
       {/* Event-Info + Aktionen
