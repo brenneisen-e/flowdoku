@@ -2903,8 +2903,8 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe
-                    ? <>Wähle hier <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus, die für dieses Event berücksichtigt werden sollen. Wie sich diese Auswahl mit dem Standortfilter oben verbindet (UND-/ODER-Verknüpfung), kannst du weiter unten festlegen, sobald beide Bereiche gefüllt sind.</>
-                    : <>Pick <strong>individual people</strong> or entire <strong>mailing lists or security groups from Entra</strong> to be considered for this event. How this selection combines with the location filter above (AND/OR) can be configured below, once both sections are filled.</>}
+                    ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
+                    : <>Pick <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. If you also set a location filter, you can decide below whether both conditions (AND) or either of them (OR) is enough.</>}
                 </p>
                 {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
                     Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}

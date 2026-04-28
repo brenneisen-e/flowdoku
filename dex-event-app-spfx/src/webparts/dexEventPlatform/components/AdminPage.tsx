@@ -286,34 +286,27 @@ export default function AdminPage(): React.ReactElement {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = editingReg as any;
+      // Nur die Custom-Felder werden gepatcht — Stamm-Daten (Name, E-Mail,
+      // Standort etc.) sind read-only, weil sie aus dem M365-Profil kommen
+      // und beim naechsten Profil-Refresh ueberschrieben werden wuerden.
+      // Status wird ueber die Aktions-Buttons in der Liste geaendert.
       const oldValues: Record<string, unknown> = {};
       const patch: Record<string, unknown> = {};
-      const fieldLabelMap: Record<string, string> = {
-        Anrede: isDe ? 'Anrede' : 'Salutation',
-        Vorname: isDe ? 'Vorname' : 'First name',
-        Nachname: isDe ? 'Nachname' : 'Last name',
-        ParticipantEmail: 'E-Mail',
-        Phone: isDe ? 'Telefon' : 'Phone',
-        Department: 'Department',
-        Location: isDe ? 'Standort' : 'Location',
-        JobTitle: 'Job Title',
-        Status: 'Status',
-      };
-      for (const key of Object.keys(editForm)) {
-        oldValues[key] = r[key] !== undefined && r[key] !== null ? String(r[key]) : '';
-        patch[key] = editForm[key];
-      }
-      // ParticipantName synchron halten wenn Vor-/Nachname geaendert wurde
-      if (editForm.Vorname && editForm.Nachname) {
-        patch.ParticipantName = `${editForm.Vorname} ${editForm.Nachname}`;
-      }
-      // Custom-Field-Labels in Map ergaenzen
+      const fieldLabelMap: Record<string, string> = {};
       if (selectedEvent?.eventSpecificFields) {
         for (const f of selectedEvent.eventSpecificFields) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sp = (f as any).spInternalName || '';
-          if (sp) fieldLabelMap[sp] = f.label;
+          if (!sp) continue;
+          fieldLabelMap[sp] = f.label;
+          oldValues[sp] = r[sp] !== undefined && r[sp] !== null ? String(r[sp]) : '';
+          patch[sp] = editForm[sp] || '';
         }
+      }
+      if (Object.keys(patch).length === 0) {
+        // Keine editierbaren Felder vorhanden — nichts zu tun.
+        closeEditModal();
+        return;
       }
       const actor = {
         name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email,
@@ -2748,60 +2741,66 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
               {isDe
-                ? 'Änderungen werden mit Datum und deinem Namen automatisch im ChangeLog des Teilnehmers protokolliert.'
-                : 'Changes are automatically logged in the attendee\'s ChangeLog with date and your name.'}
+                ? 'Hier kannst du die event-spezifischen Felder dieses Teilnehmers anpassen (z.B. Allergien, Hotel-Bedarf, Quiz-Antworten). Stamm-Daten wie Name, E-Mail, Standort etc. kommen aus dem M365-Profil und werden hier nur zur Übersicht angezeigt — sie ändern sich automatisch, wenn der Teilnehmer sein Profil aktualisiert. Den Status (Anmelden / Einchecken / Abmelden) änderst du über die Aktions-Buttons in der Liste. Jede hier gemachte Änderung wird mit Datum und deinem Namen automatisch im ChangeLog des Teilnehmers protokolliert.'
+                : 'Use this dialog to adjust the event-specific fields of this attendee (e.g. allergies, hotel needs, quiz answers). Master data like name, email, location etc. comes from the M365 profile and is shown here for context only — it updates automatically when the attendee updates their profile. The status (register / check in / cancel) is changed via the action buttons in the list. Every change you make here is automatically logged in the attendee\'s ChangeLog with date and your name.'}
             </p>
 
             {(() => {
-              const fieldDefs: Array<{ key: string; label: string; type?: 'select' | 'email' }> = [
+              // Stamm-Daten read-only anzeigen (kommen aus dem M365-Profil
+              // bzw. der initialen Anmeldung — nicht hier editierbar, weil
+              // sie sonst beim naechsten Profil-Refresh ueberschrieben
+              // werden koennten und so eine Inkonsistenz entstuende).
+              const readOnlyFields: Array<{ key: string; label: string }> = [
                 { key: 'Anrede', label: isDe ? 'Anrede' : 'Salutation' },
                 { key: 'Vorname', label: isDe ? 'Vorname' : 'First name' },
                 { key: 'Nachname', label: isDe ? 'Nachname' : 'Last name' },
-                { key: 'ParticipantEmail', label: 'E-Mail', type: 'email' },
+                { key: 'ParticipantEmail', label: 'E-Mail' },
                 { key: 'Phone', label: isDe ? 'Telefon' : 'Phone' },
                 { key: 'Department', label: 'Department' },
                 { key: 'Location', label: isDe ? 'Standort' : 'Location' },
                 { key: 'JobTitle', label: 'Job Title' },
-                { key: 'Status', label: 'Status', type: 'select' },
+                { key: 'Status', label: 'Status' },
               ];
-              const statusOptions = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste', 'Abgemeldet'];
+              const renderReadOnly = (label: string, value: string): React.ReactNode => (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-500)', marginBottom: 4 }}>
+                    {label}
+                  </label>
+                  <div style={{
+                    width: '100%', padding: '8px 12px',
+                    background: 'var(--dex-gray-50, #fafafa)',
+                    border: '1px solid var(--dex-gray-200, #e5e7eb)',
+                    borderRadius: 6, fontSize: '0.88rem',
+                    color: value ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
+                    minHeight: 38, lineHeight: 1.5,
+                  }}>
+                    {value || (isDe ? '— nicht gesetzt —' : '— not set —')}
+                  </div>
+                </div>
+              );
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {fieldDefs.map(f => (
+                  {/* Stamm-Daten (read-only) */}
+                  {readOnlyFields.map(f => (
                     <div key={f.key} style={{ gridColumn: f.key === 'ParticipantEmail' ? '1 / -1' : 'auto' }}>
-                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
-                        {f.label}
-                      </label>
-                      {f.type === 'select' ? (
-                        <select
-                          className="form-select"
-                          value={editForm[f.key] || ''}
-                          onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          style={{ width: '100%' }}
-                        >
-                          {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <input
-                          className="form-input"
-                          type={f.type === 'email' ? 'email' : 'text'}
-                          value={editForm[f.key] || ''}
-                          onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          style={{ width: '100%' }}
-                        />
-                      )}
+                      {renderReadOnly(f.label, editForm[f.key] || '')}
                     </div>
                   ))}
 
-                  {/* Custom Fields des Events — Renderer abhaengig vom
-                      Field-Type (text/number/select/checkbox). Multi-Select
-                      speichert Werte als " | "-getrennten String, identisch
-                      zum Registrierungs-Pfad. */}
+                  {/* Custom Fields des Events — DAS ist der editierbare Teil.
+                      Renderer abhaengig vom Field-Type (text/number/select/
+                      checkbox). Multi-Select speichert Werte als " | "-
+                      getrennten String, identisch zum Registrierungs-Pfad. */}
                   {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
                     <div style={{ gridColumn: '1 / -1', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
-                      <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: 'var(--dex-gray-700)' }}>
-                        {isDe ? 'Event-spezifische Felder' : 'Event-specific fields'}
+                      <h4 style={{ margin: '0 0 4px', fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
+                        {isDe ? 'Event-spezifische Felder (editierbar)' : 'Event-specific fields (editable)'}
                       </h4>
+                      <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Nur diese Felder werden gespeichert.'
+                          : 'Only these fields will be saved.'}
+                      </p>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         {selectedEvent.eventSpecificFields.map(cf => {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
