@@ -158,7 +158,7 @@ function RegistrationFlow(): React.ReactElement {
           <FlowNode
             type="process"
             label="Reaktivierung"
-            details="Der bestehende Abgemeldet-Eintrag wird wiederverwendet statt neu angelegt: Status zurück auf 'Angemeldet' oder 'Warteliste' (je nach Kapazität), CancellationDate gelöscht, RegistrationDate auf jetzt gesetzt. Die TeilnehmerID bleibt zunächst null — sie wird beim nächsten ID-Reorder-Run vergeben. So bleibt die Änderungs-Historie (ChangeLog) erhalten."
+            details="Der bestehende Abgemeldet-Eintrag wird wiederverwendet statt neu angelegt: Status zurück auf 'Angemeldet' oder 'Warteliste' (je nach Kapazität), CancellationDate gelöscht, RegistrationDate auf jetzt gesetzt. Außerdem wird — analog zur Erst-Anmeldung — atomar eine neue TeilnehmerID am Counter gezogen: wer mal #12 war und reaktiviert, bekommt jetzt z.B. die #87, also die nächst-freie ID am Ende der Liste. So bleibt die Änderungs-Historie (ChangeLog) erhalten und der Eintrag hat sofort eine sichtbare ID inklusive QR-Code, ohne auf den nächsten Cancel + IDReorder-Flow warten zu müssen."
           />
         </Branch>
         <Branch label="Ja — aktiv">
@@ -212,14 +212,14 @@ function RegistrationFlow(): React.ReactElement {
       <Arrow />
       <FlowNode
         type="subprocess"
-        label="Atomare TeilnehmerID-Vergabe (v7.28+, nur bei Erst-Anmeldung)"
-        details="Bei einer ECHT neuen Anmeldung (kein bestehendes Abgemeldet-Item) holt der Service die nächste TeilnehmerID atomar aus der Counter-Liste DEX_TeilnehmerCounter (eine Liste pro Subsite mit genau einem Item, NextValue=N). Vorgehen: GET counter-item mit ETag → PATCH NextValue=N+1 mit IF-MATCH=etag → bei HTTP 412 (jemand war schneller) wird mit kurzem Jitter retried (max 8x). Damit können mehrere User parallel anmelden, ohne dass IDs doppelt vergeben werden. Bei Reaktivierung eines Abgemeldet-Items wird der Counter NICHT angefasst — die TeilnehmerID bleibt null und der DEX_IDReorder-Flow vergibt sie sequentiell zurück. v7.31: Nach Cancel und nach 'IDs neu vergeben' wird der Counter auf den aktuellen Max-Wert gesynct (syncCounterToMax), damit er nicht über die echten IDs hinaus 'davonrast'. Empfohlen ist zusätzlich, im DEX_IDReorder_TeilnehmerIDs-Flow am Ende den Counter ebenfalls zu setzen (Patch DEX_TeilnehmerCounter/items(1) mit NextValue=max). Fallback bei alten Events ohne Counter-Liste: max(TeilnehmerID)+1 — dann muss der Admin einmalig 'Spalten fixen' klicken, damit die Counter-Liste angelegt + mit dem aktuellen Max-Wert geseedet wird."
+        label="Atomare TeilnehmerID-Vergabe (v7.28+, bei Erst-Anmeldung UND Reaktivierung)"
+        details="Sowohl bei einer echt neuen Anmeldung als auch bei der Reaktivierung eines Abgemeldet-Items holt der Service die nächste TeilnehmerID atomar aus der Counter-Liste DEX_TeilnehmerCounter (eine Liste pro Subsite mit genau einem Item, NextValue=N). Vorgehen: GET counter-item mit ETag → PATCH NextValue=N+1 mit IF-MATCH=etag → bei HTTP 412 (jemand war schneller) wird mit kurzem Jitter retried (max 8x). Damit können mehrere User parallel anmelden, ohne dass IDs doppelt vergeben werden. Reaktivierte bekommen die nächst-freie ID am Ende der Liste — sie hängen sich also funktional wie ein Neuzugang hinten an, ihre alte ID bekommen sie nicht zurück. v7.31: Nach Cancel und nach 'IDs neu vergeben' wird der Counter auf den aktuellen Max-Wert gesynct (syncCounterToMax), damit er nicht über die echten IDs hinaus 'davonrast'. Im DEX_IDReorder_TeilnehmerIDs-Flow wird am Ende der Counter ebenfalls auf den frischen Max-Wert gepatcht. Fallback bei alten Events ohne Counter-Liste: max(TeilnehmerID)+1 — dann muss der Admin einmalig 'Spalten fixen' klicken, damit die Counter-Liste angelegt + mit dem aktuellen Max-Wert geseedet wird."
       />
       <Arrow />
       <FlowNode
         type="subprocess"
         label="Eintrag in Subsite-Teilnehmerliste"
-        details="Der Service schreibt ein neues Item in die 'Teilnehmer'-Liste der Event-Subsite: TeilnehmerID (eindeutig vom Counter, oder null bei Reaktivierung), Anrede, Vorname, Nachname, ParticipantEmail, Status, StarterType, PreferredStarterType, RegistrationDate, RegisteredByName/Email (Audit), CustomData (JSON der event-spezifischen Felder). Bei Late-Cancel-Reaktivierungen oder Storno-Nachrückern (siehe DEX_IDReorder-Flow) wird die TeilnehmerID nachträglich vom Flow vergeben, um Lücken zu schließen."
+        details="Der Service schreibt ein neues Item in die 'Teilnehmer'-Liste der Event-Subsite: TeilnehmerID (eindeutig vom Counter — sowohl bei Erst-Anmeldung als auch bei Reaktivierung), Anrede, Vorname, Nachname, ParticipantEmail, Status, StarterType, PreferredStarterType, RegistrationDate, RegisteredByName/Email (Audit), CustomData (JSON der event-spezifischen Felder). Lücken in der ID-Sequenz, die durch Abmeldungen entstehen, werden später vom DEX_IDReorder-Flow geschlossen — er sortiert Aktive (1..N) und Warteliste (N+1..N+M) lückenlos um."
       />
       <Arrow />
       <FlowNode

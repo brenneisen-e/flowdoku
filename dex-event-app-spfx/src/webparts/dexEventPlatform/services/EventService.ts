@@ -2976,21 +2976,26 @@ export class EventService {
       } catch { /* bei Load-Fehler konservativ: weitermachen */ }
       // ---- Ende Permission-Checks ----
 
-      // v7.30: Bei Reaktivierung wird die TeilnehmerID NICHT gesetzt — sie
-      // bleibt null (wie nach cancelRegistration). Der DEX_IDReorder_-
-      // TeilnehmerIDs-Flow vergibt beim naechsten Lauf eine sequentielle
-      // ID zurueck. So bleibt die Liste lueckenlos und das Nachruecker-
-      // Pattern bleibt konsistent: Abgemeldete + Reaktivierte sind ID-los,
-      // bis der Flow renumeriert. Counter wird hier deshalb absichtlich
-      // nicht inkrementiert.
-      // existingTeilnehmerId ist daher hier nur informativ (Logging).
+      // Reaktivierung = funktional eine Neuanmeldung mit existierendem Listen-
+      // Item. Deshalb wird hier — analog zu registerForEvent — atomar eine
+      // neue TeilnehmerID am Counter gezogen. Wer mal #12 war und reaktiviert,
+      // bekommt jetzt z.B. die #87, also die naechst-freie ID am Ende der
+      // Liste — exakt wie ein Neuzugang. Ohne diesen Schritt blieb der
+      // Eintrag mit TeilnehmerID=null haengen, weil im Reaktivierungs-Pfad
+      // niemand den DEX_IDReorder-Flow triggert.
       void existingTeilnehmerId;
+      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
+      if (nextId === undefined) {
+        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
         'Vorname': firstName,
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
         'Status': status,
+        'TeilnehmerID': nextId,
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
         'CustomData': JSON.stringify(customData),
