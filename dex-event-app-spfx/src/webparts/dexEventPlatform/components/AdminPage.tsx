@@ -930,6 +930,34 @@ export default function AdminPage(): React.ReactElement {
                 <span>{waitlistRegs.length}</span>
               </div>
             )}
+            {/* v7.27: Liste aller abgefragten Custom-Fields, damit der
+                Organizer auf einen Blick sieht welche Zusatzdaten der
+                Teilnehmer im Anmeldeformular eintragen muss. Pflichtfelder
+                sind mit rotem Sternchen markiert. */}
+            {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
+              <div className="settings-info__row" style={{ alignItems: 'flex-start' }}>
+                <span className="settings-info__label">Abgefragte Felder</span>
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: '60%' }}>
+                  {selectedEvent.eventSpecificFields.map(f => (
+                    <span
+                      key={f.id}
+                      title={f.helpText || f.label}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '2px 8px', borderRadius: 999,
+                        background: 'rgba(134,188,37,0.10)',
+                        border: '1px solid rgba(134,188,37,0.35)',
+                        color: 'var(--dex-green-dark, #4a7c1f)',
+                        fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {f.label}
+                      {f.required && <span style={{ color: 'var(--dex-red, #c00)' }}>*</span>}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

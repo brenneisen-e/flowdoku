@@ -264,7 +264,7 @@ function QuizPlayer({
     const resumeLabel = completedAllInitial
       ? (isDe ? 'Antworten ansehen / ändern' : 'Review / edit answers')
       : hadResumeData
-        ? (isDe ? `Weiter (${answeredCount}/${quiz.length})` : `Continue (${answeredCount}/${quiz.length})`)
+        ? (isDe ? `Quiz fortsetzen (${answeredCount}/${quiz.length})` : `Resume quiz (${answeredCount}/${quiz.length})`)
         : (isDe ? `Quiz starten (${quiz.length} ${quiz.length === 1 ? 'Frage' : 'Fragen'})` : `Start quiz (${quiz.length} ${quiz.length === 1 ? 'question' : 'questions'})`);
     return (
       <div style={{ marginTop: 12 }}>
