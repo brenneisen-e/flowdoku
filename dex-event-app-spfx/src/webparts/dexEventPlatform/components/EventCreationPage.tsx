@@ -173,6 +173,167 @@ function StepBadge({ n }: { n: number }): React.ReactElement {
   );
 }
 
+// v8.0: Multi-Select-Dropdown fuer den Standortfilter (loest die alten
+// Pillen-Buttons ab — kompakter und mit Suche bei vielen Optionen).
+function LocationMultiSelect({
+  options, selected, onChange, isDe,
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  isDe: boolean;
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  // Click-Outside zum Schliessen
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const handler = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const toggle = (loc: string): void => {
+    if (selected.indexOf(loc) >= 0) onChange(selected.filter(l => l !== loc));
+    else onChange([...selected, loc]);
+  };
+
+  const filtered = query.trim()
+    ? options.filter(o => o.toLowerCase().indexOf(query.trim().toLowerCase()) >= 0)
+    : options;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', maxWidth: 520 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: '100%', minHeight: 42, padding: '6px 12px',
+          background: '#fff',
+          border: `1.5px solid ${open ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+          borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+          fontSize: '0.88rem', color: 'var(--dex-gray-800)',
+          transition: 'border-color 0.15s ease',
+        }}
+      >
+        {selected.length === 0 ? (
+          <span style={{ color: 'var(--dex-gray-400)' }}>
+            {isDe ? 'Standorte auswählen…' : 'Select locations…'}
+          </span>
+        ) : (
+          selected.map(loc => (
+            <span
+              key={loc}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '3px 4px 3px 10px',
+                background: 'var(--dex-green)', color: '#fff',
+                borderRadius: 999, fontSize: '0.78rem',
+              }}
+            >
+              {loc}
+              <span
+                role="button"
+                aria-label={`${loc} entfernen`}
+                onClick={e => { e.stopPropagation(); toggle(loc); }}
+                style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.25)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.85rem', lineHeight: 1, cursor: 'pointer',
+                }}
+              >×</span>
+            </span>
+          ))
+        )}
+        <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-500)', fontSize: '0.7rem' }}>
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: '#fff', border: '1px solid var(--dex-gray-200)',
+          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          maxHeight: 320, overflowY: 'auto', zIndex: 50,
+        }}>
+          {options.length > 6 && (
+            <div style={{ padding: 8, borderBottom: '1px solid var(--dex-gray-100)', position: 'sticky', top: 0, background: '#fff' }}>
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={isDe ? 'Suchen…' : 'Search…'}
+                style={{
+                  width: '100%', padding: '6px 10px',
+                  border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 6, fontSize: '0.85rem',
+                }}
+              />
+            </div>
+          )}
+          {filtered.length === 0 ? (
+            <div style={{ padding: 12, fontSize: '0.82rem', color: 'var(--dex-gray-400)' }}>
+              {isDe ? 'Keine Treffer.' : 'No matches.'}
+            </div>
+          ) : (
+            filtered.map(loc => {
+              const isChecked = selected.indexOf(loc) >= 0;
+              return (
+                <label
+                  key={loc}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 12px', cursor: 'pointer', fontSize: '0.88rem',
+                    background: isChecked ? 'rgba(134,188,37,0.08)' : 'transparent',
+                  }}
+                  onMouseEnter={e => { if (!isChecked) (e.currentTarget as HTMLLabelElement).style.background = 'var(--dex-gray-50)'; }}
+                  onMouseLeave={e => { if (!isChecked) (e.currentTarget as HTMLLabelElement).style.background = 'transparent'; }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggle(loc)}
+                    style={{ width: 16, height: 16, accentColor: 'var(--dex-green)', cursor: 'pointer' }}
+                  />
+                  <span style={{ color: 'var(--dex-gray-800)' }}>{loc}</span>
+                </label>
+              );
+            })
+          )}
+          {selected.length > 0 && (
+            <div style={{
+              padding: 8, borderTop: '1px solid var(--dex-gray-100)',
+              position: 'sticky', bottom: 0, background: '#fff',
+              display: 'flex', justifyContent: 'flex-end',
+            }}>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
+                  textDecoration: 'underline', padding: '4px 8px',
+                }}
+              >
+                {isDe ? 'Auswahl leeren' : 'Clear selection'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
@@ -1915,10 +2076,12 @@ export default function EventCreationPage(): React.ReactElement {
             }}
           >
             <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem' }}>
-              Deloitte Event Experience Platform — Nutzungsbedingungen (Deutschland)
+              {isDe
+                ? 'Deloitte Event Experience Platform — Nutzungsbedingungen (Deutschland)'
+                : 'Deloitte Event Experience Platform — Terms of Use (Germany)'}
             </h2>
             <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-              Letzte Überarbeitung: 28.04.2026
+              {isDe ? 'Letzte Überarbeitung: 28.04.2026' : 'Last revised: 28 April 2026'}
             </p>
 
             {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
@@ -1935,10 +2098,9 @@ export default function EventCreationPage(): React.ReactElement {
                 color: 'var(--dex-gray-700)',
               }}
             >
-              Bitte gehe sorgfältig mit personenbezogenen Daten der Teilnehmer um, sammle nur
-              das absolut Nötige, nutze die Daten ausschließlich für den vereinbarten Event-Zweck
-              und beachte die Datenschutzregeln von Deloitte Deutschland. Volltext über den
-              Button unten einsehen.
+              {isDe
+                ? <>Bitte gehe sorgfältig mit personenbezogenen Daten der Teilnehmer um, sammle nur das absolut Nötige, nutze die Daten ausschließlich für den vereinbarten Event-Zweck und beachte die Datenschutzregeln von Deloitte Deutschland. Volltext über den Button unten einsehen.</>
+                : <>Please handle attendees&apos; personal data with care, collect only what is absolutely necessary, use the data exclusively for the agreed event purpose, and follow Deloitte Germany&apos;s data-protection rules. Use the button below to read the full text.</>}
             </div>
 
             <button
@@ -1958,98 +2120,191 @@ export default function EventCreationPage(): React.ReactElement {
                 gap: 6,
               }}
             >
-              {tcExpanded ? '▲ Vollständige Bedingungen einklappen' : '▼ Vollständige Bedingungen anzeigen'}
+              {tcExpanded
+                ? (isDe ? '▲ Vollständige Bedingungen einklappen' : '▲ Hide full terms')
+                : (isDe ? '▼ Vollständige Bedingungen anzeigen' : '▼ Show full terms')}
             </button>
 
             {tcExpanded && (
               <div style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-800)', marginTop: 12 }}>
-                <p>
-                  Der Zugang zur Event Experience Platform wird dir als Mitarbeiter von Deloitte Deutschland gewährt,
-                  damit du das Teilnehmermanagement für Veranstaltungen, Events, Workshops oder andere Termine
-                  organisieren kannst.
-                </p>
+                {isDe ? (
+                  <>
+                    <p>
+                      Der Zugang zur Event Experience Platform wird dir als Mitarbeiter von Deloitte Deutschland gewährt,
+                      damit du das Teilnehmermanagement für Veranstaltungen, Events, Workshops oder andere Termine
+                      organisieren kannst.
+                    </p>
 
-                <p style={{ marginBottom: 6 }}>Die Plattform dient zur Koordination von:</p>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Internen Deloitte Veranstaltungen</li>
-                  <li>Externen Veranstaltungen, bei denen das Teilnehmermanagement für Deloitte-Mitarbeiter organisiert wird (bspw. Laufveranstaltungen wie B2Run, oder JPMorgan)</li>
-                </ul>
+                    <p style={{ marginBottom: 6 }}>Die Plattform dient zur Koordination von:</p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Internen Deloitte Veranstaltungen</li>
+                      <li>Externen Veranstaltungen, bei denen das Teilnehmermanagement für Deloitte-Mitarbeiter organisiert wird (bspw. Laufveranstaltungen wie B2Run, oder JPMorgan)</li>
+                    </ul>
 
-                <p>
-                  <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
-                  nicht koordiniert und erhalten keinen Zugang zur Plattform.
-                </p>
+                    <p>
+                      <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
+                      nicht koordiniert und erhalten keinen Zugang zur Plattform.
+                    </p>
 
-                <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
+                    <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
 
-                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Wichtige Datenschutzhinweise</h3>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Die Teilnahme an Events ist immer freiwillig und darf nicht erzwungen werden.</li>
-                  <li>Vermeide die Sammlung personenbezogener Daten so weit wie möglich.</li>
-                  <li>Sammle nur die Daten, die du unbedingt benötigst, um den Zweck des Events zu erreichen.</li>
-                  <li>Reduziere Freitextfelder auf das absolute Minimum, um individuelle Informationen zur Identifizierung von Personen zu vermeiden.</li>
-                  <li>Verwende gesammelte Daten ausschließlich für den definierten und genehmigten Zweck. Falls Abweichungen notwendig sind, wende dich im Voraus an das Datenschutz-Team.</li>
-                </ul>
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Wichtige Datenschutzhinweise</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Die Teilnahme an Events ist immer freiwillig und darf nicht erzwungen werden.</li>
+                      <li>Vermeide die Sammlung personenbezogener Daten so weit wie möglich.</li>
+                      <li>Sammle nur die Daten, die du unbedingt benötigst, um den Zweck des Events zu erreichen.</li>
+                      <li>Reduziere Freitextfelder auf das absolute Minimum, um individuelle Informationen zur Identifizierung von Personen zu vermeiden.</li>
+                      <li>Verwende gesammelte Daten ausschließlich für den definierten und genehmigten Zweck. Falls Abweichungen notwendig sind, wende dich im Voraus an das Datenschutz-Team.</li>
+                    </ul>
 
-                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Berechtigungen und Datenzugriff</h3>
-                <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Als Event-Ersteller / Administrator:</strong></p>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Du erhältst Admin-Funktionalitäten für dein spezifisches Event.</li>
-                  <li>Du kannst auf die gesamte Teilnehmerliste deines Events zugreifen.</li>
-                  <li>Diese Berechtigung gilt ausschließlich für das von dir erstellte Event.</li>
-                  <li>Du darfst Teilnehmerinformationen nicht mit anderen teilen oder für andere Zwecke verwenden.</li>
-                </ul>
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Berechtigungen und Datenzugriff</h3>
+                    <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Als Event-Ersteller / Administrator:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Du erhältst Admin-Funktionalitäten für dein spezifisches Event.</li>
+                      <li>Du kannst auf die gesamte Teilnehmerliste deines Events zugreifen.</li>
+                      <li>Diese Berechtigung gilt ausschließlich für das von dir erstellte Event.</li>
+                      <li>Du darfst Teilnehmerinformationen nicht mit anderen teilen oder für andere Zwecke verwenden.</li>
+                    </ul>
 
-                <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Du kannst dich für Events an- oder abmelden.</li>
-                  <li>Du erhältst Informationen zum jeweiligen Event.</li>
-                  <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
-                  <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
-                </ul>
+                    <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Du kannst dich für Events an- oder abmelden.</li>
+                      <li>Du erhältst Informationen zum jeweiligen Event.</li>
+                      <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
+                      <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
+                    </ul>
 
-                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Datenschutzbestimmungen im Detail</h3>
-                <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Beschränkung der Sammlung personenbezogener und vertraulicher Daten:</strong></p>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Nur was unbedingt erforderlich ist, um den beabsichtigten Zweck zu erreichen.</li>
-                  <li>Offene Fragen auf das Minimum reduzieren (um die Sammlung unnötiger oder nicht autorisierter Daten zu vermeiden).</li>
-                </ul>
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Datenschutzbestimmungen im Detail</h3>
+                    <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Beschränkung der Sammlung personenbezogener und vertraulicher Daten:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Nur was unbedingt erforderlich ist, um den beabsichtigten Zweck zu erreichen.</li>
+                      <li>Offene Fragen auf das Minimum reduzieren (um die Sammlung unnötiger oder nicht autorisierter Daten zu vermeiden).</li>
+                    </ul>
 
-                <p>
-                  <strong>Sammle keine sensiblen personenbezogenen Daten</strong> — das heißt: keine Daten bezüglich
-                  Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen,
-                  Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände
-                  oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible
-                  personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter
-                  {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
-                </p>
+                    <p>
+                      <strong>Sammle keine sensiblen personenbezogenen Daten</strong> — das heißt: keine Daten bezüglich
+                      Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen,
+                      Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände
+                      oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible
+                      personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter
+                      {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
+                    </p>
 
-                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Besondere Bestimmungen für das Teilnehmermanagement</h3>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Teilnehmerdaten dürfen nur für das spezifische Event verwendet werden, für das sie gesammelt wurden.</li>
-                  <li>Die Weitergabe von Teilnehmerlisten an Dritte ist untersagt.</li>
-                  <li>Teilnehmerdaten anderer Events sind nicht einsehbar.</li>
-                  <li>Nach Abschluss des Events sind Teilnehmerdaten gemäß den Deloitte-Richtlinien zu behandeln.</li>
-                </ul>
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Besondere Bestimmungen für das Teilnehmermanagement</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Teilnehmerdaten dürfen nur für das spezifische Event verwendet werden, für das sie gesammelt wurden.</li>
+                      <li>Die Weitergabe von Teilnehmerlisten an Dritte ist untersagt.</li>
+                      <li>Teilnehmerdaten anderer Events sind nicht einsehbar.</li>
+                      <li>Nach Abschluss des Events sind Teilnehmerdaten gemäß den Deloitte-Richtlinien zu behandeln.</li>
+                    </ul>
 
-                <p>
-                  Ermögliche anonyme Antworten, wann immer möglich. Verwende personenbezogene und vertrauliche Daten,
-                  die in einem Event gesammelt wurden, nicht für andere Zwecke als den ursprünglich angegebenen.
-                  Sprich dich mit dem Datenschutz-Team ab, falls eine andere Nutzung der Daten beabsichtigt ist
-                  (du benötigst die vorherige schriftliche Einwilligung der betroffenen Personen / Teilnehmer
-                  unter Verwendung einer entsprechenden Vorlage).
-                </p>
+                    <p>
+                      Ermögliche anonyme Antworten, wann immer möglich. Verwende personenbezogene und vertrauliche Daten,
+                      die in einem Event gesammelt wurden, nicht für andere Zwecke als den ursprünglich angegebenen.
+                      Sprich dich mit dem Datenschutz-Team ab, falls eine andere Nutzung der Daten beabsichtigt ist
+                      (du benötigst die vorherige schriftliche Einwilligung der betroffenen Personen / Teilnehmer
+                      unter Verwendung einer entsprechenden Vorlage).
+                    </p>
 
-                <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
-                <ul style={{ marginTop: 0 }}>
-                  <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
-                </ul>
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                    </ul>
 
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                  Diese Richtlinien gelten für alle Arten von Events, einschließlich Workshops, Seminare,
-                  Webinare, Konferenzen und andere Veranstaltungen, deren Teilnehmermanagement für
-                  Deloitte-Mitarbeiter über die Event Experience Platform organisiert wird.
-                </p>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                      Diese Richtlinien gelten für alle Arten von Events, einschließlich Workshops, Seminare,
+                      Webinare, Konferenzen und andere Veranstaltungen, deren Teilnehmermanagement für
+                      Deloitte-Mitarbeiter über die Event Experience Platform organisiert wird.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      Access to the Event Experience Platform is granted to you as an employee of Deloitte Germany so
+                      that you can organise attendee management for events, workshops or other appointments.
+                    </p>
+
+                    <p style={{ marginBottom: 6 }}>The platform is used to coordinate:</p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Internal Deloitte events</li>
+                      <li>External events for which attendee management is organised on behalf of Deloitte employees (e.g. running events such as B2Run or JPMorgan)</li>
+                    </ul>
+
+                    <p>
+                      <strong>Important note:</strong> External non-Deloitte employees are not coordinated through this
+                      tool and will not be granted access to the platform.
+                    </p>
+
+                    <p>Every event you create must follow the guidelines below.</p>
+
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Key data-protection guidance</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Attending events is always voluntary and must never be enforced.</li>
+                      <li>Avoid collecting personal data wherever possible.</li>
+                      <li>Only collect data that is strictly necessary to achieve the event&apos;s purpose.</li>
+                      <li>Keep free-text fields to an absolute minimum to avoid collecting individual information that could identify people.</li>
+                      <li>Use collected data exclusively for the defined and approved purpose. If you need to deviate, contact the data-protection team in advance.</li>
+                    </ul>
+
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Permissions and data access</h3>
+                    <p style={{ marginTop: 0, marginBottom: 6 }}><strong>As event creator / administrator:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>You receive admin functionality for your specific event.</li>
+                      <li>You can access the entire attendee list of your event.</li>
+                      <li>This permission is limited to the event you created.</li>
+                      <li>You may not share attendee information with others or use it for other purposes.</li>
+                    </ul>
+
+                    <p style={{ marginBottom: 6 }}><strong>As event attendee:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>You can register for or unregister from events.</li>
+                      <li>You receive information about the relevant event.</li>
+                      <li>You have no access to the attendee list or information about other attendees.</li>
+                      <li>You only see your own event registrations and data.</li>
+                    </ul>
+
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Data-protection rules in detail</h3>
+                    <p style={{ marginTop: 0, marginBottom: 6 }}><strong>Restricting the collection of personal and confidential data:</strong></p>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Only what is strictly necessary to achieve the intended purpose.</li>
+                      <li>Reduce open-ended questions to a minimum (to avoid collecting unnecessary or unauthorised data).</li>
+                    </ul>
+
+                    <p>
+                      <strong>Do not collect sensitive personal data</strong> — that is, no data on race or ethnic origin,
+                      religious or philosophical beliefs, trade-union membership, political opinions, medical or health
+                      conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal
+                      data must be collected, contact the team first at
+                      {' '}<a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a>.
+                    </p>
+
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Specific rules for attendee management</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Attendee data may only be used for the specific event for which it was collected.</li>
+                      <li>Sharing attendee lists with third parties is prohibited.</li>
+                      <li>Attendee data of other events is not accessible.</li>
+                      <li>After the event, attendee data must be handled in line with Deloitte policy.</li>
+                    </ul>
+
+                    <p>
+                      Allow anonymous responses wherever possible. Do not use personal or confidential data collected for
+                      one event for purposes other than the originally stated one. Coordinate with the data-protection
+                      team if you intend to use the data differently (you will need prior written consent from the
+                      affected individuals / attendees, using an appropriate template).
+                    </p>
+
+                    <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Contact</h3>
+                    <ul style={{ marginTop: 0 }}>
+                      <li>Data-protection questions: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                    </ul>
+
+                    <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                      These guidelines apply to all types of events including workshops, seminars, webinars, conferences
+                      and any other events whose attendee management for Deloitte employees is organised through the
+                      Event Experience Platform.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -2070,9 +2325,9 @@ export default function EventCreationPage(): React.ReactElement {
                 style={{ marginTop: 2, width: 18, height: 18, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
               />
               <span style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
-                Ich habe die Nutzungs- und Datenschutzbedingungen gelesen und akzeptiere sie. Ich
-                bestätige, dass ich mich beim Anlegen und Verwalten dieses Events an die
-                Datenschutzbestimmungen halten werde.
+                {isDe
+                  ? 'Ich habe die Nutzungs- und Datenschutzbedingungen gelesen und akzeptiere sie. Ich bestätige, dass ich mich beim Anlegen und Verwalten dieses Events an die Datenschutzbestimmungen halten werde.'
+                  : 'I have read and accept the terms of use and data-protection rules. I confirm that I will follow the data-protection rules when creating and managing this event.'}
               </span>
             </label>
 
@@ -2082,7 +2337,7 @@ export default function EventCreationPage(): React.ReactElement {
                 className="btn btn-outline"
                 onClick={() => goBack()}
               >
-                Abbrechen
+                {isDe ? 'Abbrechen' : 'Cancel'}
               </button>
               <button
                 type="button"
@@ -2091,7 +2346,7 @@ export default function EventCreationPage(): React.ReactElement {
                 onClick={() => setTcAccepted(true)}
                 style={{ opacity: tcCheckbox ? 1 : 0.5, cursor: tcCheckbox ? 'pointer' : 'not-allowed' }}
               >
-                <Check size={16} /> Akzeptieren & weiter
+                <Check size={16} /> {isDe ? 'Akzeptieren & weiter' : 'Accept & continue'}
               </button>
             </div>
           </div>
@@ -2580,85 +2835,73 @@ export default function EventCreationPage(): React.ReactElement {
               }}>
                 <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Icon iconName="Hide3" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                  Sichtbarkeit
+                  {isDe ? 'Sichtbarkeit' : 'Visibility'}
                 </h3>
                 <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-                  Standardmäßig können sich <strong>alle Personen aus Deloitte Deutschland</strong> zu diesem
-                  Event anmelden. Wenn du das nicht möchtest, kannst du die Sichtbarkeit über die
-                  beiden Bereiche unten einschränken — dann sehen Personen, die nicht in den
-                  ausgewählten Standorten oder Mailverteilern/Einzeluser-Listen enthalten sind, das
-                  Event gar nicht erst in ihrer Übersicht und können sich entsprechend auch nicht
-                  anmelden.
+                  {isDe ? (
+                    <>
+                      Dieses Event ist standardmäßig für <strong>alle Mitarbeiter von Deloitte Deutschland</strong>{' '}
+                      sichtbar und buchbar. Über die folgenden beiden Bereiche — Standortfilter sowie
+                      Mailverteiler / einzelne User — kannst du den Empfängerkreis gezielt einschränken.
+                      Mitarbeiter außerhalb der definierten Auswahl sehen das Event nicht in ihrer
+                      Übersicht und können sich entsprechend nicht anmelden.
+                    </>
+                  ) : (
+                    <>
+                      By default, this event is visible and bookable for <strong>all Deloitte Germany employees</strong>.
+                      You can narrow down the audience using the two sections below — the location filter
+                      and mailing lists / individual users. Employees outside the selected scope will
+                      not see the event in their overview and cannot register for it.
+                    </>
+                  )}
                 </p>
               </div>
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={4} />
-                  Standortfilter
+                  {isDe ? 'Standortfilter' : 'Location filter'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Wählst du hier einen oder mehrere Standorte aus, sehen <strong>nur Mitarbeiter mit diesen Standorten</strong> das Event.<br />
-                  <em>Beispiel: &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit diesen Standorten sehen das Event. Alle anderen sehen es nicht.</em>
+                  {isDe ? (
+                    <>
+                      Wählst du hier einen oder mehrere Standorte aus, sehen <strong>nur Mitarbeiter mit diesen Standorten</strong> das Event.<br />
+                      <em>Beispiel: &bdquo;Köln&ldquo; und &bdquo;Düsseldorf&ldquo; → Nur Mitarbeiter mit diesen Standorten sehen das Event. Alle anderen sehen es nicht.</em>
+                    </>
+                  ) : (
+                    <>
+                      If you pick one or more locations here, <strong>only employees from those locations</strong> will see the event.<br />
+                      <em>Example: &bdquo;Cologne&ldquo; and &bdquo;Düsseldorf&ldquo; → only employees with one of these locations will see the event. Everyone else will not.</em>
+                    </>
+                  )}
                 </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {locationOptions.map(loc => {
-                    const isChecked = locationFilter.split(',').map(s => s.trim()).indexOf(loc) >= 0;
-                    const toggle = (): void => {
-                      const current = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
-                      if (!isChecked) setLocationFilter([...current, loc].join(', '));
-                      else setLocationFilter(current.filter(l => l !== loc).join(', '));
-                    };
-                    return (
-                      <button
-                        key={loc}
-                        type="button"
-                        onClick={toggle}
-                        aria-pressed={isChecked}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          padding: '6px 14px',
-                          borderRadius: 999,
-                          border: `1.5px solid ${isChecked ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
-                          background: isChecked ? 'var(--dex-green)' : '#fff',
-                          color: isChecked ? '#fff' : 'var(--dex-gray-700)',
-                          fontSize: '0.85rem',
-                          fontWeight: isChecked ? 500 : 400,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          boxShadow: isChecked ? '0 1px 3px rgba(134,188,37,0.25)' : 'none',
-                        }}
-                      >
-                        {isChecked && <Check size={14} />}
-                        {loc}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Multi-Select-Dropdown — kompakter als die alten Pillen,
+                    erlaubt Suche + Mehrfachauswahl. Aktuelle Auswahl wird
+                    direkt im Trigger-Button als Chip-Liste angezeigt. */}
+                <LocationMultiSelect
+                  options={locationOptions}
+                  selected={locationFilter.split(',').map(s => s.trim()).filter(Boolean)}
+                  onChange={list => setLocationFilter(list.join(', '))}
+                  isDe={isDe}
+                />
                 {!locationFilter && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-green)', marginTop: 8 }}>
-                    Kein Standort ausgewählt → Event ist für alle sichtbar.
+                    {isDe
+                      ? 'Kein Standort ausgewählt → Event ist für alle sichtbar.'
+                      : 'No location selected → event is visible to everyone.'}
                   </p>
-                )}
-                {(locationFilter || audience) && (
-                  <button
-                    className="btn btn-outline mt-8"
-                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                    onClick={() => setShowEmailModal(true)}
-                    type="button"
-                  >
-                    <Users size={14} /> Zielgruppe prüfen
-                  </button>
                 )}
               </div>
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={5} />
-                  Mailverteiler / einzelne User
+                  {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Hier kannst du gezielt <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler / Security-Gruppen aus Entra</strong> hinzufügen. Diese sehen das Event zusätzlich — unabhängig vom Standortfilter oben.
+                  {isDe
+                    ? <>Hier kannst du gezielt <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler / Security-Gruppen aus Entra</strong> hinzufügen. Diese sehen das Event zusätzlich — unabhängig vom Standortfilter oben.</>
+                    : <>Here you can add <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. These will see the event in addition to the location filter above.</>}
                 </p>
                 {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
                     Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
@@ -2830,6 +3073,27 @@ export default function EventCreationPage(): React.ReactElement {
                     Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
                   </p>
                 </div>
+                {/* Sichtbarkeit-Pruefen-Button: erst hier am Ende beider
+                    Bloecke (Standortfilter + Mailverteiler) sinnvoll, weil
+                    der Organizer typischerweise erst beide Angaben machen
+                    will, bevor er die kombinierte Sichtbarkeit prueft. */}
+                {(locationFilter || audience) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-outline"
+                      style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+                      onClick={() => setShowEmailModal(true)}
+                      type="button"
+                    >
+                      <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
+                    </button>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
+                      {isDe
+                        ? 'Öffnet eine Vorschau aller Personen, die das Event tatsächlich sehen werden — basierend auf dem Standortfilter und den hinzugefügten Mailverteilern / Einzelusern. So kannst du die kombinierte Sichtbarkeit vor dem Speichern verifizieren.'
+                        : 'Opens a preview of all people who will actually see the event — based on the location filter and the added mailing lists / individual users. Lets you verify the combined visibility before saving.'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* UND/ODER Verknüpfung (kein Step-Badge — ist Zusatz von Section 4+5) */}
@@ -5502,7 +5766,7 @@ export default function EventCreationPage(): React.ReactElement {
           >
             <div className="flex-between mb-16">
               <h3 style={{ margin: 0 }}>
-                <Users size={18} /> Zielgruppe prüfen
+                <Users size={18} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
               </h3>
               <button
                 style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
