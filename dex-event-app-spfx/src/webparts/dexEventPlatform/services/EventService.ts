@@ -169,8 +169,14 @@ const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 // Pro Subsite eine Liste mit genau einem Item, dessen NextValue beim
 // Anmelden via If-Match-Header inkrementiert wird. So koennen mehrere
 // User parallel registrieren ohne dass IDs doppelt vergeben werden.
+//
+// Listenname mit Unterstrich → SharePoint kodiert das in der Item-Type-
+// Bezeichnung als `_x005f_`. Genauso wie wir das schon bei DEX_Events
+// machen ('SP.Data.DEX_x005f_EventsListItem'). Ohne dieses Encoding
+// schlaegt der POST stillschweigend mit HTTP 400 fehl, weil SP den
+// Typ-Namen nicht aufloesen kann.
 const COUNTER_LIST_NAME = 'DEX_TeilnehmerCounter';
-const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_TeilnehmerCounterListItem';
+const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_x005f_TeilnehmerCounterListItem';
 
 export interface DeclinedAttendee {
   email: string;
@@ -4445,33 +4451,65 @@ export class EventService {
     return undefined;
   }
 
+  // Hilfsroutine: prueft ob auf der Counter-Liste die NextValue-Spalte
+  // existiert und legt sie an wenn sie fehlt. Idempotent.
+  private async ensureCounterListField(subsiteUrl: string): Promise<void> {
+    const fieldUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields/getbytitle('NextValue')`;
+    const probe = await this.context.spHttpClient.get(fieldUrl, SPHttpClient.configurations.v1);
+    if (probe.ok) return;
+    const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`;
+    await this._post(
+      fieldsUrl,
+      { '__metadata': { 'type': 'SP.Field' }, 'Title': 'NextValue', 'FieldTypeKind': 9, 'Required': false }
+    );
+  }
+
   // v7.28: Counter-Liste fuer ein Event anlegen (1 Liste mit 1 Item) und
   // direkt mit dem aktuellen Max-Wert seeden — damit bestehende Events ohne
   // ID-Lueckenproduktion umsteigen koennen.
   // Idempotent: tut nichts wenn die Liste schon existiert.
+  // v7.29-Fix: Item-Inserts nutzen den korrekt _x005f_-encodeten Type-Namen
+  // (genauso wie wir das fuer DEX_Events machen). Vorher wurde der Listen-
+  // name 1:1 in den Type uebernommen, was bei Unterstrich stillschweigend
+  // zu HTTP 400 fuehrt → leere Counter-Liste.
   private async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
-    // 1. Schon da?
     const probe = await this.context.spHttpClient.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')`,
       SPHttpClient.configurations.v1
     );
+    const itemsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`;
+    const seedItem = async (): Promise<number> => {
+      const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+      const resp = await this._post(itemsUrl, {
+        '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE },
+        'Title': 'TeilnehmerID',
+        'NextValue': maxId,
+      });
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => '');
+        console.warn('[DEX] ensureCounterList: Seed-Item fehlgeschlagen, status=', resp.status, errBody.substring(0, 300));
+      }
+      return maxId;
+    };
+
     if (probe.ok) {
-      // Liste existiert — checken ob Item 1 existiert, sonst seeden.
-      const itemProbe = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`,
+      // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
+      try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
+      const itemListResp = await this.context.spHttpClient.get(
+        `${itemsUrl}?$top=1`,
         SPHttpClient.configurations.v1
       );
-      if (itemProbe.ok) return { created: false };
-      // Liste ohne Item 1 → seeden
-      const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-      await this._post(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`,
-        { '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE }, 'Title': 'TeilnehmerID', 'NextValue': maxId }
-      );
-      return { created: false, seededValue: maxId };
+      if (itemListResp.ok) {
+        const data = await itemListResp.json();
+        const list = data.value || data.d?.results || [];
+        if (list.length > 0) return { created: false }; // alles ok
+      }
+      // Liste ohne Item → nachseeden
+      const seededValue = await seedItem();
+      return { created: false, seededValue };
     }
 
-    // 2. Liste anlegen
+    // Liste neu anlegen
     await this._post(
       `${subsiteUrl}/_api/web/lists`,
       {
@@ -4486,18 +4524,9 @@ export class EventService {
         'OnQuickLaunch': false,
       }
     );
-    // 3. NextValue-Spalte (Number)
-    await this._post(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`,
-      { '__metadata': { 'type': 'SP.Field' }, 'Title': 'NextValue', 'FieldTypeKind': 9, 'Required': false }
-    );
-    // 4. Mit aktuellem Max seeden, damit IDs lueckenlos weitergehen.
-    const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-    await this._post(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`,
-      { '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE }, 'Title': 'TeilnehmerID', 'NextValue': maxId }
-    );
-    return { created: true, seededValue: maxId };
+    await this.ensureCounterListField(subsiteUrl);
+    const seededValue = await seedItem();
+    return { created: true, seededValue };
   }
 
   // v7.28: Aktuellen Max-Wert von TeilnehmerID in der Teilnehmerliste lesen.

@@ -84,6 +84,26 @@ Merksatz:
 - `_merge(...)` = `nometadata` → KEIN `__metadata`
 - Manueller POST mit `odata=verbose` → `__metadata` ist Pflicht
 
+### SharePoint Item-Type-Encoding bei Listennamen mit Sonderzeichen (WICHTIG)
+
+Bei `odata=verbose`-Inserts erwartet SharePoint den exakten Type-Namen `SP.Data.<Listenname>ListItem`. **Sonderzeichen im Listennamen werden encodet** und MÜSSEN im Type-Namen genauso encodet werden, sonst schlägt der POST stillschweigend mit HTTP 400 fehl ("Cannot find resource for the request") oder der Request gilt als invalid:
+
+| Zeichen | Encoding   | Beispiel                                                       |
+|---------|------------|----------------------------------------------------------------|
+| `_`     | `_x005f_`  | `DEX_Events` → `SP.Data.DEX_x005f_EventsListItem`              |
+| `-`     | `_x002d_`  | `My-List` → `SP.Data.My_x002d_ListListItem`                    |
+| ` `     | `_x0020_`  | `My List` → `SP.Data.My_x0020_ListListItem`                    |
+
+Beispiele aus dem Codebase die korrekt funktionieren:
+- `DEX_Events` → `SP.Data.DEX_x005f_EventsListItem` (siehe `updateEvent()`)
+- `DEX_Roles`, `DEX_Emails`, `DEX_Outlook` etc. genauso encodet
+- `Teilnehmer` (ohne Sonderzeichen) → `SP.Data.TeilnehmerListItem` (siehe `REG_LIST_ITEM_TYPE`)
+- `DEX_TeilnehmerCounter` (v7.28+) → `SP.Data.DEX_x005f_TeilnehmerCounterListItem`
+
+**Bug-Story v7.28 → v7.29**: Beim Anlegen der Counter-Liste war der Type fälschlich als `SP.Data.DEX_TeilnehmerCounterListItem` (ohne `_x005f_`) angegeben. Der Item-Insert ging mit HTTP 400 stillschweigend kaputt — die Liste wurde zwar angelegt, das Seed-Item aber nicht. Ergebnis: Counter leer → Fallback auf `max+1` → Race-Conditions bleiben.
+
+Wenn du also eine neue SP-Liste mit Sonderzeichen im Namen anlegst und Items per `odata=verbose` hineinposten willst: **ImmerType-Namen mit `_x005f_`/`_x002d_` etc. encoden**. Falls unsicher: stattdessen `odata=nometadata` benutzen — dann ist gar kein `__metadata` nötig und SP leitet den Typ aus der URL ab.
+
 ### Key Architecture
 
 - SPFx WebPart with React (no browser routing, context-based navigation)
