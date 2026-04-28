@@ -86,6 +86,12 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
     transition: 'all 0.15s ease',
     boxShadow: greenAccent ? '0 4px 12px rgba(134,188,37,0.18)' : 'none',
     position: 'relative',
+    // width:100% sorgt dafuer, dass die Kachel auch in einem flex-Wrapper
+    // (z.B. Excel-Export hat einen <div display:flex>-Wrapper fuer das
+    // Dropdown-Positioning) auf die volle Grid-Zellen-Breite gestreckt
+    // wird — sonst sieht sie schmaler aus als die direkten Grid-Geschwister.
+    width: '100%',
+    boxSizing: 'border-box',
   };
   const inner = (
     <>
@@ -2718,7 +2724,7 @@ export default function AdminPage(): React.ReactElement {
           <div
             className="card"
             style={{
-              width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto',
+              width: '100%', maxWidth: 920, maxHeight: '90vh', overflow: 'auto',
               padding: 24, borderRadius: 16, background: '#fff',
               boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
             }}
@@ -2787,7 +2793,10 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   ))}
 
-                  {/* Custom Fields des Events */}
+                  {/* Custom Fields des Events — Renderer abhaengig vom
+                      Field-Type (text/number/select/checkbox). Multi-Select
+                      speichert Werte als " | "-getrennten String, identisch
+                      zum Registrierungs-Pfad. */}
                   {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
                     <div style={{ gridColumn: '1 / -1', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
                       <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: 'var(--dex-gray-700)' }}>
@@ -2798,15 +2807,103 @@ export default function AdminPage(): React.ReactElement {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const sp = (cf as any).spInternalName || '';
                           if (!sp) return null;
+                          const value = editForm[sp] || '';
+                          const setVal = (v: string): void => setEditForm(prev => ({ ...prev, [sp]: v }));
+                          const labelEl = (
+                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                              {cf.label}{cf.required && <span style={{ color: 'var(--dex-red, #c00)' }}> *</span>}
+                            </label>
+                          );
+
+                          // Single-Select-Dropdown
+                          if (cf.type === 'select' && !cf.multi && cf.options && cf.options.length > 0) {
+                            return (
+                              <div key={cf.id}>
+                                {labelEl}
+                                <select
+                                  className="form-select"
+                                  value={value}
+                                  onChange={e => setVal(e.target.value)}
+                                  style={{ width: '100%' }}
+                                >
+                                  <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
+                                  {cf.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                              </div>
+                            );
+                          }
+
+                          // Multi-Select (Checkbox-Liste, Werte mit ' | ' joinen)
+                          if (cf.type === 'select' && cf.multi && cf.options && cf.options.length > 0) {
+                            const selectedSet = new Set(value.split(' | ').map(s => s.trim()).filter(Boolean));
+                            const toggle = (opt: string): void => {
+                              if (selectedSet.has(opt)) selectedSet.delete(opt);
+                              else selectedSet.add(opt);
+                              setVal(Array.from(selectedSet).join(' | '));
+                            };
+                            return (
+                              <div key={cf.id} style={{ gridColumn: '1 / -1' }}>
+                                {labelEl}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8, border: '1px solid var(--dex-gray-200)', borderRadius: 6, background: '#fff' }}>
+                                  {cf.options.map(opt => (
+                                    <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer', padding: '4px 8px', background: selectedSet.has(opt) ? 'rgba(134,188,37,0.12)' : 'var(--dex-gray-50)', borderRadius: 6 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedSet.has(opt)}
+                                        onChange={() => toggle(opt)}
+                                        style={{ accentColor: 'var(--dex-green)' }}
+                                      />
+                                      {opt}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Checkbox (true/false)
+                          if (cf.type === 'checkbox') {
+                            const isChecked = value === 'true' || value === '1';
+                            return (
+                              <div key={cf.id}>
+                                {labelEl}
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: isChecked ? 'rgba(134,188,37,0.12)' : 'var(--dex-gray-50)', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={e => setVal(e.target.checked ? 'true' : 'false')}
+                                    style={{ accentColor: 'var(--dex-green)' }}
+                                  />
+                                  {isChecked ? (isDe ? 'Ja' : 'Yes') : (isDe ? 'Nein' : 'No')}
+                                </label>
+                              </div>
+                            );
+                          }
+
+                          // Number
+                          if (cf.type === 'number') {
+                            return (
+                              <div key={cf.id}>
+                                {labelEl}
+                                <input
+                                  className="form-input"
+                                  type="number"
+                                  value={value}
+                                  onChange={e => setVal(e.target.value)}
+                                  style={{ width: '100%' }}
+                                />
+                              </div>
+                            );
+                          }
+
+                          // Default: text-Input (auch fuer 'text', 'user', 'roommate')
                           return (
                             <div key={cf.id}>
-                              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
-                                {cf.label}{cf.required && <span style={{ color: 'var(--dex-red, #c00)' }}> *</span>}
-                              </label>
+                              {labelEl}
                               <input
                                 className="form-input"
-                                value={editForm[sp] || ''}
-                                onChange={e => setEditForm(prev => ({ ...prev, [sp]: e.target.value }))}
+                                value={value}
+                                onChange={e => setVal(e.target.value)}
                                 style={{ width: '100%' }}
                               />
                             </div>
