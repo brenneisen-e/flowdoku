@@ -165,6 +165,12 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
+// v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe (ETag-basiert).
+// Pro Subsite eine Liste mit genau einem Item, dessen NextValue beim
+// Anmelden via If-Match-Header inkrementiert wird. So koennen mehrere
+// User parallel registrieren ohne dass IDs doppelt vergeben werden.
+const COUNTER_LIST_NAME = 'DEX_TeilnehmerCounter';
+const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_TeilnehmerCounterListItem';
 
 export interface DeclinedAttendee {
   email: string;
@@ -2574,6 +2580,14 @@ export class EventService {
     // Berechtigungen
     await this.setRegistrationListPermissions(subsiteUrl, organizerEmail);
 
+    // v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe anlegen
+    // (Race-Condition-Schutz bei parallelen Anmeldungen).
+    try {
+      await this.ensureCounterList(subsiteUrl);
+    } catch {
+      // Nicht kritisch — falls das schiefgeht, fallback auf max+1 in upsertParticipant.
+    }
+
     return fieldMap;
   }
 
@@ -2792,21 +2806,14 @@ export class EventService {
       }
       // ---- Ende Permission-Checks ----
 
-      // Naechste TeilnehmerID ermitteln
-      let nextId = 1;
-      try {
-        const maxResp = await this.context.spHttpClient.get(
-          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
-          SPHttpClient.configurations.v1
-        );
-        if (maxResp.ok) {
-          const maxData = await maxResp.json();
-          const items = maxData.value || maxData.d?.results || [];
-          if (items.length > 0 && items[0].TeilnehmerID != null) {
-            nextId = items[0].TeilnehmerID + 1;
-          }
-        }
-      } catch { /* Fallback: 1 */ }
+      // v7.28: Naechste TeilnehmerID atomar ueber den Subsite-Counter holen
+      // (verhindert Race-Conditions bei parallelen Anmeldungen). Fallback
+      // auf das alte max+1, wenn die Counter-Liste fuer dieses Event noch
+      // nicht existiert (legacy ohne "Spalten fixen"-Lauf).
+      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
+      if (nextId === undefined) {
+        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
+      }
 
       // Profildaten laden - fuer den TATSAECHLICHEN Teilnehmer (nicht den eingeloggten User!)
       // Wenn jemand fuer eine andere Person registriert, muss deren Profil geladen werden,
@@ -2957,21 +2964,14 @@ export class EventService {
       } catch { /* bei Load-Fehler konservativ: weitermachen */ }
       // ---- Ende Permission-Checks ----
 
-      // Naechste TeilnehmerID ermitteln
-      let nextId = 1;
-      try {
-        const maxResp = await this.context.spHttpClient.get(
-          `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
-          SPHttpClient.configurations.v1
-        );
-        if (maxResp.ok) {
-          const maxData = await maxResp.json();
-          const items = maxData.value || maxData.d?.results || [];
-          if (items.length > 0 && items[0].TeilnehmerID != null) {
-            nextId = items[0].TeilnehmerID + 1;
-          }
-        }
-      } catch { /* Fallback: 1 */ }
+      // v7.28: Naechste TeilnehmerID atomar ueber den Subsite-Counter holen
+      // (verhindert Race-Conditions bei parallelen Anmeldungen). Fallback
+      // auf das alte max+1, wenn die Counter-Liste fuer dieses Event noch
+      // nicht existiert (legacy ohne "Spalten fixen"-Lauf).
+      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
+      if (nextId === undefined) {
+        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
@@ -3443,6 +3443,19 @@ export class EventService {
       viewFixed = true;
     } catch {
       console.warn('[DEX] View-Reihenfolge konnte nicht gesetzt werden');
+    }
+
+    // v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe anlegen
+    // (oder seeden mit dem aktuellen Max-Wert wenn schon vorhanden).
+    try {
+      const counterResult = await this.ensureCounterList(subsiteUrl);
+      if (counterResult.created) {
+        added.push(`Counter-Liste ${COUNTER_LIST_NAME} (atomare TeilnehmerID-Vergabe, seeded mit ${counterResult.seededValue})`);
+      } else if (counterResult.seededValue !== undefined) {
+        added.push(`Counter-Item nachgeseedet (NextValue=${counterResult.seededValue})`);
+      }
+    } catch {
+      console.warn('[DEX] Counter-Liste konnte nicht angelegt werden');
     }
 
     return { added, removed, viewFixed, customFieldMap: Object.keys(customFieldMap).length > 0 ? customFieldMap : undefined };
@@ -4358,6 +4371,150 @@ export class EventService {
       return { ok: true, status: 204, statusText: 'No Content' } as unknown as SPHttpClientResponse;
     }
     return response;
+  }
+
+  // v7.28: Variante von _merge, die den uebergebenen ETag im IF-MATCH-Header
+  // mitsendet (statt '*'). SharePoint vergleicht den ETag mit dem aktuellen
+  // Stand des Items und antwortet mit HTTP 412 (Precondition Failed), wenn
+  // ein anderer Client zwischenzeitlich geschrieben hat. So koennen wir
+  // optimistic-concurrency-Pattern fuer den TeilnehmerID-Counter umsetzen.
+  private async _mergeIfMatch(url: string, body: object, etag: string): Promise<SPHttpClientResponse> {
+    const options: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata',
+        'odata-version': '',
+        'IF-MATCH': etag,
+        'X-HTTP-Method': 'MERGE',
+      },
+      body: JSON.stringify(body),
+    };
+    const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
+    if (response.status === 406) {
+      return { ok: true, status: 204, statusText: 'No Content' } as unknown as SPHttpClientResponse;
+    }
+    return response;
+  }
+
+  // v7.28: Atomare TeilnehmerID-Vergabe ueber die DEX_TeilnehmerCounter-Liste
+  // pro Event-Subsite. Verhindert Race-Conditions wenn viele User gleichzeitig
+  // anmelden — ohne das vorher passieren konnte, dass zwei User dieselbe ID
+  // bekommen (siehe Bug-Report v7.27 → v7.28).
+  //
+  // Ablauf:
+  //   1. Counter-Item GET'en, ETag aus Response-Header lesen.
+  //   2. NextValue + 1 mit IF-MATCH: <etag> via MERGE schreiben.
+  //   3. Bei 412 (ETag-Mismatch = jemand war schneller) → kurzes Jitter +
+  //      Retry, max 8x.
+  //   4. Bei Erfolg: NextValue+1 ist die neue TeilnehmerID des aufrufenden Users.
+  //
+  // Fallback: Wenn die Counter-Liste nicht existiert (z.B. legacy event ohne
+  // "Spalten fixen"-Lauf), kommt undefined zurueck — der Aufrufer faellt dann
+  // auf das alte (race-anfaellige) max+1-Verfahren zurueck. Bestandsschutz.
+  private async getNextTeilnehmerId(subsiteUrl: string): Promise<number | undefined> {
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      let getResp: SPHttpClientResponse;
+      try {
+        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+      } catch {
+        return undefined;
+      }
+      if (!getResp.ok) {
+        // 404 = Counter-Liste oder Item existiert nicht → Legacy-Fallback
+        if (getResp.status === 404) return undefined;
+        // Andere Fehler (403 etc.) → Fallback ebenso
+        return undefined;
+      }
+      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+      if (!etag) return undefined;
+      let data;
+      try { data = await getResp.json(); } catch { return undefined; }
+      const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
+      const next = current + 1;
+      const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': next }, etag);
+      if (patchResp.ok) return next;
+      if (patchResp.status !== 412) {
+        // Anderer Fehler (z.B. 500) → kein Sinn weiter zu retry'n
+        return undefined;
+      }
+      // 412 = jemand war schneller → kurzes Jitter, dann retry
+      await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+    }
+    // Nach 8 Retries aufgeben → Aufrufer faellt auf max+1 zurueck.
+    return undefined;
+  }
+
+  // v7.28: Counter-Liste fuer ein Event anlegen (1 Liste mit 1 Item) und
+  // direkt mit dem aktuellen Max-Wert seeden — damit bestehende Events ohne
+  // ID-Lueckenproduktion umsteigen koennen.
+  // Idempotent: tut nichts wenn die Liste schon existiert.
+  private async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
+    // 1. Schon da?
+    const probe = await this.context.spHttpClient.get(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')`,
+      SPHttpClient.configurations.v1
+    );
+    if (probe.ok) {
+      // Liste existiert — checken ob Item 1 existiert, sonst seeden.
+      const itemProbe = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`,
+        SPHttpClient.configurations.v1
+      );
+      if (itemProbe.ok) return { created: false };
+      // Liste ohne Item 1 → seeden
+      const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+      await this._post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`,
+        { '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE }, 'Title': 'TeilnehmerID', 'NextValue': maxId }
+      );
+      return { created: false, seededValue: maxId };
+    }
+
+    // 2. Liste anlegen
+    await this._post(
+      `${subsiteUrl}/_api/web/lists`,
+      {
+        '__metadata': { 'type': 'SP.List' },
+        'BaseTemplate': 100,
+        'Title': COUNTER_LIST_NAME,
+        'Description': 'Atomarer Counter fuer TeilnehmerID-Vergabe (ETag-basiert). Nicht manuell editieren.',
+        'AllowContentTypes': false,
+        'ContentTypesEnabled': false,
+        'EnableVersioning': false,
+        'EnableMinorVersions': false,
+        'OnQuickLaunch': false,
+      }
+    );
+    // 3. NextValue-Spalte (Number)
+    await this._post(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`,
+      { '__metadata': { 'type': 'SP.Field' }, 'Title': 'NextValue', 'FieldTypeKind': 9, 'Required': false }
+    );
+    // 4. Mit aktuellem Max seeden, damit IDs lueckenlos weitergehen.
+    const maxId = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+    await this._post(
+      `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items`,
+      { '__metadata': { 'type': COUNTER_LIST_ITEM_TYPE }, 'Title': 'TeilnehmerID', 'NextValue': maxId }
+    );
+    return { created: true, seededValue: maxId };
+  }
+
+  // v7.28: Aktuellen Max-Wert von TeilnehmerID in der Teilnehmerliste lesen.
+  // Wird beim Seeden des Counters genutzt + als Fallback wenn der Counter
+  // (noch) nicht existiert.
+  private async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return 0;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length > 0 && items[0].TeilnehmerID != null) return items[0].TeilnehmerID;
+    } catch { /* */ }
+    return 0;
   }
 
   private async _delete(url: string): Promise<SPHttpClientResponse> {

@@ -212,8 +212,14 @@ function RegistrationFlow(): React.ReactElement {
       <Arrow />
       <FlowNode
         type="subprocess"
+        label="Atomare TeilnehmerID-Vergabe (v7.28)"
+        details="Bevor das Item geschrieben wird, holt der Service die nächste TeilnehmerID atomar aus der Counter-Liste DEX_TeilnehmerCounter (eine Liste pro Subsite mit genau einem Item, NextValue=N). Vorgehen: GET counter-item mit ETag → PATCH NextValue=N+1 mit IF-MATCH=etag → bei HTTP 412 (jemand war schneller) wird mit kurzem Jitter retried (max 8x). Damit können mehrere User parallel anmelden, ohne dass IDs doppelt vergeben werden. Fallback bei alten Events ohne Counter-Liste: max(TeilnehmerID)+1 — dann muss der Admin einmalig 'Spalten fixen' klicken, damit die Counter-Liste angelegt + mit dem aktuellen Max-Wert geseedet wird."
+      />
+      <Arrow />
+      <FlowNode
+        type="subprocess"
         label="Eintrag in Subsite-Teilnehmerliste"
-        details="Der Service schreibt ein neues Item in die 'Teilnehmer'-Liste der Event-Subsite: Anrede, Vorname, Nachname, ParticipantEmail, Status, StarterType, PreferredStarterType, RegistrationDate, RegisteredByName/Email (Audit), CustomData (JSON der event-spezifischen Felder). TeilnehmerID bleibt null und wird erst durch den DEX_IDReorder_TeilnehmerIDs-Flow vergeben."
+        details="Der Service schreibt ein neues Item in die 'Teilnehmer'-Liste der Event-Subsite: TeilnehmerID (eindeutig vom Counter), Anrede, Vorname, Nachname, ParticipantEmail, Status, StarterType, PreferredStarterType, RegistrationDate, RegisteredByName/Email (Audit), CustomData (JSON der event-spezifischen Felder). Bei Late-Cancel-Reaktivierungen oder Storno-Nachrückern (siehe DEX_IDReorder-Flow) kann die TeilnehmerID nachträglich neu vergeben werden, um Lücken zu schließen."
       />
       <Arrow />
       <FlowNode
