@@ -169,7 +169,6 @@ export default function AdminPage(): React.ReactElement {
   const { isAdmin, siteUrl, currentUserRole } = useRoles();
   const { t } = useLanguage();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
-  const [imageOrientation, setImageOrientation] = React.useState<'landscape' | 'portrait' | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
@@ -469,7 +468,6 @@ export default function AdminPage(): React.ReactElement {
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
-    setImageOrientation(null);
     setIsLoadingRegs(true);
     setRegLoadError('');
     try {
@@ -903,117 +901,110 @@ export default function AdminPage(): React.ReactElement {
               {selectedEvent.status}
             </span>
           </div>
-          {selectedEvent.imageUrl && (
-            imageOrientation === 'portrait' ? (
+          {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
+              unabhaengig vom Bildformat (cover-Crop sorgt fuer den Kreis). */}
+          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            {selectedEvent.imageUrl && (
               <div
                 style={{
-                  float: 'left',
-                  width: 130,
-                  marginRight: 16,
-                  marginBottom: 8,
-                  borderRadius: 'var(--dex-radius, 12px)',
+                  flex: '0 0 auto',
+                  width: 110,
+                  height: 110,
+                  borderRadius: '50%',
                   overflow: 'hidden',
                   background: 'var(--dex-gray-50, #fafafa)',
+                  border: '1px solid var(--dex-gray-200, #e5e7eb)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
                 <img
                   src={selectedEvent.imageUrl}
                   alt={selectedEvent.title}
-                  onLoad={e => {
-                    const img = e.currentTarget;
-                    setImageOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
-                  }}
-                  style={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain' }}
-                />
-              </div>
-            ) : (
-              <div
-                style={{
-                  marginBottom: 16,
-                  borderRadius: 'var(--dex-radius, 12px)',
-                  overflow: 'hidden',
-                  background: 'var(--dex-gray-50, #fafafa)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  maxHeight: 180,
-                }}
-              >
-                <img
-                  src={selectedEvent.imageUrl}
-                  alt={selectedEvent.title}
-                  onLoad={e => {
-                    const img = e.currentTarget;
-                    setImageOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
-                  }}
                   style={{
                     display: 'block',
                     width: '100%',
-                    maxHeight: 180,
-                    objectFit: 'contain',
+                    height: '100%',
+                    objectFit: 'cover',
                   }}
                 />
               </div>
-            )
-          )}
-          <h3 className="mb-16">Event-Details</h3>
-          <div className="settings-info">
-            <div className="settings-info__row">
-              <span className="settings-info__label">Zeitraum</span>
-              <span>{formatDate(selectedEvent.startDate)} - {formatDate(selectedEvent.endDate)}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Organizer</span>
-              <span>{selectedEvent.organizers.map(o => {
-                const parts = o.split(',').map(s => s.trim());
-                return parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
-              }).join(', ')}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Ort</span>
-              <span>{selectedEvent.location || '-'}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Max. Teilnehmer</span>
-              <span>{selectedEvent.maxParticipants || 'Unbegrenzt'}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Aktuell registriert</span>
-              <span>{activeRegs.length}</span>
-            </div>
-            {waitlistRegs.length > 0 && (
-              <div className="settings-info__row">
-                <span className="settings-info__label">Warteliste</span>
-                <span>{waitlistRegs.length}</span>
-              </div>
             )}
-            {/* v7.27: Liste aller abgefragten Custom-Fields, damit der
-                Organizer auf einen Blick sieht welche Zusatzdaten der
-                Teilnehmer im Anmeldeformular eintragen muss. Pflichtfelder
-                sind mit rotem Sternchen markiert. */}
-            {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
-              <div className="settings-info__row" style={{ alignItems: 'flex-start' }}>
-                <span className="settings-info__label">Abgefragte Felder</span>
-                <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: '60%' }}>
-                  {selectedEvent.eventSpecificFields.map(f => (
-                    <span
-                      key={f.id}
-                      title={f.helpText || f.label}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '2px 8px', borderRadius: 999,
-                        background: 'rgba(134,188,37,0.10)',
-                        border: '1px solid rgba(134,188,37,0.35)',
-                        color: 'var(--dex-green-dark, #4a7c1f)',
-                        fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {f.label}
-                      {f.required && <span style={{ color: 'var(--dex-red, #c00)' }}>*</span>}
-                    </span>
-                  ))}
-                </span>
-              </div>
-            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h3 className="mb-16">Event-Details</h3>
+              {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
+                  buendig). Das globale .settings-info SCSS macht stattdessen
+                  space-between (also Wert rechts-buendig) — hier wollen wir
+                  beide Spalten links ausgerichtet. */}
+              {(() => {
+                const rowStyle: React.CSSProperties = {
+                  display: 'grid',
+                  gridTemplateColumns: '160px 1fr',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderBottom: '1px solid var(--dex-gray-200)',
+                  fontSize: '0.9rem',
+                };
+                const labelStyle: React.CSSProperties = { fontWeight: 700, color: 'var(--dex-gray-700)' };
+                const valueStyle: React.CSSProperties = { fontWeight: 400, color: 'var(--dex-gray-800)' };
+                return (
+                  <>
+                    <div style={rowStyle}>
+                      <span style={labelStyle}>Zeitraum</span>
+                      <span style={valueStyle}>{formatDate(selectedEvent.startDate)} - {formatDate(selectedEvent.endDate)}</span>
+                    </div>
+                    <div style={rowStyle}>
+                      <span style={labelStyle}>Organizer</span>
+                      <span style={valueStyle}>{selectedEvent.organizers.map(o => {
+                        const parts = o.split(',').map(s => s.trim());
+                        return parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
+                      }).join(', ')}</span>
+                    </div>
+                    <div style={rowStyle}>
+                      <span style={labelStyle}>Ort</span>
+                      <span style={valueStyle}>{selectedEvent.location || '-'}</span>
+                    </div>
+                    <div style={rowStyle}>
+                      <span style={labelStyle}>Max. Teilnehmer</span>
+                      <span style={valueStyle}>{selectedEvent.maxParticipants || 'Unbegrenzt'}</span>
+                    </div>
+                    <div style={rowStyle}>
+                      <span style={labelStyle}>Aktuell registriert</span>
+                      <span style={valueStyle}>{activeRegs.length}</span>
+                    </div>
+                    {waitlistRegs.length > 0 && (
+                      <div style={rowStyle}>
+                        <span style={labelStyle}>Warteliste</span>
+                        <span style={valueStyle}>{waitlistRegs.length}</span>
+                      </div>
+                    )}
+                    {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
+                      <div style={{ ...rowStyle, alignItems: 'flex-start', borderBottom: 'none' }}>
+                        <span style={labelStyle}>Abgefragte Felder</span>
+                        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {selectedEvent.eventSpecificFields.map(f => (
+                            <span
+                              key={f.id}
+                              title={f.helpText || f.label}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 8px', borderRadius: 999,
+                                background: 'rgba(134,188,37,0.10)',
+                                border: '1px solid rgba(134,188,37,0.35)',
+                                color: 'var(--dex-green-dark, #4a7c1f)',
+                                fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {f.label}
+                              {f.required && <span style={{ color: 'var(--dex-red, #c00)' }}>*</span>}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </div>
 
@@ -1086,8 +1077,11 @@ export default function AdminPage(): React.ReactElement {
               }}
             />
 
-            {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View) */}
-            <div style={{ position: 'relative' }}>
+            {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
+                Wrapper braucht display:flex, damit der innere Button auf die
+                volle Grid-Zellen-Hoehe gestreckt wird — sonst sieht die Kachel
+                niedriger aus als ihre Nachbarn, die zwei Zeilen Titel haben. */}
+            <div style={{ position: 'relative', display: 'flex' }}>
               <ActionTile
                 icon={<Download size={18} />}
                 title="Excel-Export"
