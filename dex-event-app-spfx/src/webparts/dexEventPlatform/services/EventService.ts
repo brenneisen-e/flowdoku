@@ -1580,14 +1580,17 @@ export class EventService {
    */
   public async getAllParticipants(): Promise<SPParticipant[]> {
     const allItems: SPParticipant[] = [];
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$orderby=Nachname,Vorname&$top=500`;
+    // $top=5000 statt 500 — bei mehr als 500 jemals registrierten Personen
+    // im Tenant lieferte SharePoint mit $orderby+$top in Kombination mit
+    // ILS nicht zuverlaessig nextLink, sodass Eintraege fehlten.
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$orderby=Nachname,Vorname&$top=5000`;
 
     while (url) {
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
-        allItems.push(...(data.value || []));
+        allItems.push(...(data.value || data.d?.results || []));
         url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
       } catch {
         break;
@@ -3153,14 +3156,25 @@ export class EventService {
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=500`;
+    // $top=5000 ist das SP-REST-Maximum pro Page. Damit fallen Events bis zu
+    // 5000 Teilnehmern in einen einzigen Response — keine Pagination-Edgecases
+    // mit fehlendem nextLink. Bei groesseren Listen folgen wir dem nextLink
+    // weiter (Schleife unten). Vorher stand hier $top=500, was bei Events mit
+    // ≥500 Teilnehmern zu fehlenden Eintraegen fuehrte: SharePoint liefert
+    // bei $orderby+$top in Kombination mit Item-Level-Security nicht
+    // zuverlaessig nextLink, wenn die erste Page exakt voll ist.
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=5000`;
 
     while (url) {
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
-        allItems.push(...(data.value || []));
+        // Beide OData-Formate abdecken: nometadata (data.value) UND verbose
+        // (data.d.results). Vorher nur data.value — bei verbose-Response
+        // waeren null Items dazugekommen.
+        const page = data.value || data.d?.results || [];
+        allItems.push(...page);
         url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
       } catch {
         break;
@@ -3185,7 +3199,7 @@ export class EventService {
   public async reorderParticipantIDs(subsiteUrl: string): Promise<{ success: number; errors: number }> {
     // Alle Items laden, sortiert nach SP Id (Erstellungsreihenfolge = Reihenfolge der Registrierung)
     const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=500`;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
 
     while (url) {
       try {
@@ -3804,14 +3818,18 @@ export class EventService {
   public async getRegistrationCount(subsiteUrl: string): Promise<{ registered: number; waitlist: number }> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allItems: any[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=500`;
+    // $top=5000 (SP-REST-Maximum) statt 500 — sonst werden bei Events mit
+    // ≥500 Eintraegen die Counts auf den Event-Karten falsch berechnet,
+    // weil SharePoint bei $orderby+$top mit ILS nicht zuverlaessig nextLink
+    // liefert wenn die Page exakt voll ist.
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=5000`;
 
     while (url) {
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
         if (!response.ok) break;
         const data = await response.json();
-        allItems.push(...(data.value || []));
+        allItems.push(...(data.value || data.d?.results || []));
         url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
       } catch {
         break;
