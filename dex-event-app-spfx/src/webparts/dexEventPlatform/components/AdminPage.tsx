@@ -709,6 +709,104 @@ export default function AdminPage(): React.ReactElement {
     return `${base}/Lists`;
   };
 
+  // Danger-Zone-Modal als gemeinsames Element — wird in BEIDEN Render-Branches
+  // (Event-Liste und Event-Detail) eingehängt, sonst läuft der Löschen-Klick auf
+  // der Event-Liste ins Leere (Bug v9.x: Modal war nur im Detail-Branch gerendert).
+  const dangerZoneModal: React.ReactElement | null = confirmDeleteEvent ? (() => {
+    const expected = (confirmDeleteEvent.title || '').trim().toLowerCase();
+    const typed = confirmDeleteText.trim().toLowerCase();
+    const matches = !!expected && expected === typed;
+    const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
+    return (
+      <div
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}
+        onClick={() => { if (!isDeleting) close(); }}
+      >
+        <div
+          className="card"
+          style={{ width: '100%', maxWidth: 560, padding: 24, borderRadius: 16, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', borderTop: '4px solid var(--dex-red, #c00)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex-between mb-16">
+            <h3 style={{ margin: 0, color: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Trash2 size={20} /> {isDe ? 'Danger Zone — Event löschen' : 'Danger Zone — Delete event'}
+            </h3>
+            <button
+              onClick={close}
+              disabled={isDeleting}
+              style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: isDeleting ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-500)' }}
+            ><X size={20} /></button>
+          </div>
+          <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
+            {isDe
+              ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
+              : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
+          </p>
+          <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
+            <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
+            <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
+            <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
+            <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
+          </ul>
+          <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+              {isDe
+                ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
+                : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
+            </label>
+            <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
+            <input
+              className="form-input"
+              value={confirmDeleteText}
+              onChange={e => setConfirmDeleteText(e.target.value)}
+              placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
+              disabled={isDeleting}
+              autoFocus
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={close}
+              disabled={isDeleting}
+            >{isDe ? 'Abbrechen' : 'Cancel'}</button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={!matches || isDeleting}
+              style={{
+                background: matches && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
+                color: '#fff',
+                border: 'none',
+                cursor: matches && !isDeleting ? 'pointer' : 'not-allowed',
+                padding: '8px 16px',
+              }}
+              onClick={async () => {
+                if (!matches || !confirmDeleteEvent) return;
+                setIsDeleting(true);
+                setDeletingId(confirmDeleteEvent.id);
+                try {
+                  await deleteEvent(confirmDeleteEvent.id);
+                } finally {
+                  setIsDeleting(false);
+                  setDeletingId(null);
+                  close();
+                }
+              }}
+            >
+              <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })() : null;
+
   // v6.20: Access-Gate — wer weder Admin noch Organizer eines Events noch QR-Scanner
   // eines Events ist, darf die Admin-Seite gar nicht erst sehen. Zeigt eine klare
   // "Kein Zugriff"-Meldung statt einer leeren Event-Liste.
@@ -917,6 +1015,7 @@ export default function AdminPage(): React.ReactElement {
           })()}
           </>
         )}
+        {dangerZoneModal}
       </div>
     );
   }
@@ -2790,104 +2889,7 @@ export default function AdminPage(): React.ReactElement {
       </div>
 
       {/* ===== TEILNEHMER-EDIT MODAL (v8.0) ===== */}
-      {/* v9.0: Danger-Zone Modal — Loeschen erfordert Eingabe des Event-
-          Titels (lowercase). Schutz gegen versehentliche Loeschung. Nach
-          erfolgreichem Loeschen wandern Subsite + Item in den SharePoint
-          Recycle Bin (93 Tage Wiederherstellungsfrist). */}
-      {confirmDeleteEvent && (() => {
-        const expected = (confirmDeleteEvent.title || '').trim().toLowerCase();
-        const typed = confirmDeleteText.trim().toLowerCase();
-        const matches = !!expected && expected === typed;
-        const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
-        return (
-          <div
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-            }}
-            onClick={() => { if (!isDeleting) close(); }}
-          >
-            <div
-              className="card"
-              style={{ width: '100%', maxWidth: 560, padding: 24, borderRadius: 16, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', borderTop: '4px solid var(--dex-red, #c00)' }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex-between mb-16">
-                <h3 style={{ margin: 0, color: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <Trash2 size={20} /> {isDe ? 'Danger Zone — Event löschen' : 'Danger Zone — Delete event'}
-                </h3>
-                <button
-                  onClick={close}
-                  disabled={isDeleting}
-                  style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: isDeleting ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-500)' }}
-                ><X size={20} /></button>
-              </div>
-              <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
-                {isDe
-                  ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
-                  : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
-              </p>
-              <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
-                <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
-                <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
-                <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
-                <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
-              </ul>
-              <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
-                  {isDe
-                    ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
-                    : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
-                </label>
-                <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
-                <input
-                  className="form-input"
-                  value={confirmDeleteText}
-                  onChange={e => setConfirmDeleteText(e.target.value)}
-                  placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
-                  disabled={isDeleting}
-                  autoFocus
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={close}
-                  disabled={isDeleting}
-                >{isDe ? 'Abbrechen' : 'Cancel'}</button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  disabled={!matches || isDeleting}
-                  style={{
-                    background: matches && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
-                    color: '#fff',
-                    border: 'none',
-                    cursor: matches && !isDeleting ? 'pointer' : 'not-allowed',
-                    padding: '8px 16px',
-                  }}
-                  onClick={async () => {
-                    if (!matches || !confirmDeleteEvent) return;
-                    setIsDeleting(true);
-                    setDeletingId(confirmDeleteEvent.id);
-                    try {
-                      await deleteEvent(confirmDeleteEvent.id);
-                    } finally {
-                      setIsDeleting(false);
-                      setDeletingId(null);
-                      close();
-                    }
-                  }}
-                >
-                  <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {dangerZoneModal}
 
       {/* v9.0: ChangeLog (Audit-Log) Modal — zeigt alle Aenderungen an
           Events und Teilnehmern. Filter nach Action, Event, Actor. */}
