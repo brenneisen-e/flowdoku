@@ -756,6 +756,16 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
+  // v8.5: Organizer-BCC-Modi (Anmeldung + Abmeldung).
+  const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
+    editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
+  );
+  const [notifyOrgRegisterFromDate, setNotifyOrgRegisterFromDate] = React.useState<string>(
+    editEvent ? (editEvent.notifyOrgRegisterFromDate || '') : ''
+  );
+  const [notifyOrgCancelMode, setNotifyOrgCancelMode] = React.useState<'never' | 'always' | 'afterDeadline'>(
+    editEvent ? (editEvent.notifyOrgCancelMode || 'never') : 'never'
+  );
   const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
@@ -1451,6 +1461,9 @@ export default function EventCreationPage(): React.ReactElement {
       updates['EmailImageBase64'] = emailLogoPreview || '';
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
+      updates['NotifyOrgRegisterMode'] = notifyOrgRegisterMode === 'always' ? 'Always' : notifyOrgRegisterMode === 'fromDate' ? 'FromDate' : 'Never';
+      updates['NotifyOrgRegisterFromDate'] = notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : null;
+      updates['NotifyOrgCancelMode'] = notifyOrgCancelMode === 'always' ? 'Always' : notifyOrgCancelMode === 'afterDeadline' ? 'AfterDeadline' : 'Never';
       updates['IsFictive'] = isFictive;
       if (useSplitCapacities) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
@@ -1683,6 +1696,9 @@ export default function EventCreationPage(): React.ReactElement {
         })(),
         disableEmails,
         disableOutlook,
+        notifyOrgRegisterMode,
+        notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
+        notifyOrgCancelMode,
         isFictive,
         durchstarterCapacity: useSplitCapacities ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
         funstarterCapacity: useSplitCapacities ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
@@ -4473,6 +4489,89 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
+                </div>
+
+                {/* v8.5: Organizer-BCC-Konfiguration (pro Event) — granular
+                    fuer An- und Abmeldungen getrennt einstellbar. */}
+                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <label className="form-label" style={{ marginBottom: 8 }}>
+                    {isDe ? 'Organizer informieren bei An-/Abmeldung' : 'Notify organizers on register/cancel'}
+                  </label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+                    {isDe
+                      ? 'Organizer werden als BCC in die Bestätigungs-Mail an den Teilnehmer aufgenommen — der Verteiler bleibt dem Teilnehmer also verborgen, der Organizer bekommt aber eine Kopie. Bei großen Events kannst du die Benachrichtigungen gezielt einschränken, um Spam zu vermeiden.'
+                      : 'Organizers are added as BCC to the confirmation email sent to the attendee — the distribution stays hidden from the attendee, but the organizer receives a copy. For large events you can restrict notifications to avoid spam.'}
+                  </p>
+
+                  {/* Anmeldung */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
+                      {isDe ? 'Bei Anmeldungen' : 'On registrations'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'never'} onChange={() => setNotifyOrgRegisterMode('never')} />
+                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'always'} onChange={() => setNotifyOrgRegisterMode('always')} />
+                        {isDe ? 'Bei jeder Anmeldung' : 'On every registration'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgRegister" checked={notifyOrgRegisterMode === 'fromDate'} onChange={() => setNotifyOrgRegisterMode('fromDate')} />
+                        {isDe ? 'Erst ab Datum' : 'Only from date'}
+                      </label>
+                    </div>
+                    {notifyOrgRegisterMode === 'fromDate' && (
+                      <div style={{ marginTop: 10, paddingLeft: 24 }}>
+                        <DatePicker
+                          selected={notifyOrgRegisterFromDate ? new Date(notifyOrgRegisterFromDate) : null}
+                          onChange={(date: Date | null) => setNotifyOrgRegisterFromDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                          showTimeSelect
+                          timeFormat="HH:mm"
+                          timeIntervals={15}
+                          timeCaption={isDe ? 'Uhrzeit' : 'Time'}
+                          dateFormat="dd.MM.yyyy, HH:mm"
+                          locale="de"
+                          placeholderText={isDe ? 'Ab diesem Datum BCC' : 'BCC from this date'}
+                          className="form-input"
+                          wrapperClassName="dex-datepicker-wrapper"
+                          calendarClassName="dex-datepicker-calendar"
+                          isClearable
+                          autoComplete="off"
+                        />
+                        <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                          {isDe ? 'Z.B. eine Woche vor dem Event — kurzfristige Anmeldungen werden dann an die Organizer gespiegelt.' : 'E.g. one week before the event — last-minute registrations are mirrored to organizers from then on.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Abmeldung */}
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>
+                      {isDe ? 'Bei Abmeldungen' : 'On cancellations'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'never'} onChange={() => setNotifyOrgCancelMode('never')} />
+                        {isDe ? 'Nicht informieren' : 'Don\'t notify'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'always'} onChange={() => setNotifyOrgCancelMode('always')} />
+                        {isDe ? 'Bei jeder Abmeldung' : 'On every cancellation'}
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'afterDeadline'} onChange={() => setNotifyOrgCancelMode('afterDeadline')} />
+                        {isDe ? 'Nur nach Stornofrist' : 'Only after cancel deadline'}
+                      </label>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
+                      {isDe
+                        ? '"Nach Stornofrist" nutzt das oben gesetzte "Letzter Storno-Termin"-Datum. Vor diesem Datum gelten Stornos als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        : '"After cancel deadline" uses the "Last cancel date" set earlier. Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Custom-Logo fuer E-Mails */}
