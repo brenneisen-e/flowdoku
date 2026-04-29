@@ -823,6 +823,72 @@ export class SharePointService {
   }
 
   /**
+   * v8.9: Alle User eines Standorts via Microsoft Graph laden. Genutzt vom
+   * Exclude-Modal, damit der Organizer auch bei nur-Standortfilter-Events
+   * eine Personenliste zum Aushaken bekommt (statt alle Personen einzeln
+   * ueber die Suche finden zu muessen).
+   *
+   * Pagination: Graph $top=999 ist Maximum pro Page. Folgt @odata.nextLink
+   * um alle Personen einzusammeln. Hard-Cap bei 5000 damit die UI nicht
+   * haengt bei sehr grossen Standorten.
+   *
+   * Match: officeLocation eq '<location>' (exakt). Faellt auf
+   * startsWith zurueck, wenn das nichts liefert (z.B. 'DE - Köln' vs
+   * 'Koeln, Germany' Schreibweisen-Drift).
+   */
+  public async searchUsersByLocation(location: string): Promise<Array<{
+    email: string;
+    displayName: string;
+    firstName: string;
+    lastName: string;
+    location: string;
+    jobTitle: string;
+  }>> {
+    if (!location) return [];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = this.context as any;
+      if (!ctx.msGraphClientFactory) return [];
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      const escaped = location.replace(/'/g, "''");
+      const select = 'id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const collected: any[] = [];
+      const HARD_CAP = 5000;
+      const fetchPage = async (filterExpr: string): Promise<void> => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let resp: any = await client.api('/users').filter(filterExpr).select(select).top(999).get();
+        while (resp) {
+          if (resp.value) collected.push(...resp.value);
+          if (collected.length >= HARD_CAP) break;
+          const next = resp['@odata.nextLink'];
+          if (!next) break;
+          resp = await client.api(next).get();
+        }
+      };
+      // 1. Versuch: exakter Match
+      await fetchPage(`officeLocation eq '${escaped}'`);
+      // 2. Fallback: startsWith — nur wenn der exakte Match leer war
+      if (collected.length === 0) {
+        try { await fetchPage(`startsWith(officeLocation, '${escaped}')`); } catch { /* */ }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return collected.map((u: any) => ({
+        email: u.mail || u.userPrincipalName || '',
+        displayName: u.displayName || '',
+        firstName: u.givenName || '',
+        lastName: u.surname || '',
+        jobTitle: u.jobTitle || '',
+        location: u.officeLocation || u.city || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })).filter((u: any) => u.email);
+    } catch (err) {
+      console.warn('[DEX] searchUsersByLocation failed for location:', location, err);
+      return [];
+    }
+  }
+
+  /**
    * Verteilerlisten + Security-Groups aus Entra suchen via ClientPeoplePicker.
    * PrincipalType 6 = 2 (Distribution List) + 4 (Security Group).
    * Liefert Email (= mail des Verteilers) und DisplayName.

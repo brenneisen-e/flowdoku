@@ -338,7 +338,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers, searchGroups, getGroupMembers, roles } = useRoles();
+  const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, roles } = useRoles();
   // Audience-Suche (Personen + Verteiler/Security-Groups)
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
@@ -781,6 +781,8 @@ export default function EventCreationPage(): React.ReactElement {
   });
   const [excludeSortBy, setExcludeSortBy] = React.useState<'email' | 'lastName' | 'firstName' | 'jobTitle' | 'location'>('lastName');
   const [excludeSortDir, setExcludeSortDir] = React.useState<'asc' | 'desc'>('asc');
+  const [excludePage, setExcludePage] = React.useState(0); // v8.9: 0-indexed Seite (200 pro Seite)
+  const EXCLUDE_PAGE_SIZE = 200;
   const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
@@ -932,6 +934,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [progress, setProgress] = React.useState(0);
   const [progressLabel, setProgressLabel] = React.useState('');
   const [showEmailModal, setShowEmailModal] = React.useState(false);
+  // v8.9: Cache der aufgeloesten Verteiler-Members fuer den Sichtbarkeits-
+  // Check. Wird beim Oeffnen des Modals einmal befuellt, damit jeder
+  // Such-Treffer in O(1) gegen die Mailgruppen-Mitgliedschaft geprueft
+  // werden kann (statt pro Treffer alle Verteiler erneut auszuloesen).
+  const [visibilityAudienceCache, setVisibilityAudienceCache] = React.useState<Set<string>>(new Set());
+  const [visibilityCacheLoading, setVisibilityCacheLoading] = React.useState(false);
   const [emailSearch, setEmailSearch] = React.useState('');
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
@@ -3163,7 +3171,31 @@ export default function EventCreationPage(): React.ReactElement {
                   <button
                     className="btn btn-outline"
                     style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
-                    onClick={() => setShowEmailModal(true)}
+                    onClick={async () => {
+                      setShowEmailModal(true);
+                      // v8.9: Verteiler einmal aufloesen und cachen, damit
+                      // jeder Such-Treffer in O(1) gegen die Mailgruppen-
+                      // Mitgliedschaft geprueft werden kann.
+                      setVisibilityCacheLoading(true);
+                      const cache = new Set<string>();
+                      const audItems = audience.split(',').map(s => s.trim()).filter(Boolean);
+                      for (const item of audItems) {
+                        if (item.indexOf('@') < 0) continue;
+                        // Direkter User-Eintrag → in den Cache
+                        cache.add(item.toLowerCase());
+                        // Verteiler/Gruppe → Members aufloesen
+                        try {
+                          const grp = await getGroupMembers(item).catch(() => null);
+                          if (grp && grp.members) {
+                            for (const m of grp.members) {
+                              if (m.email) cache.add(m.email.toLowerCase());
+                            }
+                          }
+                        } catch { /* */ }
+                      }
+                      setVisibilityAudienceCache(cache);
+                      setVisibilityCacheLoading(false);
+                    }}
                     type="button"
                   >
                     <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
@@ -3179,6 +3211,29 @@ export default function EventCreationPage(): React.ReactElement {
                       setExcludeResolving(true);
                       const resolved: Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }> = [];
                       const seen = new Set<string>();
+                      // v8.9: Standorte zuerst aufloesen — alle User des
+                      // Standorts werden via Graph geholt (officeLocation
+                      // exact match, Fallback startsWith).
+                      const locItems = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
+                      for (const loc of locItems) {
+                        try {
+                          const users = await searchUsersByLocation(loc).catch(() => []);
+                          for (const u of users) {
+                            const k = (u.email || '').toLowerCase();
+                            if (!k || seen.has(k)) continue;
+                            seen.add(k);
+                            resolved.push({
+                              email: u.email,
+                              displayName: u.displayName,
+                              firstName: u.firstName || '',
+                              lastName: u.lastName || '',
+                              jobTitle: u.jobTitle || '',
+                              location: u.location || loc,
+                              source: loc,
+                            });
+                          }
+                        } catch { /* skip */ }
+                      }
                       const audItems = audience.split(',').map(s => s.trim()).filter(Boolean);
                       for (const item of audItems) {
                         try {
@@ -6080,13 +6135,24 @@ export default function EventCreationPage(): React.ReactElement {
               const headerStyle: React.CSSProperties = { padding: '8px 6px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-700)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
               const cellStyle: React.CSSProperties = { padding: '6px', fontSize: '0.82rem', borderBottom: '1px solid var(--dex-gray-100)' };
               const filterInputStyle: React.CSSProperties = { width: '100%', padding: '4px 6px', border: '1px solid var(--dex-gray-200)', borderRadius: 4, fontSize: '0.75rem' };
+              const filterActive = !!(f.email || f.lastName || f.firstName || f.jobTitle || f.location);
+              const totalPages = Math.max(1, Math.ceil(sorted.length / EXCLUDE_PAGE_SIZE));
+              const safePage = Math.min(excludePage, totalPages - 1);
+              const pageStart = safePage * EXCLUDE_PAGE_SIZE;
+              const pageEnd = Math.min(pageStart + EXCLUDE_PAGE_SIZE, sorted.length);
+              const pageItems = sorted.slice(pageStart, pageEnd);
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
                     <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                      {isDe
-                        ? <><strong>{filtered.length}</strong> von <strong>{excludeResolvedUsers.length}</strong> Personen sichtbar (Filter aktiv)</>
-                        : <><strong>{filtered.length}</strong> of <strong>{excludeResolvedUsers.length}</strong> people shown (filtered)</>}
+                      {filterActive
+                        ? (isDe
+                          ? <><strong>{filtered.length}</strong> von <strong>{excludeResolvedUsers.length}</strong> Personen passen zum Filter</>
+                          : <><strong>{filtered.length}</strong> of <strong>{excludeResolvedUsers.length}</strong> people match the filter</>)
+                        : (isDe
+                          ? <><strong>{excludeResolvedUsers.length}</strong> Personen aufgelöst</>
+                          : <><strong>{excludeResolvedUsers.length}</strong> people resolved</>)
+                      }
                     </span>
                     {filtered.length > 0 && (
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -6136,15 +6202,15 @@ export default function EventCreationPage(): React.ReactElement {
                         </tr>
                         <tr style={{ borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
                           <th style={{ padding: 4 }} />
-                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.email} onChange={e => setExcludeFilters(p => ({ ...p, email: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
-                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.lastName} onChange={e => setExcludeFilters(p => ({ ...p, lastName: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
-                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.firstName} onChange={e => setExcludeFilters(p => ({ ...p, firstName: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
-                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.jobTitle} onChange={e => setExcludeFilters(p => ({ ...p, jobTitle: e.target.value }))} placeholder={isDe ? 'z.B. Partner' : 'e.g. Partner'} /></th>
-                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.location} onChange={e => setExcludeFilters(p => ({ ...p, location: e.target.value }))} placeholder={isDe ? 'z.B. Köln' : 'e.g. Cologne'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.email} onChange={e => { setExcludeFilters(p => ({ ...p, email: e.target.value })); setExcludePage(0); }} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.lastName} onChange={e => { setExcludeFilters(p => ({ ...p, lastName: e.target.value })); setExcludePage(0); }} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.firstName} onChange={e => { setExcludeFilters(p => ({ ...p, firstName: e.target.value })); setExcludePage(0); }} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.jobTitle} onChange={e => { setExcludeFilters(p => ({ ...p, jobTitle: e.target.value })); setExcludePage(0); }} placeholder={isDe ? 'z.B. Partner' : 'e.g. Partner'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.location} onChange={e => { setExcludeFilters(p => ({ ...p, location: e.target.value })); setExcludePage(0); }} placeholder={isDe ? 'z.B. Köln' : 'e.g. Cologne'} /></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sorted.map(u => {
+                        {pageItems.map(u => {
                           const emailLc = u.email.toLowerCase();
                           const isExcluded = excludedUsers.some(e => e.toLowerCase() === emailLc);
                           const toggle = (): void => {
@@ -6180,6 +6246,29 @@ export default function EventCreationPage(): React.ReactElement {
                       </tbody>
                     </table>
                   </div>
+                  {/* v8.9: Pagination — 200 pro Seite. Wird nur angezeigt
+                      wenn es mehr als eine Seite gibt. */}
+                  {totalPages > 1 && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      marginTop: 8, padding: '6px 4px', flexWrap: 'wrap', gap: 8,
+                    }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                        {isDe
+                          ? <>Zeige <strong>{pageStart + 1}</strong>–<strong>{pageEnd}</strong> von <strong>{sorted.length}</strong></>
+                          : <>Showing <strong>{pageStart + 1}</strong>–<strong>{pageEnd}</strong> of <strong>{sorted.length}</strong></>}
+                      </span>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <button type="button" disabled={safePage === 0} onClick={() => setExcludePage(0)} style={{ padding: '4px 8px', fontSize: '0.78rem', border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 4, cursor: safePage === 0 ? 'not-allowed' : 'pointer', opacity: safePage === 0 ? 0.4 : 1 }}>«</button>
+                        <button type="button" disabled={safePage === 0} onClick={() => setExcludePage(p => Math.max(0, p - 1))} style={{ padding: '4px 8px', fontSize: '0.78rem', border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 4, cursor: safePage === 0 ? 'not-allowed' : 'pointer', opacity: safePage === 0 ? 0.4 : 1 }}>‹ {isDe ? 'Zurück' : 'Prev'}</button>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', padding: '0 8px' }}>
+                          {isDe ? 'Seite' : 'Page'} <strong>{safePage + 1}</strong> / {totalPages}
+                        </span>
+                        <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setExcludePage(p => Math.min(totalPages - 1, p + 1))} style={{ padding: '4px 8px', fontSize: '0.78rem', border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 4, cursor: safePage >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: safePage >= totalPages - 1 ? 0.4 : 1 }}>{isDe ? 'Weiter' : 'Next'} ›</button>
+                        <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setExcludePage(totalPages - 1)} style={{ padding: '4px 8px', fontSize: '0.78rem', border: '1px solid var(--dex-gray-300)', background: '#fff', borderRadius: 4, cursor: safePage >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: safePage >= totalPages - 1 ? 0.4 : 1 }}>»</button>
+                      </div>
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -6335,18 +6424,56 @@ export default function EventCreationPage(): React.ReactElement {
                       <th style={{ textAlign: 'left', padding: 6 }}>Name</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>E-Mail</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>Standort</th>
-                      <th style={{ textAlign: 'center', padding: 6 }}>Sichtbar?</th>
+                      <th style={{ textAlign: 'center', padding: 6 }}>{isDe ? 'Sichtbar?' : 'Visible?'}</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Begründung' : 'Reason'}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {emailSearchResults.map(u => {
-                      const filters = locationFilter ? locationFilter.split(',').map(s => s.trim().toLowerCase()) : [];
-                      const isAll = filters.length === 0 || filters.indexOf('all') >= 0;
+                    {visibilityCacheLoading && (
+                      <tr><td colSpan={5} style={{ padding: 12, textAlign: 'center', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe ? 'Verteiler werden aufgelöst…' : 'Resolving distribution lists…'}
+                      </td></tr>
+                    )}
+                    {!visibilityCacheLoading && emailSearchResults.map(u => {
+                      // v8.9: Volle isEventVisibleForUser-Logik nachbauen
+                      // — Exclude > Standort + Audience + UND/ODER.
+                      const emailLc = (u.email || '').toLowerCase();
                       const loc = (u.location || '').toLowerCase();
-                      const visible = isAll || filters.some(f => {
-                        const norm = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
-                        return loc.indexOf(f) >= 0 || loc.indexOf(norm) >= 0;
-                      });
+                      const locationFilters = locationFilter ? locationFilter.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+                      const hasLocFilter = locationFilters.length > 0 && locationFilters.indexOf('all') < 0;
+                      const hasAudFilter = visibilityAudienceCache.size > 0;
+                      const isExcluded = excludedUsers.some(e => e.toLowerCase() === emailLc);
+                      const matchedLoc = hasLocFilter
+                        ? locationFilters.find(f => {
+                            const norm = f.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
+                            return loc.indexOf(f) >= 0 || loc.indexOf(norm) >= 0;
+                          })
+                        : null;
+                      const locMatch = !hasLocFilter || !!matchedLoc;
+                      const audMatch = !hasAudFilter || visibilityAudienceCache.has(emailLc);
+                      let visible: boolean;
+                      let reasonParts: string[] = [];
+                      if (!hasLocFilter && !hasAudFilter) {
+                        visible = true;
+                        reasonParts.push(isDe ? 'Keine Filter gesetzt — für alle sichtbar' : 'No filters set — visible to everyone');
+                      } else if (filterMode === 'OR') {
+                        visible = (hasLocFilter && locMatch) || (hasAudFilter && audMatch);
+                        if (locMatch && hasLocFilter) reasonParts.push(isDe ? `Standort-Match (${matchedLoc})` : `location match (${matchedLoc})`);
+                        if (audMatch && hasAudFilter) reasonParts.push(isDe ? 'in Mailverteiler/User-Liste' : 'in mailing list / user');
+                        if (!visible) reasonParts.push(isDe ? 'kein Filter passt' : 'no filter matches');
+                      } else {
+                        // AND
+                        visible = (!hasLocFilter || locMatch) && (!hasAudFilter || audMatch);
+                        if (hasLocFilter) reasonParts.push(locMatch ? (isDe ? `Standort ✓ (${matchedLoc})` : `location ✓ (${matchedLoc})`) : (isDe ? 'Standort ✗' : 'location ✗'));
+                        if (hasAudFilter) reasonParts.push(audMatch ? (isDe ? 'Verteiler ✓' : 'mailing list ✓') : (isDe ? 'Verteiler ✗' : 'mailing list ✗'));
+                      }
+                      // Exclude hat Vorrang
+                      if (isExcluded && visible) {
+                        visible = false;
+                        reasonParts = [(isDe ? `wäre sichtbar (${reasonParts.join(', ')}), aber explizit ausgeschlossen` : `would be visible (${reasonParts.join(', ')}), but explicitly excluded`)];
+                      } else if (isExcluded) {
+                        reasonParts.push(isDe ? '+ ausgeschlossen' : '+ excluded');
+                      }
                       return (
                         <tr key={u.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
                           <td style={{ padding: 6 }}>{u.displayName}</td>
@@ -6354,8 +6481,11 @@ export default function EventCreationPage(): React.ReactElement {
                           <td style={{ padding: 6, color: 'var(--dex-gray-500)' }}>{u.location || '-'}</td>
                           <td style={{ padding: 6, textAlign: 'center' }}>
                             {visible
-                              ? <span style={{ color: '#22c55e', fontWeight: 600 }}>&#10003;</span>
-                              : <span style={{ color: '#ef4444', fontWeight: 500 }}>&mdash;</span>}
+                              ? <span style={{ color: '#22c55e', fontWeight: 700, fontSize: '1.1rem' }}>&#10003;</span>
+                              : <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '1.1rem' }}>&#10007;</span>}
+                          </td>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
+                            {reasonParts.join(', ')}
                           </td>
                         </tr>
                       );
