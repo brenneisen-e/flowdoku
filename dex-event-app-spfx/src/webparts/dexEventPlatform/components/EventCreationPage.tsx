@@ -772,9 +772,15 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? (editEvent.excludedUsers || []) : []
   );
   const [excludeModalOpen, setExcludeModalOpen] = React.useState(false);
-  const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; source: string }>>([]);
+  const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
+  // v8.8: Tabellen-Filter (pro Spalte) und Sortierung
+  const [excludeFilters, setExcludeFilters] = React.useState<{ email: string; lastName: string; firstName: string; jobTitle: string; location: string }>({
+    email: '', lastName: '', firstName: '', jobTitle: '', location: '',
+  });
+  const [excludeSortBy, setExcludeSortBy] = React.useState<'email' | 'lastName' | 'firstName' | 'jobTitle' | 'location'>('lastName');
+  const [excludeSortDir, setExcludeSortDir] = React.useState<'asc' | 'desc'>('asc');
   const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
@@ -3171,7 +3177,7 @@ export default function EventCreationPage(): React.ReactElement {
                       // markieren (z.B. 'SAPALL@deloitte.com').
                       setExcludeModalOpen(true);
                       setExcludeResolving(true);
-                      const resolved: Array<{ email: string; displayName: string; source: string }> = [];
+                      const resolved: Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }> = [];
                       const seen = new Set<string>();
                       const audItems = audience.split(',').map(s => s.trim()).filter(Boolean);
                       for (const item of audItems) {
@@ -3184,14 +3190,22 @@ export default function EventCreationPage(): React.ReactElement {
                                 const k = (m.email || '').toLowerCase();
                                 if (!k || seen.has(k)) continue;
                                 seen.add(k);
-                                resolved.push({ email: m.email, displayName: m.displayName, source: item });
+                                resolved.push({
+                                  email: m.email,
+                                  displayName: m.displayName,
+                                  firstName: m.firstName || '',
+                                  lastName: m.lastName || '',
+                                  jobTitle: m.jobTitle || '',
+                                  location: m.location || '',
+                                  source: item,
+                                });
                               }
                             } else {
                               // Direkter User-Eintrag
                               const k = item.toLowerCase();
                               if (!seen.has(k)) {
                                 seen.add(k);
-                                resolved.push({ email: item, displayName: item, source: 'direkt' });
+                                resolved.push({ email: item, displayName: item, firstName: '', lastName: '', jobTitle: '', location: '', source: 'direkt' });
                               }
                             }
                           }
@@ -5943,7 +5957,7 @@ export default function EventCreationPage(): React.ReactElement {
           <div
             className="card"
             style={{
-              width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto',
+              width: '100%', maxWidth: 1100, maxHeight: '90vh', overflow: 'auto',
               padding: 24, borderRadius: 16, background: '#fff',
               boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
             }}
@@ -5988,7 +6002,29 @@ export default function EventCreationPage(): React.ReactElement {
                         const k = (u.email || '').toLowerCase();
                         if (k && !seen.has(k)) {
                           seen.add(k);
-                          next.push({ email: u.email, displayName: u.displayName, source: isDe ? 'Suche' : 'search' });
+                          // displayName splitten zu first/last falls noetig (Format
+                          // 'Nachname, Vorname' oder 'Vorname Nachname').
+                          let fn = '';
+                          let ln = '';
+                          const dn = (u.displayName || '').trim();
+                          if (dn.indexOf(',') >= 0) {
+                            const parts = dn.split(',').map(s => s.trim());
+                            ln = parts[0] || '';
+                            fn = parts[1] || '';
+                          } else {
+                            const parts = dn.split(/\s+/);
+                            fn = parts[0] || '';
+                            ln = parts.slice(1).join(' ');
+                          }
+                          next.push({
+                            email: u.email,
+                            displayName: u.displayName,
+                            firstName: fn,
+                            lastName: ln,
+                            jobTitle: u.jobTitle || '',
+                            location: u.location || '',
+                            source: isDe ? 'Suche' : 'search',
+                          });
                         }
                       }
                       return next;
@@ -6015,63 +6051,138 @@ export default function EventCreationPage(): React.ReactElement {
               </p>
             )}
 
-            {!excludeResolving && excludeResolvedUsers.length > 0 && (
-              <div style={{ marginBottom: 12, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                {isDe
-                  ? <><strong>{excludeResolvedUsers.length}</strong> Personen aufgelöst. Häkchen entfernen = Person sieht das Event nicht.</>
-                  : <><strong>{excludeResolvedUsers.length}</strong> people resolved. Untick = person will not see the event.</>}
-              </div>
-            )}
-
-            <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
-              {excludeResolvedUsers.map(u => {
-                const emailLc = u.email.toLowerCase();
-                const isExcluded = excludedUsers.some(e => e.toLowerCase() === emailLc);
-                const isVisible = !isExcluded;
-                const toggle = (): void => {
-                  if (isExcluded) {
-                    setExcludedUsers(prev => prev.filter(e => e.toLowerCase() !== emailLc));
-                  } else {
-                    setExcludedUsers(prev => [...prev, u.email]);
-                  }
-                };
-                return (
-                  <label
-                    key={u.email}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 12px',
-                      borderBottom: '1px solid var(--dex-gray-100)',
-                      cursor: 'pointer',
-                      background: isExcluded ? 'rgba(218,41,28,0.06)' : 'transparent',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isVisible}
-                      onChange={toggle}
-                      style={{ accentColor: 'var(--dex-green)', width: 16, height: 16 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: '0.88rem', color: isExcluded ? 'var(--dex-red, #c00)' : 'var(--dex-gray-800)' }}>
-                        {u.displayName}
+            {/* v8.8: Tabelle mit Spalten Email / Nachname / Vorname / Position
+                / Standort + Filter-Inputs in der Header-Zeile + Sortier-Klick.
+                Damit kann der Organizer z.B. nach jobTitle 'Partner' filtern
+                und alle nicht-Partner per 'Alle ausschliessen'-Aktion
+                excluden. */}
+            {(() => {
+              const f = excludeFilters;
+              const filtered = excludeResolvedUsers.filter(u =>
+                (!f.email || u.email.toLowerCase().indexOf(f.email.toLowerCase()) >= 0) &&
+                (!f.lastName || u.lastName.toLowerCase().indexOf(f.lastName.toLowerCase()) >= 0) &&
+                (!f.firstName || u.firstName.toLowerCase().indexOf(f.firstName.toLowerCase()) >= 0) &&
+                (!f.jobTitle || u.jobTitle.toLowerCase().indexOf(f.jobTitle.toLowerCase()) >= 0) &&
+                (!f.location || u.location.toLowerCase().indexOf(f.location.toLowerCase()) >= 0)
+              );
+              const sorted = [...filtered].sort((a, b) => {
+                const av = (a[excludeSortBy] || '').toLowerCase();
+                const bv = (b[excludeSortBy] || '').toLowerCase();
+                if (av < bv) return excludeSortDir === 'asc' ? -1 : 1;
+                if (av > bv) return excludeSortDir === 'asc' ? 1 : -1;
+                return 0;
+              });
+              const headerSort = (col: typeof excludeSortBy): void => {
+                if (excludeSortBy === col) setExcludeSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                else { setExcludeSortBy(col); setExcludeSortDir('asc'); }
+              };
+              const sortIcon = (col: typeof excludeSortBy): string => excludeSortBy === col ? (excludeSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+              const headerStyle: React.CSSProperties = { padding: '8px 6px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-700)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
+              const cellStyle: React.CSSProperties = { padding: '6px', fontSize: '0.82rem', borderBottom: '1px solid var(--dex-gray-100)' };
+              const filterInputStyle: React.CSSProperties = { width: '100%', padding: '4px 6px', border: '1px solid var(--dex-gray-200)', borderRadius: 4, fontSize: '0.75rem' };
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                      {isDe
+                        ? <><strong>{filtered.length}</strong> von <strong>{excludeResolvedUsers.length}</strong> Personen sichtbar (Filter aktiv)</>
+                        : <><strong>{filtered.length}</strong> of <strong>{excludeResolvedUsers.length}</strong> people shown (filtered)</>}
+                    </span>
+                    {filtered.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExcludedUsers(prev => {
+                              const seen = new Set(prev.map(e => e.toLowerCase()));
+                              const next = [...prev];
+                              for (const u of filtered) {
+                                const k = u.email.toLowerCase();
+                                if (!seen.has(k)) {
+                                  seen.add(k);
+                                  next.push(u.email);
+                                }
+                              }
+                              return next;
+                            });
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '4px 10px', background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)', color: 'var(--dex-red, #c00)', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          {isDe ? 'Alle gefilterten ausschließen' : 'Exclude all filtered'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const filterEmails = new Set(filtered.map(u => u.email.toLowerCase()));
+                            setExcludedUsers(prev => prev.filter(e => !filterEmails.has(e.toLowerCase())));
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '4px 10px', background: '#fff', border: '1px solid var(--dex-gray-300)', color: 'var(--dex-gray-700)', borderRadius: 6, cursor: 'pointer' }}
+                        >
+                          {isDe ? 'Alle wieder einschließen' : 'Include all again'}
+                        </button>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {u.email}
-                        <span style={{ marginLeft: 8, padding: '1px 6px', background: 'var(--dex-gray-100)', borderRadius: 4, fontSize: '0.7rem' }}>
-                          {u.source}
-                        </span>
-                      </div>
-                    </div>
-                    {isExcluded && (
-                      <span style={{ fontSize: '0.72rem', color: 'var(--dex-red, #c00)', fontWeight: 600 }}>
-                        {isDe ? 'AUSGESCHLOSSEN' : 'EXCLUDED'}
-                      </span>
                     )}
-                  </label>
-                );
-              })}
-            </div>
+                  </div>
+                  <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', zIndex: 1 }}>
+                        <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                          <th style={{ ...headerStyle, width: 36, cursor: 'default' }} />
+                          <th style={headerStyle} onClick={() => headerSort('email')}>E-Mail{sortIcon('email')}</th>
+                          <th style={headerStyle} onClick={() => headerSort('lastName')}>{isDe ? 'Nachname' : 'Last name'}{sortIcon('lastName')}</th>
+                          <th style={headerStyle} onClick={() => headerSort('firstName')}>{isDe ? 'Vorname' : 'First name'}{sortIcon('firstName')}</th>
+                          <th style={headerStyle} onClick={() => headerSort('jobTitle')}>{isDe ? 'Position' : 'Position'}{sortIcon('jobTitle')}</th>
+                          <th style={headerStyle} onClick={() => headerSort('location')}>{isDe ? 'Standort' : 'Location'}{sortIcon('location')}</th>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+                          <th style={{ padding: 4 }} />
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.email} onChange={e => setExcludeFilters(p => ({ ...p, email: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.lastName} onChange={e => setExcludeFilters(p => ({ ...p, lastName: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.firstName} onChange={e => setExcludeFilters(p => ({ ...p, firstName: e.target.value }))} placeholder={isDe ? 'filtern…' : 'filter…'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.jobTitle} onChange={e => setExcludeFilters(p => ({ ...p, jobTitle: e.target.value }))} placeholder={isDe ? 'z.B. Partner' : 'e.g. Partner'} /></th>
+                          <th style={{ padding: 4 }}><input style={filterInputStyle} value={f.location} onChange={e => setExcludeFilters(p => ({ ...p, location: e.target.value }))} placeholder={isDe ? 'z.B. Köln' : 'e.g. Cologne'} /></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map(u => {
+                          const emailLc = u.email.toLowerCase();
+                          const isExcluded = excludedUsers.some(e => e.toLowerCase() === emailLc);
+                          const toggle = (): void => {
+                            if (isExcluded) setExcludedUsers(prev => prev.filter(e => e.toLowerCase() !== emailLc));
+                            else setExcludedUsers(prev => [...prev, u.email]);
+                          };
+                          return (
+                            <tr
+                              key={u.email}
+                              onClick={toggle}
+                              style={{
+                                cursor: 'pointer',
+                                background: isExcluded ? 'rgba(218,41,28,0.06)' : 'transparent',
+                              }}
+                            >
+                              <td style={{ ...cellStyle, textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={!isExcluded}
+                                  onChange={toggle}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ accentColor: 'var(--dex-green)', width: 14, height: 14, cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ ...cellStyle, color: isExcluded ? 'var(--dex-red, #c00)' : 'var(--dex-gray-700)', fontFamily: 'monospace', fontSize: '0.78rem' }}>{u.email}</td>
+                              <td style={{ ...cellStyle, fontWeight: 500, color: isExcluded ? 'var(--dex-red, #c00)' : 'var(--dex-gray-800)' }}>{u.lastName || '—'}</td>
+                              <td style={{ ...cellStyle, color: isExcluded ? 'var(--dex-red, #c00)' : 'var(--dex-gray-700)' }}>{u.firstName || '—'}</td>
+                              <td style={{ ...cellStyle, color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>{u.jobTitle || '—'}</td>
+                              <td style={{ ...cellStyle, color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>{u.location || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Bereits ausgeschlossene User die NICHT in der resolved-Liste sind
                 (z.B. weil sie nur ueber Standortfilter sichtbar waeren und

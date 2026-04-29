@@ -871,7 +871,7 @@ export class SharePointService {
    * Benoetigt Group.Read.All Berechtigung im SharePoint App Catalog (admin-consent).
    * Nutzt MSGraphClientV3 aus dem WebPartContext.
    */
-  public async getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null> {
+  public async getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null> {
     if (!groupEmail) return null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -888,15 +888,23 @@ export class SharePointService {
       const groups = groupResp?.value || [];
       if (groups.length === 0) return { groupName: groupEmail, members: [] };
       const group = groups[0];
-      // 2. Transitive Members (inkl. verschachtelte Gruppen) holen
+      // 2. Transitive Members (inkl. verschachtelte Gruppen) holen — v8.8:
+      // mit zusaetzlichen Profil-Feldern (Vor-/Nachname, JobTitle, Office-
+      // Location), damit das Exclude-Modal eine sortierbare/filterbare
+      // Tabelle zeigen kann ohne pro Member einen weiteren Graph-Call.
       const membersResp = await client.api(`/groups/${group.id}/transitiveMembers/microsoft.graph.user`)
-        .select('id,displayName,mail,userPrincipalName')
+        .select('id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city')
         .top(200)
         .get();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const members = (membersResp?.value || []).map((u: any) => ({
         email: u.mail || u.userPrincipalName || '',
         displayName: u.displayName || '',
+        firstName: u.givenName || '',
+        lastName: u.surname || '',
+        jobTitle: u.jobTitle || '',
+        // officeLocation ist haeufig 'DE - Koeln'-Format; city ist Fallback
+        location: u.officeLocation || u.city || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       })).filter((m: any) => m.email);
       return { groupName: group.displayName || groupEmail, members };
