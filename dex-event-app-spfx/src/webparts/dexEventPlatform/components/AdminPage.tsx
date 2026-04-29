@@ -211,6 +211,34 @@ export default function AdminPage(): React.ReactElement {
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
+  // eintippen bevor der Loesch-Button aktiv wird. Schutz gegen versehentliche
+  // Loeschungen (frueher: Click-to-Confirm-Pattern, war zu schwach).
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = React.useState<DeloitteEvent | null>(null);
+  const [confirmDeleteText, setConfirmDeleteText] = React.useState('');
+  // v9.0: ChangeLog-Modal — Admin/Organizer sehen den Audit-Log aller
+  // Event- und Teilnehmer-Aenderungen (DEX_ChangeLog).
+  const [showChangeLogModal, setShowChangeLogModal] = React.useState(false);
+  const [changeLogEntries, setChangeLogEntries] = React.useState<Array<{
+    Id: number; Created: string; Action: string; TargetType: string;
+    TargetId: string; TargetName: string; EventId: string; EventTitle: string;
+    ActorName: string; ActorEmail: string; Details: string;
+  }>>([]);
+  const [changeLogLoading, setChangeLogLoading] = React.useState(false);
+  const [changeLogFilterAction, setChangeLogFilterAction] = React.useState('');
+  const [changeLogFilterEvent, setChangeLogFilterEvent] = React.useState('');
+  const [changeLogFilterActor, setChangeLogFilterActor] = React.useState('');
+  const openChangeLog = async (): Promise<void> => {
+    if (!eventServiceRef) return;
+    setShowChangeLogModal(true);
+    setChangeLogLoading(true);
+    try {
+      const entries = await eventServiceRef.readChangeLog({ top: 500 });
+      setChangeLogEntries(entries);
+    } finally {
+      setChangeLogLoading(false);
+    }
+  };
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [copiedEmails, setCopiedEmails] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
@@ -337,6 +365,23 @@ export default function AdminPage(): React.ReactElement {
           : 'Save failed. Please try again.');
         return;
       }
+      // v9.0: Audit-Log mit Diff der geaenderten Felder
+      try {
+        const changes: Record<string, { old: unknown; new: unknown }> = {};
+        for (const k of Object.keys(patch)) {
+          if (oldValues[k] !== patch[k]) changes[k] = { old: oldValues[k], new: patch[k] };
+        }
+        await eventServiceRef.writeChangeLog({
+          action: 'ParticipantUpdated',
+          targetType: 'Participant',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          targetId: ((editingReg as any).ParticipantEmail || '') + '#' + editingReg.Id,
+          targetName: `${editingReg.Vorname || ''} ${editingReg.Nachname || ''}`.trim(),
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          details: { changes },
+        });
+      } catch { /* */ }
       const regs = await getAllRegistrations(selectedEvent.id);
       setRegistrations(regs);
       closeEditModal();
@@ -738,6 +783,11 @@ export default function AdminPage(): React.ReactElement {
               ↻ {t('admin.processes')}
             </button>
           )}
+          {isAdmin && (
+            <button className="btn btn-secondary" onClick={openChangeLog} style={{ fontSize: '0.85rem' }}>
+              <FileText size={16} /> {isDe ? 'Audit-Log' : 'Audit log'}
+            </button>
+          )}
           <a
             href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
             target="_blank"
@@ -810,35 +860,17 @@ export default function AdminPage(): React.ReactElement {
                       {event.status}
                     </span>
                     <button
-                      className={`btn ${deletingId === event.id ? 'btn-danger' : 'btn-secondary'}`}
-                      style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                      onClick={async (e) => {
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-red, #c00)' }}
+                      onClick={(e) => {
                         e.stopPropagation();
-                        if (deletingId === event.id) {
-                          setIsDeleting(true);
-                          await deleteEvent(event.id);
-                          setDeletingId(null);
-                          setIsDeleting(false);
-                        } else {
-                          setDeletingId(event.id);
-                        }
+                        setConfirmDeleteEvent(event);
+                        setConfirmDeleteText('');
                       }}
                       disabled={isDeleting}
                     >
-                      <Trash2 size={14} />
-                      {deletingId === event.id
-                        ? (isDeleting ? 'Wird gelöscht...' : 'Wirklich löschen?')
-                        : 'Löschen'}
+                      <Trash2 size={14} /> {isDeleting && deletingId === event.id ? 'Wird gelöscht...' : 'Löschen'}
                     </button>
-                    {deletingId === event.id && !isDeleting && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                        onClick={(e) => { e.stopPropagation(); setDeletingId(null); }}
-                      >
-                        Abbrechen
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -2758,6 +2790,212 @@ export default function AdminPage(): React.ReactElement {
       </div>
 
       {/* ===== TEILNEHMER-EDIT MODAL (v8.0) ===== */}
+      {/* v9.0: Danger-Zone Modal — Loeschen erfordert Eingabe des Event-
+          Titels (lowercase). Schutz gegen versehentliche Loeschung. Nach
+          erfolgreichem Loeschen wandern Subsite + Item in den SharePoint
+          Recycle Bin (93 Tage Wiederherstellungsfrist). */}
+      {confirmDeleteEvent && (() => {
+        const expected = (confirmDeleteEvent.title || '').trim().toLowerCase();
+        const typed = confirmDeleteText.trim().toLowerCase();
+        const matches = !!expected && expected === typed;
+        const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}
+            onClick={() => { if (!isDeleting) close(); }}
+          >
+            <div
+              className="card"
+              style={{ width: '100%', maxWidth: 560, padding: 24, borderRadius: 16, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', borderTop: '4px solid var(--dex-red, #c00)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex-between mb-16">
+                <h3 style={{ margin: 0, color: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Trash2 size={20} /> {isDe ? 'Danger Zone — Event löschen' : 'Danger Zone — Delete event'}
+                </h3>
+                <button
+                  onClick={close}
+                  disabled={isDeleting}
+                  style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: isDeleting ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-500)' }}
+                ><X size={20} /></button>
+              </div>
+              <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
+                {isDe
+                  ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
+                  : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
+              </p>
+              <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
+                <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
+                <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
+                <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
+                <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
+              </ul>
+              <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                  {isDe
+                    ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
+                    : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
+                </label>
+                <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
+                <input
+                  className="form-input"
+                  value={confirmDeleteText}
+                  onChange={e => setConfirmDeleteText(e.target.value)}
+                  placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
+                  disabled={isDeleting}
+                  autoFocus
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={close}
+                  disabled={isDeleting}
+                >{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={!matches || isDeleting}
+                  style={{
+                    background: matches && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
+                    color: '#fff',
+                    border: 'none',
+                    cursor: matches && !isDeleting ? 'pointer' : 'not-allowed',
+                    padding: '8px 16px',
+                  }}
+                  onClick={async () => {
+                    if (!matches || !confirmDeleteEvent) return;
+                    setIsDeleting(true);
+                    setDeletingId(confirmDeleteEvent.id);
+                    try {
+                      await deleteEvent(confirmDeleteEvent.id);
+                    } finally {
+                      setIsDeleting(false);
+                      setDeletingId(null);
+                      close();
+                    }
+                  }}
+                >
+                  <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* v9.0: ChangeLog (Audit-Log) Modal — zeigt alle Aenderungen an
+          Events und Teilnehmern. Filter nach Action, Event, Actor. */}
+      {showChangeLogModal && (() => {
+        const fa = changeLogFilterAction.toLowerCase().trim();
+        const fe = changeLogFilterEvent.toLowerCase().trim();
+        const fac = changeLogFilterActor.toLowerCase().trim();
+        const filtered = changeLogEntries.filter(e =>
+          (!fa || (e.Action || '').toLowerCase().indexOf(fa) >= 0) &&
+          (!fe || ((e.EventTitle || '').toLowerCase().indexOf(fe) >= 0 || (e.TargetName || '').toLowerCase().indexOf(fe) >= 0)) &&
+          (!fac || (e.ActorName || '').toLowerCase().indexOf(fac) >= 0 || (e.ActorEmail || '').toLowerCase().indexOf(fac) >= 0)
+        );
+        const fmtDate = (iso: string): string => {
+          if (!iso) return '';
+          try { return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+          catch { return iso; }
+        };
+        const actionColor = (a: string): string => {
+          if (a.indexOf('Deleted') >= 0) return 'var(--dex-red, #c00)';
+          if (a.indexOf('Created') >= 0) return 'var(--dex-green-dark)';
+          if (a.indexOf('Cancelled') >= 0) return 'var(--dex-orange)';
+          return 'var(--dex-gray-700)';
+        };
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => setShowChangeLogModal(false)}
+          >
+            <div
+              className="card"
+              style={{ width: '100%', maxWidth: 1200, maxHeight: '90vh', overflow: 'auto', padding: 24, borderRadius: 16, background: '#fff' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex-between mb-16">
+                <h3 style={{ margin: 0 }}>
+                  <FileText size={18} /> {isDe ? 'Audit-Log (DEX_ChangeLog)' : 'Audit log (DEX_ChangeLog)'}
+                </h3>
+                <button onClick={() => setShowChangeLogModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}>
+                  <X size={20} />
+                </button>
+              </div>
+              <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                {isDe
+                  ? <>Letzte <strong>{changeLogEntries.length}</strong> Eintraege ({filtered.length} sichtbar). Schreibrechte: alle authentifizierten User; Leserechte: Organizer + Admin.</>
+                  : <>Last <strong>{changeLogEntries.length}</strong> entries ({filtered.length} visible). Write access: all authenticated users; read access: organizer + admin.</>}
+              </p>
+              {changeLogLoading && (
+                <p style={{ textAlign: 'center', padding: 16, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe ? 'Lade Einträge…' : 'Loading entries…'}
+                </p>
+              )}
+              {!changeLogLoading && (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50)' }}>
+                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Datum' : 'Date'}</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Aktion' : 'Action'}</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Ziel' : 'Target'}</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Event' : 'Event'}</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Wer' : 'Actor'}</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>{isDe ? 'Details' : 'Details'}</th>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+                        <th style={{ padding: 4 }} />
+                        <th style={{ padding: 4 }}>
+                          <input value={changeLogFilterAction} onChange={e => setChangeLogFilterAction(e.target.value)} placeholder={isDe ? 'z.B. Deleted' : 'e.g. Deleted'} style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--dex-gray-200)', borderRadius: 4, fontSize: '0.75rem' }} />
+                        </th>
+                        <th style={{ padding: 4 }} />
+                        <th style={{ padding: 4 }}>
+                          <input value={changeLogFilterEvent} onChange={e => setChangeLogFilterEvent(e.target.value)} placeholder={isDe ? 'Event-/Ziel-Name' : 'event/target'} style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--dex-gray-200)', borderRadius: 4, fontSize: '0.75rem' }} />
+                        </th>
+                        <th style={{ padding: 4 }}>
+                          <input value={changeLogFilterActor} onChange={e => setChangeLogFilterActor(e.target.value)} placeholder={isDe ? 'Name/E-Mail' : 'name/email'} style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--dex-gray-200)', borderRadius: 4, fontSize: '0.75rem' }} />
+                        </th>
+                        <th style={{ padding: 4 }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(e => (
+                        <tr key={e.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-600)', whiteSpace: 'nowrap' }}>{fmtDate(e.Created)}</td>
+                          <td style={{ padding: 6, color: actionColor(e.Action), fontWeight: 600 }}>{e.Action}</td>
+                          <td style={{ padding: 6 }}>{e.TargetName || e.TargetId || '-'}</td>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-700)' }}>{e.EventTitle || '-'}</td>
+                          <td style={{ padding: 6 }}>
+                            {e.ActorName || e.ActorEmail || '-'}
+                            {e.ActorEmail && e.ActorName && (
+                              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{e.ActorEmail}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: 6, color: 'var(--dex-gray-600)', fontSize: '0.75rem', fontFamily: 'monospace', maxWidth: 320, wordBreak: 'break-word' }}>{e.Details}</td>
+                        </tr>
+                      ))}
+                      {filtered.length === 0 && (
+                        <tr><td colSpan={6} style={{ padding: 16, textAlign: 'center', color: 'var(--dex-gray-500)' }}>
+                          {isDe ? 'Keine Einträge passen zum Filter.' : 'No entries match the filter.'}
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {editingReg && selectedEvent && (
         <div
           style={{

@@ -883,6 +883,184 @@ export class EventService {
     await this.setQueueListPermissions(listName);
   }
 
+  // ==================== DEX_ChangeLog (v9.0) ====================
+  // Audit-Liste fuer alle Aenderungen an Events und Teilnehmern. Read-
+  // Berechtigung fuer Organizer/Admin (gleiche Permission-Pattern wie
+  // DEX_Roles), Schreibrechte fuer alle (damit User-Aktionen wie
+  // Anmeldung/Abmeldung mitloggen koennen).
+  public async ensureChangeLogList(): Promise<void> {
+    const listName = 'DEX_ChangeLog';
+    const exists = await this.listExists(listName);
+    if (exists) {
+      try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
+      return;
+    }
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Audit-Log fuer alle Aenderungen an Events und Teilnehmern (v9.0)',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    const fields = [
+      { title: 'Action', type: 6, choices: ['EventCreated', 'EventUpdated', 'EventArchived', 'EventRestored', 'EventDeletedPermanent', 'EventDeletedTest', 'ParticipantRegistered', 'ParticipantCancelled', 'ParticipantReactivated', 'ParticipantUpdated', 'ParticipantCheckedIn', 'ParticipantCheckedOut', 'IDReorder', 'Other'], metaType: 'SP.FieldChoice' },
+      { title: 'TargetType', type: 6, choices: ['Event', 'Participant', 'Subsite', 'Other'], metaType: 'SP.FieldChoice' },
+      { title: 'TargetId', type: 2 },
+      { title: 'TargetName', type: 2 },
+      { title: 'EventId', type: 2 }, // immer mit Event-Kontext, fuer Filterung
+      { title: 'EventTitle', type: 2 },
+      { title: 'ActorName', type: 2 },
+      { title: 'ActorEmail', type: 2 },
+      { title: 'Details', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 6 },
+    ];
+    for (const f of fields) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) payload['Choices'] = { 'results': f.choices };
+      if (f.metaType === 'SP.FieldMultiLineText') {
+        payload['RichText'] = !!f.richText;
+        if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
+      }
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+    await this.configureDefaultView(listName, [
+      'Created', 'Action', 'TargetType', 'TargetName', 'EventTitle', 'ActorName', 'Details',
+    ]);
+    try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
+  }
+
+  // Berechtigungen: Site-Members und alle authentifizierten User koennen
+  // Eintraege HINZUFUEGEN (damit Self-Reg/Cancel mitschreibt), aber nur
+  // Organizer/Admin koennen LESEN. Setzt Item-Level-Read = "Only their own".
+  private async ensureChangeLogPermissions(listName: string): Promise<void> {
+    try {
+      // 1. Inheritance brechen
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+      // 2. Owners (Admin-Group) → Full Control
+      const ownersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (ownersResp.ok) {
+        const d = await ownersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {}
+        );
+      }
+      // 3. Members (Organizer-Group typischerweise) → Contribute (sollen
+      //    auch schreiben koennen, damit Organizer-Aktionen wie Event-
+      //    Updates protokolliert werden).
+      const membersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
+      );
+      if (membersResp.ok) {
+        const d = await membersResp.json();
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741827)`, {} // 1073741827 = Contribute
+        );
+      }
+      // 4. Visitors (DEALL / Authenticated Users) → Contribute (damit
+      //    User-Aktionen wie Self-Anmeldung mitloggen koennen).
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`, {} // Contribute
+        );
+      }
+      // 5. Item-Level-Read = "ReadAllItems" (1) — Organizer und Admin
+      //    muessen ALLE Eintraege sehen, nicht nur eigene. Eigene
+      //    Lese-Beschraenkung waere fuer Audit-Log nutzlos.
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+        { '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 1 }
+      );
+    } catch (e) {
+      console.warn('[DEX] ensureChangeLogPermissions failed:', e);
+    }
+  }
+
+  /**
+   * v9.0: Audit-Eintrag schreiben. Best-effort — Fehler werden nur
+   * geloggt, blocken die aufrufende Aktion nie. Wird automatisch von
+   * createEvent / updateEvent / deleteEvent / registerForEvent /
+   * cancelRegistration / adminUpdateRegistration / etc. gerufen.
+   */
+  public async writeChangeLog(entry: {
+    action: string;
+    targetType: 'Event' | 'Participant' | 'Subsite' | 'Other';
+    targetId?: string;
+    targetName?: string;
+    eventId?: string;
+    eventTitle?: string;
+    actorName?: string;
+    actorEmail?: string;
+    details?: string | Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const me = this.context.pageContext.user;
+      const actorName = entry.actorName || me.displayName || '';
+      const actorEmail = (entry.actorEmail || me.email || '').toLowerCase();
+      const detailsStr = typeof entry.details === 'string'
+        ? entry.details
+        : entry.details
+          ? JSON.stringify(entry.details)
+          : '';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_ChangeLogListItem' },
+        'Title': `${entry.action}: ${entry.targetName || entry.targetId || '-'}`,
+        'Action': entry.action,
+        'TargetType': entry.targetType,
+        'TargetId': entry.targetId || '',
+        'TargetName': entry.targetName || '',
+        'EventId': entry.eventId || '',
+        'EventTitle': entry.eventTitle || '',
+        'ActorName': actorName,
+        'ActorEmail': actorEmail,
+        'Details': detailsStr.substring(0, 30000),
+      };
+      await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`,
+        payload
+      );
+    } catch (err) {
+      console.warn('[DEX] writeChangeLog failed:', err);
+    }
+  }
+
+  /**
+   * Audit-Log lesen — Organizer/Admin only (durch SP-Permissions
+   * geschuetzt). Liefert die letzten N Eintraege, optional gefiltert
+   * nach EventId.
+   */
+  public async readChangeLog(opts?: { eventId?: string; top?: number }): Promise<Array<{
+    Id: number; Created: string; Action: string; TargetType: string;
+    TargetId: string; TargetName: string; EventId: string; EventTitle: string;
+    ActorName: string; ActorEmail: string; Details: string;
+  }>> {
+    const top = opts?.top || 200;
+    let url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items?$select=Id,Created,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details&$orderby=Created desc&$top=${top}`;
+    if (opts?.eventId) {
+      url += `&$filter=EventId eq '${String(opts.eventId).replace(/'/g, "''")}'`;
+    }
+    try {
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return data.value || data.d?.results || [];
+    } catch (err) {
+      console.warn('[DEX] readChangeLog failed:', err);
+      return [];
+    }
+  }
+
   /**
    * ID-Reorder in Queue eintragen (nach Abmeldung).
    */
@@ -2354,38 +2532,44 @@ export class EventService {
           await this.queueOutlookDeleteEvent(String(eventId), event.Title || '', event.CalendarLink);
         } catch { /* Queue-Fehler ignorieren */ }
       }
-      // 1. Subsite loeschen (neue Events)
+      // 1. Subsite RECYCEN (v9.0: nicht mehr per DELETE, sonst landet die
+      //    Subsite permanent weg ohne Recycle-Bin-Eintrag. recycle() legt
+      //    die Subsite mitsamt Teilnehmerliste 93 Tage in den Site
+      //    Collection Recycle Bin → ein Tenant-Admin / Site Collection
+      //    Admin kann sie dort wiederherstellen falls noetig.
       if (event.SubsiteUrl) {
         try {
-          await this._delete(`${event.SubsiteUrl}/_api/web`);
+          await this._post(`${event.SubsiteUrl}/_api/web/recycle`, {});
         } catch {
-          console.warn('[DEX] Subsite konnte nicht geloescht werden:', event.SubsiteUrl);
+          console.warn('[DEX] Subsite konnte nicht in den Recycle Bin verschoben werden:', event.SubsiteUrl);
         }
       }
 
-      // 2. Event-Bild loeschen (wenn in DEX_EventImages)
+      // 2. Event-Bild ebenfalls RECYCEN statt loeschen.
       if (event.EventImageUrl) {
         try {
           const url = new URL(event.EventImageUrl);
           const serverRelUrl = url.pathname;
           if (serverRelUrl.indexOf('DEX_EventImages') >= 0) {
-            await this._delete(
-              `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelUrl}')`
+            await this._post(
+              `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelUrl}')/recycle`,
+              {}
             );
           }
         } catch {
-          console.warn('[DEX] Event-Bild konnte nicht geloescht werden');
+          console.warn('[DEX] Event-Bild konnte nicht in den Recycle Bin verschoben werden');
         }
       }
 
-      // 3. Alte Registrierungsliste loeschen (alte Events ohne Subsite) (alte Events ohne Subsite)
+      // 3. Alte Registrierungsliste recyceln (legacy Events ohne Subsite).
       if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
         try {
-          await this._delete(
-            `${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')`
+          await this._post(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`,
+            {}
           );
         } catch {
-          console.warn('[DEX] Alte Registrierungsliste konnte nicht geloescht werden:', event.RegistrationListName);
+          console.warn('[DEX] Alte Registrierungsliste konnte nicht recycelt werden:', event.RegistrationListName);
         }
       }
 
@@ -2426,10 +2610,32 @@ export class EventService {
         }
       }
 
-      // 5. Event-Eintrag aus DEX_Events loeschen
-      const response = await this._delete(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`
+      // 5. Event-Eintrag aus DEX_Events RECYCEN (v9.0: per recycle() statt
+      //    delete(), damit ein Admin via SharePoint-Recycle-Bin das Item
+      //    bei Bedarf 93 Tage lang wiederherstellen kann).
+      const response = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/recycle`,
+        {}
       );
+
+      // 6. Audit-Eintrag in DEX_ChangeLog (v9.0). Best-effort, blockt
+      //    den Loesch-Vorgang nicht falls Logging fehlschlaegt.
+      try {
+        await this.writeChangeLog({
+          action: 'EventDeletedTest', // wird vom Aufrufer ueberschrieben
+          targetType: 'Event',
+          targetId: String(eventId),
+          targetName: event.Title || '',
+          eventId: String(eventId),
+          eventTitle: event.Title || '',
+          details: {
+            subsiteUrl: event.SubsiteUrl || '',
+            eventNumber: event.EventNumber,
+            recycledTo: 'SharePoint Recycle Bin (93 Tage)',
+          },
+        });
+      } catch { /* */ }
+
       return response.ok;
     } catch {
       return false;

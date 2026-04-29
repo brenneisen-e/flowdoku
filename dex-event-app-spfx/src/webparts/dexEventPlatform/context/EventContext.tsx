@@ -195,6 +195,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureParticipantsList(); } catch { /* */ }
     try { await eventService.ensureEmailTemplatesList(); } catch { /* */ }
     try { await eventService.ensureIDReorderList(); } catch { /* */ }
+    // v9.0: Audit-Log-Liste fuer Event- und Teilnehmer-Aenderungen
+    try { await eventService.ensureChangeLogList(); } catch { /* */ }
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
@@ -381,6 +383,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function createEvent(input: CreateEventInput): Promise<number | null> {
     const eventId = await eventService.createEvent(input);
     if (eventId) {
+      // v9.0: Audit-Log
+      try {
+        await eventService.writeChangeLog({
+          action: 'EventCreated',
+          targetType: 'Event',
+          targetId: String(eventId),
+          targetName: input.title,
+          eventId: String(eventId),
+          eventTitle: input.title,
+          details: { eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants },
+        });
+      } catch { /* */ }
       // Events neu laden OHNE Participant Counts (neue Subsite ist noch nicht bereit)
       try {
         const spEvents = await eventService.getEvents();
@@ -494,6 +508,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success && event) {
+      // v9.0: Audit-Log
+      try {
+        await eventService.writeChangeLog({
+          action: existing ? 'ParticipantReactivated' : 'ParticipantRegistered',
+          targetType: 'Participant',
+          targetId: emailToUse,
+          targetName: nameToUse,
+          eventId: eventId,
+          eventTitle: event.title,
+          details: { status, asActor: emailToUse !== currentUserEmail ? 'on-behalf-of' : 'self' },
+        });
+      } catch { /* */ }
       // Warteliste-Position ermitteln
       let waitlistPosition = 0;
       if (status === 'Warteliste') {
@@ -597,6 +623,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id, currentUserName, currentUserEmail);
     if (success) {
       const event = events.find(e => e.id === eventId);
+      // v9.0: Audit-Log
+      try {
+        await eventService.writeChangeLog({
+          action: 'ParticipantCancelled',
+          targetType: 'Participant',
+          targetId: currentUserEmail,
+          targetName: currentUserName,
+          eventId: eventId,
+          eventTitle: event?.title || '',
+          details: { participantId: myReg.Id },
+        });
+      } catch { /* */ }
       if (event) {
         // Dual-Write: DEX_Participants aktualisieren
         if (event.eventNumber) {
@@ -687,7 +725,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
     const success = await eventService.updateEvent(Number(eventId), updates);
-    if (success) await loadEvents();
+    if (success) {
+      // v9.0: Audit-Log fuer Event-Updates
+      try {
+        const ev = events.find(e => e.id === eventId);
+        await eventService.writeChangeLog({
+          action: 'EventUpdated',
+          targetType: 'Event',
+          targetId: eventId,
+          targetName: ev?.title || '',
+          eventId: eventId,
+          eventTitle: ev?.title || '',
+          // Nur die Keys mitschreiben, sonst werden Logos/Bilder die als
+          // Base64 in Updates landen den ChangeLog aufblaehen.
+          details: { changedFields: Object.keys(updates) },
+        });
+      } catch { /* */ }
+      await loadEvents();
+    }
     return success;
   }
 
