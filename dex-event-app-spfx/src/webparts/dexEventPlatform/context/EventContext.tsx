@@ -384,10 +384,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
-    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben
-    const nameParts = currentUserName.split(' ');
-    const firstNameToUse = participantFirstName || nameParts[0] || '';
-    const lastNameToUse = participantLastName || nameParts.slice(1).join(' ') || '';
+    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben.
+    // Deloitte-Profile liefern den Namen typischerweise als "Nachname, Vorname"
+    // (Komma-Format aus dem Active Directory). Frueher haben wir mit Space
+    // gesplittet — das tauschte Vor- und Nachname und fuehrte u.a. dazu, dass
+    // bei Sub-Event-Anmeldungen (die ohne explizite Vor-/Nachname-Args laufen)
+    // die "Anrede" mit dem Nachnamen geschrieben wurde.
+    const parseDisplayName = (raw: string): { firstName: string; lastName: string } => {
+      const dn = (raw || '').trim();
+      if (!dn) return { firstName: '', lastName: '' };
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        return { firstName: parts[1] || '', lastName: parts[0] || '' };
+      }
+      const parts = dn.split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return { firstName: '', lastName: '' };
+      if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+      return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+    };
+    const parsed = parseDisplayName(currentUserName);
+    const firstNameToUse = participantFirstName || parsed.firstName;
+    const lastNameToUse = participantLastName || parsed.lastName;
     const emailToUse = participantEmail || currentUserEmail;
     const nameToUse = `${firstNameToUse} ${lastNameToUse}`.trim();
 

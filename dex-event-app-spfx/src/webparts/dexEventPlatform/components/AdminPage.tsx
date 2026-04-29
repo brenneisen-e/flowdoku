@@ -42,6 +42,22 @@ function getStatusColor(status: string): string {
   }
 }
 
+// Status-Werte sind in SP als deutsche Strings gespeichert ('Angemeldet',
+// 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'). Die App
+// rendert sie hier in der UI-Sprache des Users, ohne den Datenbankwert
+// zu aendern.
+function translateStatus(status: string, isDe: boolean): string {
+  if (isDe || !status) return status;
+  switch (status) {
+    case 'Angemeldet': return 'Registered';
+    case 'QR versendet': return 'QR sent';
+    case 'Warteliste': return 'Waitlist';
+    case 'Eingecheckt': return 'Checked in';
+    case 'Abgemeldet': return 'Cancelled';
+    default: return status;
+  }
+}
+
 // v7.6: Wiederverwendbare Action-Kachel fuer den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
 // Deloitte-Gruen. Unterstuetzt Button (onClick), Link (href, oeffnet in neuem
@@ -579,7 +595,32 @@ export default function AdminPage(): React.ReactElement {
     const sheetName = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const filePrefix = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
-    XLSX.writeFile(wb, `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const fileName = `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    // v8.4: Manueller Blob-Download statt XLSX.writeFile. Im SPFx-Iframe-
+    // Context ist saveAs/createObjectURL haeufig blockiert (CORS / Sandbox-
+    // Policies), wodurch der Download stillschweigend nicht startet. Mit
+    // anchor.click() laeuft das in jeder Browser-Umgebung zuverlaessig.
+    try {
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 0);
+    } catch (err) {
+      console.warn('[DEX] Excel-Export fehlgeschlagen:', err);
+      alert(isDe
+        ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console pruefen.'
+        : 'Excel export failed. Please check the browser console.');
+    }
     // esc wird nicht mehr gebraucht; Hinweis an eslint
     void esc;
   };
@@ -2215,7 +2256,9 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'status') {
                   return (
                     <td key={id} style={{ padding: 8 }}>
-                      <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{reg.Status}</span>
+                      <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>
+                        {translateStatus(reg.Status, isDe)}
+                      </span>
                     </td>
                   );
                 }
