@@ -3279,7 +3279,6 @@ export default function EventCreationPage(): React.ReactElement {
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
-                    maxDate={endDate ? new Date(endDate) : undefined}
                     isClearable
                     autoComplete="off"
                   />
@@ -3549,7 +3548,6 @@ export default function EventCreationPage(): React.ReactElement {
                     popperPlacement="bottom-start"
                     isClearable
                     autoComplete="off"
-                    maxDate={startDate ? new Date(startDate) : undefined}
                   />
                 </div>
                 <div className="form-group">
@@ -3573,7 +3571,6 @@ export default function EventCreationPage(): React.ReactElement {
                     popperPlacement="bottom-start"
                     isClearable
                     autoComplete="off"
-                    maxDate={startDate ? new Date(startDate) : undefined}
                   />
                 </div>
               </div>
