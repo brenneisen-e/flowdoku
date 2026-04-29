@@ -1050,15 +1050,27 @@ export class SharePointService {
       if (groups.length === 0) return { groupName: groupEmail, members: [] };
       const group = groups[0];
       // 2. Transitive Members (inkl. verschachtelte Gruppen) holen — v8.8:
-      // mit zusaetzlichen Profil-Feldern (Vor-/Nachname, JobTitle, Office-
-      // Location), damit das Exclude-Modal eine sortierbare/filterbare
-      // Tabelle zeigen kann ohne pro Member einen weiteren Graph-Call.
-      const membersResp = await client.api(`/groups/${group.id}/transitiveMembers/microsoft.graph.user`)
-        .select('id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city')
-        .top(200)
-        .get();
+      // mit zusaetzlichen Profil-Feldern. v8.12: PAGINATION ueber
+      // @odata.nextLink, sonst stoppt Graph nach 999 Eintraegen (oder
+      // 200 wie vor v8.12) — bei Standort-Verteilern wie DEKOELN sind
+      // das schnell 1000+ Personen.
+      const HARD_CAP = 5000;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const members = (membersResp?.value || []).map((u: any) => ({
+      const collected: any[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let resp: any = await client.api(`/groups/${group.id}/transitiveMembers/microsoft.graph.user`)
+        .select('id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city')
+        .top(999)
+        .get();
+      while (resp) {
+        if (resp.value) collected.push(...resp.value);
+        if (collected.length >= HARD_CAP) break;
+        const next = resp['@odata.nextLink'];
+        if (!next) break;
+        resp = await client.api(next).get();
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const members = collected.map((u: any) => ({
         email: u.mail || u.userPrincipalName || '',
         displayName: u.displayName || '',
         firstName: u.givenName || '',
