@@ -6036,7 +6036,10 @@ export default function EventCreationPage(): React.ReactElement {
                 : 'Here you can explicitly exclude individuals — they will NOT see the event, even if they would otherwise have visibility via location filter or mailing list. Members of the mailing lists chosen above are listed automatically (via Microsoft Graph). Users matched only by location filter cannot be listed directly — use the search below to find and exclude them.'}
             </p>
 
-            {/* Suchfeld */}
+            {/* Suchfeld — filtert die Tabelle global ueber Email/Vor-/
+                Nachname/Position, und ergaenzt bei Bedarf neue User via
+                Directory-Suche (z.B. wenn der Gesuchte nicht im Verteiler
+                ist, aber explizit ausgeschlossen werden soll). */}
             <div style={{ marginBottom: 12 }}>
               <input
                 type="text"
@@ -6044,6 +6047,9 @@ export default function EventCreationPage(): React.ReactElement {
                 onChange={async e => {
                   const v = e.target.value;
                   setExcludeSearch(v);
+                  // Bei Such-Eingabe immer auf Seite 0 zuruecksetzen,
+                  // damit der Treffer auch sichtbar ist.
+                  setExcludePage(0);
                   if (v.trim().length < 2) return;
                   try {
                     const found = await searchUsers(v.trim());
@@ -6113,12 +6119,24 @@ export default function EventCreationPage(): React.ReactElement {
                 excluden. */}
             {(() => {
               const f = excludeFilters;
+              // v8.12: Globaler Such-Filter (excludeSearch) wirkt
+              // zusaetzlich zur Spalten-Filter-Logik. Match ueber Email,
+              // Vor-/Nachname und Position. Damit landet ein Such-Treffer
+              // (z.B. 'brenneisen') sofort als einziger sichtbarer Eintrag
+              // in der Tabelle.
+              const gs = excludeSearch.trim().toLowerCase();
               const filtered = excludeResolvedUsers.filter(u =>
                 (!f.email || u.email.toLowerCase().indexOf(f.email.toLowerCase()) >= 0) &&
                 (!f.lastName || u.lastName.toLowerCase().indexOf(f.lastName.toLowerCase()) >= 0) &&
                 (!f.firstName || u.firstName.toLowerCase().indexOf(f.firstName.toLowerCase()) >= 0) &&
                 (!f.jobTitle || u.jobTitle.toLowerCase().indexOf(f.jobTitle.toLowerCase()) >= 0) &&
-                (!f.location || u.location.toLowerCase().indexOf(f.location.toLowerCase()) >= 0)
+                (!f.location || u.location.toLowerCase().indexOf(f.location.toLowerCase()) >= 0) &&
+                (!gs ||
+                  u.email.toLowerCase().indexOf(gs) >= 0 ||
+                  u.lastName.toLowerCase().indexOf(gs) >= 0 ||
+                  u.firstName.toLowerCase().indexOf(gs) >= 0 ||
+                  u.jobTitle.toLowerCase().indexOf(gs) >= 0 ||
+                  u.displayName.toLowerCase().indexOf(gs) >= 0)
               );
               const sorted = [...filtered].sort((a, b) => {
                 const av = (a[excludeSortBy] || '').toLowerCase();
