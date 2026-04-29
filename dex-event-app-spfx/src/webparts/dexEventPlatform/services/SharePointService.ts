@@ -850,10 +850,51 @@ export class SharePointService {
     const HARD_CAP = 5000;
     const escaped = location.replace(/'/g, "''");
 
+    // Schritt 0 (v8.10b): Schnellster Pfad — Standorte haben in Deloitte-DE
+    // jeweils eine eigene Verteilergruppe nach dem Schema DE<STADT>@deloitte.com
+    // (z.B. 'DE - Köln' -> DEKOELN@deloitte.com, 'DE - Düsseldorf' ->
+    // DEDUESSELDORF@deloitte.com). Wir extrahieren die Stadt aus dem
+    // Standort-String, normalisieren Umlaute zu ASCII-Substitutionen und
+    // versuchen den Verteiler ueber getGroupMembers aufzuloesen. Damit
+    // sparen wir uns Graph-Permission-Overhead vollstaendig fuer den
+    // typischen DE-Office-Fall. Andere Faelle (kein 'DE'-Prefix oder
+    // unbekannte Stadt) fallen weiter unten auf Graph + SP-Search zurueck.
+    try {
+      const cityRaw = location
+        .replace(/^DE\s*[-–—]\s*/i, '') // 'DE - Köln' -> 'Köln'
+        .trim();
+      const cityNormalized = cityRaw
+        .toLowerCase()
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9]/g, ''); // alles ausser ASCII-Buchstaben/-Ziffern raus
+      if (cityNormalized) {
+        const distMail = `DE${cityNormalized.toUpperCase()}@deloitte.com`;
+        try {
+          const grp = await this.getGroupMembers(distMail);
+          if (grp && grp.members && grp.members.length > 0) {
+            for (const m of grp.members) {
+              if (m.email) {
+                collected.push({
+                  mail: m.email,
+                  userPrincipalName: m.email,
+                  displayName: m.displayName,
+                  givenName: m.firstName,
+                  surname: m.lastName,
+                  jobTitle: m.jobTitle,
+                  officeLocation: m.location || location,
+                });
+              }
+            }
+          }
+        } catch (e) { console.warn('[DEX] searchUsersByLocation Konvention-Verteiler failed:', distMail, e); }
+      }
+    } catch (e) { console.warn('[DEX] searchUsersByLocation City-Extract failed:', e); }
+
     // Schritt 1: Versuch ueber Microsoft Graph mit ConsistencyLevel:eventual
     // (Advanced Query). Funktioniert nur wenn die App User.Read.All oder
-    // Directory.Read.All Permission hat.
-    try {
+    // Directory.Read.All Permission hat. Ueberspringen wenn der Verteiler-
+    // Pfad schon Treffer hatte.
+    if (collected.length === 0) try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = this.context as any;
       if (ctx.msGraphClientFactory) {
