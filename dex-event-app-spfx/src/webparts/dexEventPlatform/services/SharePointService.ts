@@ -845,47 +845,101 @@ export class SharePointService {
     jobTitle: string;
   }>> {
     if (!location) return [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const collected: any[] = [];
+    const HARD_CAP = 5000;
+    const escaped = location.replace(/'/g, "''");
+
+    // Schritt 1: Versuch ueber Microsoft Graph mit ConsistencyLevel:eventual
+    // (Advanced Query). Funktioniert nur wenn die App User.Read.All oder
+    // Directory.Read.All Permission hat.
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = this.context as any;
-      if (!ctx.msGraphClientFactory) return [];
-      const client = await ctx.msGraphClientFactory.getClient('3');
-      const escaped = location.replace(/'/g, "''");
-      const select = 'id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const collected: any[] = [];
-      const HARD_CAP = 5000;
-      const fetchPage = async (filterExpr: string): Promise<void> => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let resp: any = await client.api('/users').filter(filterExpr).select(select).top(999).get();
-        while (resp) {
-          if (resp.value) collected.push(...resp.value);
-          if (collected.length >= HARD_CAP) break;
-          const next = resp['@odata.nextLink'];
-          if (!next) break;
-          resp = await client.api(next).get();
+      if (ctx.msGraphClientFactory) {
+        const client = await ctx.msGraphClientFactory.getClient('3');
+        const select = 'id,displayName,givenName,surname,mail,userPrincipalName,jobTitle,officeLocation,city';
+        const fetchPage = async (filterExpr: string): Promise<void> => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let resp: any = await client.api('/users')
+            .header('ConsistencyLevel', 'eventual')
+            .filter(filterExpr)
+            .count(true)
+            .select(select)
+            .top(999)
+            .get();
+          while (resp) {
+            if (resp.value) collected.push(...resp.value);
+            if (collected.length >= HARD_CAP) break;
+            const next = resp['@odata.nextLink'];
+            if (!next) break;
+            resp = await client.api(next).get();
+          }
+        };
+        try { await fetchPage(`officeLocation eq '${escaped}'`); }
+        catch (e) { console.warn('[DEX] searchUsersByLocation Graph exact-match failed:', e); }
+        if (collected.length === 0) {
+          try { await fetchPage(`startsWith(officeLocation, '${escaped}')`); }
+          catch (e) { console.warn('[DEX] searchUsersByLocation Graph startsWith failed:', e); }
         }
-      };
-      // 1. Versuch: exakter Match
-      await fetchPage(`officeLocation eq '${escaped}'`);
-      // 2. Fallback: startsWith — nur wenn der exakte Match leer war
-      if (collected.length === 0) {
-        try { await fetchPage(`startsWith(officeLocation, '${escaped}')`); } catch { /* */ }
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return collected.map((u: any) => ({
-        email: u.mail || u.userPrincipalName || '',
-        displayName: u.displayName || '',
-        firstName: u.givenName || '',
-        lastName: u.surname || '',
-        jobTitle: u.jobTitle || '',
-        location: u.officeLocation || u.city || '',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })).filter((u: any) => u.email);
     } catch (err) {
-      console.warn('[DEX] searchUsersByLocation failed for location:', location, err);
-      return [];
+      console.warn('[DEX] searchUsersByLocation Graph block failed:', err);
     }
+
+    // Schritt 2: Fallback ueber SharePoint Search People Index. Greift wenn
+    // Graph keine Treffer hatte (z.B. wegen fehlender User.Read.All-Permission).
+    // SourceId b09a7990-05ea-4af9-81ef-edfab16c4e31 = People-Search-Result-Source.
+    if (collected.length === 0) {
+      try {
+        const refinementFilter = encodeURIComponent(`OfficeNumber:equals("${location}")`);
+        const queryUrl = `${this.siteUrl}/_api/search/query?querytext='*'&sourceid='b09a7990-05ea-4af9-81ef-edfab16c4e31'&refinementfilters='${refinementFilter}'&rowlimit=500&selectproperties='WorkEmail,PreferredName,FirstName,LastName,JobTitle,BaseOfficeLocation,Office'`;
+        const resp = await this.context.spHttpClient.get(queryUrl, SPHttpClient.configurations.v1);
+        if (resp.ok) {
+          const data = await resp.json();
+          const rows = data?.PrimaryQueryResult?.RelevantResults?.Table?.Rows
+            || data?.d?.query?.PrimaryQueryResult?.RelevantResults?.Table?.Rows?.results
+            || [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const row of rows) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const cells = row.Cells?.results || row.Cells || [];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const find = (key: string): string => (cells.find((c: any) => c.Key === key) || {}).Value || '';
+            const email = find('WorkEmail');
+            if (!email) continue;
+            collected.push({
+              displayName: find('PreferredName'),
+              givenName: find('FirstName'),
+              surname: find('LastName'),
+              mail: email,
+              userPrincipalName: email,
+              jobTitle: find('JobTitle'),
+              officeLocation: find('BaseOfficeLocation') || find('Office') || location,
+            });
+          }
+        } else {
+          console.warn('[DEX] searchUsersByLocation SP-Search fallback HTTP', resp.status);
+        }
+      } catch (err) {
+        console.warn('[DEX] searchUsersByLocation SP-Search fallback failed:', err);
+      }
+    }
+
+    if (collected.length === 0) {
+      console.warn('[DEX] searchUsersByLocation: keine User gefunden fuer Standort', location, '— Graph User.Read.All-Permission und SP-Search-People-Index pruefen.');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return collected.map((u: any) => ({
+      email: u.mail || u.userPrincipalName || '',
+      displayName: u.displayName || '',
+      firstName: u.givenName || '',
+      lastName: u.surname || '',
+      jobTitle: u.jobTitle || '',
+      location: u.officeLocation || u.city || '',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    })).filter((u: any) => u.email);
   }
 
   /**
