@@ -150,6 +150,7 @@ export interface CreateEventInput {
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
   notifyOrgRegisterFromDate?: string;
   notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+  excludedUsers?: string[];
   isFictive?: boolean;
   durchstarterCapacity?: number;
   funstarterCapacity?: number;
@@ -318,6 +319,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (v === 'afterdeadline') return 'afterDeadline';
         return 'never';
       })(),
+      excludedUsers: (e.ExcludedUsers || '').split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
       isFictive: !!e.IsFictive,
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,

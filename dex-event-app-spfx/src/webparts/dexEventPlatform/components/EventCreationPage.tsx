@@ -766,6 +766,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [notifyOrgCancelMode, setNotifyOrgCancelMode] = React.useState<'never' | 'always' | 'afterDeadline'>(
     editEvent ? (editEvent.notifyOrgCancelMode || 'never') : 'never'
   );
+  // v8.6: Exclude-Liste — explizit ausgeschlossene User (ueberschreiben den
+  // Sichtbarkeits-Filter). UI: Modal "Sichtbare Personen anzeigen".
+  const [excludedUsers, setExcludedUsers] = React.useState<string[]>(
+    editEvent ? (editEvent.excludedUsers || []) : []
+  );
+  const [excludeModalOpen, setExcludeModalOpen] = React.useState(false);
+  const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; source: string }>>([]);
+  const [excludeResolving, setExcludeResolving] = React.useState(false);
+  const [excludeSearch, setExcludeSearch] = React.useState('');
   const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
@@ -1464,6 +1473,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['NotifyOrgRegisterMode'] = notifyOrgRegisterMode === 'always' ? 'Always' : notifyOrgRegisterMode === 'fromDate' ? 'FromDate' : 'Never';
       updates['NotifyOrgRegisterFromDate'] = notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : null;
       updates['NotifyOrgCancelMode'] = notifyOrgCancelMode === 'always' ? 'Always' : notifyOrgCancelMode === 'afterDeadline' ? 'AfterDeadline' : 'Never';
+      updates['ExcludedUsers'] = excludedUsers.filter(Boolean).join(';');
       updates['IsFictive'] = isFictive;
       if (useSplitCapacities) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
@@ -1699,6 +1709,7 @@ export default function EventCreationPage(): React.ReactElement {
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
         notifyOrgCancelMode,
+        excludedUsers,
         isFictive,
         durchstarterCapacity: useSplitCapacities ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
         funstarterCapacity: useSplitCapacities ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
@@ -3150,6 +3161,53 @@ export default function EventCreationPage(): React.ReactElement {
                     type="button"
                   >
                     <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+                    onClick={async () => {
+                      // Resolver: Mailgruppen-Members via Graph aufloesen,
+                      // einzelne E-Mails direkt durchreichen, Mitglieds-Quelle
+                      // markieren (z.B. 'SAPALL@deloitte.com').
+                      setExcludeModalOpen(true);
+                      setExcludeResolving(true);
+                      const resolved: Array<{ email: string; displayName: string; source: string }> = [];
+                      const seen = new Set<string>();
+                      const audItems = audience.split(',').map(s => s.trim()).filter(Boolean);
+                      for (const item of audItems) {
+                        try {
+                          if (item.indexOf('@') >= 0) {
+                            // Wenn sichtbar wie eine Gruppe (z.B. SAPALL@), getGroupMembers; sonst direkt
+                            const grp = await getGroupMembers(item).catch(() => null);
+                            if (grp && grp.members && grp.members.length > 0) {
+                              for (const m of grp.members) {
+                                const k = (m.email || '').toLowerCase();
+                                if (!k || seen.has(k)) continue;
+                                seen.add(k);
+                                resolved.push({ email: m.email, displayName: m.displayName, source: item });
+                              }
+                            } else {
+                              // Direkter User-Eintrag
+                              const k = item.toLowerCase();
+                              if (!seen.has(k)) {
+                                seen.add(k);
+                                resolved.push({ email: item, displayName: item, source: 'direkt' });
+                              }
+                            }
+                          }
+                        } catch { /* skip */ }
+                      }
+                      setExcludeResolvedUsers(resolved);
+                      setExcludeResolving(false);
+                    }}
+                    type="button"
+                  >
+                    <Users size={14} /> {isDe ? 'Personen ausschließen' : 'Exclude users'}
+                    {excludedUsers.length > 0 && (
+                      <span style={{ marginLeft: 6, padding: '1px 7px', background: 'var(--dex-red, #c00)', color: '#fff', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
+                        {excludedUsers.length}
+                      </span>
+                    )}
                   </button>
                   <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
                     {isDe
@@ -5866,6 +5924,204 @@ export default function EventCreationPage(): React.ReactElement {
                 </table>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* v8.6: Exclude-Users-Modal — zeigt resolved Mitglieder der
+          Verteiler/User-Liste plus Suchfeld. Per Checkbox kann der
+          Organizer einzelne Personen ausschliessen, die NICHT mehr in der
+          Sichtbarkeit auftauchen sollen. */}
+      {excludeModalOpen && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={() => setExcludeModalOpen(false)}
+        >
+          <div
+            className="card"
+            style={{
+              width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto',
+              padding: 24, borderRadius: 16, background: '#fff',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0 }}>
+                <Users size={18} /> {isDe ? 'Personen ausschließen' : 'Exclude users'}
+              </h3>
+              <button
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
+                onClick={() => setExcludeModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {isDe
+                ? 'Hier kannst du einzelne Personen explizit ausschließen — sie sehen das Event NICHT, auch wenn sie über Standortfilter oder Mailverteiler eigentlich Sichtbarkeit hätten. Die Mitglieder der oben gewählten Mailverteiler werden automatisch aufgelistet (per Microsoft Graph). Standortfilter-User sind nicht direkt aus der App auflistbar — die kannst du über die Suche unten gezielt finden und ausschließen.'
+                : 'Here you can explicitly exclude individuals — they will NOT see the event, even if they would otherwise have visibility via location filter or mailing list. Members of the mailing lists chosen above are listed automatically (via Microsoft Graph). Users matched only by location filter cannot be listed directly — use the search below to find and exclude them.'}
+            </p>
+
+            {/* Suchfeld */}
+            <div style={{ marginBottom: 12 }}>
+              <input
+                type="text"
+                value={excludeSearch}
+                onChange={async e => {
+                  const v = e.target.value;
+                  setExcludeSearch(v);
+                  if (v.trim().length < 2) return;
+                  try {
+                    const found = await searchUsers(v.trim());
+                    // Nur User, die noch nicht in der resolved-Liste stecken,
+                    // anhaengen — sonst Duplikate. seen-Set baut sich durch
+                    // resolved + bereits in der Suche gefundene auf.
+                    setExcludeResolvedUsers(prev => {
+                      const seen = new Set(prev.map(u => u.email.toLowerCase()));
+                      const next = [...prev];
+                      for (const u of found) {
+                        const k = (u.email || '').toLowerCase();
+                        if (k && !seen.has(k)) {
+                          seen.add(k);
+                          next.push({ email: u.email, displayName: u.displayName, source: isDe ? 'Suche' : 'search' });
+                        }
+                      }
+                      return next;
+                    });
+                  } catch { /* */ }
+                }}
+                placeholder={isDe ? 'Person suchen (Name oder E-Mail)' : 'Search person (name or email)'}
+                className="form-input"
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {excludeResolving && (
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', textAlign: 'center', padding: 16 }}>
+                {isDe ? 'Verteiler werden aufgelöst…' : 'Resolving distribution lists…'}
+              </p>
+            )}
+
+            {!excludeResolving && excludeResolvedUsers.length === 0 && (
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', padding: 16, textAlign: 'center' }}>
+                {isDe
+                  ? 'Keine Personen aufgelöst. Nutze die Suche, um einzelne Personen hinzuzufügen.'
+                  : 'No people resolved. Use the search to add individuals.'}
+              </p>
+            )}
+
+            {!excludeResolving && excludeResolvedUsers.length > 0 && (
+              <div style={{ marginBottom: 12, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                {isDe
+                  ? <><strong>{excludeResolvedUsers.length}</strong> Personen aufgelöst. Häkchen entfernen = Person sieht das Event nicht.</>
+                  : <><strong>{excludeResolvedUsers.length}</strong> people resolved. Untick = person will not see the event.</>}
+              </div>
+            )}
+
+            <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+              {excludeResolvedUsers.map(u => {
+                const emailLc = u.email.toLowerCase();
+                const isExcluded = excludedUsers.some(e => e.toLowerCase() === emailLc);
+                const isVisible = !isExcluded;
+                const toggle = (): void => {
+                  if (isExcluded) {
+                    setExcludedUsers(prev => prev.filter(e => e.toLowerCase() !== emailLc));
+                  } else {
+                    setExcludedUsers(prev => [...prev, u.email]);
+                  }
+                };
+                return (
+                  <label
+                    key={u.email}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px',
+                      borderBottom: '1px solid var(--dex-gray-100)',
+                      cursor: 'pointer',
+                      background: isExcluded ? 'rgba(218,41,28,0.06)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isVisible}
+                      onChange={toggle}
+                      style={{ accentColor: 'var(--dex-green)', width: 16, height: 16 }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: '0.88rem', color: isExcluded ? 'var(--dex-red, #c00)' : 'var(--dex-gray-800)' }}>
+                        {u.displayName}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {u.email}
+                        <span style={{ marginLeft: 8, padding: '1px 6px', background: 'var(--dex-gray-100)', borderRadius: 4, fontSize: '0.7rem' }}>
+                          {u.source}
+                        </span>
+                      </div>
+                    </div>
+                    {isExcluded && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--dex-red, #c00)', fontWeight: 600 }}>
+                        {isDe ? 'AUSGESCHLOSSEN' : 'EXCLUDED'}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Bereits ausgeschlossene User die NICHT in der resolved-Liste sind
+                (z.B. weil sie nur ueber Standortfilter sichtbar waeren und
+                ueber die Suche manuell ausgeschlossen wurden in einer
+                frueheren Session) — separat darstellen. */}
+            {excludedUsers.filter(e => !excludeResolvedUsers.some(u => u.email.toLowerCase() === e.toLowerCase())).length > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                  {isDe ? 'Weitere ausgeschlossene Personen' : 'Other excluded users'}
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {excludedUsers
+                    .filter(e => !excludeResolvedUsers.some(u => u.email.toLowerCase() === e.toLowerCase()))
+                    .map(e => (
+                      <span key={e} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '3px 4px 3px 10px',
+                        background: 'rgba(218,41,28,0.08)',
+                        border: '1px solid var(--dex-red, #c00)',
+                        color: 'var(--dex-red, #c00)',
+                        borderRadius: 999, fontSize: '0.78rem',
+                      }}>
+                        {e}
+                        <button
+                          type="button"
+                          onClick={() => setExcludedUsers(prev => prev.filter(x => x.toLowerCase() !== e.toLowerCase()))}
+                          style={{
+                            width: 18, height: 18, borderRadius: '50%',
+                            border: 'none', background: 'rgba(218,41,28,0.2)',
+                            color: 'var(--dex-red, #c00)', cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.85rem', lineHeight: 1,
+                          }}
+                          title={isDe ? 'Ausschluss aufheben' : 'Remove exclusion'}
+                        >×</button>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setExcludeModalOpen(false)}
+              >
+                {isDe ? 'Fertig' : 'Done'}
+              </button>
+            </div>
           </div>
         </div>
       )}

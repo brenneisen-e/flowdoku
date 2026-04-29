@@ -229,6 +229,7 @@ export interface SPEvent {
   NotifyOrgRegisterMode?: string; // 'Never' | 'Always' | 'FromDate'
   NotifyOrgRegisterFromDate?: string;
   NotifyOrgCancelMode?: string; // 'Never' | 'Always' | 'AfterDeadline'
+  ExcludedUsers?: string; // v8.6: semikolon-separierte User-Mails die das Event NICHT sehen sollen
   IsFictive?: boolean; // true = Test-Event (nur Admin + eigene Organizer sichtbar)
   DurchstarterCapacity?: number; // B2Run: getrennte Kapazitaet
   FunstarterCapacity?: number;   // B2Run: getrennte Kapazitaet
@@ -1755,6 +1756,7 @@ export class EventService {
       { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
       { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur fuer Mode='FromDate'
       { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
+      { title: 'ExcludedUsers', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v8.6: explizit ausgeschlossene User
       { title: 'IsFictive', type: 8, metaType: 'SP.Field' }, // Boolean - Test-Event (nur Admin + eigene Organizer sichtbar)
       { title: 'DurchstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Durchstarter (Number)
       { title: 'FunstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Funstarter (Number)
@@ -2021,7 +2023,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -2145,6 +2147,7 @@ export class EventService {
     notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
     notifyOrgRegisterFromDate?: string;
     notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+    excludedUsers?: string[];
     isFictive?: boolean;
     durchstarterCapacity?: number;
     funstarterCapacity?: number;
@@ -2232,6 +2235,7 @@ export class EventService {
           const m = event.notifyOrgCancelMode || 'never';
           return m === 'always' ? 'Always' : m === 'afterDeadline' ? 'AfterDeadline' : 'Never';
         })(),
+        'ExcludedUsers': (event.excludedUsers || []).filter(Boolean).join(';'),
         'IsFictive': !!event.isFictive,
         'DurchstarterCapacity': typeof event.durchstarterCapacity === 'number' ? event.durchstarterCapacity : null,
         'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,

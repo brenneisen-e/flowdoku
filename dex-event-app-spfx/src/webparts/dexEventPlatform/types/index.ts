@@ -59,6 +59,13 @@ export interface DeloitteEvent {
    *    bereits ueberschritten ist — also nur bei "spaeten" Stornos, die
    *    fuer den Organizer planungsrelevant sind. */
   notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+
+  /** v8.6: Liste explizit ausgeschlossener User-E-Mails (semikolon-separiert
+   *  in SP, Array hier). Greift NACH Standortfilter + Mailverteiler/User —
+   *  egal warum jemand sonst Sichtbarkeit haette, wenn seine Mail hier
+   *  drin ist, sieht er das Event nicht. Genutzt z.B. wenn aus einem
+   *  100er-Verteiler 5 Personen gezielt rausgenommen werden sollen. */
+  excludedUsers?: string[];
   isFictive?: boolean;       // Wenn true: Event nur fuer Admins + eigene Organizer sichtbar (Test-Event)
   durchstarterCapacity?: number; // B2Run: getrennte Kapazitaet fuer Durchstarter
   funstarterCapacity?: number;   // B2Run: getrennte Kapazitaet fuer Funstarter
