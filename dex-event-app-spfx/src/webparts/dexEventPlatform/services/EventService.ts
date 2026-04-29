@@ -890,48 +890,64 @@ export class EventService {
   // Anmeldung/Abmeldung mitloggen koennen).
   public async ensureChangeLogList(): Promise<void> {
     const listName = 'DEX_ChangeLog';
-    const exists = await this.listExists(listName);
-    if (exists) {
-      try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
-      return;
-    }
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Audit-Log fuer alle Aenderungen an Events und Teilnehmern (v9.0)',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    const fields = [
-      { title: 'Action', type: 6, choices: ['EventCreated', 'EventUpdated', 'EventArchived', 'EventRestored', 'EventDeletedPermanent', 'EventDeletedTest', 'ParticipantRegistered', 'ParticipantCancelled', 'ParticipantReactivated', 'ParticipantUpdated', 'ParticipantCheckedIn', 'ParticipantCheckedOut', 'IDReorder', 'Other'], metaType: 'SP.FieldChoice' },
-      { title: 'TargetType', type: 6, choices: ['Event', 'Participant', 'Subsite', 'Other'], metaType: 'SP.FieldChoice' },
-      { title: 'TargetId', type: 2 },
-      { title: 'TargetName', type: 2 },
-      { title: 'EventId', type: 2 }, // immer mit Event-Kontext, fuer Filterung
-      { title: 'EventTitle', type: 2 },
-      { title: 'ActorName', type: 2 },
-      { title: 'ActorEmail', type: 2 },
-      { title: 'Details', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 6 },
-    ];
-    for (const f of fields) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        '__metadata': { 'type': f.metaType || 'SP.Field' },
-        'Title': f.title,
-        'FieldTypeKind': f.type,
-        'Required': false,
-      };
-      if (f.choices) payload['Choices'] = { 'results': f.choices };
-      if (f.metaType === 'SP.FieldMultiLineText') {
-        payload['RichText'] = !!f.richText;
-        if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
+    try {
+      const exists = await this.listExists(listName);
+      if (exists) {
+        try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
+        return;
       }
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      // Liste existiert nicht — versuchen sie anzulegen. Schlaegt fehl
+      // wenn der aktuelle User keine Owner-Permissions hat. Dann wird der
+      // App-Start nicht blockiert (Audit-Log ist best-effort fuer User
+      // ohne Schreibrechte auf der Liste-Erstellung).
+      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+        '__metadata': { 'type': 'SP.List' },
+        'Title': listName,
+        'Description': 'Audit-Log fuer alle Aenderungen an Events und Teilnehmern (v9.0)',
+        'BaseTemplate': 100,
+        'AllowContentTypes': false,
+      });
+      if (!createResp.ok) {
+        console.warn('[DEX] DEX_ChangeLog konnte nicht angelegt werden — vermutlich fehlen dem User Owner-Rechte. App laeuft weiter, Audit-Eintraege fehlen aber.');
+        return;
+      }
+      const fields = [
+        { title: 'Action', type: 6, choices: ['EventCreated', 'EventUpdated', 'EventArchived', 'EventRestored', 'EventDeletedPermanent', 'EventDeletedTest', 'ParticipantRegistered', 'ParticipantCancelled', 'ParticipantReactivated', 'ParticipantUpdated', 'ParticipantCheckedIn', 'ParticipantCheckedOut', 'IDReorder', 'Other'], metaType: 'SP.FieldChoice' },
+        { title: 'TargetType', type: 6, choices: ['Event', 'Participant', 'Subsite', 'Other'], metaType: 'SP.FieldChoice' },
+        { title: 'TargetId', type: 2 },
+        { title: 'TargetName', type: 2 },
+        { title: 'EventId', type: 2 },
+        { title: 'EventTitle', type: 2 },
+        { title: 'ActorName', type: 2 },
+        { title: 'ActorEmail', type: 2 },
+        { title: 'Details', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 6 },
+      ];
+      for (const f of fields) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const payload: Record<string, any> = {
+            '__metadata': { 'type': f.metaType || 'SP.Field' },
+            'Title': f.title,
+            'FieldTypeKind': f.type,
+            'Required': false,
+          };
+          if (f.choices) payload['Choices'] = { 'results': f.choices };
+          if (f.metaType === 'SP.FieldMultiLineText') {
+            payload['RichText'] = !!f.richText;
+            if (typeof f.numberOfLines === 'number') payload['NumberOfLines'] = f.numberOfLines;
+          }
+          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+        } catch { /* einzelne Feld-Fehler ignorieren */ }
+      }
+      try {
+        await this.configureDefaultView(listName, [
+          'Created', 'Action', 'TargetType', 'TargetName', 'EventTitle', 'ActorName', 'Details',
+        ]);
+      } catch { /* View-Setup ist optional */ }
+      try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
+    } catch (err) {
+      console.warn('[DEX] ensureChangeLogList failed (best-effort, App laeuft weiter):', err);
     }
-    await this.configureDefaultView(listName, [
-      'Created', 'Action', 'TargetType', 'TargetName', 'EventTitle', 'ActorName', 'Details',
-    ]);
-    try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
   }
 
   // Berechtigungen: Site-Members und alle authentifizierten User koennen
@@ -1012,9 +1028,13 @@ export class EventService {
         : entry.details
           ? JSON.stringify(entry.details)
           : '';
+      // CLAUDE.md-Hinweis: bei odata=nometadata KEIN __metadata im Body —
+      // SP leitet den Typ aus der URL ab. Robust gegen List-Type-Encoding-
+      // Quirks (Bug-Story v7.28 → v7.29). Nutzen wir hier statt verbose-POST
+      // damit ein verschmierter Type-Name den ChangeLog-Insert nicht
+      // stillschweigend killt.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: Record<string, any> = {
-        '__metadata': { 'type': 'SP.Data.DEX_x005f_ChangeLogListItem' },
         'Title': `${entry.action}: ${entry.targetName || entry.targetId || '-'}`,
         'Action': entry.action,
         'TargetType': entry.targetType,
@@ -1026,10 +1046,16 @@ export class EventService {
         'ActorEmail': actorEmail,
         'Details': detailsStr.substring(0, 30000),
       };
-      await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`,
-        payload
-      );
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`;
+      const options: ISPHttpClientOptions = {
+        headers: {
+          'Accept': 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'odata-version': '',
+        },
+        body: JSON.stringify(payload),
+      };
+      await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
     } catch (err) {
       console.warn('[DEX] writeChangeLog failed:', err);
     }
