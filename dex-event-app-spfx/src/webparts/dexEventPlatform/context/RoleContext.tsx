@@ -30,7 +30,7 @@ interface RoleContextType {
   searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string } | null>;
   searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
   searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
-  getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null>;
+  getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null>;
 }
 
 // Migration: alte SP-Werte auf neue mappen
@@ -214,7 +214,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.searchGroups(query);
   }
 
-  async function getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string }> } | null> {
+  async function getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null> {
     return spService.getGroupMembers(groupEmail);
   }
 

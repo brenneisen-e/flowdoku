@@ -1295,7 +1295,16 @@ export default function AdminPage(): React.ReactElement {
                   ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
                   : "Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events."}
                 badge="organizer"
-                onClick={() => setShowExportMenu(!showExportMenu)}
+                onClick={() => {
+                  // Bei B2Run-Events: Dropdown mit Wahl zwischen Deloitte-
+                  // und B2Run-View. Bei normalen Events gibt es nur den
+                  // Deloitte-Export — direkt ausloesen, kein Dropdown noetig.
+                  if (selectedEvent && selectedEvent.type === 'B2Run') {
+                    setShowExportMenu(!showExportMenu);
+                  } else {
+                    exportCsv('deloitte');
+                  }
+                }}
               />
               {showExportMenu && (
                 <div style={{

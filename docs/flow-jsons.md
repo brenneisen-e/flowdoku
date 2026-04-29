@@ -420,9 +420,20 @@ PROCESS_BATCH_SCOPE:
 
 **Trigger:** Neuer Eintrag in DEX_Emails
 **Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
-**Letztes Update:** 2026-04-07
+**Letztes Update:** 2026-04-29 (v8.5/v8.6: Cc + Bcc-Support)
 
-Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden → Status=Sent
+Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden (mit Cc + Bcc) → Status=Sent
+
+### Änderungen 2026-04-29 (v8.5)
+
+`SEND_EMAIL`-Aktion wurde um zwei Header erweitert:
+
+- `emailMessage/Cc` ← `triggerBody()?['Cc']` (war schon länger vorhanden, jetzt offiziell dokumentiert)
+- `emailMessage/Bcc` ← `triggerOutputs()?['body/Bcc']` **(NEU)**
+
+Hintergrund: Seit App-Version v8.5 schreibt der DEX-Client beim Anmelde-/Abmelde-Versand optional Organizer-Mails ins `Bcc`-Feld der `DEX_Emails`-Queue (event-spezifisch konfigurierbar im Reiter „Kommunikation" der Event-Erstellung — Modi `Never` / `Always` / `FromDate` für Anmeldungen, `Never` / `Always` / `AfterDeadline` für Abmeldungen). Der Flow muss dieses Feld an den Send-Mail-Connector durchreichen, sonst gehen die Bestätigungs-Mails ohne BCC raus, obwohl die App es so vorsieht.
+
+`Cc` und `Bcc` sind im SP-Schema **Multi-Line-Plain-Text** (RichText=false), Werte semikolon-separiert. Wenn das Feld leer ist, gibt der Connector keinen Header aus — die Mail geht ganz normal nur an `To` raus.
 
 ```json
 TRIGGER:
@@ -495,7 +506,7 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["Succeeded"] }
 }
 
-SEND_EMAIL (Shared Mailbox):
+SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5):
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -504,6 +515,8 @@ SEND_EMAIL (Shared Mailbox):
       "emailMessage/To": "@triggerBody()?['Recipient']",
       "emailMessage/Subject": "@triggerBody()?['Title']",
       "emailMessage/Body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "emailMessage/Cc": "@triggerBody()?['Cc']",
+      "emailMessage/Bcc": "@triggerOutputs()?['body/Bcc']",
       "emailMessage/Importance": "Normal"
     },
     "host": {
