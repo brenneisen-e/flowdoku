@@ -90,6 +90,16 @@ function isEventVisibleForUser(
   userEmail: string,
   userLocation: string
 ): boolean {
+  // v8.6: Exclude-Liste hat Vorrang. Wer hier drin ist, sieht das Event NIE
+  // — egal ob er ueber Standortfilter oder Verteiler-Mitgliedschaft sonst
+  // sichtbar waere.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const excluded = ((event as any).excludedUsers || []) as string[];
+  if (excluded.length > 0 && userEmail) {
+    const emailLc = userEmail.toLowerCase().trim();
+    if (excluded.some(e => (e || '').toLowerCase().trim() === emailLc)) return false;
+  }
+
   const hasLocationFilter = event.locationAudience.length > 0;
   const normalizedAud = normalizeAudience(event.audienceFilter);
   const hasAudienceFilter = normalizedAud.length > 0;

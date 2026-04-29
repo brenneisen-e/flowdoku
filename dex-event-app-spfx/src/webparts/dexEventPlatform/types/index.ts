@@ -42,6 +42,30 @@ export interface DeloitteEvent {
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
+  /** v8.5: Granulare Organizer-Benachrichtigung bei Anmeldungen.
+   *  - 'never' (Default): Organizer bekommt nichts mit
+   *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt
+   *  - 'fromDate': erst ab notifyOrgRegisterFromDate wird BCC'd
+   *  Hintergrund: bei grossen Events ist Organizer-Spam waehrend der
+   *  Hauptanmeldephase nervig — kurz vor dem Event will man aber sehen,
+   *  wer kurzfristig noch dazustoesst. */
+  notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
+  notifyOrgRegisterFromDate?: string; // ISO; nur relevant wenn mode='fromDate'
+
+  /** v8.5: Granulare Organizer-Benachrichtigung bei Abmeldungen.
+   *  - 'never': Organizer bekommt keine Storno-Bestaetigungs-Mails
+   *  - 'always': BCC bei jedem Storno
+   *  - 'afterDeadline': BCC erst wenn die Abmeldefrist (lastDeregisterDate)
+   *    bereits ueberschritten ist — also nur bei "spaeten" Stornos, die
+   *    fuer den Organizer planungsrelevant sind. */
+  notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+
+  /** v8.6: Liste explizit ausgeschlossener User-E-Mails (semikolon-separiert
+   *  in SP, Array hier). Greift NACH Standortfilter + Mailverteiler/User —
+   *  egal warum jemand sonst Sichtbarkeit haette, wenn seine Mail hier
+   *  drin ist, sieht er das Event nicht. Genutzt z.B. wenn aus einem
+   *  100er-Verteiler 5 Personen gezielt rausgenommen werden sollen. */
+  excludedUsers?: string[];
   isFictive?: boolean;       // Wenn true: Event nur fuer Admins + eigene Organizer sichtbar (Test-Event)
   durchstarterCapacity?: number; // B2Run: getrennte Kapazitaet fuer Durchstarter
   funstarterCapacity?: number;   // B2Run: getrennte Kapazitaet fuer Funstarter

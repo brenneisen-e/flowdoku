@@ -225,6 +225,11 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
+  // v8.5: Granulare Organizer-BCC-Modi
+  NotifyOrgRegisterMode?: string; // 'Never' | 'Always' | 'FromDate'
+  NotifyOrgRegisterFromDate?: string;
+  NotifyOrgCancelMode?: string; // 'Never' | 'Always' | 'AfterDeadline'
+  ExcludedUsers?: string; // v8.6: semikolon-separierte User-Mails die das Event NICHT sehen sollen
   IsFictive?: boolean; // true = Test-Event (nur Admin + eigene Organizer sichtbar)
   DurchstarterCapacity?: number; // B2Run: getrennte Kapazitaet
   FunstarterCapacity?: number;   // B2Run: getrennte Kapazitaet
@@ -342,6 +347,13 @@ export class EventService {
         await this.ensureCcFieldExists(listName);
       } catch { /* ignore */ }
 
+      // v8.5: Bcc-Feld nachtraeglich anlegen — wird genutzt um Organizer
+      // automatisch in Anmelde-/Abmelde-Bestaetigungen zu BCC'en, ohne den
+      // Teilnehmer den Verteiler zu zeigen.
+      try {
+        await this.ensureBccFieldExists(listName);
+      } catch { /* ignore */ }
+
       // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -372,6 +384,7 @@ export class EventService {
       // die Email-Adresse(n) ohne HTML-Wrapping bekommt.
       { title: 'Recipient', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
       { title: 'Cc', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
+      { title: 'Bcc', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 },
       { title: 'RecipientName', type: 2 },
       { title: 'Body', type: 3 }, // Body darf Rich/HTML bleiben (wird als HTML gerendert)
       { title: 'EmailType', type: 6, choices: ['Anmeldung', 'Abmeldung', 'Warteliste', 'Nachruecken', 'Info'], metaType: 'SP.FieldChoice' },
@@ -449,6 +462,23 @@ export class EventService {
       {
         '__metadata': { 'type': 'SP.FieldMultiLineText' },
         'Title': 'Cc',
+        'FieldTypeKind': 3,
+        'Required': false,
+        'RichText': false,
+        'NumberOfLines': 3,
+      }
+    );
+  }
+
+  private async ensureBccFieldExists(listName: string): Promise<void> {
+    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Bcc')?$select=Id`;
+    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    if (probe.ok) return;
+    await this._post(
+      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+      {
+        '__metadata': { 'type': 'SP.FieldMultiLineText' },
+        'Title': 'Bcc',
         'FieldTypeKind': 3,
         'Required': false,
         'RichText': false,
@@ -542,7 +572,8 @@ export class EventService {
     emailType: string,
     eventTitle: string,
     eventId: string,
-    cc?: string
+    cc?: string,
+    bcc?: string
   ): Promise<boolean> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -558,6 +589,7 @@ export class EventService {
         'Status': 'Pending',
       };
       if (cc) payload['Cc'] = cc;
+      if (bcc) payload['Bcc'] = bcc;
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
         payload
@@ -1721,6 +1753,10 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
+      { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur fuer Mode='FromDate'
+      { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
+      { title: 'ExcludedUsers', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v8.6: explizit ausgeschlossene User
       { title: 'IsFictive', type: 8, metaType: 'SP.Field' }, // Boolean - Test-Event (nur Admin + eigene Organizer sichtbar)
       { title: 'DurchstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Durchstarter (Number)
       { title: 'FunstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Funstarter (Number)
@@ -1987,7 +2023,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -2108,6 +2144,10 @@ export class EventService {
     emailTemplateOverrides?: string;
     disableEmails?: boolean;
     disableOutlook?: boolean;
+    notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
+    notifyOrgRegisterFromDate?: string;
+    notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+    excludedUsers?: string[];
     isFictive?: boolean;
     durchstarterCapacity?: number;
     funstarterCapacity?: number;
@@ -2186,6 +2226,16 @@ export class EventService {
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
         'DisableEmails': !!event.disableEmails,
         'DisableOutlook': !!event.disableOutlook,
+        'NotifyOrgRegisterMode': (() => {
+          const m = event.notifyOrgRegisterMode || 'never';
+          return m === 'always' ? 'Always' : m === 'fromDate' ? 'FromDate' : 'Never';
+        })(),
+        'NotifyOrgRegisterFromDate': event.notifyOrgRegisterFromDate || null,
+        'NotifyOrgCancelMode': (() => {
+          const m = event.notifyOrgCancelMode || 'never';
+          return m === 'always' ? 'Always' : m === 'afterDeadline' ? 'AfterDeadline' : 'Never';
+        })(),
+        'ExcludedUsers': (event.excludedUsers || []).filter(Boolean).join(';'),
         'IsFictive': !!event.isFictive,
         'DurchstarterCapacity': typeof event.durchstarterCapacity === 'number' ? event.durchstarterCapacity : null,
         'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,

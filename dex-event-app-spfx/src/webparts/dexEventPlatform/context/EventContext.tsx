@@ -147,6 +147,10 @@ export interface CreateEventInput {
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
+  notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
+  notifyOrgRegisterFromDate?: string;
+  notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
+  excludedUsers?: string[];
   isFictive?: boolean;
   durchstarterCapacity?: number;
   funstarterCapacity?: number;
@@ -302,6 +306,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
+      notifyOrgRegisterMode: ((): 'never' | 'always' | 'fromDate' => {
+        const v = (e.NotifyOrgRegisterMode || '').toLowerCase();
+        if (v === 'always') return 'always';
+        if (v === 'fromdate') return 'fromDate';
+        return 'never';
+      })(),
+      notifyOrgRegisterFromDate: e.NotifyOrgRegisterFromDate || '',
+      notifyOrgCancelMode: ((): 'never' | 'always' | 'afterDeadline' => {
+        const v = (e.NotifyOrgCancelMode || '').toLowerCase();
+        if (v === 'always') return 'always';
+        if (v === 'afterdeadline') return 'afterDeadline';
+        return 'never';
+      })(),
+      excludedUsers: (e.ExcludedUsers || '').split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
       isFictive: !!e.IsFictive,
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
@@ -384,10 +402,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
-    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben
-    const nameParts = currentUserName.split(' ');
-    const firstNameToUse = participantFirstName || nameParts[0] || '';
-    const lastNameToUse = participantLastName || nameParts.slice(1).join(' ') || '';
+    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben.
+    // Deloitte-Profile liefern den Namen typischerweise als "Nachname, Vorname"
+    // (Komma-Format aus dem Active Directory). Frueher haben wir mit Space
+    // gesplittet — das tauschte Vor- und Nachname und fuehrte u.a. dazu, dass
+    // bei Sub-Event-Anmeldungen (die ohne explizite Vor-/Nachname-Args laufen)
+    // die "Anrede" mit dem Nachnamen geschrieben wurde.
+    const parseDisplayName = (raw: string): { firstName: string; lastName: string } => {
+      const dn = (raw || '').trim();
+      if (!dn) return { firstName: '', lastName: '' };
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        return { firstName: parts[1] || '', lastName: parts[0] || '' };
+      }
+      const parts = dn.split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return { firstName: '', lastName: '' };
+      if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+      return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+    };
+    const parsed = parseDisplayName(currentUserName);
+    const firstNameToUse = participantFirstName || parsed.firstName;
+    const lastNameToUse = participantLastName || parsed.lastName;
     const emailToUse = participantEmail || currentUserEmail;
     const nameToUse = `${firstNameToUse} ${lastNameToUse}`.trim();
 
@@ -492,9 +527,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           : registrationEmail(firstNameToUse, event.title);
       }
       if (!event.disableEmails) {
+        // v8.5: Organizer-BCC-Modus auswerten. Bei 'always' immer BCC,
+        // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
+        // ist, bei 'never'/undefined keinen BCC.
+        let bcc: string | undefined;
+        const mode = event.notifyOrgRegisterMode || 'never';
+        if (mode === 'always' || (mode === 'fromDate' && event.notifyOrgRegisterFromDate && new Date() >= new Date(event.notifyOrgRegisterFromDate))) {
+          const orgEmails = (event.organizerEmails || []).filter(Boolean);
+          if (orgEmails.length > 0) bcc = orgEmails.join(';');
+        }
         eventService.queueEmail(
           emailData.subject, emailToUse, nameToUse, emailData.body,
-          templateType, event.title, eventId
+          templateType, event.title, eventId, undefined, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
@@ -575,9 +619,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             } else {
               emailData = cancellationEmail(currentUserFirstName, event.title);
             }
+            // v8.5: Organizer-BCC bei Abmeldung auswerten. 'always' = immer,
+            // 'afterDeadline' = nur wenn lastDeregisterDate ueberschritten ist.
+            let bcc: string | undefined;
+            const mode = event.notifyOrgCancelMode || 'never';
+            if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
+              const orgEmails = (event.organizerEmails || []).filter(Boolean);
+              if (orgEmails.length > 0) bcc = orgEmails.join(';');
+            }
             const emailOk = await eventService.queueEmail(
               emailData.subject, currentUserEmail, currentUserName, emailData.body,
-              'Abmeldung', event.title, eventId
+              'Abmeldung', event.title, eventId, undefined, bcc
             );
             if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
           } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
