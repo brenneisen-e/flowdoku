@@ -627,7 +627,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         targetName: currentUserName,
         eventId: eventId,
         eventTitle: event?.title || '',
-        details: { participantId: myReg.Id },
+        details: { participantId: myReg.Id, asActor: 'self' },
       }).catch(() => { /* */ });
       if (event) {
         // Dual-Write: DEX_Participants aktualisieren
