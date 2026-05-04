@@ -239,6 +239,13 @@ export default function AdminPage(): React.ReactElement {
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
+  // v9.29: Header-Refresh-Button triggert ein globales Event — wir hooken uns ein.
+  React.useEffect(() => {
+    const onRefresh = (): void => { void handleRefresh(); };
+    window.addEventListener('dex-refresh-page', onRefresh);
+    return () => window.removeEventListener('dex-refresh-page', onRefresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -1106,31 +1113,7 @@ export default function AdminPage(): React.ReactElement {
     return (
       <div className="page-container" role="main" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto' }}>
         <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0 }}>{t('admin.title')}</h2>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isRefreshing || isEventsLoading}
-            title={isDe ? 'Events neu laden' : 'Refresh events'}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: '0.78rem', padding: '6px 12px',
-              background: '#fff',
-              border: '1px solid var(--dex-gray-300, #d1d5db)',
-              borderRadius: 6, color: 'var(--dex-gray-700)',
-              cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
-              opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
-            }}
-          >
-            <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
-              <RefreshCw size={14} />
-            </span>
-            {isRefreshing
-              ? (isDe ? 'Wird geladen…' : 'Loading…')
-              : (isDe ? 'Aktualisieren' : 'Refresh')}
-          </button>
-        </div>
+        <h2 style={{ margin: '0 0 16px' }}>{t('admin.title')}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {isAdmin && (
             <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
@@ -1469,39 +1452,9 @@ export default function AdminPage(): React.ReactElement {
       })()}
       {/* Keyframes für Spinner */}
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <div className="flex-between mb-16">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="back-btn"
-            onClick={() => { setSelectedEvent(null); setRegistrations([]); }}
-            aria-label="Zurück"
-          >
-            ←
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={isRefreshing || isEventsLoading}
-          title={isDe ? 'Event + Teilnehmerdaten neu laden' : 'Reload event + attendee data'}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: '0.78rem', padding: '6px 12px',
-            background: '#fff',
-            border: '1px solid var(--dex-gray-300, #d1d5db)',
-            borderRadius: 6, color: 'var(--dex-gray-700)',
-            cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
-            opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
-          }}
-        >
-          <span style={{ display: 'inline-flex', animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none' }}>
-            <RefreshCw size={14} />
-          </span>
-          {isRefreshing
-            ? (isDe ? 'Wird geladen…' : 'Loading…')
-            : (isDe ? 'Aktualisieren' : 'Refresh')}
-        </button>
-      </div>
+      {/* v9.29: Inline Zurück + Aktualisieren entfernt — beides liegt jetzt im Header.
+          Eventauswahl-Reset („zurück zur Event-Liste") triggern wir über den Header-Back —
+          siehe Listener weiter oben, der bei navigate-Wechsel selectedEvent zurücksetzt. */}
 
       {/* Event-Info + Aktionen
           Bei Hochformat-Bildern: Bild links neben den Detail-Rows.
@@ -3258,6 +3211,32 @@ export default function AdminPage(): React.ReactElement {
                 Handbuch-Artikel &bdquo;Check-In am Event-Tag&ldquo;
               </a>.
             </p>
+
+            {/* v9.29: Hinweis falls Organizer selbst NICHT für das Event angemeldet ist —
+                "Nur Test (an mich)" verschickt zwar die QR-Mail, aber der Check-In-Scan
+                wird die Person nicht in der Teilnehmerliste finden. */}
+            {(() => {
+              const orgEmail = (currentUser.email || '').toLowerCase();
+              const isOrgRegistered = !!orgEmail && registrations.some(r =>
+                (r.ParticipantEmail || '').toLowerCase() === orgEmail
+                && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
+              );
+              if (isOrgRegistered) return null;
+              return (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '10px 12px', marginBottom: 16,
+                  background: '#fff8e1', border: '1px solid #f5b400',
+                  borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.5,
+                  color: '#7a5a00',
+                }}>
+                  <span style={{ fontSize: '1.05rem', flexShrink: 0 }}>⚠</span>
+                  <div>
+                    <strong>Du bist selbst nicht für dieses Event angemeldet.</strong> Beim Klick auf <strong>{'„Nur Test (an mich)“'}</strong> bekommst du zwar die QR-Code-Mail, aber das anschließende Check-In wird <strong>nicht funktionieren</strong> — beim Scan wird die Teilnehmerliste durchsucht, dort fehlst du. Wenn du den kompletten Flow inklusive Check-In testen willst, melde dich vorher selbst zum Event an.
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Auto-Send-Toggle */}
             <label style={{
