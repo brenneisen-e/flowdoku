@@ -18,7 +18,7 @@ export default function SettingsPage(): React.ReactElement {
     roles, currentUserRole, isAdmin, canCreateEvents,
     addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
-  const { events } = useEvents();
+  const { events, sendOrganizerOnboarding } = useEvents();
 
   /**
    * Map: organizer-email-lowercase -> Liste von Event-Titeln, die diese Person koordiniert.
@@ -94,21 +94,49 @@ export default function SettingsPage(): React.ReactElement {
     setSuggestions([]);
   };
 
+  // Onboarding-Mail-Prompt: erscheint nach erfolgreicher Zuweisung einer
+  // Organizer- oder Admin-Rolle. Ein Klick auf "Mail senden" verschickt eine
+  // Begruessungsmail mit Links zur App und zum Handbuch (siehe
+  // organizerOnboardingEmail in EmailTemplates.ts) — Cc geht automatisch an
+  // die DEX-Verantwortlichen.
+  const [onboardingPrompt, setOnboardingPrompt] = React.useState<
+    { email: string; name: string; role: 'Organizer' | 'Admin' } | null
+  >(null);
+  const [isSendingOnboarding, setIsSendingOnboarding] = React.useState(false);
+
   const handleAddRole = async (): Promise<void> => {
     if (!newEmail || !newName) return;
     setIsAdding(true);
     setStatusMsg('');
-    const success = await addRole(newEmail, newName, newRole, newLocation);
+    const assignedEmail = newEmail;
+    const assignedName = newName;
+    const assignedRole = newRole;
+    const success = await addRole(assignedEmail, assignedName, assignedRole, newLocation);
     if (success) {
       setStatusMsg('Role assigned successfully.');
       setNewEmail('');
       setNewName('');
       setNewLocation('');
       setShowAddForm(false);
+      // User/-Rolle bekommt keine Onboarding-Mail — die Mail erklaert
+      // Organizer-/Admin-Funktionen, die Standard-User gar nicht haben.
+      if (assignedRole === 'Organizer' || assignedRole === 'Admin') {
+        setOnboardingPrompt({ email: assignedEmail, name: assignedName, role: assignedRole });
+      }
     } else {
       setStatusMsg('Error: Could not assign role. Please try again.');
     }
     setIsAdding(false);
+    setTimeout(() => setStatusMsg(''), 4000);
+  };
+
+  const handleSendOnboarding = async (): Promise<void> => {
+    if (!onboardingPrompt) return;
+    setIsSendingOnboarding(true);
+    const ok = await sendOrganizerOnboarding(onboardingPrompt.email, onboardingPrompt.name, onboardingPrompt.role);
+    setIsSendingOnboarding(false);
+    setOnboardingPrompt(null);
+    setStatusMsg(ok ? 'Onboarding-Mail wurde verschickt.' : 'Onboarding-Mail konnte nicht versendet werden.');
     setTimeout(() => setStatusMsg(''), 4000);
   };
 
@@ -478,6 +506,60 @@ export default function SettingsPage(): React.ReactElement {
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
 
       </div>
+
+      {/* Onboarding-Mail-Prompt nach erfolgreicher Rollen-Zuweisung */}
+      {onboardingPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => { if (!isSendingOnboarding) setOnboardingPrompt(null); }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
+              maxWidth: 460, width: '100%', padding: 24,
+              boxShadow: 'var(--dex-shadow-hover)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>
+              Onboarding-Mail an {onboardingPrompt.name}?
+            </h3>
+            <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
+              <strong>{onboardingPrompt.name}</strong> wurde als <strong>{onboardingPrompt.role}</strong> hinzugefügt.
+              Möchtest du eine Begrüßungsmail mit Link zur App, zum Handbuch und einer kurzen
+              Anleitung zum ersten Test-Event verschicken?
+            </p>
+            <p style={{ margin: '0 0 20px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+              Empfänger: {onboardingPrompt.email}<br />
+              Cc: ebrenneisen@deloitte.de, nifelten@deloitte.de
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setOnboardingPrompt(null)}
+                disabled={isSendingOnboarding}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Nicht senden
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSendOnboarding}
+                disabled={isSendingOnboarding}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {isSendingOnboarding ? 'Sende...' : 'Mail senden'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail } from '../services/EmailTemplates';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -113,6 +113,12 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
+  /**
+   * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
+   * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
+   * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
+   */
+  sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
 }
 
 export interface CreateEventInput {
@@ -862,6 +868,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     );
   }
 
+  /**
+   * Onboarding-Mail an einen neu ernannten Organizer (oder Admin) verschicken.
+   * Subject + Body kommen aus EmailTemplates.organizerOnboardingEmail (Deloitte-
+   * Layout inkl. Header/Footer). Die DEX-Verantwortlichen werden im Cc
+   * informiert. EventId='0' damit der DEX_SEND_MAIL Flow den Get_Event-Step
+   * mit gueltigem OData-Filter ausfuehren kann (analog sendAdminInquiry).
+   */
+  async function sendOrganizerOnboarding(
+    recipientEmail: string,
+    recipientName: string,
+    role: 'Organizer' | 'Admin'
+  ): Promise<boolean> {
+    if (!recipientEmail || !recipientName) return false;
+    const cc = 'ebrenneisen@deloitte.de;nifelten@deloitte.de';
+    const { subject, body } = organizerOnboardingEmail(recipientName, role);
+    return eventService.queueEmail(
+      subject, recipientEmail, recipientName, body, 'Info', 'DEX-Onboarding', '0', cc
+    );
+  }
+
 
   // ==================== Sub-Event-Helper (v6.4+) ====================
   // Seit v6.4 sind Sub-Events keine separaten JSON-Arrays mehr, sondern
@@ -892,6 +918,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         createEvent, registerForEvent, cancelRegistration,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
+        sendOrganizerOnboarding,
       },
     },
     props.children
