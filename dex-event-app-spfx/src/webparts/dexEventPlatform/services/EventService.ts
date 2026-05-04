@@ -226,6 +226,7 @@ export interface SPEvent {
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
   AutoSendQRCode?: boolean; // v9.15: true = nach Anmeldung automatisch QR-Code-Mail versenden
+  ActiveFrom?: string; // v9.21: ISO-Datum, ab dem ein "Active"-Event tatsaechlich sichtbar wird
   // v8.5: Granulare Organizer-BCC-Modi
   NotifyOrgRegisterMode?: string; // 'Never' | 'Always' | 'FromDate'
   NotifyOrgRegisterFromDate?: string;
@@ -2003,6 +2004,7 @@ export class EventService {
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'AutoSendQRCode', type: 8, metaType: 'SP.Field' }, // v9.15 Boolean - QR-Code automatisch nach Anmeldung versenden
+      { title: 'ActiveFrom', type: 4, metaType: 'SP.Field' }, // v9.21 DateTime - Auto-Aktivierungs-Datum
       { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
       { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur fuer Mode='FromDate'
       { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
@@ -2273,7 +2275,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).

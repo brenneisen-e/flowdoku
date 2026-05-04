@@ -683,6 +683,21 @@ export default function EventCreationPage(): React.ReactElement {
   // Access-Checks lesen sie weiterhin.
   const coOrganizerNames: string[] = (editEvent && editEvent.coOrganizerNames) ? editEvent.coOrganizerNames.slice() : [];
   const coOrganizerEmails: string[] = (editEvent && editEvent.coOrganizerEmails) ? editEvent.coOrganizerEmails.slice() : [];
+
+  // v9.21: Test-Team pro Event — Personen die das Event im Entwurfsmodus
+  // sehen + sich anmelden duerfen.
+  const [testTeamNames, setTestTeamNames] = React.useState<string[]>(
+    editEvent && editEvent.testTeamNames ? editEvent.testTeamNames.slice() : []
+  );
+  const [testTeamEmails, setTestTeamEmails] = React.useState<string[]>(
+    editEvent && editEvent.testTeamEmails ? editEvent.testTeamEmails.slice() : []
+  );
+  const [testTeamSearch, setTestTeamSearch] = React.useState('');
+  const [testTeamResults, setTestTeamResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const testTeamTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // v9.21: Active-From-Datum (optional) — Event auto-aktiv ab diesem Zeitpunkt.
+  const [activeFrom, setActiveFrom] = React.useState(editEvent ? (editEvent.activeFrom || '') : '');
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -1495,16 +1510,23 @@ export default function EventCreationPage(): React.ReactElement {
       const coOrganizerConfig = coOrganizerEmails.length > 0
         ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0)
+      // v9.21: Test-Team-Liste piggyback in EmailTemplateOverrides._testTeam
+      const testTeamConfig = testTeamEmails.length > 0
+        ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
             ...b2runExtraConfig,
             ...qrScannerConfig,
             ...coOrganizerConfig,
+            ...testTeamConfig,
             ...emailTemplateOverrides,
           })
         : '';
+      // v9.21: ActiveFrom als SP-DateTime
+      updates['ActiveFrom'] = activeFrom ? new Date(activeFrom).toISOString() : null;
       // Custom-Mail-Logo in EmailImageBase64 (SP-Spalte) — der Flow ersetzt
       // {{ORB_URL}} in Mails damit. Wenn leer: Flow faellt auf _Config
       // DefaultImageBase64 (DEX-Orb) zurueck.
@@ -1745,7 +1767,11 @@ export default function EventCreationPage(): React.ReactElement {
           const coExtra = coOrganizerEmails.length > 0
             ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0;
+          // v9.21: Test-Team ebenso piggybacken.
+          const ttExtra = testTeamEmails.length > 0
+            ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
@@ -1753,6 +1779,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...b2runExtra,
                 ...qrExtra,
                 ...coExtra,
+                ...ttExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -2581,20 +2608,13 @@ export default function EventCreationPage(): React.ReactElement {
                 ]
               )}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={1} />
-                  <span className="required">*</span> {t('create.eventtitle')}
-                  <InfoTooltip text={t('create.eventtitle.hint')} />
-                </label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
-                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-              </div>
-
-              {/* Test-Event-Flag */}
+              {/* v9.21: Entwurf-Flag als erster Schritt — vor Title.
+                  Default ist on, der Organizer kann die Test-Strecke
+                  in Ruhe aufbauen, das Test-Team durchspielen lassen,
+                  und ohne Aengste sein Event entwickeln. */}
               <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
-                  <StepBadge n={2} />
+                  <StepBadge n={1} />
                   <input
                     type="checkbox"
                     checked={isFictive}
@@ -2608,6 +2628,32 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </span>
                 </label>
+                {/* v9.21: ActiveFrom direkt unter dem Entwurfs-Toggle — wenn
+                    der Organizer ein Live-Datum setzt, geht das Event ab dann
+                    auch wenn das Entwurf-Haekchen noch on ist. Optional. */}
+                <div style={{ marginTop: 12, paddingLeft: 4 }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginBottom: 4, fontWeight: 500 }}>
+                    Aktiv ab (optional)
+                    <InfoTooltip text="Wenn du hier ein Datum + Uhrzeit setzt, wird das Event ab diesem Zeitpunkt automatisch fuer alle berechtigten User sichtbar — auch wenn das Entwurf-Haekchen noch gesetzt ist. Praktisch um die Anmeldung erst zu einem geplanten Zeitpunkt zu oeffnen. Leer = kein Auto-Aktivierung." />
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={activeFrom}
+                    onChange={e => setActiveFrom(e.target.value)}
+                    style={{ maxWidth: 240, fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={2} />
+                  <span className="required">*</span> {t('create.eventtitle')}
+                  <InfoTooltip text={t('create.eventtitle.hint')} />
+                </label>
+                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
+                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
               </div>
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -2876,6 +2922,109 @@ export default function EventCreationPage(): React.ReactElement {
                             setQrScannerResults([]);
                           }}
                         >
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                            alt={u.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.email}{u.location ? ` · ${u.location}` : ''}
+                            </div>
+                          </div>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
+                  und kann sich anmelden, ohne globale Organizer-Rolle. Picker
+                  via Graph-Search, beliebige Deloitte-User. */}
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Test-Team
+                  <InfoTooltip text="Optional: Personen, die diesen Event bereits im Entwurfsmodus sehen + sich anmelden dürfen. Nutze das Test-Team um die Anmelde-Strecke und die Mails von einer kleinen Gruppe testen zu lassen, bevor das Event für alle live geht. Test-Team-Mitglieder haben sonst keine Admin-Rechte (kein Edit, keine Mails versenden)." />
+                </label>
+                {testTeamNames.length > 0 && (() => {
+                  const remove = (idx: number): void => {
+                    setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
+                    setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {testTeamNames.map((name, i) => {
+                        const email = testTeamEmails[i] || '';
+                        return (
+                          <span key={`${email}-${i}`} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '3px 6px 3px 4px',
+                            background: '#0ea5e9', color: '#fff',
+                            borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                          }}>
+                            {email && (
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
+                                alt={name}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              />
+                            )}
+                            <span>{name}</span>
+                            <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <input
+                  className="form-input"
+                  value={testTeamSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setTestTeamSearch(val);
+                    if (testTeamTimerRef.current) clearTimeout(testTeamTimerRef.current);
+                    const q = val.trim();
+                    if (!q) { setTestTeamResults([]); return; }
+                    testTeamTimerRef.current = setTimeout(async () => {
+                      try {
+                        const results = await searchUsers(q);
+                        setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setTestTeamResults([]); }
+                    }, 350);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => { setTestTeamSearch(''); setTestTeamResults([]); }, 150);
+                  }}
+                  placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
+                />
+                {testTeamResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 280, overflowY: 'auto',
+                  }}>
+                    {testTeamResults.map(u => {
+                      const alreadyAdded = testTeamEmails.indexOf(u.email) >= 0;
+                      return (
+                        <div key={u.email} style={{
+                          padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                          opacity: alreadyAdded ? 0.45 : 1,
+                          display: 'flex', alignItems: 'center', gap: 10,
+                        }} onMouseDown={() => {
+                          if (alreadyAdded || !u.email) return;
+                          setTestTeamNames(prev => [...prev, u.displayName]);
+                          setTestTeamEmails(prev => [...prev, u.email]);
+                          setTestTeamSearch('');
+                          setTestTeamResults([]);
+                        }}>
                           <img
                             src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
                             alt={u.displayName}
