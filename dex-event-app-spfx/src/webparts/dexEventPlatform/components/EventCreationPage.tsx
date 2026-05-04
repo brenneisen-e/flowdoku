@@ -2520,69 +2520,69 @@ export default function EventCreationPage(): React.ReactElement {
                   fontSize: '0.75rem', fontWeight: idx === currentStep ? 700 : 500,
                   color: idx <= currentStep ? 'var(--dex-green)' : 'var(--dex-gray-400)',
                   transition: 'color 0.3s ease',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  textAlign: 'center',
                 }}>
                   {step.label}
-                  {/* i-Icon mit Hint-Tooltip — zeigt beim Mouseover die
-                      Bullets fuer diesen Step. Klick stoppt die Step-
-                      Navigation, Hover triggert den Tooltip. */}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label={isDe ? 'Hinweise zu diesem Schritt' : 'Hints for this step'}
-                    onMouseEnter={() => setHintStepIdx(idx)}
-                    onMouseLeave={() => setHintStepIdx(null)}
-                    onFocus={() => setHintStepIdx(idx)}
-                    onBlur={() => setHintStepIdx(null)}
-                    onClick={e => { e.stopPropagation(); setHintStepIdx(prev => prev === idx ? null : idx); }}
-                    style={{
-                      position: 'relative',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 16, height: 16, borderRadius: '50%',
-                      background: hintStepIdx === idx ? 'var(--dex-green)' : 'transparent',
-                      color: hintStepIdx === idx ? '#fff' : 'var(--dex-gray-500)',
-                      border: `1px solid ${hintStepIdx === idx ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
-                      fontSize: '0.65rem', fontWeight: 700, fontStyle: 'italic',
-                      cursor: 'help',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    i
-                    {hintStepIdx === idx && (
-                      <div
-                        role="tooltip"
-                        style={{
-                          position: 'absolute',
-                          top: 'calc(100% + 8px)',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: 320,
-                          maxWidth: '90vw',
-                          background: 'var(--dex-gray-900, #1f2937)',
-                          color: '#fff',
-                          padding: '12px 14px',
-                          borderRadius: 8,
-                          boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
-                          fontSize: '0.78rem',
-                          lineHeight: 1.5,
-                          fontWeight: 400,
-                          fontStyle: 'normal',
-                          textAlign: 'left',
-                          zIndex: 200,
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.92)' }}>
-                          {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
-                        </div>
-                        <ul style={{ margin: 0, paddingLeft: 18 }}>
-                          {(isDe ? STEP_HINTS_DE : STEP_HINTS_EN)[idx]?.map((b, bi) => (
-                            <li key={bi} style={{ marginBottom: 4 }}>{b}</li>
-                          ))}
-                        </ul>
+                </span>
+                {/* v9.27: i-Icon UNTER dem Step-Label (vorher inline rechts daneben).
+                    Hover zeigt die Hints fuer diesen Step. */}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={isDe ? 'Hinweise zu diesem Schritt' : 'Hints for this step'}
+                  onMouseEnter={() => setHintStepIdx(idx)}
+                  onMouseLeave={() => setHintStepIdx(null)}
+                  onFocus={() => setHintStepIdx(idx)}
+                  onBlur={() => setHintStepIdx(null)}
+                  onClick={e => { e.stopPropagation(); setHintStepIdx(prev => prev === idx ? null : idx); }}
+                  style={{
+                    position: 'relative',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: hintStepIdx === idx ? 'var(--dex-green)' : 'transparent',
+                    color: hintStepIdx === idx ? '#fff' : 'var(--dex-gray-500)',
+                    border: `1px solid ${hintStepIdx === idx ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
+                    fontSize: '0.7rem', fontWeight: 700, fontStyle: 'italic',
+                    cursor: 'help',
+                    marginTop: 2,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  i
+                  {hintStepIdx === idx && (
+                    <div
+                      role="tooltip"
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 8px)',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 320,
+                        maxWidth: '90vw',
+                        background: 'var(--dex-gray-900, #1f2937)',
+                        color: '#fff',
+                        padding: '12px 14px',
+                        borderRadius: 8,
+                        boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
+                        fontSize: '0.78rem',
+                        lineHeight: 1.5,
+                        fontWeight: 400,
+                        fontStyle: 'normal',
+                        textAlign: 'left',
+                        zIndex: 200,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.92)' }}>
+                        {isDe ? 'Was ich hier einstellen kann' : 'What I can configure here'}
                       </div>
-                    )}
-                  </span>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {(isDe ? STEP_HINTS_DE : STEP_HINTS_EN)[idx]?.map((b, bi) => (
+                          <li key={bi} style={{ marginBottom: 4 }}>{b}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </span>
               </div>
             ))}
@@ -4769,18 +4769,20 @@ export default function EventCreationPage(): React.ReactElement {
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
                 {renderStepIntro(
                   [
-                    'E-Mail-Sprache (DE/EN) für die automatischen Mails an die Teilnehmer wählen',
-                    'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
-                    'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
-                    'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
+                    'Sprache der automatischen E-Mails wählen (Deutsch oder Englisch)',
+                    'An- oder ausschalten, ob Teilnehmer überhaupt E-Mails und Outlook-Termine bekommen — z.B. um intern zu testen, ohne echte Mails zu verschicken',
+                    'Festlegen, wann die Organizer eine Kopie der Anmelde-/Abmelde-Mails bekommen sollen (immer, nie oder erst kurz vorm Event)',
+                    'Eigenes Bild für die E-Mails und für den Outlook-Termin hochladen — ersetzt das Standard-Logo',
+                    'Den Text im Outlook-Termin individuell formulieren (mit Live-Vorschau)',
+                    'Jede einzelne E-Mail (Anmelde-Bestätigung, Abmelde-Bestätigung, Wartelisten-Mail, Nachrück-Mail) mit eigenem Betreff und Text anpassen',
                   ],
                   [
-                    'Pick the email language (DE/EN) for automatic emails to attendees',
-                    'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
-                    'Upload a custom logo / header image for the email and Outlook event',
-                    'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-                    'Optionally disable notifications entirely — e.g. for internal draft events',
+                    'Pick the language for automated emails (German or English)',
+                    'Switch on/off whether attendees receive emails and Outlook entries at all — e.g. for internal testing without sending real mails',
+                    'Decide when organizers get a copy of the registration / cancellation emails (always, never, or only close to the event)',
+                    'Upload a custom image for the emails and the Outlook entry — replaces the default logo',
+                    'Phrase the text inside the Outlook entry yourself (with live preview)',
+                    'Customise each individual email (registration, cancellation, waitlist, promotion) — own subject and body',
                   ]
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
@@ -4861,12 +4863,12 @@ export default function EventCreationPage(): React.ReactElement {
                     fuer An- und Abmeldungen getrennt einstellbar. */}
                 <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <label className="form-label" style={{ marginBottom: 8 }}>
-                    {isDe ? 'Organizer informieren bei An-/Abmeldung' : 'Notify organizers on register/cancel'}
+                    {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
                   </label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                     {isDe
-                      ? 'Organizer werden als BCC in die Bestätigungs-Mail an den Teilnehmer aufgenommen — der Verteiler bleibt dem Teilnehmer also verborgen, der Organizer bekommt aber eine Kopie. Bei großen Events kannst du die Benachrichtigungen gezielt einschränken, um Spam zu vermeiden.'
-                      : 'Organizers are added as BCC to the confirmation email sent to the attendee — the distribution stays hidden from the attendee, but the organizer receives a copy. For large events you can restrict notifications to avoid spam.'}
+                      ? 'Wenn aktiv, bekommt der Organizer eine versteckte Kopie der Bestätigungs-Mail, die an den Teilnehmer rausgeht — der Teilnehmer sieht nicht, dass jemand mitliest. Praktisch um zu wissen, wer sich gerade an- oder abmeldet. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).'
+                      : 'When on, the organizer gets a hidden copy of the confirmation email sent to the attendee — the attendee doesn\'t see they were copied. Handy to know who is signing up or off. For large events you might not want this for every single sign-up — you can narrow it down here (e.g. only close to the event when last-minute changes matter).'}
                   </p>
 
                   {/* Anmeldung */}
@@ -5771,8 +5773,22 @@ export default function EventCreationPage(): React.ReactElement {
 
           {!isSubmitting && (
             <>
-            {/* Auffaelliger Register-Preview-Button — auf jedem Step sichtbar. */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, marginBottom: 4 }}>
+            {/* v9.27: Action-Row — Zurück (links), Vorschau (mitte), Weiter (rechts)
+                alle auf gleicher Höhe in einer Reihe. */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              gap: 12, marginTop: 24, flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {currentStep === 0 ? (
+                  <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> {t('create.cancel')}</button>
+                ) : (
+                  <button className="btn btn-secondary" onClick={() => setCurrentStep(currentStep - 1)}>
+                    {t('general.back')}
+                  </button>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowRegisterPreview(true)}
@@ -5795,54 +5811,46 @@ export default function EventCreationPage(): React.ReactElement {
               >
                 👁 {t('create.registerpreview')}
               </button>
-            </div>
 
-            <div className="registration-actions mt-24">
-              {currentStep === 0 ? (
-                <button className="btn btn-danger" onClick={() => goBack()}><Trash2 size={16} /> {t('create.cancel')}</button>
-              ) : (
-                <button className="btn btn-secondary" onClick={() => setCurrentStep(currentStep - 1)}>
-                  {t('general.back')}
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* Im Edit-Modus immer einen Speichern-Button anzeigen, damit man nicht
+                    durch alle Steps klicken muss wenn man nur eine Sache aendert */}
+                {isEditMode && currentStep < steps.length - 1 && (
+                  <button
+                    className="btn btn-primary"
+                    disabled={!title}
+                    onClick={handleSubmit}
+                    style={{ opacity: !title ? 0.5 : 1 }}
+                    title="Aenderungen sofort speichern, ohne weitere Schritte"
+                  >
+                    <Send size={16} /> {t('create.save')}
+                  </button>
+                )}
 
-              {/* Im Edit-Modus immer einen Speichern-Button anzeigen, damit man nicht
-                  durch alle Steps klicken muss wenn man nur eine Sache aendert */}
-              {isEditMode && currentStep < steps.length - 1 && (
-                <button
-                  className="btn btn-primary"
-                  disabled={!title}
-                  onClick={handleSubmit}
-                  style={{ opacity: !title ? 0.5 : 1 }}
-                  title="Aenderungen sofort speichern, ohne weitere Schritte"
-                >
-                  <Send size={16} /> {t('create.save')}
-                </button>
-              )}
-
-              {currentStep < steps.length - 1 ? (
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setTriedNext(true);
-                    if (canProceed()) {
-                      setTriedNext(false);
-                      setCurrentStep(currentStep + 1);
-                    }
-                  }}
-                >
-                  {t('create.next')}
-                </button>
-              ) : (
-                <button
-                  className="btn btn-primary"
-                  disabled={!title}
-                  onClick={handleSubmit}
-                  style={{ opacity: !title ? 0.5 : 1 }}
-                >
-                  <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
-                </button>
-              )}
+                {currentStep < steps.length - 1 ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setTriedNext(true);
+                      if (canProceed()) {
+                        setTriedNext(false);
+                        setCurrentStep(currentStep + 1);
+                      }
+                    }}
+                  >
+                    {t('create.next')}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    disabled={!title}
+                    onClick={handleSubmit}
+                    style={{ opacity: !title ? 0.5 : 1 }}
+                  >
+                    <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+                  </button>
+                )}
+              </div>
             </div>
             </>
           )}
