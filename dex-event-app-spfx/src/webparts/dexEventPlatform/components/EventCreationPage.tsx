@@ -783,7 +783,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [excludeSortDir, setExcludeSortDir] = React.useState<'asc' | 'desc'>('asc');
   const [excludePage, setExcludePage] = React.useState(0); // v8.9: 0-indexed Seite (200 pro Seite)
   const EXCLUDE_PAGE_SIZE = 200;
-  const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
+  // v9.16: neue Events starten standardmaessig als Test-Event — der Organizer
+  // kann sich erst alles in Ruhe anschauen, das Test-Team probiert die
+  // Anmeldung durch, und erst wenn alles passt wird der Schalter rausgenommen.
+  const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : true);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer

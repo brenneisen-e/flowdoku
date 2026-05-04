@@ -1436,9 +1436,13 @@ export class EventService {
   private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
     try {
       // 1. Logo-Spalten nachtraeglich anlegen falls fehlend
+      // v9.16: TestTeamEmails ergaenzt — globale Liste (";"-separiert) der
+      // User die Test-Events sehen + sich anmelden duerfen, auch wenn sie
+      // keine Organizer/Admin-Rolle haben.
       const logoFields = [
         { title: 'LogoBase64', type: 3 },
         { title: 'DefaultImageBase64', type: 3 },
+        { title: 'TestTeamEmails', type: 3 }, // Note (multi-line text), ";"-separiert
       ];
       for (const f of logoFields) {
         try {
@@ -1582,6 +1586,46 @@ export class EventService {
    * Email-Template aus DEX_EmailTemplates laden.
    * Fallback auf eingebautes Template wenn nicht gefunden.
    */
+  // v9.16: Test-Team — globale ";"-separierte E-Mail-Liste, gespeichert auf
+  // dem _Config-Eintrag der DEX_EmailTemplates-Liste. Erlaubt nicht-Admin/
+  // -Organizer-Usern Test-Events zu sehen + sich anzumelden.
+  public async getTestTeamEmails(): Promise<string[]> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=TestTeamEmails`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return [];
+      const raw: string = (items[0].TestTeamEmails || '').toString();
+      return raw.split(/[;,\n]/).map(s => s.trim().toLowerCase()).filter(s => !!s && s.includes('@'));
+    } catch { return []; }
+  }
+
+  public async setTestTeamEmails(emails: string[]): Promise<boolean> {
+    try {
+      const cleaned = (emails || []).map(s => (s || '').trim()).filter(s => !!s && s.includes('@'));
+      const value = cleaned.join(';');
+      // _Config-Item-ID lookup
+      const lookup = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (!lookup.ok) return false;
+      const data = await lookup.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return false;
+      const itemId = items[0].Id;
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${itemId})`,
+        { 'TestTeamEmails': value }
+      );
+      return resp.ok;
+    } catch { return false; }
+  }
+
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
     try {
       const resp = await this.context.spHttpClient.get(

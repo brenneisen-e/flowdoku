@@ -124,7 +124,7 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents, testTeamEmails } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -159,12 +159,16 @@ export default function EventListPage(): React.ReactElement {
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
   // passen UND (b) Events, bei denen er selbst in organizerEmails steht — NICHT
   // tenant-weit alle Events. User sieht nur Filter-passende Events.
-  // Fictive (Test-)Events sind IMMER nur fuer Admin + Event-eigene Organizer sichtbar,
-  // unabhaengig vom Standort-Filter.
+  // Fictive (Test-)Events sind sichtbar fuer:
+  //   - Admins (immer)
+  //   - Event-eigene Organizer (immer)
+  //   - v9.16: Mitglieder des globalen Test-Teams (TestTeamEmails in _Config)
   const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const inTestTeam = (testTeamEmails || []).some(e => e === currentEmailLc);
   const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
     if (!e.isFictive) return true;
     if (isAdmin) return true;
+    if (inTestTeam) return true;
     return e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc);
   });
   const filteredEvents = (isAdmin

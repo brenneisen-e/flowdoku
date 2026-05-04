@@ -120,6 +120,11 @@ interface EventContextType {
    * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
    */
   sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
+  /** v9.16: Globale Test-Team-Email-Liste (lowercase). Wer in der Liste
+   *  steht, sieht Test-Events (isFictive=true) auch ohne Organizer/Admin-Rolle. */
+  testTeamEmails: string[];
+  refreshTestTeamEmails: () => Promise<void>;
+  setTestTeamEmails: (emails: string[]) => Promise<boolean>;
 }
 
 export interface CreateEventInput {
@@ -173,6 +178,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   const subsiteMap = React.useRef<Record<string, string>>({});
 
   const eventService = React.useMemo(() => new EventService(props.context), []);
+
+  // v9.16: Globale Test-Team-Liste (lowercase Emails). Aus dem _Config-Item
+  // der DEX_EmailTemplates-Liste geladen — wird beim App-Start einmalig geholt
+  // und bei Settings-Aenderung neu gefragt.
+  const [testTeamEmails, setTestTeamEmailsState] = React.useState<string[]>([]);
+  const refreshTestTeamEmails = React.useCallback(async () => {
+    try {
+      const emails = await eventService.getTestTeamEmails();
+      setTestTeamEmailsState(emails);
+    } catch { /* fallback: leere Liste */ }
+  }, [eventService]);
+  const setTestTeamEmailsFn = React.useCallback(async (emails: string[]): Promise<boolean> => {
+    const ok = await eventService.setTestTeamEmails(emails);
+    if (ok) await refreshTestTeamEmails();
+    return ok;
+  }, [eventService, refreshTestTeamEmails]);
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
   // Vorname fuer E-Mail-Anreden ({{Name}} im Template).
@@ -207,6 +228,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
+    // v9.16: Test-Team-Liste laden — bestimmt fuer welche User Test-Events sichtbar sind.
+    try { await refreshTestTeamEmails(); } catch { /* */ }
     // Seed-Migrationen entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
@@ -953,6 +976,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
+        testTeamEmails,
+        refreshTestTeamEmails,
+        setTestTeamEmails: setTestTeamEmailsFn,
       },
     },
     props.children
