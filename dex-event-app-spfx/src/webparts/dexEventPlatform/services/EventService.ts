@@ -3694,10 +3694,15 @@ export class EventService {
       } catch { errors++; }
     }
 
-    // v7.31: Counter auf den neuen Max-Wert syncen — syncCounterToMax liest
-    // intern den aktuellen Max neu, damit eine parallele Anmeldung (die
-    // gerade waehrend des Reorders eingetroffen ist) den Counter nicht
-    // wieder auf einen niedrigen Wert ueberschreibt.
+    // v7.31 / v9.13: Counter konsistent halten + Permissions sicherstellen.
+    // - ensureCounterList: legt Counter-Liste an falls fehlt + patcht
+    //   Visitors-Permissions auf Contribute (Recovery fuer alte Listen
+    //   die nur Read-Inheritance hatten — genau der Bug der bei der
+    //   Mass-Anmeldung Theresa zu TID=1 gefuehrt hat).
+    // - syncCounterToMax (v9.12+): monotonic up-only — patcht Counter
+    //   auf neuen Max, blockiert NIE eine parallele Anmeldung die schon
+    //   hoeher hochgepacked hat.
+    try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
     try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
 
     return { success, errors };
@@ -4954,15 +4959,21 @@ export class EventService {
       if (!etag) return undefined;
       let data;
       try { data = await getResp.json(); } catch { return undefined; }
-      const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
-      // v9.12: Defensive baseline. Falls der Counter aus irgendeinem Grund
-      // unter den aktuellen Max gefallen ist (z.B. weil ein alter Build
-      // mit dem broken syncCounterToMax den Counter gedrueckt hat, oder
-      // jemand SP direkt editiert hat), springen wir auf den echten Max.
-      // Das selbstheilt jedes ID-Drift-Problem bei der naechsten Anmeldung.
-      const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-      const baseline = Math.max(current, liveMax);
-      const next = baseline + 1;
+      // v9.13: NextValue defensiv parsen — handhabt sowohl number als auch
+      // (in seltenen SP-Konfigurationen) string. Sorgt dafuer dass current
+      // bei einer korrekt gespeicherten 165 nie auf 0 fallback'ed.
+      const rawNextValue = data?.NextValue ?? data?.d?.NextValue;
+      const current = typeof rawNextValue === 'number'
+        ? rawNextValue
+        : (typeof rawNextValue === 'string' ? (parseInt(rawNextValue, 10) || 0) : 0);
+      // v9.13: Counter ist die Source of Truth. Wir vertrauen ihm und
+      // inkrementieren atomar via ETag-CAS. KEIN zusaetzlicher Lesezugriff
+      // auf die Teilnehmerliste mehr — das Counter-Pattern existiert genau,
+      // damit wir hier NICHT max(TID) aus der Teilnehmerliste rechnen
+      // muessen. Wenn der Counter korrupt sein sollte (z.B. von altem
+      // syncCounterToMax-Bug auf 0 gepatcht), gibt's den expliziten
+      // "Counter zurücksetzen"-Button im Admin Center fuer den Fix.
+      const next = current + 1;
       const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': next }, etag);
       if (patchResp.ok) return next;
       if (patchResp.status !== 412) {
@@ -5028,6 +5039,11 @@ export class EventService {
     if (probe.ok) {
       // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
       try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
+      // v9.13: Permissions auf bestehender Liste idempotent nachpatchen.
+      // Existierende Counter-Listen aus v7.28..v9.12 vererben nur Read von
+      // der Subsite — normale User koennen den Counter nicht inkrementieren.
+      // setCounterListPermissions setzt break-inheritance + Visitors=Contribute.
+      try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
       const itemListResp = await this.context.spHttpClient.get(
         `${itemsUrl}?$top=1`,
         SPHttpClient.configurations.v1
@@ -5058,17 +5074,103 @@ export class EventService {
       }
     );
     await this.ensureCounterListField(subsiteUrl);
+    // v9.13: Counter-Liste muss explizit Contribute-Rechte fuer Visitors
+    // bekommen, damit normale User die ETag-CAS-Inkrementierung
+    // durchfuehren koennen. Ohne das schlaegt PATCH NextValue mit 401/403
+    // fehl → getNextTeilnehmerId gibt undefined zurueck → TID landet null
+    // (oder im allerersten Lazy-Create-Pfad bei 1).
+    try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
     const seededValue = await seedItem();
     return { created: true, seededValue };
   }
 
-  // v7.28: Aktuellen Max-Wert von TeilnehmerID in der Teilnehmerliste lesen.
-  // Wird beim Seeden des Counters genutzt + als Fallback wenn der Counter
-  // (noch) nicht existiert.
+  /**
+   * Berechtigungen fuer DEX_TeilnehmerCounter setzen — analog zur
+   * Teilnehmerliste:
+   *   - Owners der Hauptsite: Full Control (1073741829)
+   *   - Visitors (DEALL): Contribute (1073741827) → ETag-CAS-Inkrement
+   *   - Organizer-Mail (falls bekannt): Full Control
+   *
+   * Idempotent: kann auf bestehenden Counter-Listen erneut aufgerufen
+   * werden um v9.13-Permissions nachzupatchen. Die Funktion bricht
+   * Rollen-Vererbung explizit (clearSubscopes=true), damit Read-Only-
+   * Inheritance vom Subsite nicht versehentlich greift.
+   */
+  private async setCounterListPermissions(subsiteUrl: string, organizerEmail?: string): Promise<void> {
+    try {
+      await this._post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
+        {}
+      );
+      const ownersResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (ownersResp.ok) {
+        const ownersData = await ownersResp.json();
+        const ownersId = ownersData.Id ?? ownersData.d?.Id;
+        if (ownersId) {
+          await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${ownersId}, roledefid=1073741829)`,
+            {}
+          );
+        }
+      }
+      // Visitors → Contribute. KRITISCH: damit normale User
+      // den Counter atomar inkrementieren koennen.
+      const visitorsId = await this.getVisitorsGroupId();
+      if (visitorsId) {
+        await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${visitorsId}, roledefid=1073741827)`,
+          {}
+        );
+      }
+      // Organizer optional → Full Control
+      if (organizerEmail) {
+        try {
+          const userResp = await this.context.spHttpClient.get(
+            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
+            SPHttpClient.configurations.v1
+          );
+          if (userResp.ok) {
+            const userData = await userResp.json();
+            const userId = userData.Id ?? userData.d?.Id;
+            if (userId) {
+              await this._post(
+                `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+                {}
+              );
+            }
+          }
+        } catch { /* Organizer-Permission ist optional */ }
+      }
+    } catch (err) {
+      console.warn('[DEX] setCounterListPermissions fehlgeschlagen:', err);
+    }
+  }
+
+  // v7.28 / v9.13: Aktuellen Max-Wert von TeilnehmerID in der Teilnehmerliste
+  // lesen. Wird beim **Seeden** des Counters und beim **Sync nach Reorder**
+  // genutzt — die Counter-Liste selbst ist im Normalbetrieb die Source of
+  // Truth (siehe getNextTeilnehmerId).
+  //
+  // **Bugfix v9.13:** Vorher hat $orderby=TeilnehmerID desc&$top=1 unter
+  // bestimmten Bedingungen das null-Item zuerst geliefert (SP sortiert NULL-
+  // Werte bei Number-Feldern oft als "groesster Wert" in desc-Order).
+  // Sobald irgendjemand abgemeldet war (TID=null) lief die Funktion ins
+  // null-Branch und gab 0 zurueck.
+  //
+  // Konsequenz im alten Code (vor v9.12): syncCounterToMax patcht den
+  // Counter auf liveMax=0 RUNTER → naechste Anmeldung kriegt TID=1 →
+  // Duplikat zu echten aktiven Teilnehmern. Genau der Fall den der User
+  // beim Go-Live live gesehen hat (Theresa #1 obwohl 165 aktive Anmeldungen).
+  //
+  // Fix: $filter=TeilnehmerID gt 0 schliesst NULL und 0 explizit aus —
+  // funktioniert unabhaengig von SP-NULL-Sortier-Konventionen.
   private async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=TeilnehmerID&$filter=TeilnehmerID gt 0&$orderby=TeilnehmerID desc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return 0;
@@ -5095,6 +5197,36 @@ export class EventService {
   //
   // ETag-CAS mit Retry, damit eine parallele Anmeldung den Counter nicht
   // zwischen Read und Write wegrasselt.
+  // v9.13: Oeffentliche Recovery-Methode fuer den Admin-Button "Counter
+  // zurücksetzen". Liest den aktuellen Max-TID aus der Teilnehmerliste und
+  // setzt den Counter auf diesen Wert (per ETag-CAS, monotonic up-only via
+  // syncCounterToMax). Gibt den neuen Counter-Wert zurueck damit der Admin
+  // direkt sehen kann auf was es gepatcht wurde.
+  public async resetCounterToMax(subsiteUrl: string): Promise<{ counter: number; max: number }> {
+    // v9.13: Erst Counter-Liste sicherstellen (legt sie an, falls fehlt;
+    // patcht Permissions monotonic auf Visitors=Contribute, falls bestehende
+    // Liste noch Read-Inheritance hatte). Dann auf max syncen.
+    try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
+    const max = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+    // Wenn der Counter aktuell unter max steht: hochziehen.
+    // Wenn er drueber steht: lassen (monotonic up-only).
+    await this.syncCounterToMax(subsiteUrl);
+    // Counter neu lesen, damit wir den aktuellen Stand zurueckgeben
+    let counter = 0;
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const raw = data?.NextValue ?? data?.d?.NextValue;
+        counter = typeof raw === 'number' ? raw : (typeof raw === 'string' ? (parseInt(raw, 10) || 0) : 0);
+      }
+    } catch { /* */ }
+    return { counter, max };
+  }
+
   private async syncCounterToMax(subsiteUrl: string): Promise<void> {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     for (let attempt = 0; attempt < 8; attempt++) {

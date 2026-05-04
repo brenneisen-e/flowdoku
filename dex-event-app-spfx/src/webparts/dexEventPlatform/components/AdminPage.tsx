@@ -253,6 +253,8 @@ export default function AdminPage(): React.ReactElement {
   const [sortAsc, setSortAsc] = React.useState(true);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
+  const [isResettingCounter, setIsResettingCounter] = React.useState(false);
+  const [resetCounterResult, setResetCounterResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
   const [isFixingFields, setIsFixingFields] = React.useState(false);
@@ -1808,6 +1810,39 @@ export default function AdminPage(): React.ReactElement {
                     setReorderResult('Fehler beim Neuvergeben der IDs');
                   }
                   setIsReorderingIDs(false);
+                }}
+              />
+            )}
+
+            {/* 7b. Counter zurücksetzen — Admin only (v9.13).
+                Recovery-Button falls der DEX_TeilnehmerCounter aus
+                irgendeinem Grund unter den tatsaechlich vergebenen
+                Max-TID gefallen ist (z.B. durch den alten
+                syncCounterToMax-Bug aus v9.10/v9.11). Liest max(TID)
+                aus der Teilnehmerliste und patcht den Counter
+                monotonic-up auf diesen Wert. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Hash size={18} />}
+                title={isResettingCounter ? 'Counter wird zurückgesetzt…' : 'Counter zurücksetzen'}
+                desc="Setzt den TeilnehmerID-Counter auf den aktuellen Max-Wert der Teilnehmerliste. Hilft, wenn neue Anmeldungen versehentlich bei niedrigen IDs (z.B. wieder bei 1) starten — sehr seltener Fall, aber Recovery falls der Counter durch frühere App-Versionen drift gewesen sein sollte."
+                badge="admin"
+                busy={isResettingCounter}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={resetCounterResult}
+                resultIsError={!!resetCounterResult && resetCounterResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm('Counter auf aktuellen Max-Wert zurücksetzen?')) return;
+                  setIsResettingCounter(true);
+                  setResetCounterResult(null);
+                  try {
+                    const result = await eventServiceRef.resetCounterToMax(selectedEvent.subsiteUrl);
+                    setResetCounterResult(`Counter steht jetzt auf ${result.counter} (Max-TID: ${result.max})`);
+                  } catch {
+                    setResetCounterResult('Fehler beim Zurücksetzen des Counters');
+                  }
+                  setIsResettingCounter(false);
                 }}
               />
             )}
