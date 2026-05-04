@@ -397,14 +397,25 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
  * QR-Code E-Mail fuer Check-in.
  * Subject + Body folgen der Event-Sprache (DE/EN). Anrede nutzt nur den
  * Vornamen (nicht den vollen Namen).
+ *
+ * v9.15: Unterhalb des QR-Codes wird zusaetzlich "<voller Name> | <Event-Titel>"
+ * fett angezeigt \u2014 hilft den Organizern beim manuellen Check-in (Foto- oder
+ * Bildschirm-Vergleich), wenn der Scanner mal nicht zur Hand ist.
  */
 export function qrCodeEmail(
   firstName: string,
   eventTitle: string,
   qrImageHtml: string,
-  lang: string = 'EN'
+  lang: string = 'EN',
+  fullName?: string
 ): { subject: string; body: string } {
   const isDe = (lang || 'EN').toUpperCase() === 'DE';
+  // Fallback: wenn kein fullName uebergeben, nutze nur firstName
+  const fullDisplayName = (fullName || firstName || '').trim();
+  // HTML-Escape \u2014 Nutzer-Eingaben (Namen) duerfen das Layout nicht brechen
+  const escName = fullDisplayName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escTitle = (eventTitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const checkInLabel = `<p style="text-align:center;font-size:16px;margin:8px 0 0;"><strong>${escName} | ${escTitle}</strong></p>`;
   if (isDe) {
     return {
       subject: `Dein QR-Code f\u00FCr ${eventTitle}`,
@@ -415,7 +426,7 @@ export function qrCodeEmail(
         `<p>Hallo ${firstName},</p>
         <p>hier ist dein pers\u00F6nlicher QR-Code f\u00FCr das Event <strong>${eventTitle}</strong>.</p>
         <p>Bitte zeige den QR-Code beim Check-in vor.</p>
-        <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
+        <div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>
         <p style="color:#999;font-size:12px;text-align:center;">Der QR-Code ist pers\u00F6nlich und nicht \u00FCbertragbar.</p>
         <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
       ),
@@ -430,7 +441,7 @@ export function qrCodeEmail(
       `<p>Dear ${firstName},</p>
       <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
       <p>Please show this QR code at check-in.</p>
-      <div style="text-align:center;margin:24px 0;">${qrImageHtml}</div>
+      <div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>
       <p style="color:#999;font-size:12px;text-align:center;">This QR code is personal and non-transferable.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),

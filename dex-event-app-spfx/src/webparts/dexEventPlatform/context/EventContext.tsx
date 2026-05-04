@@ -12,7 +12,8 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail } from '../services/EmailTemplates';
+import * as QRCode from 'qrcode';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -306,6 +307,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       description: e.Description || '',
       maxParticipants: e.MaxParticipants || 0,
       waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
+      autoSendQRCode: e.AutoSendQRCode === true, // v9.15 — explizites opt-in pro Event
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
@@ -569,6 +571,37 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailData.subject, emailToUse, nameToUse, emailData.body,
           templateType, event.title, eventId, undefined, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+
+        // v9.15: Auto-Send QR-Code wenn am Event aktiviert. Nur fuer
+        // Status='Angemeldet' (Wartelistler bekommen keinen QR — sie sind
+        // noch nicht confirmed). Setting wird im Admin-Center per QR-Versand-
+        // Modal pro Event umgeschaltet (autoSendQRCode → SP-Feld AutoSendQRCode).
+        if (event.autoSendQRCode && status === 'Angemeldet') {
+          (async (): Promise<void> => {
+            try {
+              const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
+              let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+              try {
+                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+              } catch { /* fallback bleibt Text */ }
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
+              await eventService.queueEmail(
+                qrMail.subject, emailToUse, nameToUse, qrMail.body,
+                'QRCode', event.title, eventId
+              );
+              // Status auf 'QR versendet' setzen, damit der Admin-Center-View
+              // sofort zeigt, dass der QR-Code raus ist (analog zum
+              // manuellen Massen-QR-Versand).
+              if (event.subsiteUrl) {
+                const myReg = await eventService.getMyRegistration(event.subsiteUrl, emailToUse);
+                if (myReg && myReg.Id) {
+                  await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
+                }
+              }
+            } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
+          })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
+        }
       }
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
       // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-

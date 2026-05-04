@@ -36,6 +36,7 @@ export interface DeloitteEvent {
   currentParticipants: number;
   waitlistCount: number;
   waitlistEnabled?: boolean;
+  autoSendQRCode?: boolean; // v9.15 — automatisch QR-Code-Mail nach Anmeldung versenden
   imageUrl?: string;
   subsiteUrl?: string;
   outlookBody: string;

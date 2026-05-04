@@ -248,6 +248,10 @@ export default function AdminPage(): React.ReactElement {
   const [copiedEmails, setCopiedEmails] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
+  // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf + Auto-Send-Toggle
+  const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
+  const [qrAutoSendToggle, setQrAutoSendToggle] = React.useState(false);
+  const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
@@ -2166,54 +2170,15 @@ export default function AdminPage(): React.ReactElement {
         >
           {t('admin.checkin')}
         </button>
+        {/* v9.15: QR-Codes versenden ist jetzt eine Quick-Action mit Modal — siehe
+            qrSendModalOpen unten. Beim Klick: Toggle initialisieren + Modal oeffnen. */}
         <button
           className="btn btn-secondary"
           disabled={isSendingQR}
-          onClick={async () => {
-            if (!eventServiceRef || !selectedEvent) return;
-            const eligible = registrations.filter(r => r.Status === 'Angemeldet');
-            if (eligible.length === 0) return;
-            if (!window.confirm(`QR-Codes an ${eligible.length} Teilnehmer versenden?`)) return;
-
-            setIsSendingQR(true);
-            setQrSentCount(0);
-            let sent = 0;
-
-            for (const reg of eligible) {
-              const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
-              const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-              // Vorname fuer die Anrede — fallback auf erstes Token aus ParticipantName
-              const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
-              // QR-Code als Base64-Bild generieren
-              let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-              try {
-                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-              } catch { /* Fallback: Text */ }
-              // QR-Code E-Mail im Deloitte-Template queuen (Sprache folgt Event.EmailLanguage,
-              // Anrede nutzt nur den Vornamen statt vollem Namen)
-              const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN');
-              await eventServiceRef.queueEmail(
-                emailData.subject,
-                reg.ParticipantEmail,
-                name,
-                emailData.body,
-                'QRCode',
-                selectedEvent.title,
-                selectedEvent.id
-              );
-              // Status auf 'QR versendet' setzen
-              if (selectedEvent.subsiteUrl) {
-                await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
-              }
-              sent++;
-              setQrSentCount(sent);
-            }
-
-            // Registrierungen neu laden
-            const regs = await getAllRegistrations(selectedEvent.id);
-            setRegistrations(regs);
-            setIsSendingQR(false);
+          onClick={() => {
+            setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
+            setQrSendResult(null);
+            setQrSendModalOpen(true);
           }}
           style={{ flex: 1 }}
         >
@@ -3170,6 +3135,165 @@ export default function AdminPage(): React.ReactElement {
       {dangerZoneModal}
 
       {changeLogModal}
+
+      {/* v9.15: QR-Code-Versand-Modal — Test (nur Organizer) / Volldurchlauf
+          (alle Angemeldeten) / Auto-Send-Toggle fuer zukuenftige Anmeldungen. */}
+      {qrSendModalOpen && selectedEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => { if (!isSendingQR) setQrSendModalOpen(false); }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
+              maxWidth: 520, width: '100%', padding: 24,
+              boxShadow: 'var(--dex-shadow-hover)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>QR-Codes versenden</h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
+            </p>
+
+            {/* Auto-Send-Toggle */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px',
+              border: '1px solid var(--dex-gray-200)', borderRadius: 8, marginBottom: 16,
+              background: qrAutoSendToggle ? 'var(--dex-green-light, #f0f8e8)' : '#fff',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={qrAutoSendToggle}
+                onChange={e => setQrAutoSendToggle(e.target.checked)}
+                disabled={isSendingQR}
+                style={{ marginTop: 3 }}
+              />
+              <div style={{ fontSize: '0.85rem' }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Automatisch bei Anmeldung versenden</div>
+                <div style={{ color: 'var(--dex-gray-600)' }}>
+                  Wenn aktiv, bekommt jeder neue Teilnehmer direkt nach erfolgreicher Anmeldung seinen QR-Code per Mail. Diese Einstellung wird am Event gespeichert und wirkt für ALLE zukünftigen Anmeldungen.
+                </div>
+              </div>
+            </label>
+
+            {qrSendResult && (
+              <div style={{
+                padding: '8px 12px', marginBottom: 12, borderRadius: 6,
+                background: qrSendResult.startsWith('Fehler') ? 'var(--dex-red-light, #ffe5e5)' : 'var(--dex-green-light, #f0f8e8)',
+                fontSize: '0.85rem', color: qrSendResult.startsWith('Fehler') ? 'var(--dex-red-dark, #b00)' : 'var(--dex-green-dark)',
+              }}>{qrSendResult}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setQrSendModalOpen(false)}
+                disabled={isSendingQR}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Abbrechen
+              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    if (!eventServiceRef || !selectedEvent) return;
+                    // Toggle persistieren (einmal speichern reicht — auch wenn user nur testet)
+                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
+                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
+                    }
+                    // Test-Modus: an Organizer-Mail des aktuellen Users versenden
+                    setIsSendingQR(true);
+                    setQrSendResult(null);
+                    setQrSentCount(0);
+                    try {
+                      const orgEmail = currentUser.email;
+                      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
+                      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
+                      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+                      try {
+                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                      } catch { /* */ }
+                      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+                      await eventServiceRef.queueEmail(
+                        emailData.subject, orgEmail, orgFullName, emailData.body,
+                        'QRCode', selectedEvent.title, selectedEvent.id
+                      );
+                      setQrSendResult(`Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`);
+                    } catch (err) {
+                      setQrSendResult('Fehler beim Test-Versand: ' + (err instanceof Error ? err.message : String(err)));
+                    }
+                    setIsSendingQR(false);
+                  }}
+                  disabled={isSendingQR}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Nur Test (an mich)
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    if (!eventServiceRef || !selectedEvent) return;
+                    const eligible = registrations.filter(r => r.Status === 'Angemeldet');
+                    if (eligible.length === 0) {
+                      setQrSendResult('Fehler: Keine angemeldeten Teilnehmer.');
+                      return;
+                    }
+                    if (!window.confirm(`QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?`)) return;
+
+                    // Auto-Send-Toggle persistieren
+                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
+                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
+                    }
+
+                    setIsSendingQR(true);
+                    setQrSendResult(null);
+                    setQrSentCount(0);
+                    let sent = 0;
+                    for (const reg of eligible) {
+                      const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
+                      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                      const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
+                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+                      try {
+                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                      } catch { /* */ }
+                      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
+                      await eventServiceRef.queueEmail(
+                        emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                        'QRCode', selectedEvent.title, selectedEvent.id
+                      );
+                      if (selectedEvent.subsiteUrl) {
+                        await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
+                      }
+                      sent++;
+                      setQrSentCount(sent);
+                    }
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                    setIsSendingQR(false);
+                    setQrSendResult(`${sent} QR-Codes verschickt.`);
+                  }}
+                  disabled={isSendingQR}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {isSendingQR ? `Versende... (${qrSentCount})` : 'An alle Angemeldeten'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingReg && selectedEvent && (
         <div
