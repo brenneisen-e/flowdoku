@@ -1434,9 +1434,18 @@ export default function EventCreationPage(): React.ReactElement {
       // bei organisatorischen Rückfragen.
       const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
       const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      // v9.8: Default-Body enthaelt jetzt auch den Abmelde-Hinweis analog zur
+      // Anmeldebestaetigungs-Mail. Sonst weiss der Empfaenger nicht, wie er
+      // sich abmelden kann — die Outlook-Decline-Funktion triggert zwar einen
+      // Reminder-Flow, aber der eigentliche App-Abmelde-Pfad ist sauberer.
+      const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
       const defaultOutlookBody = emailLanguage === 'EN'
-        ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p><p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-        : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p><p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+        ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
+          + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
+          + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
+        : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
+          + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+          + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
       const resolvedBody = outlookBody
         ? replacePlaceholders(outlookBody, outlookVars)
         : defaultOutlookBody;
@@ -1679,9 +1688,16 @@ export default function EventCreationPage(): React.ReactElement {
           };
           const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
           const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
+          // mit Link auf die App ("Meine Events"-Tab).
+          const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
           const defaultBody = emailLanguage === 'EN'
-            ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p><p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-            : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p><p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+            ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
+              + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
+              + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
+            : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
+              + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+              + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
           const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, vars) : defaultBody;
           const resolvedHeading = outlookHeading ? replacePlaceholders(outlookHeading, vars) : title;
           const resolvedSub = outlookSubheading ? replacePlaceholders(outlookSubheading, vars) : undefined;

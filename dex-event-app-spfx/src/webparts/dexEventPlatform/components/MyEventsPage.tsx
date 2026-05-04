@@ -15,7 +15,7 @@ import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
-import { RefreshCw } from './Icons';
+import { RefreshCw, X } from './Icons';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -1261,14 +1261,36 @@ export default function MyEventsPage(): React.ReactElement {
                           {t('myevents.latecancel')}
                         </span>
                       )}
-                      <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
+                      <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
                         {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                       </button>
-                      <button className="btn" onClick={() => handleCancel(event.id)} disabled={isCancelling} style={{ fontSize: '0.78rem', padding: '4px 12px', background: cancellingId === event.id ? 'var(--dex-red)' : 'var(--dex-gray-200)', color: cancellingId === event.id ? '#fff' : 'var(--dex-gray-700)' }}>
+                      {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
+                          sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
+                          bleibt — der erste Klick faerbt rot und blendet den
+                          "Doch behalten"-Button daneben ein. */}
+                      <button
+                        className="btn"
+                        onClick={() => handleCancel(event.id)}
+                        disabled={isCancelling}
+                        style={{
+                          fontSize: '0.95rem',
+                          fontWeight: 600,
+                          padding: '10px 20px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          background: cancellingId === event.id ? 'var(--dex-red)' : '#fff',
+                          color: cancellingId === event.id ? '#fff' : 'var(--dex-red)',
+                          border: `2px solid var(--dex-red)`,
+                          borderRadius: 8,
+                          boxShadow: cancellingId === event.id ? '0 2px 8px rgba(218,41,28,0.3)' : 'none',
+                        }}
+                      >
+                        <X size={16} />
                         {cancellingId === event.id ? (isCancelling ? '...' : t('myevents.confirmcancel')) : t('myevents.cancel')}
                       </button>
                       {cancellingId === event.id && !isCancelling && (
-                        <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.78rem', padding: '4px 12px' }}>{t('myevents.keepreg')}</button>
+                        <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>{t('myevents.keepreg')}</button>
                       )}
                     </div>
                   </div>
