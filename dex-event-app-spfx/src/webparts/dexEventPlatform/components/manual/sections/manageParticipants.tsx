@@ -99,17 +99,17 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 5,
-            title: isDe ? 'Teilnehmer in der App bearbeiten (v8.0)' : 'Edit attendee in the app (v8.0)',
+            title: isDe ? 'Teilnehmer in der App bearbeiten' : 'Edit attendee in the app',
             description: (
               <>
                 {isDe
-                  ? 'Neben jedem Teilnehmer findet sich seit v8.0 ein "Bearbeiten"-Button. Klick darauf öffnet ein Modal, in dem du Anrede, Vor-/Nachname, E-Mail, Telefon, Department, Standort, JobTitle, Status sowie alle event-spezifischen Felder direkt anpassen kannst — ohne Umweg über die SharePoint-Liste. Praktisch z.B. wenn ein Teilnehmer einen Tippfehler in der Anmeldung hatte oder seinen Standort geändert hat. Jede Änderung wird automatisch im "ChangeLog" der Teilnehmer-Zeile mit Datum + deinem Namen + Vorher-/Nachher-Wert protokolliert. Außerdem wird "LastModifiedDate" auf jetzt gesetzt.'
-                  : 'Since v8.0 every attendee row has an "Edit" button. Clicking it opens a modal where you can change salutation, first/last name, email, phone, department, location, job title, status and all event-specific fields directly — no detour via the SharePoint list. Useful e.g. when an attendee had a typo during registration or has changed location. Every change is automatically logged in the row\'s "ChangeLog" with date + your name + before/after value, and "LastModifiedDate" is set to now.'}
+                  ? 'Neben jedem Teilnehmer gibt es einen "Bearbeiten"-Button. Klick darauf öffnet ein Modal, in dem du Vor-/Nachname und E-Mail-Adresse korrigieren sowie alle event-spezifischen Felder anpassen kannst — ohne Umweg über die SharePoint-Liste. Praktisch z.B. wenn jemand einen Tippfehler in der Anmeldung hatte oder die falsche Mail-Adresse hinterlegt wurde. Beim Speichern einer geänderten E-Mail prüft die App, ob die Adresse zum Deloitte-Tenant gehört und die Person dort wirklich existiert — externe Adressen werden abgewiesen, bei Tippfehlern kommt eine klare Fehlermeldung statt einer kaputten Anmeldung. Phone, Department, Standort und Job Title kommen aus dem M365-Profil und werden bei einer Mail-Änderung automatisch nachgezogen. Jede Änderung wird sowohl im "ChangeLog" der Teilnehmer-Zeile als auch im zentralen Audit-Log mit Datum, deinem Namen und Vorher-/Nachher-Wert protokolliert.'
+                  : 'Every attendee row has an "Edit" button. Clicking it opens a modal where you can fix first/last name and email and adjust all event-specific fields — no detour via the SharePoint list. Useful e.g. when someone had a typo during registration or the wrong email was used. When saving a changed email the app verifies that the address belongs to the Deloitte tenant and that the person actually exists there — external addresses are rejected, typos yield a clear error message instead of a broken registration. Phone, Department, Location and Job Title come from the M365 profile and are refreshed automatically when the email changes. Every change is logged both in the row\'s "ChangeLog" and in the central audit log with date, your name and before/after value.'}
               </>
             ),
             tip: isDe
-              ? 'Vorteil gegenüber direktem Editieren in SharePoint: keine Datums-Format-Probleme, automatische Audit-Spur, keine Schulung der Organizer auf SP-UI nötig.'
-              : 'Advantage over direct editing in SharePoint: no date-format issues, automatic audit trail, no need to train organizers on the SP UI.',
+              ? 'Vorteil gegenüber direktem Editieren in SharePoint: keine Datums-Format-Probleme, automatische Audit-Spur, Tenant-Validierung der Mail-Adresse, keine Schulung der Organizer auf SP-UI nötig.'
+              : 'Advantage over direct editing in SharePoint: no date-format issues, automatic audit trail, tenant validation of the email address, no need to train organizers on the SP UI.',
           },
           {
             number: 6,

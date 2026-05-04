@@ -203,7 +203,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
@@ -335,13 +335,87 @@ export default function AdminPage(): React.ReactElement {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = editingReg as any;
-      // Nur die Custom-Felder werden gepatcht — Stamm-Daten (Name, E-Mail,
-      // Standort etc.) sind read-only, weil sie aus dem M365-Profil kommen
-      // und beim naechsten Profil-Refresh ueberschrieben werden wuerden.
-      // Status wird ueber die Aktions-Buttons in der Liste geaendert.
+
+      // Stamm-Daten (Vorname, Nachname, E-Mail) werden seit v9.7 ebenfalls
+      // editierbar gemacht — z.B. um Tippfehler nach manueller Anlage zu
+      // korrigieren. Validierung:
+      //   1. E-Mail muss eine Deloitte-Adresse sein (@deloitte.de oder
+      //      @deloitte.com — externe gehen nicht). Sonst Abbruch mit Fehler.
+      //   2. Person muss in M365 existieren (searchUserByEmail). Sonst
+      //      Abbruch mit "Tippfehler"-Hinweis.
+      // Die uebrigen Profil-Felder (Phone, Department, Location, JobTitle)
+      // bleiben read-only — sie kommen aus dem M365-Profil.
+      const oldVorname = String(r.Vorname || '');
+      const oldNachname = String(r.Nachname || '');
+      const oldEmail = String(r.ParticipantEmail || '');
+      const newVorname = (editForm.Vorname || '').trim();
+      const newNachname = (editForm.Nachname || '').trim();
+      const newEmail = (editForm.ParticipantEmail || '').trim();
+      const stammChanged = newVorname !== oldVorname || newNachname !== oldNachname || newEmail !== oldEmail;
+
+      const profileFields: { Department?: string; Location?: string; JobTitle?: string } = {};
+      if (stammChanged) {
+        // Plausibilitaet: nicht-leer
+        if (!newVorname || !newNachname || !newEmail) {
+          setEditError(isDe
+            ? 'Vorname, Nachname und E-Mail dürfen nicht leer sein.'
+            : 'First name, last name and email must not be empty.');
+          return;
+        }
+        // Domain-Check: nur Deloitte-Adressen zulassen
+        const lower = newEmail.toLowerCase();
+        const isDeloitte = /@(.*\.)?deloitte\.(de|com)$/.test(lower);
+        if (!isDeloitte) {
+          setEditError(isDe
+            ? `Externe E-Mail-Adresse — nicht erlaubt. Nur @deloitte.de oder @deloitte.com.`
+            : `External email address — not allowed. Only @deloitte.de or @deloitte.com.`);
+          return;
+        }
+        // Existenz-Check via M365-Profile (UPN!=SMTP-aware). Wenn wir hier
+        // nichts finden, ist es entweder ein Tippfehler oder ein Account
+        // der gar nicht (mehr) im Tenant ist — beides nicht akzeptabel.
+        if (newEmail.toLowerCase() !== oldEmail.toLowerCase()) {
+          const profile = await searchUser(newEmail);
+          if (!profile || !profile.displayName) {
+            setEditError(isDe
+              ? `Person mit E-Mail "${newEmail}" wurde im Deloitte-Tenant nicht gefunden. Bitte Adresse prüfen (Tippfehler?).`
+              : `No person found in the Deloitte tenant for "${newEmail}". Please check the address (typo?).`);
+            return;
+          }
+          // Profil-Daten gleich mit-uebernehmen, damit der Eintrag konsistent
+          // bleibt (Department / Location / JobTitle passen zum neuen User).
+          profileFields.Department = ''; // searchUser liefert displayName/location/jobTitle
+          profileFields.Location = profile.location || '';
+          profileFields.JobTitle = profile.jobTitle || '';
+        }
+      }
+
       const oldValues: Record<string, unknown> = {};
       const patch: Record<string, unknown> = {};
       const fieldLabelMap: Record<string, string> = {};
+
+      if (stammChanged) {
+        if (newVorname !== oldVorname) {
+          oldValues.Vorname = oldVorname; patch.Vorname = newVorname; fieldLabelMap.Vorname = isDe ? 'Vorname' : 'First name';
+        }
+        if (newNachname !== oldNachname) {
+          oldValues.Nachname = oldNachname; patch.Nachname = newNachname; fieldLabelMap.Nachname = isDe ? 'Nachname' : 'Last name';
+        }
+        if (newEmail !== oldEmail) {
+          oldValues.ParticipantEmail = oldEmail; patch.ParticipantEmail = newEmail; fieldLabelMap.ParticipantEmail = 'E-Mail';
+          // Profil-Daten mit aktualisieren (nur wenn ueberhaupt was zurueckkam)
+          if (profileFields.Location) {
+            oldValues.Location = String(r.Location || ''); patch.Location = profileFields.Location;
+            fieldLabelMap.Location = isDe ? 'Standort' : 'Location';
+          }
+          if (profileFields.JobTitle) {
+            oldValues.JobTitle = String(r.JobTitle || ''); patch.JobTitle = profileFields.JobTitle;
+            fieldLabelMap.JobTitle = 'Job Title';
+          }
+        }
+      }
+
+      // Custom-Felder des Events
       if (selectedEvent?.eventSpecificFields) {
         for (const f of selectedEvent.eventSpecificFields) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,7 +427,7 @@ export default function AdminPage(): React.ReactElement {
         }
       }
       if (Object.keys(patch).length === 0) {
-        // Keine editierbaren Felder vorhanden — nichts zu tun.
+        // Keine Aenderung — nichts zu tun.
         closeEditModal();
         return;
       }
@@ -3071,20 +3145,23 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
               {isDe
-                ? 'Hier kannst du die event-spezifischen Felder dieses Teilnehmers anpassen (z.B. Allergien, Hotel-Bedarf, Quiz-Antworten). Stamm-Daten wie Name, E-Mail, Standort etc. kommen aus dem M365-Profil und werden hier nur zur Übersicht angezeigt — sie ändern sich automatisch, wenn der Teilnehmer sein Profil aktualisiert. Den Status (Anmelden / Einchecken / Abmelden) änderst du über die Aktions-Buttons in der Liste. Jede hier gemachte Änderung wird mit Datum und deinem Namen automatisch im ChangeLog des Teilnehmers protokolliert.'
-                : 'Use this dialog to adjust the event-specific fields of this attendee (e.g. allergies, hotel needs, quiz answers). Master data like name, email, location etc. comes from the M365 profile and is shown here for context only — it updates automatically when the attendee updates their profile. The status (register / check in / cancel) is changed via the action buttons in the list. Every change you make here is automatically logged in the attendee\'s ChangeLog with date and your name.'}
+                ? 'Hier kannst du Vorname, Nachname und E-Mail-Adresse korrigieren (z.B. nach einem Tippfehler bei der manuellen Anlage) sowie die event-spezifischen Felder anpassen. Beim Ändern der E-Mail wird geprüft, ob die Adresse zum Deloitte-Tenant gehört und die Person dort existiert — externe Adressen sind nicht erlaubt. Phone, Department, Standort und Job Title kommen aus dem M365-Profil und sind read-only — sie werden bei einem Mail-Wechsel automatisch nachgezogen. Den Status änderst du über die Aktions-Buttons in der Liste. Jede Änderung wird im Audit-Log und im ChangeLog des Teilnehmers mit Datum und deinem Namen protokolliert.'
+                : 'You can fix first name, last name and email address here (e.g. after a typo during manual creation) and adjust event-specific fields. When changing the email, the app verifies that the address belongs to the Deloitte tenant and that the person exists there — external addresses are not allowed. Phone, Department, Location and Job Title come from the M365 profile and are read-only — they are refreshed automatically when the email changes. The status is changed via the action buttons in the list. Every change is logged in the audit log and in the attendee\'s ChangeLog with date and your name.'}
             </p>
 
             {(() => {
-              // Stamm-Daten read-only anzeigen (kommen aus dem M365-Profil
-              // bzw. der initialen Anmeldung — nicht hier editierbar, weil
-              // sie sonst beim naechsten Profil-Refresh ueberschrieben
-              // werden koennten und so eine Inkonsistenz entstuende).
-              const readOnlyFields: Array<{ key: string; label: string }> = [
-                { key: 'Anrede', label: isDe ? 'Anrede' : 'Salutation' },
+              // Vorname / Nachname / E-Mail sind seit v9.7 editierbar (mit
+              // Deloitte-Domain- und Tenant-Existenz-Check beim Speichern).
+              // Die uebrigen Profil-Felder bleiben read-only — sie kommen
+              // aus dem M365-Profil und werden bei einer Mail-Aenderung
+              // mit den Profil-Daten der neuen Person ueberschrieben.
+              const editableStammFields: Array<{ key: string; label: string; type?: string }> = [
                 { key: 'Vorname', label: isDe ? 'Vorname' : 'First name' },
                 { key: 'Nachname', label: isDe ? 'Nachname' : 'Last name' },
-                { key: 'ParticipantEmail', label: 'E-Mail' },
+                { key: 'ParticipantEmail', label: 'E-Mail', type: 'email' },
+              ];
+              const readOnlyFields: Array<{ key: string; label: string }> = [
+                { key: 'Anrede', label: isDe ? 'Anrede' : 'Salutation' },
                 { key: 'Phone', label: isDe ? 'Telefon' : 'Phone' },
                 { key: 'Department', label: 'Department' },
                 { key: 'Location', label: isDe ? 'Standort' : 'Location' },
@@ -3108,11 +3185,42 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 </div>
               );
+              const renderEditable = (key: string, label: string, type?: string): React.ReactNode => (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                    {label}
+                  </label>
+                  <input
+                    className="form-input"
+                    type={type || 'text'}
+                    value={editForm[key] || ''}
+                    onChange={e => setEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    style={{ fontSize: '0.88rem' }}
+                  />
+                </div>
+              );
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {/* Stamm-Daten (read-only) */}
-                  {readOnlyFields.map(f => (
-                    <div key={f.key} style={{ gridColumn: f.key === 'ParticipantEmail' ? '1 / -1' : 'auto' }}>
+                  {/* Anrede zuerst (read-only) */}
+                  <div>{renderReadOnly(isDe ? 'Anrede' : 'Salutation', editForm.Anrede || '')}</div>
+                  {/* Vorname + Nachname editierbar */}
+                  {editableStammFields.filter(f => f.key !== 'ParticipantEmail').map(f => (
+                    <div key={f.key}>
+                      {renderEditable(f.key, f.label, f.type)}
+                    </div>
+                  ))}
+                  {/* E-Mail editierbar (volle Breite) */}
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    {renderEditable('ParticipantEmail', 'E-Mail', 'email')}
+                    <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                      {isDe
+                        ? 'Nur Deloitte-Adressen (@deloitte.de / @deloitte.com). Beim Speichern wird die Person im Tenant verifiziert.'
+                        : 'Only Deloitte addresses (@deloitte.de / @deloitte.com). The person is verified in the tenant on save.'}
+                    </p>
+                  </div>
+                  {/* Restliche Profil-Felder read-only */}
+                  {readOnlyFields.filter(f => f.key !== 'Anrede').map(f => (
+                    <div key={f.key}>
                       {renderReadOnly(f.label, editForm[f.key] || '')}
                     </div>
                   ))}
