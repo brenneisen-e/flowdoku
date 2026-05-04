@@ -3097,14 +3097,18 @@ export class EventService {
       }
       // ---- Ende Permission-Checks ----
 
-      // v7.28: Naechste TeilnehmerID atomar ueber den Subsite-Counter holen
-      // (verhindert Race-Conditions bei parallelen Anmeldungen). Fallback
-      // auf das alte max+1, wenn die Counter-Liste fuer dieses Event noch
-      // nicht existiert (legacy ohne "Spalten fixen"-Lauf).
-      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
-      if (nextId === undefined) {
-        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
-      }
+      // v7.28 / v9.10: Naechste TeilnehmerID atomar ueber den Subsite-Counter
+      // holen (ETag-CAS, verhindert Race-Conditions bei parallelen Anmeldungen).
+      // Counter wird bei Bedarf on-demand angelegt + geseeded.
+      //
+      // v9.10: Der alte race-anfaellige Fallback "max+1" wurde entfernt — bei
+      // Massen-Anmeldungen (Go-Live grosse Events) hat er Duplikate produziert,
+      // weil zwei Clients gleichzeitig den gleichen Max-Wert lesen und beide
+      // mit Max+1 schreiben. Wenn der atomare Counter ausnahmsweise gar nicht
+      // erreichbar ist, lassen wir TeilnehmerID undefined und der Admin
+      // laedt anschliessend "IDs neu vergeben" — Lueckenfreiheit ist nicht
+      // hart kritisch, Eindeutigkeit ist es.
+      const nextId = await this.getNextTeilnehmerId(subsiteUrl);
 
       // Profildaten laden - fuer den TATSAECHLICHEN Teilnehmer (nicht den eingeloggten User!)
       // Wenn jemand fuer eine andere Person registriert, muss deren Profil geladen werden,
@@ -3118,7 +3122,10 @@ export class EventService {
       const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
-        'TeilnehmerID': nextId,
+        // v9.10: TeilnehmerID nur setzen wenn der atomare Counter sie geliefert hat.
+        // Bei Counter-Outage bleibt das Feld leer — Admin kann nachtraeglich
+        // "IDs neu vergeben" laufen lassen, was sequentielle IDs setzt.
+        ...(typeof nextId === 'number' ? { 'TeilnehmerID': nextId } : {}),
         'Anrede': customData.salutation || '',
         'Vorname': firstName,
         'Nachname': surname,
@@ -3167,7 +3174,53 @@ export class EventService {
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
         payload
       );
-      return response.ok;
+      if (!response.ok) return false;
+
+      // v9.10: Post-Insert Safety Net — bei Massen-Anmeldungen (Go-Live)
+      // gab es trotz ETag-Counter vereinzelt Duplikate. Ursache war der
+      // alte max+1-Fallback (jetzt entfernt) und ggf. Edge-Cases im
+      // Counter-Pfad. Als zusaetzliche Versicherung: nach dem Insert
+      // pruefen, ob jetzt zwei Eintraege dieselbe TeilnehmerID haben.
+      // Wenn ja: der mit der HOEHEREN SP-Item-Id verliert (= der spaetere
+      // Insert), holt sich frisch eine ID am Counter und patcht sich.
+      // So bleiben die zuerst eingetroffenen Anmeldungen stabil.
+      if (typeof nextId === 'number' && nextId > 0) {
+        try {
+          const respJson = await response.json();
+          const insertedId: number = respJson?.d?.Id || respJson?.Id || 0;
+          if (insertedId > 0) {
+            const dupResp = await this.context.spHttpClient.get(
+              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
+              SPHttpClient.configurations.v1
+            );
+            if (dupResp.ok) {
+              const dupData = await dupResp.json();
+              const dupItems: Array<{ Id: number; TeilnehmerID: number }> = dupData.value || dupData.d?.results || [];
+              if (dupItems.length > 1) {
+                const minId = Math.min(...dupItems.map(d => d.Id));
+                if (insertedId !== minId) {
+                  // Wir haben verloren — fresh ID holen + patchen
+                  const fresh = await this.getNextTeilnehmerId(subsiteUrl);
+                  if (typeof fresh === 'number' && fresh > 0) {
+                    await this._merge(
+                      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${insertedId})`,
+                      { 'TeilnehmerID': fresh }
+                    );
+                    console.warn(`[DEX] Post-insert dedup: TeilnehmerID ${nextId} kollidierte, Item ${insertedId} hat jetzt #${fresh}.`);
+                  } else {
+                    console.warn(`[DEX] Post-insert dedup: kollidierende TeilnehmerID ${nextId} entdeckt, aber Counter lieferte keine fresh ID. Admin sollte "IDs neu vergeben" laufen lassen.`);
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          // Safety-Net-Fehler nicht kritisch — Insert war erfolgreich
+          console.warn('[DEX] Post-insert dedup check fehlgeschlagen:', err);
+        }
+      }
+
+      return true;
     } catch {
       return false;
     }
@@ -3268,11 +3321,10 @@ export class EventService {
       // Liste — exakt wie ein Neuzugang. Ohne diesen Schritt blieb der
       // Eintrag mit TeilnehmerID=null haengen, weil im Reaktivierungs-Pfad
       // niemand den DEX_IDReorder-Flow triggert.
+      // v9.10: race-anfaelliger max+1-Fallback entfernt (siehe Kommentar in
+      // registerForEvent). Bei Counter-Outage bleibt TeilnehmerID undefined.
       void existingTeilnehmerId;
-      let nextId = await this.getNextTeilnehmerId(subsiteUrl);
-      if (nextId === undefined) {
-        nextId = (await this.getCurrentMaxTeilnehmerId(subsiteUrl)) + 1;
-      }
+      const nextId = await this.getNextTeilnehmerId(subsiteUrl);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = {
@@ -3280,7 +3332,8 @@ export class EventService {
         'Nachname': surname,
         'ParticipantName': `${firstName} ${surname}`,
         'Status': status,
-        'TeilnehmerID': nextId,
+        // v9.10: TeilnehmerID nur setzen wenn Counter sie geliefert hat.
+        ...(typeof nextId === 'number' ? { 'TeilnehmerID': nextId } : {}),
         'RegistrationDate': new Date().toISOString(),
         'CancellationDate': null,
         'CustomData': JSON.stringify(customData),
@@ -3310,7 +3363,41 @@ export class EventService {
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         body
       );
-      return response.ok;
+      if (!response.ok) return false;
+
+      // v9.10: Post-Update Safety Net (siehe registerForEvent). Bei
+      // Counter-Edge-Cases koennte der naechste Wert kollidieren — der
+      // aeltere Eintrag (kleinere SP-Id) gewinnt, der spaetere bekommt
+      // fresh ID.
+      if (typeof nextId === 'number' && nextId > 0) {
+        try {
+          const dupResp = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
+            SPHttpClient.configurations.v1
+          );
+          if (dupResp.ok) {
+            const dupData = await dupResp.json();
+            const dupItems: Array<{ Id: number; TeilnehmerID: number }> = dupData.value || dupData.d?.results || [];
+            if (dupItems.length > 1) {
+              const minId = Math.min(...dupItems.map(d => d.Id));
+              if (itemId !== minId) {
+                const fresh = await this.getNextTeilnehmerId(subsiteUrl);
+                if (typeof fresh === 'number' && fresh > 0) {
+                  await this._merge(
+                    `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+                    { 'TeilnehmerID': fresh }
+                  );
+                  console.warn(`[DEX] Post-update dedup (reactivate): TeilnehmerID ${nextId} kollidierte, Item ${itemId} hat jetzt #${fresh}.`);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[DEX] Post-update dedup check (reactivate) fehlgeschlagen:', err);
+        }
+      }
+
+      return true;
     } catch {
       return false;
     }
@@ -4818,9 +4905,28 @@ export class EventService {
   // Fallback: Wenn die Counter-Liste nicht existiert (z.B. legacy event ohne
   // "Spalten fixen"-Lauf), kommt undefined zurueck — der Aufrufer faellt dann
   // auf das alte (race-anfaellige) max+1-Verfahren zurueck. Bestandsschutz.
+  // v7.28 / v9.10: Naechste TeilnehmerID atomar holen.
+  //   1. Counter-Item GET'en, ETag aus Response-Header lesen.
+  //   2. Counter-Item PATCH'en mit IF-MATCH=<ETag>, NextValue=current+1.
+  //   3. Bei 412 (ETag-Mismatch = jemand war schneller) → Exponential
+  //      Backoff mit Full Jitter, dann Retry. Bis zu 40 Versuche.
+  //   4. Bei Erfolg: NextValue+1 ist die neue TeilnehmerID des aufrufenden Users.
+  //
+  // v9.10: Counter-Liste wird ON-DEMAND angelegt+geseeded, falls sie fehlt
+  // (z.B. weil das Event vor v7.28 erstellt wurde). Vorher gab undefined
+  // zurueck → Aufrufer fiel auf max+1 zurueck → Race-Condition bei
+  // Massen-Anmeldungen. Jetzt: einmalig ensureCounterList() rufen, dann
+  // erneut versuchen. Damit ist der race-anfaellige Fallback nur noch
+  // erreicht, wenn auch das Anlegen scheitert (Permission-Issue).
+  //
+  // v9.10: Retries 8 → 40, Backoff von festem Jitter auf Exponential
+  // Backoff mit Full Jitter (Cap 500ms). Bei 50+ parallelen Anmeldungen
+  // wahren 8 Retries praktisch garantiert ausgeschoepft.
   private async getNextTeilnehmerId(subsiteUrl: string): Promise<number | undefined> {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
-    for (let attempt = 0; attempt < 8; attempt++) {
+    const MAX_RETRIES = 40;
+    let triedLazyCreate = false;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
       try {
         getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
@@ -4828,9 +4934,20 @@ export class EventService {
         return undefined;
       }
       if (!getResp.ok) {
-        // 404 = Counter-Liste oder Item existiert nicht → Legacy-Fallback
-        if (getResp.status === 404) return undefined;
-        // Andere Fehler (403 etc.) → Fallback ebenso
+        // 404 = Counter-Liste / Item existiert nicht.
+        // v9.10: Statt direkt undefined zu liefern, einmalig versuchen die
+        // Liste anzulegen + zu seeden (idempotent). Wenn das klappt, gleich
+        // weiter — wenn nicht, geben wir auf.
+        if (getResp.status === 404 && !triedLazyCreate) {
+          triedLazyCreate = true;
+          try {
+            await this.ensureCounterList(subsiteUrl);
+            // Kein delay — direkt naechste Iteration, die das frische Item liest.
+            continue;
+          } catch {
+            return undefined;
+          }
+        }
         return undefined;
       }
       const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
@@ -4845,10 +4962,18 @@ export class EventService {
         // Anderer Fehler (z.B. 500) → kein Sinn weiter zu retry'n
         return undefined;
       }
-      // 412 = jemand war schneller → kurzes Jitter, dann retry
-      await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+      // 412 = ETag-Mismatch = jemand war schneller → Exponential Backoff
+      // mit Full Jitter (Cap 500ms). Cluster bei Massen-Anmeldungen
+      // werden so zuverlaessig entzerrt — ohne Backoff laufen alle
+      // Clients sekundengleich in den naechsten Conflict.
+      const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
+      const delay = Math.floor(baseDelay * (0.5 + Math.random()));
+      await new Promise(res => setTimeout(res, delay));
     }
-    // Nach 8 Retries aufgeben → Aufrufer faellt auf max+1 zurueck.
+    // Nach 40 Retries aufgeben — Aufrufer kann die Anmeldung sauber
+    // mit TeilnehmerID=null durchziehen lassen und der Admin laedt
+    // anschliessend "IDs neu vergeben".
+    console.warn('[DEX] getNextTeilnehmerId: 40 retries erschoepft — TeilnehmerID bleibt unset, Admin sollte IDs neu vergeben.');
     return undefined;
   }
 
