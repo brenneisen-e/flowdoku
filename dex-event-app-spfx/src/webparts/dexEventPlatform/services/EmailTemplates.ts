@@ -338,6 +338,50 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
 }
 
 /**
+ * Onboarding-Mail an einen frisch ernannten Organizer (oder Admin).
+ * Wird vom Admin im Settings-Bildschirm nach dem Anlegen einer neuen Rolle
+ * optional ausgelöst. Enthält Link zur App, Link zum Handbuch und kurze
+ * Bullet-Points zum Anlegen eines ersten Test-Events.
+ */
+export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
+  const manualUrl = `${APP_URL}&action=manual`;
+  const roleLabelDe = role === 'Admin' ? 'Admin' : 'Organizer';
+  return {
+    subject: `Willkommen als ${roleLabelDe} auf der Deloitte Event Experience Platform`,
+    body: wrapTemplate(
+      GREEN,
+      'Willkommen an Bord',
+      `Dein Start als ${roleLabelDe}`,
+      `<p>Hallo ${recipientName},</p>
+      <p>du wurdest soeben als <strong>${roleLabelDe}</strong> für die Deloitte
+      <strong>Event Experience Platform</strong> freigeschaltet. Damit kannst du
+      eigene Events anlegen, Teilnehmer verwalten und Einladungen versenden.</p>
+
+      <p style="margin-top:24px;"><strong>Deine wichtigsten Links:</strong></p>
+      <ul>
+        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Zur Event Experience Platform</a> &mdash; hier legst du Events an und verwaltest deine Teilnehmer.</li>
+        <li><a href="${manualUrl}" style="color:${GREEN};font-weight:600;">Zum Handbuch</a> &mdash; Schritt-für-Schritt-Anleitung mit Screenshots zu allen Features.</li>
+      </ul>
+
+      <p style="margin-top:24px;"><strong>So legst du dein erstes Test-Event an:</strong></p>
+      <ul>
+        <li>Öffne die App über den Link oben und klicke auf <strong>&bdquo;Event erstellen&ldquo;</strong>. Fülle Titel, Datum, Ort und Beschreibung aus &mdash; das reicht für einen ersten Probelauf.</li>
+        <li>Lade dich selbst (oder eine Testperson) auf der <strong>Registrierungsseite</strong> ein und prüfe im <strong>Admin Center</strong>, ob die Anmeldung sauber durchläuft und die Bestätigungsmail rauskommt.</li>
+        <li>Schau dir das <strong>Handbuch</strong> an, wenn du Custom-Felder, Wartelisten, Outlook-Termine oder den Massenmail-Versand ausprobieren möchtest &mdash; dort sind alle Funktionen mit Praxisbeispielen erklärt.</li>
+      </ul>
+
+      <p style="margin-top:24px;">Bei Fragen oder Problemen melde dich gerne direkt bei
+      <a href="mailto:ebrenneisen@deloitte.de" style="color:${GREEN};">ebrenneisen@deloitte.de</a>
+      oder
+      <a href="mailto:nifelten@deloitte.de" style="color:${GREEN};">nifelten@deloitte.de</a>
+      &mdash; wir helfen dir gerne weiter.</p>
+
+      <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
+    ),
+  };
+}
+
+/**
  * QR-Code E-Mail fuer Check-in.
  * Subject + Body folgen der Event-Sprache (DE/EN). Anrede nutzt nur den
  * Vornamen (nicht den vollen Namen).

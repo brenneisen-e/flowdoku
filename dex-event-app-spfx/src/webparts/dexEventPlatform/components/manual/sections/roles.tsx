@@ -55,6 +55,18 @@ export function rolesSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 3,
+            title: isDe ? 'Onboarding-Mail verschicken' : 'Send onboarding email',
+            description: (
+              <>
+                {isDe
+                  ? 'Sobald du eine Person als Organizer oder Admin gespeichert hast, fragt dich die App, ob du eine Onboarding-Mail verschicken willst. Die Mail kommt im Deloitte-Layout, enthält Links zur App und zum Handbuch sowie eine kurze Anleitung zum ersten Test-Event. ebrenneisen@deloitte.de und nifelten@deloitte.de stehen automatisch im Cc, damit das DEX-Team weiß, wer neu dazugekommen ist. Bei reinen "User"-Rollen wird die Mail nicht angeboten — die Begrüßung ist nur für Organizer/Admins relevant.'
+                  : 'As soon as you save someone as Organizer or Admin, the app asks whether to send an onboarding email. It comes in the Deloitte layout with links to the app and the handbook plus a short guide for the first test event. ebrenneisen@deloitte.de and nifelten@deloitte.de are automatically in Cc so the DEX team knows who joined. The dialog is skipped for plain "User" roles — the greeting only makes sense for Organizers/Admins.'}
+              </>
+            ),
+            mockup: <Callout variant="tip">{isDe ? 'Du kannst die Mail jederzeit auch ablehnen — sie ist optional.' : 'You can always decline — the email is optional.'}</Callout>,
+          },
+          {
+            number: 4,
             title: isDe ? 'Rolle ändern oder entfernen' : 'Change or remove a role',
             description: (
               <>
@@ -68,7 +80,7 @@ export function rolesSection(locale: 'de' | 'en'): ManualSection {
               : 'Do NOT remove yourself as the sole Admin — nobody would be able to manage roles after that. Always keep at least 2 Admins.',
           },
           {
-            number: 4,
+            number: 5,
             title: isDe ? 'Rollen-Matrix einsehen' : 'View the role matrix',
             description: (
               <>
