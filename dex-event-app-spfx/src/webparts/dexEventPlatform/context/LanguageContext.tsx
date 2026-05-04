@@ -210,7 +210,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'create.required': 'Pflicht',
     'create.cancel': 'Abbrechen',
     'create.preview': 'Vorschau anzeigen',
-    'create.registerpreview': 'Registrierungsseite vorschauen',
+    'create.registerpreview': 'Vorschau Registrierungsseite',
     'create.next': 'Weiter',
     'create.submit': 'Event erstellen',
     'create.save': 'Änderungen speichern',
