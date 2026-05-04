@@ -590,8 +590,33 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
+        // v9.22: Externe Mail-Adresse erkennen — die Plattform ist nur fuer
+        // Deloitte Deutschland (@deloitte.de) freigeschaltet. Auch @deloitte.com
+        // (US/Global) zaehlt als extern. Bei externen Empfaengern wird die
+        // Bestaetigungsmail an den Organizer umgeleitet, der sie ggf. unter
+        // Beachtung der Datenschutzrichtlinien weiterleiten kann.
+        const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        let finalRecipient = emailToUse;
+        let finalSubject = emailData.subject;
+        let finalBody = emailData.body;
+        let finalRecipientName = nameToUse;
+        if (isExternalRecipient) {
+          const orgEmails = (event.organizerEmails || []).filter(Boolean);
+          finalRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
+          finalRecipientName = 'Organizer';
+          finalSubject = `[Externer Teilnehmer] ${emailData.subject} — bitte ggf. weiterleiten`;
+          // Datenschutz-Hinweis-Box VOR dem Original-Body einbauen.
+          const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+            + `<strong>Hinweis: externer Teilnehmer.</strong><br>`
+            + `Diese Bestätigungsmail richtet sich eigentlich an <strong>${emailToUse}</strong>, einer externen Person die kein Deloitte-Postfach hat. Standardmäßig versendet die App keine Mails an externe Adressen, deshalb landet diese Mail bei dir als Organizer in der Inbox. `
+            + `Du kannst die Mail bei Bedarf an den Empfänger weiterleiten — bitte beachte dabei die <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter).`
+            + `</div>`;
+          // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
+          // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
+          finalBody = finalBody.replace(/<body([^>]*)>/i, `<body$1>${externalHint}`);
+        }
         eventService.queueEmail(
-          emailData.subject, emailToUse, nameToUse, emailData.body,
+          finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, undefined, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
 
@@ -609,10 +634,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch { /* fallback bleibt Text */ }
               const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
-              await eventService.queueEmail(
-                qrMail.subject, emailToUse, nameToUse, qrMail.body,
-                'QRCode', event.title, eventId
-              );
+              // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
+              // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
+              // externen Mail-Empfaenger.
+              if (isExternalRecipient) {
+                const orgEmails = (event.organizerEmails || []).filter(Boolean);
+                const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
+                const orgSubject = `[Externer Teilnehmer] QR-Code für ${nameToUse} — ${event.title}`;
+                // Hinweis-Box vor dem QR-Code-Body — analog zur Bestaetigungsmail.
+                const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+                  + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
+                  + `Eigentlich für <strong>${emailToUse}</strong> (${nameToUse}). Da externe Adressen keinen Auto-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
+                  + `</div>`;
+                const qrBody = qrMail.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                await eventService.queueEmail(
+                  orgSubject, orgRecipient, 'Organizer', qrBody,
+                  'QRCode', event.title, eventId
+                );
+              } else {
+                await eventService.queueEmail(
+                  qrMail.subject, emailToUse, nameToUse, qrMail.body,
+                  'QRCode', event.title, eventId
+                );
+              }
               // Status auf 'QR versendet' setzen, damit der Admin-Center-View
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).

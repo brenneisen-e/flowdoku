@@ -376,8 +376,9 @@ export default function AdminPage(): React.ReactElement {
       // Stamm-Daten (Vorname, Nachname, E-Mail) werden seit v9.7 ebenfalls
       // editierbar gemacht — z.B. um Tippfehler nach manueller Anlage zu
       // korrigieren. Validierung:
-      //   1. E-Mail muss eine Deloitte-Adresse sein (@deloitte.de oder
-      //      @deloitte.com — externe gehen nicht). Sonst Abbruch mit Fehler.
+      //   1. E-Mail muss eine Deloitte-Deutschland-Adresse sein (@deloitte.de).
+      //      Die Plattform ist nur fuer DEALL freigeschaltet — auch @deloitte.com
+      //      (US/Global) zaehlt als extern. Sonst Abbruch mit Fehler.
       //   2. Person muss in M365 existieren (searchUserByEmail). Sonst
       //      Abbruch mit "Tippfehler"-Hinweis.
       // Die uebrigen Profil-Felder (Phone, Department, Location, JobTitle)
@@ -401,11 +402,11 @@ export default function AdminPage(): React.ReactElement {
         }
         // Domain-Check: nur Deloitte-Adressen zulassen
         const lower = newEmail.toLowerCase();
-        const isDeloitte = /@(.*\.)?deloitte\.(de|com)$/.test(lower);
+        const isDeloitte = /@(.*\.)?deloitte\.de$/.test(lower);
         if (!isDeloitte) {
           setEditError(isDe
-            ? `Externe E-Mail-Adresse — nicht erlaubt. Nur @deloitte.de oder @deloitte.com.`
-            : `External email address — not allowed. Only @deloitte.de or @deloitte.com.`);
+            ? `Externe E-Mail-Adresse — nicht erlaubt. Die Plattform ist nur für Deloitte Deutschland (@deloitte.de) freigeschaltet.`
+            : `External email address — not allowed. The platform is only available for Deloitte Germany (@deloitte.de).`);
           return;
         }
         // Existenz-Check via M365-Profile (UPN!=SMTP-aware). Wenn wir hier
@@ -3228,6 +3229,23 @@ export default function AdminPage(): React.ReactElement {
             <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
             </p>
+            {/* v9.22: Hinweis bei externen Teilnehmern. */}
+            {(() => {
+              const externalCount = registrations
+                .filter(r => r.Status === 'Angemeldet')
+                .filter(r => r.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(r.ParticipantEmail))
+                .length;
+              if (externalCount === 0) return null;
+              return (
+                <p style={{
+                  margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)',
+                  background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 6,
+                  padding: '8px 12px', lineHeight: 1.5,
+                }}>
+                  <strong>Hinweis:</strong> {externalCount} {externalCount === 1 ? 'externer Teilnehmer' : 'externe Teilnehmer'} in der Liste (keine @deloitte.de-Adresse). Diese bekommen <strong>keine</strong> QR-Code-Mail — stattdessen landet der jeweilige QR-Code bei dir als Organizer mit klar markiertem Subject. Drucke ihn aus oder leite ihn unter Beachtung der Deloitte-Datenschutzrichtlinien intern weiter.
+                </p>
+              );
+            })()}
             {/* v9.19: Hinweis aufs Handbuch — User klickt auf den Link und
                 landet direkt in der Check-In-Sektion. */}
             <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
@@ -3339,6 +3357,7 @@ export default function AdminPage(): React.ReactElement {
                     setQrSendResult(null);
                     setQrSentCount(0);
                     let sent = 0;
+                    let extCount = 0;
                     for (const reg of eligible) {
                       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
                       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -3349,10 +3368,28 @@ export default function AdminPage(): React.ReactElement {
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }
                       const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
-                      await eventServiceRef.queueEmail(
-                        emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                        'QRCode', selectedEvent.title, selectedEvent.id
-                      );
+                      // v9.22: Externe Mail-Adresse → QR an Organizer umleiten.
+                      const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
+                      if (isExternal) {
+                        const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+                        const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
+                        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${selectedEvent.title}`;
+                        const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+                          + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
+                          + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
+                          + `</div>`;
+                        const qrBody = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                        await eventServiceRef.queueEmail(
+                          orgSubject, orgRecipient, 'Organizer', qrBody,
+                          'QRCode', selectedEvent.title, selectedEvent.id
+                        );
+                        extCount++;
+                      } else {
+                        await eventServiceRef.queueEmail(
+                          emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                          'QRCode', selectedEvent.title, selectedEvent.id
+                        );
+                      }
                       if (selectedEvent.subsiteUrl) {
                         await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
                       }
@@ -3362,7 +3399,9 @@ export default function AdminPage(): React.ReactElement {
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                     setIsSendingQR(false);
-                    setQrSendResult(`${sent} QR-Codes verschickt.`);
+                    setQrSendResult(extCount > 0
+                      ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
+                      : `${sent} QR-Codes verschickt.`);
                   }}
                   disabled={isSendingQR}
                   style={{ fontSize: '0.85rem' }}

@@ -728,6 +728,29 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
   );
   const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
+  // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
+  // Deadlines noch leer sind. Default-Logik:
+  //   - RegistrationDeadline: 7 Tage vor Event-Start
+  //   - LastDeregisterDate: 3 Tage vor Event-Start
+  // Der Organizer kann beides ueberschreiben — wir aktualisieren NICHT,
+  // wenn der User schon einen Wert gesetzt hat.
+  const autoFillRanRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoFillRanRef.current) return;
+    if (!startDate) return;
+    if (registrationDeadline || lastDeregisterDate) return;
+    try {
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) return;
+      const fmt = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const reg = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const lastCancel = new Date(start.getTime() - 3 * 24 * 60 * 60 * 1000);
+      setRegistrationDeadline(fmt(reg));
+      setLastDeregisterDate(fmt(lastCancel));
+      autoFillRanRef.current = true;
+    } catch { /* */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate]);
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
