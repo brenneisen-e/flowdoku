@@ -2176,7 +2176,7 @@ export default function AdminPage(): React.ReactElement {
       {/* Zähler + QR/Check-in Aktionen.
           v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
           Sonst Grid auf 4 Spalten. */}
-      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: `repeat(${selectedEvent?.waitlistEnabled ? 5 : 4}, 1fr)`, gap: 12, marginBottom: 24 }}>
+      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: `repeat(${(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) ? 5 : 4}, 1fr)`, gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
             {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
@@ -2195,7 +2195,7 @@ export default function AdminPage(): React.ReactElement {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
         </div>
-        {selectedEvent?.waitlistEnabled && (
+        {(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) && (
           <div className="card" style={{ padding: 16, textAlign: 'center' }}>
             <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
               {registrations.filter(r => r.Status === 'Warteliste').length}
