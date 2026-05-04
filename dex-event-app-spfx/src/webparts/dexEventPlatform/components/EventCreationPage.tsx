@@ -757,7 +757,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [unlimitedParticipants, setUnlimitedParticipants] = React.useState(
     !editEvent || !editEvent.maxParticipants || editEvent.maxParticipants === 0
   );
-  const [waitlistEnabled, setWaitlistEnabled] = React.useState(true);
+  const [waitlistEnabled, setWaitlistEnabled] = React.useState(
+    editEvent && typeof editEvent.waitlistEnabled !== 'undefined' ? editEvent.waitlistEnabled : true
+  );
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
@@ -888,7 +890,7 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     editEvent?.quiz?.map(q => ({...q, correctIndices: q.correctIndices || [(q as any).correctIndex || 0], imageBase64: (q as any).imageBase64, section: (q as any).section})) || []
   );
-  const [quizClusterSize, setQuizClusterSize] = React.useState<number>(editEvent?.quizClusterSize || 1);
+  const quizClusterSize = editEvent?.quizClusterSize || 1;
   // Sub-Events-Drafts im UI. Seit v6.4: Sub-Events sind eigene DEX_Events-Items.
   // Beim Edit laden wir die bestehenden Child-Events und mappen sie auf Drafts.
   // Beim Save werden Drafts mit `dbId` als updateEvent, ohne als createEvent geschrieben;
@@ -2192,7 +2194,7 @@ export default function EventCreationPage(): React.ReactElement {
   const showTermsModal = !isEditMode && !tcAccepted;
 
   return (
-    <div className="page-container">
+    <div className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
       {showTermsModal && (
         <div
           style={{
@@ -2614,22 +2616,24 @@ export default function EventCreationPage(): React.ReactElement {
 
               {renderStepIntro(
                 [
-                  'Als Entwurf speichern — Event nur für Admins, Organizer und Test-Team sichtbar bis du fertig bist',
-                  'Optional: Aktiv-Ab-Datum, ab dem das Event automatisch live geht',
-                  'Event-Titel + Datum (Start/End) — Datum füllt die Anmelde- und Storno-Deadlines automatisch vor',
-                  'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-                  'Beschreibung (optional)',
-                  'Organizer auswählen — beliebige Deloitte-User, bekommen alle Organizer-Mails',
-                  'Test-Team und Check-In Team pro Event hinterlegen',
+                  '1. Als Entwurf speichern — Event nur für Admins, Organizer und Test-Team sichtbar; optional Aktiv-Ab-Datum für automatisches Go-Live',
+                  '2. Event-Titel',
+                  '3. Datum (Start &amp; Ende) — füllt die Anmelde- und Storno-Deadlines automatisch vor',
+                  '4. Beschreibung (optional, HTML-Editor)',
+                  '5. Event-Bild hochladen — oben auf der Detailseite und in den Mails verwendet',
+                  '6. Organizer auswählen — bekommen alle Organizer-Mails',
+                  '7. Test-Team — sieht das Event schon im Entwurfsmodus',
+                  '8. Check-In Team — darf nur das QR-/Check-In-Tool nutzen',
                 ],
                 [
-                  'Save as draft — event only visible to admins, organizers, and the test team until you\'re done',
-                  'Optional: active-from date when the event automatically goes live',
-                  'Event title + date (start/end) — the date pre-fills the registration and cancellation deadlines',
-                  'Upload an event image (used at the top of the detail page and in emails)',
-                  'Description (optional)',
-                  'Pick organizers — any Deloitte user, they receive all organizer emails',
-                  'Configure test team and check-in team per event',
+                  '1. Save as draft — visible only to admins, organizers, and the test team; optional active-from date for automatic go-live',
+                  '2. Event title',
+                  '3. Date (start &amp; end) — pre-fills the registration and cancellation deadlines',
+                  '4. Description (optional, HTML editor)',
+                  '5. Upload an event image — shown at the top of the detail page and in emails',
+                  '6. Pick organizers — they receive all organizer emails',
+                  '7. Test team — can see the event already in draft mode',
+                  '8. Check-in team — may only use the QR / check-in tool',
                 ]
               )}
 
@@ -2637,7 +2641,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Default ist on, der Organizer kann die Test-Strecke
                   in Ruhe aufbauen, das Test-Team durchspielen lassen,
                   und ohne Aengste sein Event entwickeln. */}
-              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', maxWidth: 720 }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
                   <StepBadge n={1} />
                   <input
@@ -2661,12 +2665,22 @@ export default function EventCreationPage(): React.ReactElement {
                     Aktiv ab (optional)
                     <InfoTooltip text="Wenn du hier ein Datum + Uhrzeit setzt, wird das Event ab diesem Zeitpunkt automatisch fuer alle berechtigten User sichtbar — auch wenn das Entwurf-Haekchen noch gesetzt ist. Praktisch um die Anmeldung erst zu einem geplanten Zeitpunkt zu oeffnen. Leer = kein Auto-Aktivierung." />
                   </label>
-                  <input
-                    type="datetime-local"
+                  <DatePicker
+                    selected={activeFrom ? new Date(activeFrom) : null}
+                    onChange={(date: Date | null) => setActiveFrom(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
                     className="form-input"
-                    value={activeFrom}
-                    onChange={e => setActiveFrom(e.target.value)}
-                    style={{ maxWidth: 240, fontSize: '0.85rem' }}
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
                   />
                 </div>
               </div>
@@ -2683,8 +2697,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
                   Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={3} />
+                  Datum (Start &amp; Ende)
+                  <InfoTooltip text="Start- und Endzeit des Events. Das Datum füllt die Anmelde-Deadline und den letzten Storno-Termin automatisch vor (kannst du im Schritt Kapazität jederzeit überschreiben)." />
+                </label>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     <span className="required">*</span> {t('create.startdate')}
                     <InfoTooltip text={t('create.startdate.hint')} />
@@ -2708,7 +2728,7 @@ export default function EventCreationPage(): React.ReactElement {
                   />
                   {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
                     <InfoTooltip text={t('create.enddate.hint')} />
@@ -2735,13 +2755,14 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
               {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
-              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 8, marginBottom: 0 }}>
                 Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
               </p>
+              </div>
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={6} />
+                  <StepBadge n={4} />
                   {t('create.description')}
                   <InfoTooltip text={t('create.description.hint')} />
                 </label>
@@ -2750,7 +2771,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
+                  <StepBadge n={5} />
                   {t('create.eventimage')}
                   <InfoTooltip text={t('create.eventimage.hint')} />
                 </label>
@@ -2817,7 +2838,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={3} />
+                  <StepBadge n={6} />
                   <span className="required">*</span> {t('create.organizer')}
                   <InfoTooltip text={t('create.organizer.hint')} />
                 </label>
@@ -2971,6 +2992,110 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+              {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
+                  und kann sich anmelden, ohne globale Organizer-Rolle. Picker
+                  via Graph-Search, beliebige Deloitte-User. */}
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
+                  Test-Team
+                  <InfoTooltip text="Optional: Personen, die diesen Event bereits im Entwurfsmodus sehen + sich anmelden dürfen. Nutze das Test-Team um die Anmelde-Strecke und die Mails von einer kleinen Gruppe testen zu lassen, bevor das Event für alle live geht. Test-Team-Mitglieder haben sonst keine Admin-Rechte (kein Edit, keine Mails versenden)." />
+                </label>
+                {testTeamNames.length > 0 && (() => {
+                  const remove = (idx: number): void => {
+                    setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
+                    setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {testTeamNames.map((name, i) => {
+                        const email = testTeamEmails[i] || '';
+                        return (
+                          <span key={`${email}-${i}`} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '3px 6px 3px 4px',
+                            background: '#0ea5e9', color: '#fff',
+                            borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                          }}>
+                            {email && (
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
+                                alt={name}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              />
+                            )}
+                            <span>{name}</span>
+                            <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <input
+                  className="form-input"
+                  value={testTeamSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setTestTeamSearch(val);
+                    if (testTeamTimerRef.current) clearTimeout(testTeamTimerRef.current);
+                    const q = val.trim();
+                    if (!q) { setTestTeamResults([]); return; }
+                    testTeamTimerRef.current = setTimeout(async () => {
+                      try {
+                        const results = await searchUsers(q);
+                        setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setTestTeamResults([]); }
+                    }, 350);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => { setTestTeamSearch(''); setTestTeamResults([]); }, 150);
+                  }}
+                  placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
+                />
+                {testTeamResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 280, overflowY: 'auto',
+                  }}>
+                    {testTeamResults.map(u => {
+                      const alreadyAdded = testTeamEmails.indexOf(u.email) >= 0;
+                      return (
+                        <div key={u.email} style={{
+                          padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                          opacity: alreadyAdded ? 0.45 : 1,
+                          display: 'flex', alignItems: 'center', gap: 10,
+                        }} onMouseDown={() => {
+                          if (alreadyAdded || !u.email) return;
+                          setTestTeamNames(prev => [...prev, u.displayName]);
+                          setTestTeamEmails(prev => [...prev, u.email]);
+                          setTestTeamSearch('');
+                          setTestTeamResults([]);
+                        }}>
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                            alt={u.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.email}{u.location ? ` · ${u.location}` : ''}
+                            </div>
+                          </div>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* v6.19: QR-Code-Scanner pro Event. Separater Picker im gleichen Stil wie
                   Organizer, aber via Graph-Search (jeder Deloitte-User kann Scanner sein).
                   QR-Scanner haben eingeschränkten Admin-Zugriff (nur QR-Tool + KPIs),
@@ -2978,6 +3103,7 @@ export default function EventCreationPage(): React.ReactElement {
                   bekommen KEINE Organizer-Mails. */}
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={8} />
                   {t('create.qrscanners') || 'QR-Code-Scanner'}
                   <InfoTooltip text={t('create.qrscanners.hint') || 'Optional: Personen die nur das QR-Code-Scanner-Tool + Check-In-KPIs nutzen dürfen. Keine Bearbeitungs-/Mail-Rechte, tauchen nicht in der Organizer-Liste auf.'} />
                 </label>
@@ -3101,127 +3227,22 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
-                  und kann sich anmelden, ohne globale Organizer-Rolle. Picker
-                  via Graph-Search, beliebige Deloitte-User. */}
-              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Test-Team
-                  <InfoTooltip text="Optional: Personen, die diesen Event bereits im Entwurfsmodus sehen + sich anmelden dürfen. Nutze das Test-Team um die Anmelde-Strecke und die Mails von einer kleinen Gruppe testen zu lassen, bevor das Event für alle live geht. Test-Team-Mitglieder haben sonst keine Admin-Rechte (kein Edit, keine Mails versenden)." />
-                </label>
-                {testTeamNames.length > 0 && (() => {
-                  const remove = (idx: number): void => {
-                    setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
-                    setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
-                  };
-                  return (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                      {testTeamNames.map((name, i) => {
-                        const email = testTeamEmails[i] || '';
-                        return (
-                          <span key={`${email}-${i}`} style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                            padding: '3px 6px 3px 4px',
-                            background: '#0ea5e9', color: '#fff',
-                            borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
-                          }}>
-                            {email && (
-                              <img
-                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
-                                alt={name}
-                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
-                              />
-                            )}
-                            <span>{name}</span>
-                            <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-                <input
-                  className="form-input"
-                  value={testTeamSearch}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setTestTeamSearch(val);
-                    if (testTeamTimerRef.current) clearTimeout(testTeamTimerRef.current);
-                    const q = val.trim();
-                    if (!q) { setTestTeamResults([]); return; }
-                    testTeamTimerRef.current = setTimeout(async () => {
-                      try {
-                        const results = await searchUsers(q);
-                        setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
-                      } catch { setTestTeamResults([]); }
-                    }, 350);
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => { setTestTeamSearch(''); setTestTeamResults([]); }, 150);
-                  }}
-                  placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
-                />
-                {testTeamResults.length > 0 && (
-                  <div style={{
-                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
-                    background: '#fff', border: '1px solid var(--dex-gray-200)',
-                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    maxHeight: 280, overflowY: 'auto',
-                  }}>
-                    {testTeamResults.map(u => {
-                      const alreadyAdded = testTeamEmails.indexOf(u.email) >= 0;
-                      return (
-                        <div key={u.email} style={{
-                          padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
-                          borderBottom: '1px solid var(--dex-gray-100)',
-                          opacity: alreadyAdded ? 0.45 : 1,
-                          display: 'flex', alignItems: 'center', gap: 10,
-                        }} onMouseDown={() => {
-                          if (alreadyAdded || !u.email) return;
-                          setTestTeamNames(prev => [...prev, u.displayName]);
-                          setTestTeamEmails(prev => [...prev, u.email]);
-                          setTestTeamSearch('');
-                          setTestTeamResults([]);
-                        }}>
-                          <img
-                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
-                            alt={u.displayName}
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
-                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {u.email}{u.location ? ` · ${u.location}` : ''}
-                            </div>
-                          </div>
-                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
 
 
               </div>
 
-              {/* ===== Step 1: Zeit & Ort ===== */}
+              {/* ===== Step 1: Ort & Programm ===== */}
               <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
               {renderStepIntro(
                 [
                   'Veranstaltungsort und Adresse erfassen',
-                  'Start- und End-Datum (mit Uhrzeit) festlegen',
-                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
-                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+                  'Agenda pflegen — Tagesablauf für die Teilnehmer',
+                  'Optional: Transferzeiten (Bus/Bahn/Treffpunkt) hinterlegen',
                 ],
                 [
                   'Set event location and address',
-                  'Set start and end date (incl. time)',
-                  'Set the registration deadline — no new registrations after this date',
-                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+                  'Maintain the agenda — schedule shown to participants',
+                  'Optional: add transfer times (bus/train/meeting point)',
                 ]
               )}
               <div className="form-group">
@@ -3441,20 +3462,22 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>
 
-              {/* ===== Step 2: Kapazität & Fristen ===== */}
+              {/* ===== Step 2: Kapazität, Fristen & Sichtbarkeit ===== */}
               <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               {renderStepIntro(
                 [
+                  'Sichtbarkeit: Standort-Filter und Mailverteiler/User festlegen — wer das Event in der Liste sieht',
+                  'Anmelde-Deadline + letzter Storno-Termin (vorbefüllt anhand des Event-Datums, jederzeit überschreibbar)',
                   'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
                   'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
                   'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
-                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
                 ],
                 [
+                  'Visibility: configure location filter + mailing lists/individual users — who sees the event in the list',
+                  'Registration deadline + last cancellation date (pre-filled from the event date, always overridable)',
                   'Set the maximum number of attendees (or Unlimited)',
                   'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
                   'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
-                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
                 ]
               )}
 
@@ -3495,7 +3518,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={4} />
+                  <StepBadge n={1} />
                   {isDe ? 'Standortfilter' : 'Location filter'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -3531,7 +3554,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={5} />
+                  <StepBadge n={2} />
                   {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -5411,14 +5434,14 @@ export default function EventCreationPage(): React.ReactElement {
                     'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
                     'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
                     'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
-                    'Cluster-Größe steuern: wie viele Fragen pro „Spielblock" angezeigt werden — Teilnehmer kann zwischenspeichern und später weitermachen',
+                    'Bereiche anlegen und Fragen per Drag & Drop zuordnen — alle Fragen eines Bereichs werden im Quiz zusammen auf einer Seite angezeigt',
                     'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
                   ],
                   [
                     'Create quiz questions for the event — multiple choice with any number of answer options',
                     'Optionally upload an image per question (logo, photo quiz, etc.)',
                     'Multiple correct answers are supported — all of them must be picked for full points',
-                    'Control cluster size: how many questions per „play block" — attendees can save progress and continue later',
+                    'Create sections and assign questions via drag & drop — all questions in a section are shown together on one page in the quiz',
                     'See live highscore + statistics in the admin center (which questions are most often answered incorrectly)',
                   ]
                 )}
@@ -5426,31 +5449,6 @@ export default function EventCreationPage(): React.ReactElement {
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
                   {t('create.funzone.hint')}
                 </p>
-
-                {/* Cluster-Size: wie viele Fragen pro Ansicht im Quiz-Player */}
-                <div style={{
-                  padding: 12, marginBottom: 16, background: 'var(--dex-gray-50, #fafafa)',
-                  borderRadius: 10, border: '1px solid var(--dex-gray-200)',
-                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-                    Fragen pro Ansicht:
-                  </label>
-                  <select
-                    className="form-input"
-                    value={quizClusterSize}
-                    onChange={e => setQuizClusterSize(parseInt(e.target.value, 10) || 1)}
-                    style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto', minWidth: 120 }}
-                  >
-                    <option value={1}>1 (einzeln)</option>
-                    <option value={2}>2</option>
-                    <option value={3}>3</option>
-                    <option value={4}>4</option>
-                  </select>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                    Legt fest, wie viele Fragen dem Teilnehmer gleichzeitig angezeigt werden.
-                  </span>
-                </div>
 
                 {/* Bereiche: Header + "+ Bereich"-Button. Fragen koennen per Drag&Drop
                     in Bereiche gezogen werden; jeder Bereich wird im Quiz zusammen

@@ -737,16 +737,24 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
           </div>
           {showDescription && event.description && (
-            <div style={{
-              padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-              background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
-              borderTop: '1px solid var(--dex-gray-200)',
-              // pre-wrap: erhaelt Zeilenumbrueche aus dem Description-Textarea
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}>
-              {event.description}
-            </div>
+            // v9.25: Beschreibung darf HTML enthalten (RichText-Editor im
+            // EventCreation/Edit). Wir rendern als HTML statt Plain-Text,
+            // damit Formatierung wie Listen, Links, Fett etc. funktioniert.
+            // Die Description kommt aus dem eigenen Tenant — sicherer Origin.
+            <div
+              style={{
+                padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
+                borderTop: '1px solid var(--dex-gray-200)',
+                wordBreak: 'break-word',
+                lineHeight: 1.55,
+              }}
+              dangerouslySetInnerHTML={{
+                __html: /<[a-z][\s\S]*>/i.test(event.description || '')
+                  ? event.description
+                  : (event.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'),
+              }}
+            />
           )}
           {isFull && (
             <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
