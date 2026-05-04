@@ -2614,20 +2614,22 @@ export default function EventCreationPage(): React.ReactElement {
 
               {renderStepIntro(
                 [
-                  'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
+                  'Als Entwurf speichern — Event nur für Admins, Organizer und Test-Team sichtbar bis du fertig bist',
+                  'Optional: Aktiv-Ab-Datum, ab dem das Event automatisch live geht',
+                  'Event-Titel + Datum (Start/End) — Datum füllt die Anmelde- und Storno-Deadlines automatisch vor',
                   'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-                  'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
-                  'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
-                  'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
-                  'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
+                  'Beschreibung (optional)',
+                  'Organizer auswählen — beliebige Deloitte-User, bekommen alle Organizer-Mails',
+                  'Test-Team und Check-In Team pro Event hinterlegen',
                 ],
                 [
-                  'Event title and description — shown on the event list and registration page',
+                  'Save as draft — event only visible to admins, organizers, and the test team until you\'re done',
+                  'Optional: active-from date when the event automatically goes live',
+                  'Event title + date (start/end) — the date pre-fills the registration and cancellation deadlines',
                   'Upload an event image (used at the top of the detail page and in emails)',
-                  'Save as draft — only visible to admins, organizers and the test team',
-                  'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
-                  'Optional: QR scanner users for check-in on event day (no further editing rights)',
-                  'Set location filter and audience — who sees the event in the list',
+                  'Description (optional)',
+                  'Pick organizers — any Deloitte user, they receive all organizer emails',
+                  'Configure test team and check-in team per event',
                 ]
               )}
 
@@ -2678,6 +2680,140 @@ export default function EventCreationPage(): React.ReactElement {
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
               </div>
+
+              {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
+                  Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="required">*</span> {t('create.startdate')}
+                    <InfoTooltip text={t('create.startdate.hint')} />
+                  </label>
+                  <DatePicker
+                    selected={startDate ? new Date(startDate) : null}
+                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
+                  />
+                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="required">*</span> {t('create.enddate')}
+                    <InfoTooltip text={t('create.enddate.hint')} />
+                  </label>
+                  <DatePicker
+                    selected={endDate ? new Date(endDate) : null}
+                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    minDate={startDate ? new Date(startDate) : undefined}
+                    isClearable
+                    autoComplete="off"
+                  />
+                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                </div>
+              </div>
+              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
+              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
+                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
+              </p>
+
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={6} />
+                  {t('create.description')}
+                  <InfoTooltip text={t('create.description.hint')} />
+                </label>
+                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
+                  {t('create.eventimage')}
+                  <InfoTooltip text={t('create.eventimage.hint')} />
+                </label>
+                {imagePreview && (
+                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
+                    <img
+                      src={imagePreview}
+                      alt="Vorschau"
+                      style={{
+                        // Korrekte Auflösung beibehalten, nur in der Hoehe begrenzen + max-Breite zur Sicherheit
+                        display: 'block',
+                        maxHeight: 220,
+                        maxWidth: '100%',
+                        width: 'auto',
+                        height: 'auto',
+                        objectFit: 'contain',
+                        borderRadius: 'var(--dex-radius)',
+                        background: 'var(--dex-gray-100)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
+                      style={{
+                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
+                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                  transition: 'border-color 0.2s, background 0.2s',
+                }}>
+                  <Plus size={16} />
+                  {imageFile ? imageFile.name : 'Bild auswählen'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files && e.target.files[0];
+                      if (file) {
+                        setImageUploadError('');
+                        setImageFile(file);
+                        const reader = new FileReader();
+                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+                {imageUploadError && (
+                  <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
+                )}
+              </div>
+
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -3069,6 +3205,262 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
 
+
+              </div>
+
+              {/* ===== Step 1: Zeit & Ort ===== */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Veranstaltungsort und Adresse erfassen',
+                  'Start- und End-Datum (mit Uhrzeit) festlegen',
+                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
+                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+                ],
+                [
+                  'Set event location and address',
+                  'Set start and end date (incl. time)',
+                  'Set the registration deadline — no new registrations after this date',
+                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+                ]
+              )}
+              <div className="form-group">
+                <label className="form-label">
+                  {t('create.location')}
+                  <InfoTooltip text={t('create.location.hint')} />
+                </label>
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Adresse
+                  <InfoTooltip text={t('create.address.hint')} />
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
+                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
+                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
+                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
+                </div>
+              </div>
+
+              {/* ===== Agenda Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.agenda')}
+                  <InfoTooltip text={t('create.agenda.hint')} />
+                </label>
+                {agenda
+                  .slice()
+                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+                  .map((item) => (
+                  <div key={item.id} style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                    padding: '10px 12px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
+                      <button
+                        type="button"
+                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
+                        style={{
+                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: 'none', borderRadius: '50%',
+                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
+                        }}
+                        title={item.icon || 'Calendar'}
+                      >
+                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
+                      </button>
+                      {iconPickerOpen === item.id && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
+                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
+                        }}>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Icon suchen..."
+                            value={iconSearch}
+                            onChange={e => setIconSearch(e.target.value)}
+                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
+                            autoFocus
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
+                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
+                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
+                              .map(ic => (
+                                <button
+                                  key={ic.name}
+                                  type="button"
+                                  title={ic.label}
+                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
+                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
+                                    transition: 'background 0.15s, transform 0.1s',
+                                  }}
+                                >
+                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
+                                </button>
+                              ))
+                            }
+                          </div>
+                          {!showAllIcons && !iconSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllIcons(true)}
+                              style={{
+                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
+                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
+                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
+                              }}
+                            >
+                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
+                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Start Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
+                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* End Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
+                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
+                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
+                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                      }} title={t('general.delete')}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.agenda.add')}
+                </button>
+              </div>
+
+              {/* ===== Transferzeiten Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.transfers')}
+                  <InfoTooltip text={t('create.transfers.hint')} />
+                </label>
+                {transferTimes.map((tt) => (
+                  <div key={tt.id} style={{
+                    padding: '12px 14px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
+                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                        <datalist id={`transfer-locations-${tt.id}`}>
+                          {locationOptions.filter(o => o !== 'All').map(opt => (
+                            <option key={opt} value={opt} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
+                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
+                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
+                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
+                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
+                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
+                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
+                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.transfers.add')}
+                </button>
+              </div>
+
+              </div>
+
+              {/* ===== Step 2: Kapazität & Fristen ===== */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
+                  'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
+                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
+                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
+                ],
+                [
+                  'Set the maximum number of attendees (or Unlimited)',
+                  'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
+                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
+                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
+                ]
+              )}
+
+              {/* v9.24: Sichtbarkeits-Steuerungen aus Step 0 hierher verschoben.
+                  Die Frage 'wer darf das Event sehen' passt logisch zu Kapazitaet/Fristen
+                  als 'Wer-Wann-Wieviel' und entlastet Step 0 (Grundlagen). */}
               {/* Zwischenüberschrift: alle Sichtbarkeits-Steuerungen
                   (Standortfilter + Mailverteiler/einzelne User) gruppieren,
                   damit der Organizer auf einen Blick versteht, dass es hier
@@ -3486,388 +3878,6 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={6} />
-                  {t('create.description')}
-                  <InfoTooltip text={t('create.description.hint')} />
-                </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
-                  {t('create.eventimage')}
-                  <InfoTooltip text={t('create.eventimage.hint')} />
-                </label>
-                {imagePreview && (
-                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
-                    <img
-                      src={imagePreview}
-                      alt="Vorschau"
-                      style={{
-                        // Korrekte Auflösung beibehalten, nur in der Hoehe begrenzen + max-Breite zur Sicherheit
-                        display: 'block',
-                        maxHeight: 220,
-                        maxWidth: '100%',
-                        width: 'auto',
-                        height: 'auto',
-                        objectFit: 'contain',
-                        borderRadius: 'var(--dex-radius)',
-                        background: 'var(--dex-gray-100)',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
-                      style={{
-                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
-                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
-                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                <label style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
-                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
-                  transition: 'border-color 0.2s, background 0.2s',
-                }}>
-                  <Plus size={16} />
-                  {imageFile ? imageFile.name : 'Bild auswählen'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={e => {
-                      const file = e.target.files && e.target.files[0];
-                      if (file) {
-                        setImageUploadError('');
-                        setImageFile(file);
-                        const reader = new FileReader();
-                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </label>
-                {imageUploadError && (
-                  <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
-                )}
-              </div>
-
-              </div>
-
-              {/* ===== Step 1: Zeit & Ort ===== */}
-              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
-              {renderStepIntro(
-                [
-                  'Veranstaltungsort und Adresse erfassen',
-                  'Start- und End-Datum (mit Uhrzeit) festlegen',
-                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
-                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
-                ],
-                [
-                  'Set event location and address',
-                  'Set start and end date (incl. time)',
-                  'Set the registration deadline — no new registrations after this date',
-                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
-                ]
-              )}
-              <div className="form-group">
-                <label className="form-label">
-                  {t('create.location')}
-                  <InfoTooltip text={t('create.location.hint')} />
-                </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Adresse
-                  <InfoTooltip text={t('create.address.hint')} />
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
-                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
-                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
-                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
-                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
-                </div>
-              </div>
-
-              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    <span className="required">*</span> {t('create.startdate')}
-                    <InfoTooltip text={t('create.startdate.hint')} />
-                  </label>
-                  <DatePicker
-                    selected={startDate ? new Date(startDate) : null}
-                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    isClearable
-                    autoComplete="off"
-                  />
-                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-                </div>
-                <div className="form-group">
-                  <label className="form-label">
-                    <span className="required">*</span> {t('create.enddate')}
-                    <InfoTooltip text={t('create.enddate.hint')} />
-                  </label>
-                  <DatePicker
-                    selected={endDate ? new Date(endDate) : null}
-                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    minDate={startDate ? new Date(startDate) : undefined}
-                    isClearable
-                    autoComplete="off"
-                  />
-                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-                </div>
-              </div>
-              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
-              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
-                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
-              </p>
-
-              {/* ===== Agenda Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  {t('create.agenda')}
-                  <InfoTooltip text={t('create.agenda.hint')} />
-                </label>
-                {agenda
-                  .slice()
-                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-                  .map((item) => (
-                  <div key={item.id} style={{
-                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
-                    padding: '10px 12px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
-                      <button
-                        type="button"
-                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
-                        style={{
-                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          border: 'none', borderRadius: '50%',
-                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
-                        }}
-                        title={item.icon || 'Calendar'}
-                      >
-                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
-                      </button>
-                      {iconPickerOpen === item.id && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
-                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
-                        }}>
-                          <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Icon suchen..."
-                            value={iconSearch}
-                            onChange={e => setIconSearch(e.target.value)}
-                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
-                            autoFocus
-                          />
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
-                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
-                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
-                              .map(ic => (
-                                <button
-                                  key={ic.name}
-                                  type="button"
-                                  title={ic.label}
-                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
-                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
-                                    transition: 'background 0.15s, transform 0.1s',
-                                  }}
-                                >
-                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
-                                </button>
-                              ))
-                            }
-                          </div>
-                          {!showAllIcons && !iconSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setShowAllIcons(true)}
-                              style={{
-                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
-                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
-                              }}
-                            >
-                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Date */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
-                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Start Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
-                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* End Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
-                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Title */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
-                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Description */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
-                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Delete */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                      }} title={t('general.delete')}>
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.agenda.add')}
-                </button>
-              </div>
-
-              {/* ===== Transferzeiten Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  {t('create.transfers')}
-                  <InfoTooltip text={t('create.transfers.hint')} />
-                </label>
-                {transferTimes.map((tt) => (
-                  <div key={tt.id} style={{
-                    padding: '12px 14px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
-                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                        <datalist id={`transfer-locations-${tt.id}`}>
-                          {locationOptions.filter(o => o !== 'All').map(opt => (
-                            <option key={opt} value={opt} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
-                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
-                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
-                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
-                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
-                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
-                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
-                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.transfers.add')}
-                </button>
-              </div>
-
-              </div>
-
-              {/* ===== Step 2: Kapazität & Fristen ===== */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
-              {renderStepIntro(
-                [
-                  'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
-                  'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
-                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
-                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
-                ],
-                [
-                  'Set the maximum number of attendees (or Unlimited)',
-                  'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
-                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
-                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
-                ]
-              )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
