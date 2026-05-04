@@ -23,15 +23,23 @@ export interface DeloitteEvent {
   qrScannerNames: string[];
   qrScannerEmails: string[];
   /** v9.18: Co-Organizer pro Event — beliebiger Deloitte-User, kein Admin/Organizer-Status nötig.
-   *  Diese User haben für DIESES eine Event die gleichen Rechte wie der Hauptorganizer:
-   *  - Können das Event editieren (Stammdaten, Felder, Templates)
-   *  - Sehen das Event auch im Entwurfsmodus
-   *  - Sehen + verwalten Teilnehmer im Admin Center, dürfen QR-Codes versenden, Massmail etc.
-   *  - Können selbst weitere Co-Organizer (oder QR-Scanner) hinzufügen
-   *  - Erscheinen in der Organizer-Anzeige auf der Registration-Page als gleichwertige Ansprechpartner
-   *  Persistenz: EmailTemplateOverrides._coOrganizers (JSON, analog _qrScanners). */
+   *  Diese User haben für DIESES eine Event die gleichen Rechte wie der Hauptorganizer.
+   *  Persistenz: EmailTemplateOverrides._coOrganizers (JSON, analog _qrScanners).
+   *  Ab v9.20 wird das Co-Organizer-Konzept faktisch durch den Graph-Search-Organizer-
+   *  Picker ersetzt — der Hauptorganizer selbst kann jeden beliebigen Deloitte-User
+   *  als Organizer hinterlegen. Felder bleiben fuer Backward-Compat. */
   coOrganizerNames?: string[];
   coOrganizerEmails?: string[];
+  /** v9.21: Test-Team pro Event — Personen die diesen Event bereits im Entwurfs-
+   *  Modus sehen + sich anmelden duerfen. Sie testen das Event durch, bevor der
+   *  Organizer das "Entwurf"-Haekchen wegnimmt. Persistenz:
+   *  EmailTemplateOverrides._testTeam (JSON, analog _qrScanners). */
+  testTeamNames?: string[];
+  testTeamEmails?: string[];
+  /** v9.21: Datum, ab dem das Event auto-aktiv wird (sonst bleibt es im
+   *  Entwurfs-/Under-Construction-Modus). Wenn leer = sofort aktiv (sobald
+   *  isFictive=false und EventStatus='Active'). */
+  activeFrom?: string;
   location: string;
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];

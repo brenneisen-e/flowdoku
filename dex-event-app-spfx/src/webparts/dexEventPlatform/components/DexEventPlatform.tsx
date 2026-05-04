@@ -360,10 +360,12 @@ function AppContent(): React.ReactElement {
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
-      <main className="main-content">
+      <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {renderPage()}
+        {/* v9.20: PageId-Label inline am Ende des main-Containers, sichtbar
+            auf jeder Seite (sticky am Container-Bottom). */}
+        {!isBootLoading && <PageId id={pageIdLabel} />}
       </main>
-      {!isBootLoading && <PageId id={pageIdLabel} />}
     </div>
   );
 }

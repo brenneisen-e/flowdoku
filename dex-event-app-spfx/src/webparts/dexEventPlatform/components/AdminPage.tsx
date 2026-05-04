@@ -42,6 +42,17 @@ function getStatusColor(status: string): string {
   }
 }
 
+// v9.20: EventStatus-Labels lokalisieren (DE).
+function localizeStatus(status: string): string {
+  switch (status) {
+    case 'Active': return 'Aktiv';
+    case 'Under Construction': return 'In Vorbereitung';
+    case 'Completed': return 'Abgeschlossen';
+    case 'Cancelled': return 'Abgesagt';
+    default: return status;
+  }
+}
+
 // Status-Werte sind in SP als deutsche Strings gespeichert ('Angemeldet',
 // 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'). Die App
 // rendert sie hier in der UI-Sprache des Users, ohne den Datenbankwert
@@ -87,15 +98,22 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
   const [hover, setHover] = React.useState(false);
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
-  // v9.19: filled-Look — die Tile ist permanent gruen (oder rot) gefuellt,
-  // unabhaengig vom Hover. Highlight fuer eine Aktion die heraussticht.
+  // v9.19/v9.20: filled-Look — Tile dezent eingefaerbt fuer
+  // Highlight-Aktionen. Pastell statt voll gesaettigt, damit nicht
+  // alarmierend wirkt.
   const isFilled = !!props.accent;
-  const filledBg = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
-  const filledBorder = props.accent === 'green' ? 'var(--dex-green-dark, #6b9a1e)' : props.accent === 'red' ? '#a01e15' : '';
+  const filledBg = props.accent === 'green' ? '#e3f0c5' : props.accent === 'red' ? '#ffe5e5' : '';
+  const filledBorder = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
   const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
   const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
-  const iconColor = isFilled ? '#fff' : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
-  const filledTextColor = isFilled ? '#fff' : 'var(--dex-gray-800, #1f2937)';
+  // v9.20: bei pastell-gefuellten Tiles Text/Icon dunkel halten — auf
+  // hellem Pastell-Hintergrund gut lesbar (im Gegensatz zum vorherigen
+  // weiss auf saturated-Color).
+  const filledIconColor = props.accent === 'green' ? 'var(--dex-green-dark, #4a7c1f)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-500, #6b7280)';
+  const iconColor = isFilled ? filledIconColor : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
+  const filledTextColor = isFilled
+    ? (props.accent === 'green' ? 'var(--dex-green-dark, #3f5f10)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-800, #1f2937)')
+    : 'var(--dex-gray-800, #1f2937)';
   const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
   const badgeColors = props.badge === 'admin'
     ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
@@ -127,8 +145,11 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
         </span>
         <span style={{
           fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
-          background: isFilled ? 'rgba(255,255,255,0.25)' : badgeColors.bg,
-          color: isFilled ? '#fff' : badgeColors.fg, fontWeight: 600,
+          // v9.20: Badge auf pastell Tiles in normalem badge-Look (auf hellem
+          // Hintergrund gut sichtbar, im Gegensatz zur vorherigen
+          // semi-transparenten weissen Variante auf saturated bg).
+          background: badgeColors.bg,
+          color: badgeColors.fg, fontWeight: 600,
           whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
         }}>{badgeLabel}</span>
       </div>
@@ -355,8 +376,9 @@ export default function AdminPage(): React.ReactElement {
       // Stamm-Daten (Vorname, Nachname, E-Mail) werden seit v9.7 ebenfalls
       // editierbar gemacht — z.B. um Tippfehler nach manueller Anlage zu
       // korrigieren. Validierung:
-      //   1. E-Mail muss eine Deloitte-Adresse sein (@deloitte.de oder
-      //      @deloitte.com — externe gehen nicht). Sonst Abbruch mit Fehler.
+      //   1. E-Mail muss eine Deloitte-Deutschland-Adresse sein (@deloitte.de).
+      //      Die Plattform ist nur fuer DEALL freigeschaltet — auch @deloitte.com
+      //      (US/Global) zaehlt als extern. Sonst Abbruch mit Fehler.
       //   2. Person muss in M365 existieren (searchUserByEmail). Sonst
       //      Abbruch mit "Tippfehler"-Hinweis.
       // Die uebrigen Profil-Felder (Phone, Department, Location, JobTitle)
@@ -380,11 +402,11 @@ export default function AdminPage(): React.ReactElement {
         }
         // Domain-Check: nur Deloitte-Adressen zulassen
         const lower = newEmail.toLowerCase();
-        const isDeloitte = /@(.*\.)?deloitte\.(de|com)$/.test(lower);
+        const isDeloitte = /@(.*\.)?deloitte\.de$/.test(lower);
         if (!isDeloitte) {
           setEditError(isDe
-            ? `Externe E-Mail-Adresse — nicht erlaubt. Nur @deloitte.de oder @deloitte.com.`
-            : `External email address — not allowed. Only @deloitte.de or @deloitte.com.`);
+            ? `Externe E-Mail-Adresse — nicht erlaubt. Die Plattform ist nur für Deloitte Deutschland (@deloitte.de) freigeschaltet.`
+            : `External email address — not allowed. The platform is only available for Deloitte Germany (@deloitte.de).`);
           return;
         }
         // Existenz-Check via M365-Profile (UPN!=SMTP-aware). Wenn wir hier
@@ -1204,11 +1226,16 @@ export default function AdminPage(): React.ReactElement {
                         return `${event.currentParticipants}/${eff || '∞'} Teilnehmer`;
                       })()}
                     </span>
+                    {/* v9.20: Status-Badge mit Entwurfs-Override.
+                        Wenn das Event als Entwurf markiert ist, wird "ENTWURF"
+                        statt des EventStatus angezeigt — fuer den Organizer
+                        ist dieser Hinweis wichtiger als der technische Status. */}
                     <span className="badge" style={{
-                      background: getStatusColor(event.status) + '22',
-                      color: getStatusColor(event.status),
+                      background: event.isFictive ? 'rgba(237,139,0,0.15)' : getStatusColor(event.status) + '22',
+                      color: event.isFictive ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(event.status),
+                      fontWeight: 600,
                     }}>
-                      {event.status}
+                      {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
                     </span>
                     <button
                       className="btn btn-secondary"
@@ -1624,6 +1651,31 @@ export default function AdminPage(): React.ReactElement {
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
           }}>
+            {/* v9.20: Check-In starten — prominent als erster Tile.
+                Sowohl Organizer als auch Check-In-Team-Mitglieder duerfen
+                diese Aktion ausloesen (siehe Header.canCheckIn-Logik). */}
+            <ActionTile
+              icon={<Hash size={18} />}
+              title={t('admin.checkin')}
+              desc="Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug."
+              badge="organizer"
+              onClick={() => navigate('check-in', selectedEvent.id)}
+            />
+
+            {/* v9.20: QR-Codes versenden als ActionTile (Modal-Trigger). */}
+            <ActionTile
+              icon={<Send size={18} />}
+              title={isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden`}
+              desc="Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code)."
+              badge="organizer"
+              busy={isSendingQR}
+              onClick={() => {
+                setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
+                setQrSendResult(null);
+                setQrSendModalOpen(true);
+              }}
+            />
+
             {/* v9.19: Event aktivieren/deaktivieren — prominent gefuellt.
                 Aktiv → User koennen sich anmelden. Deaktiv (Under Construction)
                 → Event nur fuer Organizer/Admin/Test-Team sichtbar, Anmeldung
@@ -1640,7 +1692,10 @@ export default function AdminPage(): React.ReactElement {
                     ? 'Setzt das Event auf "Under Construction" zurueck — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
                     : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
                   badge="organizer"
-                  accent={isActive ? 'red' : 'green'}
+                  // v9.19/v9.20: nur "Aktivieren" wird gruen highlighted —
+                  // "Deaktivieren" bleibt unauffaellig (Standard-Tile-Look),
+                  // damit der Button nicht alarmierend wirkt.
+                  accent={isActive ? undefined : 'green'}
                   onClick={async () => {
                     if (!eventServiceRef) return;
                     const newStatus = isActive ? 'Under Construction' : 'Active';
@@ -2193,46 +2248,12 @@ export default function AdminPage(): React.ReactElement {
         );
       })()}
 
-      {/* v6.19: QR-Code-Scanner-Modus — User ist nur als Scanner eingetragen und
-          sieht deshalb NUR die Event-Info + KPIs + "QR-Code scannen"-Button.
-          Alle Organizer-Aktionen (Teilnehmerliste, Mails, Edit, Export etc.)
-          sind für Scanner ausgeblendet. */}
-      {isQRScannerOnlyForSelected && (
-        <div className="admin-actions" style={{ display: 'flex', marginBottom: 24 }}>
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate('check-in', selectedEvent.id)}
-            style={{ flex: 1 }}
-          >
-            {t('admin.checkin') || 'QR-Code scannen'}
-          </button>
-        </div>
-      )}
-
+      {/* v9.20: Check-In starten + QR-Codes versenden sind jetzt im Aktionen-Grid
+          unten als ActionTile gerendert (nicht mehr als eigene Button-Reihe).
+          Damit sind alle Quick-Actions an EINEM Ort zusammengefasst. Auch fuer
+          Check-In-only-User (qrScanner-Mode) — die sehen weiterhin nur den
+          Check-In-Tile, da das Aktionen-Grid fuer sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
-      <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-        <button
-          className="btn btn-primary"
-          onClick={() => navigate('check-in', selectedEvent.id)}
-          style={{ flex: 1 }}
-        >
-          {t('admin.checkin')}
-        </button>
-        {/* v9.15: QR-Codes versenden ist jetzt eine Quick-Action mit Modal — siehe
-            qrSendModalOpen unten. Beim Klick: Toggle initialisieren + Modal oeffnen. */}
-        <button
-          className="btn btn-secondary"
-          disabled={isSendingQR}
-          onClick={() => {
-            setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
-            setQrSendResult(null);
-            setQrSendModalOpen(true);
-          }}
-          style={{ flex: 1 }}
-        >
-          {isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden (${registrations.filter(r => r.Status === 'Angemeldet').length})`}
-        </button>
-      </div>
 
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && (() => {
@@ -3208,6 +3229,23 @@ export default function AdminPage(): React.ReactElement {
             <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
             </p>
+            {/* v9.22: Hinweis bei externen Teilnehmern. */}
+            {(() => {
+              const externalCount = registrations
+                .filter(r => r.Status === 'Angemeldet')
+                .filter(r => r.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(r.ParticipantEmail))
+                .length;
+              if (externalCount === 0) return null;
+              return (
+                <p style={{
+                  margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)',
+                  background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 6,
+                  padding: '8px 12px', lineHeight: 1.5,
+                }}>
+                  <strong>Hinweis:</strong> {externalCount} {externalCount === 1 ? 'externer Teilnehmer' : 'externe Teilnehmer'} in der Liste (keine @deloitte.de-Adresse). Diese bekommen <strong>keine</strong> QR-Code-Mail — stattdessen landet der jeweilige QR-Code bei dir als Organizer mit klar markiertem Subject. Drucke ihn aus oder leite ihn unter Beachtung der Deloitte-Datenschutzrichtlinien intern weiter.
+                </p>
+              );
+            })()}
             {/* v9.19: Hinweis aufs Handbuch — User klickt auf den Link und
                 landet direkt in der Check-In-Sektion. */}
             <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
@@ -3319,6 +3357,7 @@ export default function AdminPage(): React.ReactElement {
                     setQrSendResult(null);
                     setQrSentCount(0);
                     let sent = 0;
+                    let extCount = 0;
                     for (const reg of eligible) {
                       const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
                       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -3329,10 +3368,28 @@ export default function AdminPage(): React.ReactElement {
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }
                       const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
-                      await eventServiceRef.queueEmail(
-                        emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                        'QRCode', selectedEvent.title, selectedEvent.id
-                      );
+                      // v9.22: Externe Mail-Adresse → QR an Organizer umleiten.
+                      const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
+                      if (isExternal) {
+                        const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+                        const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
+                        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${selectedEvent.title}`;
+                        const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+                          + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
+                          + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
+                          + `</div>`;
+                        const qrBody = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                        await eventServiceRef.queueEmail(
+                          orgSubject, orgRecipient, 'Organizer', qrBody,
+                          'QRCode', selectedEvent.title, selectedEvent.id
+                        );
+                        extCount++;
+                      } else {
+                        await eventServiceRef.queueEmail(
+                          emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                          'QRCode', selectedEvent.title, selectedEvent.id
+                        );
+                      }
                       if (selectedEvent.subsiteUrl) {
                         await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
                       }
@@ -3342,7 +3399,9 @@ export default function AdminPage(): React.ReactElement {
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                     setIsSendingQR(false);
-                    setQrSendResult(`${sent} QR-Codes verschickt.`);
+                    setQrSendResult(extCount > 0
+                      ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
+                      : `${sent} QR-Codes verschickt.`);
                   }}
                   disabled={isSendingQR}
                   style={{ fontSize: '0.85rem' }}

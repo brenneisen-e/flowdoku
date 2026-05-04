@@ -316,6 +316,14 @@ export default function RegistrationPage(): React.ReactElement {
   // keine Session-Auswahl (siehe Render).
   const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
 
+  // v9.22: Warning-Modal fuer externe Email-Anmeldung (durch Organizer fuer
+  // Drittpersonen die noch kein Deloitte-Postfach haben). Default: nicht
+  // erlaubt; Organizer kann nach Bestaetigung trotzdem fortfahren — die
+  // Bestaetigungsmail geht dann nicht an die externe Adresse, sondern an
+  // den Organizer mit Datenschutz-Hinweis-Header.
+  const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
+  const externalEmailConfirmedRef = React.useRef(false);
+
   const handleSubmit = async (): Promise<void> => {
     // Validierung Pflichtfelder
     setShowErrors(true);
@@ -325,6 +333,17 @@ export default function RegistrationPage(): React.ReactElement {
     if (!willRegisterParent && !registerForOther && selectedSessions.size === 0) {
       setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
       return;
+    }
+
+    // v9.22: Externe Email-Adresse bei "Für andere Person registrieren" —
+    // Warnung anzeigen bevor der Anmelde-Flow startet.
+    if (registerForOther && email && !externalEmailConfirmedRef.current) {
+      const emLow = email.trim().toLowerCase();
+      const isDel = /@(.*\.)?deloitte\.de$/.test(emLow);
+      if (!isDel) {
+        setExternalEmailWarning(true);
+        return; // Modal zeigen, User muss bestaetigen
+      }
     }
 
     // Basis-Felder sind immer Pflicht (Name + Email), auch im Sessions-Only-Modus.
@@ -1457,6 +1476,65 @@ export default function RegistrationPage(): React.ReactElement {
                 }}
               >
                 Als {fallbackDialog.alt} starten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v9.22: Modal fuer externe Email-Anmeldung */}
+      {externalEmailWarning && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => setExternalEmailWarning(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
+              maxWidth: 540, width: '100%', padding: 24,
+              boxShadow: 'var(--dex-shadow-hover)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+              Externe E-Mail-Adresse
+            </h3>
+            <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+              Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant (@deloitte.de).
+              Standardmäßig sind Anmeldungen für externe Personen nicht vorgesehen — die Plattform
+              ist nur für DEALL-Mitarbeiter freigeschaltet.
+            </p>
+            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
+              Wenn du diese Person trotzdem als Teilnehmer erfassen möchtest (z.B. neue Mitarbeiter
+              die noch nicht angestellt sind, externe Berater die am Event teilnehmen), kannst du fortfahren.
+              Die Bestätigungsmail wird dann <strong>nicht an die externe Adresse</strong> versendet,
+              sondern landet bei dir als Organizer in der Inbox — du kannst sie unter Beachtung
+              der <strong>Deloitte-Datenschutzrichtlinien</strong> ggf. weiterleiten.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setExternalEmailWarning(false)}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Abbrechen
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  externalEmailConfirmedRef.current = true;
+                  setExternalEmailWarning(false);
+                  // Re-trigger submit via short timeout
+                  setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 50);
+                }}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Trotzdem anmelden
               </button>
             </div>
           </div>

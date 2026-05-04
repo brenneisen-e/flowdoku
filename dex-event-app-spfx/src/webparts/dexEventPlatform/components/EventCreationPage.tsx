@@ -338,7 +338,7 @@ export default function EventCreationPage(): React.ReactElement {
   const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, roles } = useRoles();
+  const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
   // Audience-Suche (Personen + Verteiler/Security-Groups)
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
@@ -677,17 +677,27 @@ export default function EventCreationPage(): React.ReactElement {
   // v9.18: Debounce-Timer fuer Graph-Search (statt nur Role-Filter)
   const qrScannerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // v9.18: Co-Organizer pro Event (analog QR-Scanner — beliebiger Deloitte-User
-  // mit vollen Organizer-Rechten fuer DIESES eine Event).
-  const [coOrganizerNames, setCoOrganizerNames] = React.useState<string[]>(
-    editEvent && editEvent.coOrganizerNames ? editEvent.coOrganizerNames.slice() : []
+  // v9.18/v9.20: Co-Organizer-State obsolet — Organizer-Picker selbst nimmt
+  // jetzt alle Deloitte-User per Graph-Search. Felder bleiben fuer
+  // Backward-Compat: Events vor v9.20 koennen noch _coOrganizers haben,
+  // Access-Checks lesen sie weiterhin.
+  const coOrganizerNames: string[] = (editEvent && editEvent.coOrganizerNames) ? editEvent.coOrganizerNames.slice() : [];
+  const coOrganizerEmails: string[] = (editEvent && editEvent.coOrganizerEmails) ? editEvent.coOrganizerEmails.slice() : [];
+
+  // v9.21: Test-Team pro Event — Personen die das Event im Entwurfsmodus
+  // sehen + sich anmelden duerfen.
+  const [testTeamNames, setTestTeamNames] = React.useState<string[]>(
+    editEvent && editEvent.testTeamNames ? editEvent.testTeamNames.slice() : []
   );
-  const [coOrganizerEmails, setCoOrganizerEmails] = React.useState<string[]>(
-    editEvent && editEvent.coOrganizerEmails ? editEvent.coOrganizerEmails.slice() : []
+  const [testTeamEmails, setTestTeamEmails] = React.useState<string[]>(
+    editEvent && editEvent.testTeamEmails ? editEvent.testTeamEmails.slice() : []
   );
-  const [coOrganizerSearch, setCoOrganizerSearch] = React.useState('');
-  const [coOrganizerResults, setCoOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
-  const coOrganizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [testTeamSearch, setTestTeamSearch] = React.useState('');
+  const [testTeamResults, setTestTeamResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const testTeamTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // v9.21: Active-From-Datum (optional) — Event auto-aktiv ab diesem Zeitpunkt.
+  const [activeFrom, setActiveFrom] = React.useState(editEvent ? (editEvent.activeFrom || '') : '');
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -718,6 +728,29 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
   );
   const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
+  // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
+  // Deadlines noch leer sind. Default-Logik:
+  //   - RegistrationDeadline: 7 Tage vor Event-Start
+  //   - LastDeregisterDate: 3 Tage vor Event-Start
+  // Der Organizer kann beides ueberschreiben — wir aktualisieren NICHT,
+  // wenn der User schon einen Wert gesetzt hat.
+  const autoFillRanRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoFillRanRef.current) return;
+    if (!startDate) return;
+    if (registrationDeadline || lastDeregisterDate) return;
+    try {
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) return;
+      const fmt = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const reg = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const lastCancel = new Date(start.getTime() - 3 * 24 * 60 * 60 * 1000);
+      setRegistrationDeadline(fmt(reg));
+      setLastDeregisterDate(fmt(lastCancel));
+      autoFillRanRef.current = true;
+    } catch { /* */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate]);
   const [maxParticipants, setMaxParticipants] = React.useState(
     editEvent && editEvent.maxParticipants ? editEvent.maxParticipants.toString() : ''
   );
@@ -1500,16 +1533,23 @@ export default function EventCreationPage(): React.ReactElement {
       const coOrganizerConfig = coOrganizerEmails.length > 0
         ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0)
+      // v9.21: Test-Team-Liste piggyback in EmailTemplateOverrides._testTeam
+      const testTeamConfig = testTeamEmails.length > 0
+        ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
             ...b2runExtraConfig,
             ...qrScannerConfig,
             ...coOrganizerConfig,
+            ...testTeamConfig,
             ...emailTemplateOverrides,
           })
         : '';
+      // v9.21: ActiveFrom als SP-DateTime
+      updates['ActiveFrom'] = activeFrom ? new Date(activeFrom).toISOString() : null;
       // Custom-Mail-Logo in EmailImageBase64 (SP-Spalte) — der Flow ersetzt
       // {{ORB_URL}} in Mails damit. Wenn leer: Flow faellt auf _Config
       // DefaultImageBase64 (DEX-Orb) zurueck.
@@ -1750,7 +1790,11 @@ export default function EventCreationPage(): React.ReactElement {
           const coExtra = coOrganizerEmails.length > 0
             ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0;
+          // v9.21: Test-Team ebenso piggybacken.
+          const ttExtra = testTeamEmails.length > 0
+            ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
@@ -1758,6 +1802,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...b2runExtra,
                 ...qrExtra,
                 ...coExtra,
+                ...ttExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -2569,37 +2614,32 @@ export default function EventCreationPage(): React.ReactElement {
 
               {renderStepIntro(
                 [
-                  'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
+                  'Als Entwurf speichern — Event nur für Admins, Organizer und Test-Team sichtbar bis du fertig bist',
+                  'Optional: Aktiv-Ab-Datum, ab dem das Event automatisch live geht',
+                  'Event-Titel + Datum (Start/End) — Datum füllt die Anmelde- und Storno-Deadlines automatisch vor',
                   'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-                  'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
-                  'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
-                  'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
-                  'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
+                  'Beschreibung (optional)',
+                  'Organizer auswählen — beliebige Deloitte-User, bekommen alle Organizer-Mails',
+                  'Test-Team und Check-In Team pro Event hinterlegen',
                 ],
                 [
-                  'Event title and description — shown on the event list and registration page',
+                  'Save as draft — event only visible to admins, organizers, and the test team until you\'re done',
+                  'Optional: active-from date when the event automatically goes live',
+                  'Event title + date (start/end) — the date pre-fills the registration and cancellation deadlines',
                   'Upload an event image (used at the top of the detail page and in emails)',
-                  'Save as draft — only visible to admins, organizers and the test team',
-                  'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
-                  'Optional: QR scanner users for check-in on event day (no further editing rights)',
-                  'Set location filter and audience — who sees the event in the list',
+                  'Description (optional)',
+                  'Pick organizers — any Deloitte user, they receive all organizer emails',
+                  'Configure test team and check-in team per event',
                 ]
               )}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={1} />
-                  <span className="required">*</span> {t('create.eventtitle')}
-                  <InfoTooltip text={t('create.eventtitle.hint')} />
-                </label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
-                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-              </div>
-
-              {/* Test-Event-Flag */}
+              {/* v9.21: Entwurf-Flag als erster Schritt — vor Title.
+                  Default ist on, der Organizer kann die Test-Strecke
+                  in Ruhe aufbauen, das Test-Team durchspielen lassen,
+                  und ohne Aengste sein Event entwickeln. */}
               <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
-                  <StepBadge n={2} />
+                  <StepBadge n={1} />
                   <input
                     type="checkbox"
                     checked={isFictive}
@@ -2613,7 +2653,167 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </span>
                 </label>
+                {/* v9.21: ActiveFrom direkt unter dem Entwurfs-Toggle — wenn
+                    der Organizer ein Live-Datum setzt, geht das Event ab dann
+                    auch wenn das Entwurf-Haekchen noch on ist. Optional. */}
+                <div style={{ marginTop: 12, paddingLeft: 4 }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginBottom: 4, fontWeight: 500 }}>
+                    Aktiv ab (optional)
+                    <InfoTooltip text="Wenn du hier ein Datum + Uhrzeit setzt, wird das Event ab diesem Zeitpunkt automatisch fuer alle berechtigten User sichtbar — auch wenn das Entwurf-Haekchen noch gesetzt ist. Praktisch um die Anmeldung erst zu einem geplanten Zeitpunkt zu oeffnen. Leer = kein Auto-Aktivierung." />
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={activeFrom}
+                    onChange={e => setActiveFrom(e.target.value)}
+                    style={{ maxWidth: 240, fontSize: '0.85rem' }}
+                  />
+                </div>
               </div>
+
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={2} />
+                  <span className="required">*</span> {t('create.eventtitle')}
+                  <InfoTooltip text={t('create.eventtitle.hint')} />
+                </label>
+                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
+                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+              </div>
+
+              {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
+                  Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="required">*</span> {t('create.startdate')}
+                    <InfoTooltip text={t('create.startdate.hint')} />
+                  </label>
+                  <DatePicker
+                    selected={startDate ? new Date(startDate) : null}
+                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    isClearable
+                    autoComplete="off"
+                  />
+                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="required">*</span> {t('create.enddate')}
+                    <InfoTooltip text={t('create.enddate.hint')} />
+                  </label>
+                  <DatePicker
+                    selected={endDate ? new Date(endDate) : null}
+                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={15}
+                    timeCaption="Uhrzeit"
+                    dateFormat="dd.MM.yyyy, HH:mm"
+                    locale="de"
+                    placeholderText="Datum und Uhrzeit wählen"
+                    className="form-input"
+                    wrapperClassName="dex-datepicker-wrapper"
+                    calendarClassName="dex-datepicker-calendar"
+                    popperPlacement="bottom-start"
+                    minDate={startDate ? new Date(startDate) : undefined}
+                    isClearable
+                    autoComplete="off"
+                  />
+                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                </div>
+              </div>
+              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
+              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
+                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
+              </p>
+
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={6} />
+                  {t('create.description')}
+                  <InfoTooltip text={t('create.description.hint')} />
+                </label>
+                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
+                  {t('create.eventimage')}
+                  <InfoTooltip text={t('create.eventimage.hint')} />
+                </label>
+                {imagePreview && (
+                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
+                    <img
+                      src={imagePreview}
+                      alt="Vorschau"
+                      style={{
+                        // Korrekte Auflösung beibehalten, nur in der Hoehe begrenzen + max-Breite zur Sicherheit
+                        display: 'block',
+                        maxHeight: 220,
+                        maxWidth: '100%',
+                        width: 'auto',
+                        height: 'auto',
+                        objectFit: 'contain',
+                        borderRadius: 'var(--dex-radius)',
+                        background: 'var(--dex-gray-100)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
+                      style={{
+                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
+                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
+                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
+                  transition: 'border-color 0.2s, background 0.2s',
+                }}>
+                  <Plus size={16} />
+                  {imageFile ? imageFile.name : 'Bild auswählen'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files && e.target.files[0];
+                      if (file) {
+                        setImageUploadError('');
+                        setImageFile(file);
+                        const reader = new FileReader();
+                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+                {imageUploadError && (
+                  <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
+                )}
+              </div>
+
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2701,24 +2901,20 @@ export default function EventCreationPage(): React.ReactElement {
                     const val = e.target.value;
                     setOrganizerSearch(val);
                     if (organizerTimerRef.current) clearTimeout(organizerTimerRef.current);
-                    const lp = val.trim().toLowerCase();
-                    const filtered = roles
-                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                      .filter(r => !lp || r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
-                      .slice(0, 50)
-                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                    setOrganizerResults(filtered);
-                  }}
-                  onFocus={() => {
-                    // Bei Fokus direkt alle verfuegbaren Organizer/Admins anzeigen.
-                    const filtered = roles
-                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                      .slice(0, 50)
-                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                    setOrganizerResults(filtered);
+                    const q = val.trim();
+                    if (!q) { setOrganizerResults([]); return; }
+                    // v9.20: Graph-Search statt Role-Filter — jeder Deloitte-User
+                    // kann als Organizer hinzugefuegt werden. Damit gibt es nur
+                    // einen Picker (kein extra Co-Organizer); der erste in der
+                    // Liste ist der "Hauptorganizer", weitere sind gleichwertig.
+                    organizerTimerRef.current = setTimeout(async () => {
+                      try {
+                        const results = await searchUsers(q);
+                        setOrganizerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setOrganizerResults([]); }
+                    }, 350);
                   }}
                   onBlur={() => {
-                    // Freitext verwerfen — nur per Dropdown ausgewaehlte Organizer zaehlen.
                     setTimeout(() => { setOrganizerSearch(''); setOrganizerResults([]); }, 150);
                   }}
                   placeholder={t('create.organizer.placeholder')}
@@ -2905,61 +3101,39 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              {/* v9.18: Co-Organizer pro Event. Beliebiger Deloitte-User mit
-                  vollen Organizer-Rechten fuer DIESES eine Event — analog zum
-                  QR-Scanner-Picker, aber mit allen Bearbeitungs-/Mail-Rechten
-                  und Anzeige in der Organizer-Liste. Eingebaut damit Organizer
-                  Hilfskraefte einbinden koennen, die nicht generell die
-                  Organizer-Rolle haben sollen. */}
+              {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
+                  und kann sich anmelden, ohne globale Organizer-Rolle. Picker
+                  via Graph-Search, beliebige Deloitte-User. */}
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Co-Organizer
-                  <InfoTooltip text="Optional: weitere Personen, die als gleichberechtigte Organizer für DIESES Event auftreten. Sie haben die gleichen Rechte wie du auf das Event (bearbeiten, Teilnehmer verwalten, QR-Codes versenden, Mails verschicken, weitere Co-Organizer hinzufügen) — aber nicht für andere Events. Können beliebige Deloitte-User sein, kein vorhandener Organizer-Status nötig." />
+                  Test-Team
+                  <InfoTooltip text="Optional: Personen, die diesen Event bereits im Entwurfsmodus sehen + sich anmelden dürfen. Nutze das Test-Team um die Anmelde-Strecke und die Mails von einer kleinen Gruppe testen zu lassen, bevor das Event für alle live geht. Test-Team-Mitglieder haben sonst keine Admin-Rechte (kein Edit, keine Mails versenden)." />
                 </label>
-                {coOrganizerNames.length > 0 && (() => {
-                  const move = (idx: number, dir: -1 | 1): void => {
-                    const target = idx + dir;
-                    if (target < 0 || target >= coOrganizerNames.length) return;
-                    const nextNames = [...coOrganizerNames];
-                    const nextEmails = [...coOrganizerEmails];
-                    [nextNames[idx], nextNames[target]] = [nextNames[target], nextNames[idx]];
-                    [nextEmails[idx], nextEmails[target]] = [nextEmails[target], nextEmails[idx]];
-                    setCoOrganizerNames(nextNames);
-                    setCoOrganizerEmails(nextEmails);
-                  };
+                {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
-                    setCoOrganizerNames(coOrganizerNames.filter((_, i) => i !== idx));
-                    setCoOrganizerEmails(coOrganizerEmails.filter((_, i) => i !== idx));
+                    setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
+                    setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
                   };
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                      {coOrganizerNames.map((name, i) => {
-                        const email = coOrganizerEmails[i] || '';
+                      {testTeamNames.map((name, i) => {
+                        const email = testTeamEmails[i] || '';
                         return (
-                          <span
-                            key={`${email}-${i}`}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              padding: '3px 6px 3px 4px',
-                              background: 'var(--dex-green, #86bc25)', color: '#fff',
-                              borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
-                            }}
-                          >
-                            {email ? (
+                          <span key={`${email}-${i}`} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '3px 6px 3px 4px',
+                            background: '#0ea5e9', color: '#fff',
+                            borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                          }}>
+                            {email && (
                               <img
                                 src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
                                 alt={name}
                                 onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                                 style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
                               />
-                            ) : null}
+                            )}
                             <span>{name}</span>
-                            {coOrganizerNames.length > 1 && i > 0 && (
-                              <button type="button" onClick={() => move(i, -1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach vorne">◀</button>
-                            )}
-                            {coOrganizerNames.length > 1 && i < coOrganizerNames.length - 1 && (
-                              <button type="button" onClick={() => move(i, 1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach hinten">▶</button>
-                            )}
                             <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
                           </span>
                         );
@@ -2969,51 +3143,47 @@ export default function EventCreationPage(): React.ReactElement {
                 })()}
                 <input
                   className="form-input"
-                  value={coOrganizerSearch}
+                  value={testTeamSearch}
                   onChange={e => {
                     const val = e.target.value;
-                    setCoOrganizerSearch(val);
-                    if (coOrganizerTimerRef.current) clearTimeout(coOrganizerTimerRef.current);
+                    setTestTeamSearch(val);
+                    if (testTeamTimerRef.current) clearTimeout(testTeamTimerRef.current);
                     const q = val.trim();
-                    if (!q) { setCoOrganizerResults([]); return; }
-                    coOrganizerTimerRef.current = setTimeout(async () => {
+                    if (!q) { setTestTeamResults([]); return; }
+                    testTeamTimerRef.current = setTimeout(async () => {
                       try {
                         const results = await searchUsers(q);
-                        setCoOrganizerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
-                      } catch { setCoOrganizerResults([]); }
+                        setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setTestTeamResults([]); }
                     }, 350);
                   }}
                   onBlur={() => {
-                    setTimeout(() => { setCoOrganizerSearch(''); setCoOrganizerResults([]); }, 150);
+                    setTimeout(() => { setTestTeamSearch(''); setTestTeamResults([]); }, 150);
                   }}
                   placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
                 />
-                {coOrganizerResults.length > 0 && (
+                {testTeamResults.length > 0 && (
                   <div style={{
                     position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
                     background: '#fff', border: '1px solid var(--dex-gray-200)',
                     borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     maxHeight: 280, overflowY: 'auto',
                   }}>
-                    {coOrganizerResults.map(u => {
-                      const alreadyAdded = coOrganizerEmails.indexOf(u.email) >= 0;
+                    {testTeamResults.map(u => {
+                      const alreadyAdded = testTeamEmails.indexOf(u.email) >= 0;
                       return (
-                        <div
-                          key={u.email}
-                          style={{
-                            padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
-                            borderBottom: '1px solid var(--dex-gray-100)',
-                            opacity: alreadyAdded ? 0.45 : 1,
-                            display: 'flex', alignItems: 'center', gap: 10,
-                          }}
-                          onMouseDown={() => {
-                            if (alreadyAdded || !u.email) return;
-                            setCoOrganizerNames(prev => [...prev, u.displayName]);
-                            setCoOrganizerEmails(prev => [...prev, u.email]);
-                            setCoOrganizerSearch('');
-                            setCoOrganizerResults([]);
-                          }}
-                        >
+                        <div key={u.email} style={{
+                          padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                          opacity: alreadyAdded ? 0.45 : 1,
+                          display: 'flex', alignItems: 'center', gap: 10,
+                        }} onMouseDown={() => {
+                          if (alreadyAdded || !u.email) return;
+                          setTestTeamNames(prev => [...prev, u.displayName]);
+                          setTestTeamEmails(prev => [...prev, u.email]);
+                          setTestTeamSearch('');
+                          setTestTeamResults([]);
+                        }}>
                           <img
                             src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
                             alt={u.displayName}
@@ -3034,6 +3204,263 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+
+
+              </div>
+
+              {/* ===== Step 1: Zeit & Ort ===== */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Veranstaltungsort und Adresse erfassen',
+                  'Start- und End-Datum (mit Uhrzeit) festlegen',
+                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
+                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+                ],
+                [
+                  'Set event location and address',
+                  'Set start and end date (incl. time)',
+                  'Set the registration deadline — no new registrations after this date',
+                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+                ]
+              )}
+              <div className="form-group">
+                <label className="form-label">
+                  {t('create.location')}
+                  <InfoTooltip text={t('create.location.hint')} />
+                </label>
+                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Adresse
+                  <InfoTooltip text={t('create.address.hint')} />
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
+                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
+                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
+                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
+                </div>
+              </div>
+
+              {/* ===== Agenda Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.agenda')}
+                  <InfoTooltip text={t('create.agenda.hint')} />
+                </label>
+                {agenda
+                  .slice()
+                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+                  .map((item) => (
+                  <div key={item.id} style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                    padding: '10px 12px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
+                      <button
+                        type="button"
+                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
+                        style={{
+                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: 'none', borderRadius: '50%',
+                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
+                        }}
+                        title={item.icon || 'Calendar'}
+                      >
+                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
+                      </button>
+                      {iconPickerOpen === item.id && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
+                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
+                        }}>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Icon suchen..."
+                            value={iconSearch}
+                            onChange={e => setIconSearch(e.target.value)}
+                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
+                            autoFocus
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
+                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
+                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
+                              .map(ic => (
+                                <button
+                                  key={ic.name}
+                                  type="button"
+                                  title={ic.label}
+                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
+                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
+                                    transition: 'background 0.15s, transform 0.1s',
+                                  }}
+                                >
+                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
+                                </button>
+                              ))
+                            }
+                          </div>
+                          {!showAllIcons && !iconSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllIcons(true)}
+                              style={{
+                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
+                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
+                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
+                              }}
+                            >
+                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
+                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Start Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
+                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* End Time */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
+                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
+                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
+                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                      }} title={t('general.delete')}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.agenda.add')}
+                </button>
+              </div>
+
+              {/* ===== Transferzeiten Editor ===== */}
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  {t('create.transfers')}
+                  <InfoTooltip text={t('create.transfers.hint')} />
+                </label>
+                {transferTimes.map((tt) => (
+                  <div key={tt.id} style={{
+                    padding: '12px 14px', marginBottom: 8,
+                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                    border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
+                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                        <datalist id={`transfer-locations-${tt.id}`}>
+                          {locationOptions.filter(o => o !== 'All').map(opt => (
+                            <option key={opt} value={opt} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
+                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
+                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
+                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
+                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
+                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
+                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
+                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                  <Plus size={14} /> {t('create.transfers.add')}
+                </button>
+              </div>
+
+              </div>
+
+              {/* ===== Step 2: Kapazität & Fristen ===== */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              {renderStepIntro(
+                [
+                  'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
+                  'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
+                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
+                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
+                ],
+                [
+                  'Set the maximum number of attendees (or Unlimited)',
+                  'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
+                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
+                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
+                ]
+              )}
+
+              {/* v9.24: Sichtbarkeits-Steuerungen aus Step 0 hierher verschoben.
+                  Die Frage 'wer darf das Event sehen' passt logisch zu Kapazitaet/Fristen
+                  als 'Wer-Wann-Wieviel' und entlastet Step 0 (Grundlagen). */}
               {/* Zwischenüberschrift: alle Sichtbarkeits-Steuerungen
                   (Standortfilter + Mailverteiler/einzelne User) gruppieren,
                   damit der Organizer auf einen Blick versteht, dass es hier
@@ -3451,388 +3878,6 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={6} />
-                  {t('create.description')}
-                  <InfoTooltip text={t('create.description.hint')} />
-                </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
-                  {t('create.eventimage')}
-                  <InfoTooltip text={t('create.eventimage.hint')} />
-                </label>
-                {imagePreview && (
-                  <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
-                    <img
-                      src={imagePreview}
-                      alt="Vorschau"
-                      style={{
-                        // Korrekte Auflösung beibehalten, nur in der Hoehe begrenzen + max-Breite zur Sicherheit
-                        display: 'block',
-                        maxHeight: 220,
-                        maxWidth: '100%',
-                        width: 'auto',
-                        height: 'auto',
-                        objectFit: 'contain',
-                        borderRadius: 'var(--dex-radius)',
-                        background: 'var(--dex-gray-100)',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
-                      style={{
-                        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
-                        color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
-                        cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                <label style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '8px 16px', borderRadius: 'var(--dex-radius)',
-                  border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                  fontSize: '0.85rem', color: 'var(--dex-gray-600)',
-                  transition: 'border-color 0.2s, background 0.2s',
-                }}>
-                  <Plus size={16} />
-                  {imageFile ? imageFile.name : 'Bild auswählen'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={e => {
-                      const file = e.target.files && e.target.files[0];
-                      if (file) {
-                        setImageUploadError('');
-                        setImageFile(file);
-                        const reader = new FileReader();
-                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </label>
-                {imageUploadError && (
-                  <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
-                )}
-              </div>
-
-              </div>
-
-              {/* ===== Step 1: Zeit & Ort ===== */}
-              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
-              {renderStepIntro(
-                [
-                  'Veranstaltungsort und Adresse erfassen',
-                  'Start- und End-Datum (mit Uhrzeit) festlegen',
-                  'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
-                  'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
-                ],
-                [
-                  'Set event location and address',
-                  'Set start and end date (incl. time)',
-                  'Set the registration deadline — no new registrations after this date',
-                  'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
-                ]
-              )}
-              <div className="form-group">
-                <label className="form-label">
-                  {t('create.location')}
-                  <InfoTooltip text={t('create.location.hint')} />
-                </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Adresse
-                  <InfoTooltip text={t('create.address.hint')} />
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
-                  <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
-                  <input className="form-input" value={addrHouseNo} onChange={e => setAddrHouseNo(e.target.value)} placeholder="Hausnr." />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
-                  <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
-                  <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
-                </div>
-              </div>
-
-              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    <span className="required">*</span> {t('create.startdate')}
-                    <InfoTooltip text={t('create.startdate.hint')} />
-                  </label>
-                  <DatePicker
-                    selected={startDate ? new Date(startDate) : null}
-                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    isClearable
-                    autoComplete="off"
-                  />
-                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-                </div>
-                <div className="form-group">
-                  <label className="form-label">
-                    <span className="required">*</span> {t('create.enddate')}
-                    <InfoTooltip text={t('create.enddate.hint')} />
-                  </label>
-                  <DatePicker
-                    selected={endDate ? new Date(endDate) : null}
-                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
-                    showTimeSelect
-                    timeFormat="HH:mm"
-                    timeIntervals={15}
-                    timeCaption="Uhrzeit"
-                    dateFormat="dd.MM.yyyy, HH:mm"
-                    locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
-                    className="form-input"
-                    wrapperClassName="dex-datepicker-wrapper"
-                    calendarClassName="dex-datepicker-calendar"
-                    popperPlacement="bottom-start"
-                    minDate={startDate ? new Date(startDate) : undefined}
-                    isClearable
-                    autoComplete="off"
-                  />
-                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
-                </div>
-              </div>
-              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
-              <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: -8, marginBottom: 12 }}>
-                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
-              </p>
-
-              {/* ===== Agenda Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  {t('create.agenda')}
-                  <InfoTooltip text={t('create.agenda.hint')} />
-                </label>
-                {agenda
-                  .slice()
-                  .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-                  .map((item) => (
-                  <div key={item.id} style={{
-                    display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
-                    padding: '10px 12px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
-                      <button
-                        type="button"
-                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
-                        style={{
-                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          border: 'none', borderRadius: '50%',
-                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
-                        }}
-                        title={item.icon || 'Calendar'}
-                      >
-                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
-                      </button>
-                      {iconPickerOpen === item.id && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
-                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
-                        }}>
-                          <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Icon suchen..."
-                            value={iconSearch}
-                            onChange={e => setIconSearch(e.target.value)}
-                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
-                            autoFocus
-                          />
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
-                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
-                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
-                              .map(ic => (
-                                <button
-                                  key={ic.name}
-                                  type="button"
-                                  title={ic.label}
-                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
-                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
-                                    transition: 'background 0.15s, transform 0.1s',
-                                  }}
-                                >
-                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
-                                </button>
-                              ))
-                            }
-                          </div>
-                          {!showAllIcons && !iconSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setShowAllIcons(true)}
-                              style={{
-                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
-                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
-                              }}
-                            >
-                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Date */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
-                      <input type="date" className="form-input" value={item.date} onChange={e => updateAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Start Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
-                      <input type="time" className="form-input" value={item.time} onChange={e => updateAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* End Time */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
-                      <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Title */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
-                      <input type="text" className="form-input" value={item.title} onChange={e => updateAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Description */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
-                      <input type="text" className="form-input" value={item.description || ''} onChange={e => updateAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
-                    </div>
-
-                    {/* Delete */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                      <button type="button" onClick={() => removeAgendaItem(item.id)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                        fontSize: '1.1rem', padding: '4px', lineHeight: 1,
-                      }} title={t('general.delete')}>
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-outline" onClick={addAgendaItem} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.agenda.add')}
-                </button>
-              </div>
-
-              {/* ===== Transferzeiten Editor ===== */}
-              <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  {t('create.transfers')}
-                  <InfoTooltip text={t('create.transfers.hint')} />
-                </label>
-                {transferTimes.map((tt) => (
-                  <div key={tt.id} style={{
-                    padding: '12px 14px', marginBottom: 8,
-                    background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                    border: '1px solid var(--dex-gray-200)',
-                  }}>
-                    {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
-                        <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                        <datalist id={`transfer-locations-${tt.id}`}>
-                          {locationOptions.filter(o => o !== 'All').map(opt => (
-                            <option key={opt} value={opt} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
-                        <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x))} placeholder="z.B. Flughafen, Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
-                        <input type="text" className="form-input" value={tt.address || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x))} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
-                        <button type="button" onClick={() => setTransferTimes(transferTimes.filter(x => x.id !== tt.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
-                        <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
-                        <input type="time" className="form-input" value={tt.departureTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
-                        <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
-                        <input type="text" className="form-input" value={tt.description || ''} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x))} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-outline" onClick={() => setTransferTimes([...transferTimes, { id: `tr-${Date.now()}`, location: '', meetingPoint: '', address: '', date: startDate ? startDate.slice(0, 10) : '', departureTime: '', arrivalTime: '', description: '' }])} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
-                  <Plus size={14} /> {t('create.transfers.add')}
-                </button>
-              </div>
-
-              </div>
-
-              {/* ===== Step 2: Kapazität & Fristen ===== */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
-              {renderStepIntro(
-                [
-                  'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
-                  'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
-                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
-                  'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
-                ],
-                [
-                  'Set the maximum number of attendees (or Unlimited)',
-                  'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
-                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
-                  'Optional: require proof of performance for fast-runners (checkbox during registration)',
-                ]
-              )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">
@@ -6013,7 +6058,7 @@ export default function EventCreationPage(): React.ReactElement {
         }} onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}>
           <div className="card" style={{ width: '90%', maxWidth: 720, maxHeight: '85vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
             <div className="flex-between mb-16">
-              <h3 style={{ margin: 0 }}>Massenimport Zielgruppe</h3>
+              <h3 style={{ margin: 0 }}>Massenimport User</h3>
               <button
                 type="button"
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
@@ -6023,14 +6068,24 @@ export default function EventCreationPage(): React.ReactElement {
                 <X size={18} />
               </button>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0 }}>
-              Füge eine Liste aus Namen und/oder Email-Adressen ein, getrennt mit
+            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, lineHeight: 1.55 }}>
+              Hier kannst du einzelne User <strong>direkt in den Sichtbarkeits-Filter dieses Events</strong> aufnehmen
+              — z.B. wenn du eine konkrete Liste an Personen aus Outlook, Excel oder einer Mail kopiert hast und
+              nicht jeden einzeln per People-Picker auswählen willst. Die Eingabe darf <strong>Namen und/oder
+              Email-Adressen</strong> mischen, getrennt durch
               <code style={{ margin: '0 4px' }}>,</code>
               <code style={{ margin: '0 4px' }}>;</code>
               <code style={{ margin: '0 4px' }}>Tab</code>
               oder <code style={{ marginLeft: 4 }}>Zeilenumbruch</code>.
-              Email-Adressen werden direkt übernommen. Bei Namen wird per People-Picker gesucht — eindeutige
-              Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.
+            </p>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, paddingLeft: 18, lineHeight: 1.5 }}>
+              <li><strong>Email-Adressen</strong> (z.B. <code>vorname.nachname@deloitte.de</code>) werden direkt übernommen.</li>
+              <li><strong>Namen</strong> werden im Deloitte-Tenant gesucht — eindeutige Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.</li>
+              <li>Personen die <strong>schon im Filter sind</strong>, werden übersprungen (Doppel-Einträge ausgeschlossen).</li>
+              <li>Externe (kein <code>@deloitte.de</code>) werden zwar in den Filter geschrieben, sehen das Event aber NICHT — die Plattform ist DEALL-only.</li>
+            </ul>
+            <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+              <strong>Ablauf:</strong> 1. Liste einfügen 2. &bdquo;Verarbeiten&ldquo; klicken (Such-Lauf gegen den Tenant) 3. Ergebnis prüfen + ggf. mehrdeutige Namen auflösen 4. &bdquo;Speichern&ldquo; oder &bdquo;Speichern und schließen&ldquo; klicken.
             </p>
             <textarea
               className="form-input"
@@ -6057,7 +6112,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 {bulkImportReport.alreadyIn.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits in Zielgruppe ({bulkImportReport.alreadyIn.length}):</strong>
+                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits im Filter ({bulkImportReport.alreadyIn.length}):</strong>
                     <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
                       {bulkImportReport.alreadyIn.map((a, i) => (
                         <li key={`w-${i}`}>
@@ -6102,26 +6157,64 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-              {/* v9.14: nach erfolgreichem Verarbeiten wird "Speichern und schließen"
-                  zum primary Button — die Audience-Liste ist bereits per setAudience
-                  uebernommen, der Klick schliesst den Dialog. */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {/* v9.14/v9.23: Audience wird beim "Verarbeiten" bereits in den
+                  Form-State uebernommen (setAudience). Nach Verarbeiten gibt
+                  es zwei Optionen — "Speichern" (Modal bleibt offen, fuer
+                  weitere Listen) und "Speichern und schließen" (primary). */}
               <button
                 type="button"
-                className={bulkImportReport ? 'btn btn-primary' : 'btn btn-secondary'}
+                className="btn btn-secondary"
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
                 disabled={bulkImportRunning}
               >
-                {bulkImportReport ? 'Speichern und schließen' : 'Schließen'}
+                {bulkImportReport ? 'Verwerfen' : 'Schließen'}
               </button>
-              <button
-                type="button"
-                className={bulkImportReport ? 'btn btn-secondary' : 'btn btn-primary'}
-                onClick={runBulkImport}
-                disabled={bulkImportRunning || !bulkImportText.trim()}
-              >
-                {bulkImportRunning ? 'Suche läuft...' : (bulkImportReport ? 'Erneut verarbeiten' : 'Verarbeiten')}
-              </button>
+              {!bulkImportReport && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={runBulkImport}
+                  disabled={bulkImportRunning || !bulkImportText.trim()}
+                >
+                  {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
+                </button>
+              )}
+              {bulkImportReport && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={runBulkImport}
+                    disabled={bulkImportRunning || !bulkImportText.trim()}
+                  >
+                    Erneut verarbeiten
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      // Speichern: Audience ist bereits per setAudience
+                      // uebernommen — Modal bleibt offen, Eingabefeld wird
+                      // geleert damit der User direkt eine weitere Liste
+                      // einfuegen kann.
+                      setBulkImportText('');
+                      setBulkImportReport(null);
+                    }}
+                    disabled={bulkImportRunning}
+                  >
+                    Speichern (weitere Liste hinzufügen)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
+                    disabled={bulkImportRunning}
+                  >
+                    Speichern und schließen
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

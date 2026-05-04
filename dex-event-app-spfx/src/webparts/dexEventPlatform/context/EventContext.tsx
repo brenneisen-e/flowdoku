@@ -120,11 +120,9 @@ interface EventContextType {
    * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
    */
   sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
-  /** v9.16: Globale Test-Team-Email-Liste (lowercase). Wer in der Liste
-   *  steht, sieht Test-Events (isFictive=true) auch ohne Organizer/Admin-Rolle. */
-  testTeamEmails: string[];
-  refreshTestTeamEmails: () => Promise<void>;
-  setTestTeamEmails: (emails: string[]) => Promise<boolean>;
+  // v9.21: Globaler TestTeam-State entfernt — Test-Team ist ab jetzt
+  // per-Event (auf event.testTeamEmails). Die globalen Methoden bleiben
+  // im EventService dormant fuer Backward-Compat.
 }
 
 export interface CreateEventInput {
@@ -179,21 +177,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   const eventService = React.useMemo(() => new EventService(props.context), []);
 
-  // v9.16: Globale Test-Team-Liste (lowercase Emails). Aus dem _Config-Item
-  // der DEX_EmailTemplates-Liste geladen — wird beim App-Start einmalig geholt
-  // und bei Settings-Aenderung neu gefragt.
-  const [testTeamEmails, setTestTeamEmailsState] = React.useState<string[]>([]);
-  const refreshTestTeamEmails = React.useCallback(async () => {
-    try {
-      const emails = await eventService.getTestTeamEmails();
-      setTestTeamEmailsState(emails);
-    } catch { /* fallback: leere Liste */ }
-  }, [eventService]);
-  const setTestTeamEmailsFn = React.useCallback(async (emails: string[]): Promise<boolean> => {
-    const ok = await eventService.setTestTeamEmails(emails);
-    if (ok) await refreshTestTeamEmails();
-    return ok;
-  }, [eventService, refreshTestTeamEmails]);
+  // v9.16/v9.21: Test-Team war kurz global (TestTeamEmails in _Config),
+  // ist jetzt per-Event (event.testTeamEmails). Globaler State raus.
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
   // Vorname fuer E-Mail-Anreden ({{Name}} im Template).
@@ -228,8 +213,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // v9.16: Test-Team-Liste laden — bestimmt fuer welche User Test-Events sichtbar sind.
-    try { await refreshTestTeamEmails(); } catch { /* */ }
+    // v9.21: Test-Team ist jetzt per-Event (kommt aus event.testTeamEmails),
+    // kein globaler Refresh mehr noetig.
     // Seed-Migrationen entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
@@ -331,6 +316,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       maxParticipants: e.MaxParticipants || 0,
       waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
       autoSendQRCode: e.AutoSendQRCode === true, // v9.15 — explizites opt-in pro Event
+      activeFrom: e.ActiveFrom || undefined, // v9.21 — Auto-Activate-Datum
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
@@ -361,16 +347,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
       // v9.18: Co-Organizer-Liste aus EmailTemplateOverrides._coOrganizers (piggyback, gleicher Pattern).
+      // v9.21: Test-Team-Liste aus EmailTemplateOverrides._testTeam (per-Event statt global).
       ...(() => {
         try {
           const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
-          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] };
+          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const b = (parsed as any)._b2run;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const qr = (parsed as any)._qrScanners;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const co = (parsed as any)._coOrganizers;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tt = (parsed as any)._testTeam;
           const b2Part = b && typeof b === 'object' ? {
             durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
             funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
@@ -384,8 +373,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const coNames: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.name || '')) : [];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const coEmails: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.email || '')) : [];
-          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails };
-        } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] }; }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ttNames: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.name || '')) : [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ttEmails: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.email || '')) : [];
+          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
+        } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] }; }
       })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
@@ -597,8 +590,33 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
+        // v9.22: Externe Mail-Adresse erkennen — die Plattform ist nur fuer
+        // Deloitte Deutschland (@deloitte.de) freigeschaltet. Auch @deloitte.com
+        // (US/Global) zaehlt als extern. Bei externen Empfaengern wird die
+        // Bestaetigungsmail an den Organizer umgeleitet, der sie ggf. unter
+        // Beachtung der Datenschutzrichtlinien weiterleiten kann.
+        const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        let finalRecipient = emailToUse;
+        let finalSubject = emailData.subject;
+        let finalBody = emailData.body;
+        let finalRecipientName = nameToUse;
+        if (isExternalRecipient) {
+          const orgEmails = (event.organizerEmails || []).filter(Boolean);
+          finalRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
+          finalRecipientName = 'Organizer';
+          finalSubject = `[Externer Teilnehmer] ${emailData.subject} — bitte ggf. weiterleiten`;
+          // Datenschutz-Hinweis-Box VOR dem Original-Body einbauen.
+          const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+            + `<strong>Hinweis: externer Teilnehmer.</strong><br>`
+            + `Diese Bestätigungsmail richtet sich eigentlich an <strong>${emailToUse}</strong>, einer externen Person die kein Deloitte-Postfach hat. Standardmäßig versendet die App keine Mails an externe Adressen, deshalb landet diese Mail bei dir als Organizer in der Inbox. `
+            + `Du kannst die Mail bei Bedarf an den Empfänger weiterleiten — bitte beachte dabei die <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter).`
+            + `</div>`;
+          // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
+          // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
+          finalBody = finalBody.replace(/<body([^>]*)>/i, `<body$1>${externalHint}`);
+        }
         eventService.queueEmail(
-          emailData.subject, emailToUse, nameToUse, emailData.body,
+          finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, undefined, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
 
@@ -616,10 +634,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch { /* fallback bleibt Text */ }
               const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
-              await eventService.queueEmail(
-                qrMail.subject, emailToUse, nameToUse, qrMail.body,
-                'QRCode', event.title, eventId
-              );
+              // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
+              // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
+              // externen Mail-Empfaenger.
+              if (isExternalRecipient) {
+                const orgEmails = (event.organizerEmails || []).filter(Boolean);
+                const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
+                const orgSubject = `[Externer Teilnehmer] QR-Code für ${nameToUse} — ${event.title}`;
+                // Hinweis-Box vor dem QR-Code-Body — analog zur Bestaetigungsmail.
+                const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+                  + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
+                  + `Eigentlich für <strong>${emailToUse}</strong> (${nameToUse}). Da externe Adressen keinen Auto-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
+                  + `</div>`;
+                const qrBody = qrMail.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                await eventService.queueEmail(
+                  orgSubject, orgRecipient, 'Organizer', qrBody,
+                  'QRCode', event.title, eventId
+                );
+              } else {
+                await eventService.queueEmail(
+                  qrMail.subject, emailToUse, nameToUse, qrMail.body,
+                  'QRCode', event.title, eventId
+                );
+              }
               // Status auf 'QR versendet' setzen, damit der Admin-Center-View
               // sofort zeigt, dass der QR-Code raus ist (analog zum
               // manuellen Massen-QR-Versand).
@@ -983,9 +1020,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
-        testTeamEmails,
-        refreshTestTeamEmails,
-        setTestTeamEmails: setTestTeamEmailsFn,
       },
     },
     props.children

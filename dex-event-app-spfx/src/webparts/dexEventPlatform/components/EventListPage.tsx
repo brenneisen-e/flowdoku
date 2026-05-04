@@ -124,7 +124,7 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents, testTeamEmails } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -162,17 +162,23 @@ export default function EventListPage(): React.ReactElement {
   // Fictive (Test-)Events sind sichtbar fuer:
   //   - Admins (immer)
   //   - Event-eigene Organizer (immer)
-  //   - v9.16: Mitglieder des globalen Test-Teams (TestTeamEmails in _Config)
-  //   - v9.18: Co-Organizer + QR-Scanner des konkreten Events
+  //   - Co-Organizer + QR-Scanner des konkreten Events
+  //   - v9.21: Test-Team-Mitglieder DIESES Events (vorher global, jetzt per-Event)
+  //
+  // v9.21: ActiveFrom-Logik — wenn das Event ein Aktiv-ab-Datum hat und das
+  // in der Zukunft liegt, wird es fuer regulaere User behandelt wie ein Entwurf.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const inTestTeam = (testTeamEmails || []).some(e => e === currentEmailLc);
+  const now = Date.now();
   const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
-    if (!e.isFictive) return true;
+    // Effektiv "noch im Entwurf": entweder isFictive oder ActiveFrom in der Zukunft
+    const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
+    const isInDraftMode = e.isFictive || (activeFromTs > 0 && activeFromTs > now);
+    if (!isInDraftMode) return true;
     if (isAdmin) return true;
-    if (inTestTeam) return true;
     if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
     if ((e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
     if ((e.qrScannerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+    if ((e.testTeamEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
     return false;
   });
   const filteredEvents = (isAdmin
