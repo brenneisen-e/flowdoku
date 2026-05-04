@@ -25,8 +25,8 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Durch An- und Abmeldungen können die TeilnehmerIDs einer Liste Lücken haben (1, 2, 4, 7, …). Mit diesem Button triggerst du den Power-Automate-Flow "DEX_IDReorder_TeilnehmerIDs", der alle aktiven Teilnehmer neu sequentiell nummeriert. Gleichzeitig rücken Wartelistler entsprechend nach, falls freie Plätze verfügbar sind.'
-                  : 'Registrations and cancellations can cause gaps in attendee IDs (1, 2, 4, 7, …). This button triggers the Power Automate flow "DEX_IDReorder_TeilnehmerIDs" to re-number all active attendees sequentially. At the same time, waitlist members promote accordingly if seats open up.'}
+                  ? 'Durch An- und Abmeldungen können die TeilnehmerIDs einer Liste Lücken haben (1, 2, 4, 7, …). Mit diesem Button triggerst du den Power-Automate-Flow "DEX_IDReorder_TeilnehmerIDs", der alle aktiven Teilnehmer neu sequentiell nummeriert. Gleichzeitig rücken Wartelistler entsprechend nach, falls freie Plätze verfügbar sind. Auch wenn unter Massen-Anmeldungen einmal eine TeilnehmerID nicht gesetzt werden konnte (Counter-Liste vorübergehend nicht erreichbar — sehr selten seit v9.10), kannst du mit diesem Button bestehende Lücken oder Null-Werte sauber wieder durchnummerieren.'
+                  : 'Registrations and cancellations can cause gaps in attendee IDs (1, 2, 4, 7, …). This button triggers the Power Automate flow "DEX_IDReorder_TeilnehmerIDs" to re-number all active attendees sequentially. At the same time, waitlist members promote accordingly if seats open up. If a participant ID couldn\'t be assigned during a high-load go-live (counter list temporarily unreachable — very rare since v9.10), this button cleans up gaps or null entries with a fresh sequential renumbering.'}
               </>
             ),
             mockup: (

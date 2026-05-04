@@ -826,8 +826,21 @@ export default function MyEventsPage(): React.ReactElement {
   }
 
   return (
-    <div className="page-container">
-      <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    // v9.9: max-width damit "Meine Events" auf Desktop nicht die volle Breite
+    // einnimmt — die einspaltige Karten-Liste sieht sonst auf >1400px-Screens
+    // unangenehm gestreckt aus. Inline-style damit das globale .page-container
+    // (max-width:100%) andere Seiten nicht beeinflusst.
+    <div className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+      <style>{`
+        @keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        /* v9.9: Hover-Effekt fuer den Abmelden-Button — fuellt rot, hebt leicht
+           an und wirft einen weicheren Schatten, damit die Affordance klar ist.
+           Im 2. Klick-Zustand (cancellingId === event.id) bleibt er ohnehin
+           rot — nur der idle-State braucht Feedback. */
+        .dex-cancel-btn { transition: background 120ms ease, color 120ms ease, transform 120ms ease, box-shadow 120ms ease; }
+        .dex-cancel-btn:not(.dex-cancel-btn--armed):hover { background: var(--dex-red) !important; color: #fff !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(218,41,28,0.25); }
+        .dex-cancel-btn--armed:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(218,41,28,0.4) !important; }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>{t('myevents.title')}</h2>
         <button
@@ -1269,7 +1282,7 @@ export default function MyEventsPage(): React.ReactElement {
                           bleibt — der erste Klick faerbt rot und blendet den
                           "Doch behalten"-Button daneben ein. */}
                       <button
-                        className="btn"
+                        className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
                         onClick={() => handleCancel(event.id)}
                         disabled={isCancelling}
                         style={{
@@ -1284,6 +1297,7 @@ export default function MyEventsPage(): React.ReactElement {
                           border: `2px solid var(--dex-red)`,
                           borderRadius: 8,
                           boxShadow: cancellingId === event.id ? '0 2px 8px rgba(218,41,28,0.3)' : 'none',
+                          cursor: isCancelling ? 'not-allowed' : 'pointer',
                         }}
                       >
                         <X size={16} />
