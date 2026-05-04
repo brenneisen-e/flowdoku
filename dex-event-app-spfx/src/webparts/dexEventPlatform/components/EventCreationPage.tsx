@@ -6048,7 +6048,7 @@ export default function EventCreationPage(): React.ReactElement {
         }} onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}>
           <div className="card" style={{ width: '90%', maxWidth: 720, maxHeight: '85vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
             <div className="flex-between mb-16">
-              <h3 style={{ margin: 0 }}>Massenimport Zielgruppe</h3>
+              <h3 style={{ margin: 0 }}>Massenimport User</h3>
               <button
                 type="button"
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
@@ -6058,14 +6058,24 @@ export default function EventCreationPage(): React.ReactElement {
                 <X size={18} />
               </button>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 0 }}>
-              Füge eine Liste aus Namen und/oder Email-Adressen ein, getrennt mit
+            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, lineHeight: 1.55 }}>
+              Hier kannst du einzelne User <strong>direkt in den Sichtbarkeits-Filter dieses Events</strong> aufnehmen
+              — z.B. wenn du eine konkrete Liste an Personen aus Outlook, Excel oder einer Mail kopiert hast und
+              nicht jeden einzeln per People-Picker auswählen willst. Die Eingabe darf <strong>Namen und/oder
+              Email-Adressen</strong> mischen, getrennt durch
               <code style={{ margin: '0 4px' }}>,</code>
               <code style={{ margin: '0 4px' }}>;</code>
               <code style={{ margin: '0 4px' }}>Tab</code>
               oder <code style={{ marginLeft: 4 }}>Zeilenumbruch</code>.
-              Email-Adressen werden direkt übernommen. Bei Namen wird per People-Picker gesucht — eindeutige
-              Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.
+            </p>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, paddingLeft: 18, lineHeight: 1.5 }}>
+              <li><strong>Email-Adressen</strong> (z.B. <code>vorname.nachname@deloitte.de</code>) werden direkt übernommen.</li>
+              <li><strong>Namen</strong> werden im Deloitte-Tenant gesucht — eindeutige Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.</li>
+              <li>Personen die <strong>schon im Filter sind</strong>, werden übersprungen (Doppel-Einträge ausgeschlossen).</li>
+              <li>Externe (kein <code>@deloitte.de</code>) werden zwar in den Filter geschrieben, sehen das Event aber NICHT — die Plattform ist DEALL-only.</li>
+            </ul>
+            <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+              <strong>Ablauf:</strong> 1. Liste einfügen 2. &bdquo;Verarbeiten&ldquo; klicken (Such-Lauf gegen den Tenant) 3. Ergebnis prüfen + ggf. mehrdeutige Namen auflösen 4. &bdquo;Speichern&ldquo; oder &bdquo;Speichern und schließen&ldquo; klicken.
             </p>
             <textarea
               className="form-input"
@@ -6092,7 +6102,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 {bulkImportReport.alreadyIn.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits in Zielgruppe ({bulkImportReport.alreadyIn.length}):</strong>
+                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits im Filter ({bulkImportReport.alreadyIn.length}):</strong>
                     <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
                       {bulkImportReport.alreadyIn.map((a, i) => (
                         <li key={`w-${i}`}>
@@ -6137,26 +6147,64 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-              {/* v9.14: nach erfolgreichem Verarbeiten wird "Speichern und schließen"
-                  zum primary Button — die Audience-Liste ist bereits per setAudience
-                  uebernommen, der Klick schliesst den Dialog. */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {/* v9.14/v9.23: Audience wird beim "Verarbeiten" bereits in den
+                  Form-State uebernommen (setAudience). Nach Verarbeiten gibt
+                  es zwei Optionen — "Speichern" (Modal bleibt offen, fuer
+                  weitere Listen) und "Speichern und schließen" (primary). */}
               <button
                 type="button"
-                className={bulkImportReport ? 'btn btn-primary' : 'btn btn-secondary'}
+                className="btn btn-secondary"
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
                 disabled={bulkImportRunning}
               >
-                {bulkImportReport ? 'Speichern und schließen' : 'Schließen'}
+                {bulkImportReport ? 'Verwerfen' : 'Schließen'}
               </button>
-              <button
-                type="button"
-                className={bulkImportReport ? 'btn btn-secondary' : 'btn btn-primary'}
-                onClick={runBulkImport}
-                disabled={bulkImportRunning || !bulkImportText.trim()}
-              >
-                {bulkImportRunning ? 'Suche läuft...' : (bulkImportReport ? 'Erneut verarbeiten' : 'Verarbeiten')}
-              </button>
+              {!bulkImportReport && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={runBulkImport}
+                  disabled={bulkImportRunning || !bulkImportText.trim()}
+                >
+                  {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
+                </button>
+              )}
+              {bulkImportReport && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={runBulkImport}
+                    disabled={bulkImportRunning || !bulkImportText.trim()}
+                  >
+                    Erneut verarbeiten
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      // Speichern: Audience ist bereits per setAudience
+                      // uebernommen — Modal bleibt offen, Eingabefeld wird
+                      // geleert damit der User direkt eine weitere Liste
+                      // einfuegen kann.
+                      setBulkImportText('');
+                      setBulkImportReport(null);
+                    }}
+                    disabled={bulkImportRunning}
+                  >
+                    Speichern (weitere Liste hinzufügen)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
+                    disabled={bulkImportRunning}
+                  >
+                    Speichern und schließen
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
