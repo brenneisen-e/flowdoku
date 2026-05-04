@@ -77,7 +77,10 @@ function FlowNode({ type, label, color, details }: FlowNodeProps): React.ReactEl
   if (!details) {
     return <div style={styles[type] || styles.process}>{label}</div>;
   }
-  // Mit Prosa-Details: Knoten bündig zentriert, darunter linksbündiger Info-Text in grau.
+  // v9.19: Details werden als Bullet-List gerendert (statt Fließtext).
+  // Sätze werden an ". " aufgespalten, jeder Satz wird ein <li>. Schlagwörter
+  // werden automatisch fett markiert: Status-Namen, DEX-Entitäten, Tech-Begriffe,
+  // sowie alles in `code` oder **bold** Markdown-Schreibweise.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: 540, margin: '0 auto' }}>
       <div style={styles[type] || styles.process}>{label}</div>
@@ -86,16 +89,69 @@ function FlowNode({ type, label, color, details }: FlowNodeProps): React.ReactEl
         padding: '8px 14px',
         fontSize: '0.78rem',
         lineHeight: 1.55,
-        color: 'var(--dex-gray-600)',
+        color: 'var(--dex-gray-700)',
         background: 'var(--dex-gray-50, #fafafa)',
         border: '1px solid var(--dex-gray-200)',
         borderRadius: 8,
         textAlign: 'left',
         maxWidth: 520,
+        width: '100%',
       }}>
-        {details}
+        {renderBulletDetails(details)}
       </div>
     </div>
+  );
+}
+
+/**
+ * v9.19: Details-Renderer mit Auto-Bold + Bullet-Split.
+ * Sätze werden bei ". " getrennt. Schlagwörter werden in <strong> gewickelt.
+ */
+function renderBulletDetails(details: string): React.ReactElement {
+  // Schlagwörter, die fett markiert werden sollen.
+  const BOLD_KEYWORDS = [
+    // Status
+    'Angemeldet', 'Warteliste', 'Eingecheckt', 'Abgemeldet', 'QR versendet', 'Active', 'Under Construction', 'Completed', 'Cancelled',
+    // DEX-Listen
+    'DEX_TeilnehmerCounter', 'DEX_Events', 'DEX_Emails', 'DEX_Outlook', 'DEX_Roles', 'DEX_IDReorder', 'DEX_Participants', 'DEX_EmailTemplates', 'DEX_ChangeLog',
+    // Power Automate Flows
+    'DEX_IDReorder_TeilnehmerIDs', 'DEX_SEND_MAIL', 'DEX_CreateOutlookEvent', 'DEX_Outlook_Einladungen', 'DEX_OutlookDeclineHandler', 'DEX_OutlookForwardHandler',
+    // Rollen / Tech
+    'Admin', 'Organizer', 'Co-Organizer', 'Test-Team', 'QR-Scanner', 'ETag', 'ETag-CAS', 'Power Automate', 'Outlook', 'SharePoint', 'Graph-API',
+    // App-Felder
+    'TeilnehmerID', 'NextValue', 'CalendarLink', 'iCalUId', 'organizerEmails', 'coOrganizerEmails', 'qrScannerEmails', 'audienceFilter', 'locationAudience', 'EmailLanguage',
+  ];
+  // Sortierung: laengste Keywords zuerst (verhindert dass "DEX_Events" in
+  // "DEX_EventsListItem" das laengere matched). Plus String-Escape fuer Regex.
+  const escaped = BOLD_KEYWORDS
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const keywordRegex = new RegExp(`(${escaped})`, 'g');
+  // Sätze splitten: an ". " ABER nicht an "z.B.", "u.a." etc. (Heuristik: kein Punkt
+  // direkt vor einem Buchstaben in derselben Wortgruppe).
+  const sentences = details
+    .split(/(?<=\.\s)(?=[A-ZÄÖÜ])/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const renderSentence = (s: string, idx: number): React.ReactElement => {
+    const parts = s.split(keywordRegex);
+    return (
+      <li key={idx} style={{ marginBottom: 4 }}>
+        {parts.map((p, i) => keywordRegex.test(p) ? <strong key={i}>{p}</strong> : <React.Fragment key={i}>{p}</React.Fragment>)}
+      </li>
+    );
+  };
+  // Wenn nur 1 Satz: kein Bullet, einfach Absatz.
+  if (sentences.length <= 1) {
+    const parts = details.split(keywordRegex);
+    return <span>{parts.map((p, i) => keywordRegex.test(p) ? <strong key={i}>{p}</strong> : <React.Fragment key={i}>{p}</React.Fragment>)}</span>;
+  }
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18 }}>
+      {sentences.map(renderSentence)}
+    </ul>
   );
 }
 

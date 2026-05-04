@@ -133,7 +133,7 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 8,
-            title: isDe ? 'Starter-Typ ↔ Startblock verknüpfen (v6.15)' : 'Link starter type ↔ start block (v6.15)',
+            title: isDe ? 'Starter-Typ ↔ Startblock verknüpfen' : 'Link starter type ↔ start block',
             description: (
               <>
                 {isDe
@@ -144,7 +144,7 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 9,
-            title: isDe ? 'Leistungsnachweis-Pflicht für Durchstarter (v6.15)' : 'Proof of performance for Durchstarter (v6.15)',
+            title: isDe ? 'Leistungsnachweis-Pflicht für Durchstarter' : 'Proof of performance for Durchstarter',
             description: (
               <>
                 {isDe

@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
@@ -76,6 +76,9 @@ interface ActionTileProps {
   busy?: boolean;
   result?: string | null;
   resultIsError?: boolean;
+  // v9.19: filled-Variante fuer Highlight-Aktionen (z.B. Event aktivieren).
+  // accent='green' = grün gefuellt, accent='red' = rot gefuellt.
+  accent?: 'green' | 'red';
   // children: zusaetzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
   // gerendert wird (z.B. das Excel-Dropdown-Menue).
   children?: React.ReactNode;
@@ -84,9 +87,15 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
   const [hover, setHover] = React.useState(false);
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
-  const borderColor = greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)';
-  const bg = greenAccent ? 'rgba(134,188,37,0.06)' : '#fff';
-  const iconColor = greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
+  // v9.19: filled-Look — die Tile ist permanent gruen (oder rot) gefuellt,
+  // unabhaengig vom Hover. Highlight fuer eine Aktion die heraussticht.
+  const isFilled = !!props.accent;
+  const filledBg = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
+  const filledBorder = props.accent === 'green' ? 'var(--dex-green-dark, #6b9a1e)' : props.accent === 'red' ? '#a01e15' : '';
+  const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
+  const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
+  const iconColor = isFilled ? '#fff' : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
+  const filledTextColor = isFilled ? '#fff' : 'var(--dex-gray-800, #1f2937)';
   const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
   const badgeColors = props.badge === 'admin'
     ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
@@ -114,11 +123,12 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: iconColor, transition: 'color 0.15s ease' }}>
           {props.icon}
-          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800, #1f2937)' }}>{props.title}</span>
+          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: filledTextColor }}>{props.title}</span>
         </span>
         <span style={{
           fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
-          background: badgeColors.bg, color: badgeColors.fg, fontWeight: 600,
+          background: isFilled ? 'rgba(255,255,255,0.25)' : badgeColors.bg,
+          color: isFilled ? '#fff' : badgeColors.fg, fontWeight: 600,
           whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
         }}>{badgeLabel}</span>
       </div>
@@ -1614,6 +1624,37 @@ export default function AdminPage(): React.ReactElement {
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
           }}>
+            {/* v9.19: Event aktivieren/deaktivieren — prominent gefuellt.
+                Aktiv → User koennen sich anmelden. Deaktiv (Under Construction)
+                → Event nur fuer Organizer/Admin/Test-Team sichtbar, Anmeldung
+                blockiert. Der Toggle ist die schnellste Moeglichkeit, ein
+                Event live zu schalten oder kurzfristig "auf Pause" zu setzen
+                (z.B. waehrend kurzfristige Aenderungen). */}
+            {(() => {
+              const isActive = selectedEvent.status === 'Active';
+              return (
+                <ActionTile
+                  icon={isActive ? <X size={18} /> : <Check size={18} />}
+                  title={isActive ? 'Event deaktivieren' : 'Event aktivieren'}
+                  desc={isActive
+                    ? 'Setzt das Event auf "Under Construction" zurueck — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
+                    : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
+                  badge="organizer"
+                  accent={isActive ? 'red' : 'green'}
+                  onClick={async () => {
+                    if (!eventServiceRef) return;
+                    const newStatus = isActive ? 'Under Construction' : 'Active';
+                    const confirmMsg = isActive
+                      ? 'Event auf "Under Construction" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
+                      : 'Event auf "Active" schalten? Alle Berechtigten können sich danach anmelden.';
+                    if (!window.confirm(confirmMsg)) return;
+                    await updateEvent(selectedEvent.id, { 'EventStatus': newStatus });
+                    await refreshEvents();
+                  }}
+                />
+              );
+            })()}
+
             {/* 1. Event bearbeiten */}
             <ActionTile
               icon={<Pencil size={18} />}
@@ -3164,8 +3205,20 @@ export default function AdminPage(): React.ReactElement {
             }}
           >
             <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>QR-Codes versenden</h3>
-            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
+            </p>
+            {/* v9.19: Hinweis aufs Handbuch — User klickt auf den Link und
+                landet direkt in der Check-In-Sektion. */}
+            <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+              Tipp: Wie der Check-In am Eventtag genau abläuft — vom QR-Code-Scan über manuelle Eincheck-Vorgänge bis zu Sonderfällen — steht im{' '}
+              <a
+                href="javascript:void(0)"
+                onClick={(e) => { e.preventDefault(); navigate('manual'); window.location.hash = 'check-in'; }}
+                style={{ color: 'var(--dex-green-dark)', fontWeight: 500 }}
+              >
+                Handbuch-Artikel &bdquo;Check-In am Event-Tag&ldquo;
+              </a>.
             </p>
 
             {/* Auto-Send-Toggle */}
