@@ -360,14 +360,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
+      // v9.18: Co-Organizer-Liste aus EmailTemplateOverrides._coOrganizers (piggyback, gleicher Pattern).
       ...(() => {
         try {
           const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
-          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [] };
+          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const b = (parsed as any)._b2run;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const qr = (parsed as any)._qrScanners;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const co = (parsed as any)._coOrganizers;
           const b2Part = b && typeof b === 'object' ? {
             durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
             funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
@@ -377,8 +380,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const qrNames: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.name || '')) : [];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const qrEmails: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.email || '')) : [];
-          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails };
-        } catch { return { qrScannerNames: [], qrScannerEmails: [] }; }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const coNames: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.name || '')) : [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const coEmails: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.email || '')) : [];
+          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails };
+        } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] }; }
       })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),

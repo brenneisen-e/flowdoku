@@ -2426,11 +2426,24 @@ export class EventService {
         throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
       }
 
-      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen
-      await this.setSubsitePermissions(subsiteUrl, event.organizerEmail);
+      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen.
+      // v9.18: Co-Organizer-Emails aus emailTemplateOverrides._coOrganizers extrahieren
+      // und mit dem Hauptorganizer zusammen Full Control erteilen.
+      const coOrgEmailsForPerm: string[] = (() => {
+        try {
+          const o = JSON.parse(event.emailTemplateOverrides || '{}');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const list = (o as any)._coOrganizers;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (Array.isArray(list)) return list.map((x: any) => String(x?.email || '')).filter(Boolean);
+        } catch { /* */ }
+        return [];
+      })();
+      const allOrgEmails = [event.organizerEmail || '', ...coOrgEmailsForPerm].filter(Boolean).join(';');
+      await this.setSubsitePermissions(subsiteUrl, allOrgEmails);
 
       // 3. Teilnehmerliste auf der Subsite erstellen
-      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
+      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, allOrgEmails);
 
       // Custom Fields mit SP InternalName anreichern
       const enrichedCustomFields = event.customFields.map(cf => ({
@@ -2956,22 +2969,27 @@ export class EventService {
         );
       }
 
-      // Organizer: Full Control auf der Subsite
+      // Organizer: Full Control auf der Subsite. v9.18: organizerEmail kann
+      // ";"-separiert mehrere Emails enthalten — Hauptorganizer + Co-Organizer
+      // bekommen alle Full Control auf der Subsite.
       if (organizerEmail) {
-        try {
-          const userResponse = await this.context.spHttpClient.get(
-            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            const userId = userData.d?.Id || userData.Id;
-            await this._post(
-              `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-              {}
+        const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        for (const em of emails) {
+          try {
+            const userResponse = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+              SPHttpClient.configurations.v1
             );
-          }
-        } catch { /* Organizer-Berechtigung optional */ }
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              const userId = userData.d?.Id || userData.Id;
+              await this._post(
+                `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+                {}
+              );
+            }
+          } catch { /* Organizer-Berechtigung optional */ }
+        }
       }
     } catch {
       console.warn('[DEX] Subsite-Berechtigungen konnten nicht gesetzt werden');
@@ -3037,21 +3055,25 @@ export class EventService {
         );
       }
 
-      // Organizer: Full Control
+      // Organizer: Full Control. v9.18: organizerEmail kann ";"-separiert
+      // mehrere Emails enthalten (Hauptorganizer + Co-Organizer).
       if (organizerEmail) {
-        try {
-          const userResponse = await this.context.spHttpClient.get(
-            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            await this._post(
-              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
-              {}
+        const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        for (const em of emails) {
+          try {
+            const userResponse = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+              SPHttpClient.configurations.v1
             );
-          }
-        } catch { /* Organizer-Berechtigung optional */ }
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              await this._post(
+                `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
+                {}
+              );
+            }
+          } catch { /* Organizer-Berechtigung optional */ }
+        }
       }
     } catch {
       // Berechtigungen konnten nicht gesetzt werden

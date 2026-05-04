@@ -132,7 +132,7 @@ export default function EventListPage(): React.ReactElement {
     try { await refreshEvents(); } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { canCreateEvents, isAdmin, currentUserRole } = useRoles();
+  const { isAdmin } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [onlyActive, setOnlyActive] = React.useState(true);
@@ -145,7 +145,7 @@ export default function EventListPage(): React.ReactElement {
     setViewMode(m);
     try { localStorage.setItem('dex-eventlist-view', m); } catch { /* */ }
   };
-  const [showDebug, setShowDebug] = React.useState(false);
+  // v9.18: Debug-Button entfernt — wurde im Live-Betrieb nicht gebraucht.
   const [myNumbers, setMyNumbers] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
 
   React.useEffect(() => {
@@ -163,13 +163,17 @@ export default function EventListPage(): React.ReactElement {
   //   - Admins (immer)
   //   - Event-eigene Organizer (immer)
   //   - v9.16: Mitglieder des globalen Test-Teams (TestTeamEmails in _Config)
+  //   - v9.18: Co-Organizer + QR-Scanner des konkreten Events
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const inTestTeam = (testTeamEmails || []).some(e => e === currentEmailLc);
   const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
     if (!e.isFictive) return true;
     if (isAdmin) return true;
     if (inTestTeam) return true;
-    return e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc);
+    if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+    if ((e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+    if ((e.qrScannerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+    return false;
   });
   const filteredEvents = (isAdmin
     ? fictiveFiltered
@@ -215,14 +219,21 @@ export default function EventListPage(): React.ReactElement {
           disabled={isRefreshing || isEventsLoading}
           title={isDe ? 'Events neu laden' : 'Refresh events'}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: '0.78rem', padding: '4px 10px',
+            // v9.18: moderner Button-Look — größeres Padding, Schatten,
+            // klare Card-Box statt schmaler Outline. Hover hebt sich leicht.
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontSize: '0.85rem', padding: '8px 16px',
             background: '#fff',
-            border: '1px solid var(--dex-gray-300, #d1d5db)',
-            borderRadius: 6, color: 'var(--dex-gray-700)',
+            border: '1px solid var(--dex-gray-200, #e5e7eb)',
+            borderRadius: 8, color: 'var(--dex-gray-800)',
             cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
             opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            fontWeight: 500,
+            transition: 'box-shadow 120ms ease, transform 120ms ease',
           }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'; }}
         >
           <span style={{
             display: 'inline-flex',
@@ -234,28 +245,8 @@ export default function EventListPage(): React.ReactElement {
             ? (isDe ? 'Wird geladen…' : 'Loading…')
             : (isDe ? 'Aktualisieren' : 'Refresh')}
         </button>
-        {canCreateEvents && (
-          <button onClick={() => setShowDebug(!showDebug)} style={{ fontSize: '0.7rem', padding: '2px 8px', opacity: 0.5 }}>Debug</button>
-        )}
       </div>
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      {showDebug && (
-        <div style={{ background: '#1e1e1e', color: '#0f0', padding: 12, borderRadius: 8, fontSize: '0.7rem', fontFamily: 'monospace', marginBottom: 16, maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-          {`User: ${currentUser.email}
-Location: "${currentUser.location}"
-Role: ${currentUserRole}
-canCreateEvents: ${canCreateEvents}
-isEventsLoading: ${isEventsLoading}
-events.length: ${events.length}
-statusFiltered.length: ${statusFiltered.length}
-filteredEvents.length: ${filteredEvents.length}
-onlyActive: ${onlyActive}
-
-Events Detail:
-${events.map(e => `  #${e.eventNumber} "${e.title}" status=${e.status} loc=[${e.locationAudience.join(',')}] aud=[${e.audienceFilter.join(',')}] filterMode=${e.filterMode} visible=${isEventVisibleForUser(e, currentUser.email, currentUser.location)}`).join('\n') || '(keine Events geladen)'}
-`}
-        </div>
-      )}
       {/* Titel + Hinweis: Events sind fuer den User personalisiert */}
       <div className="card" style={{
         padding: '16px 20px',

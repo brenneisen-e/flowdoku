@@ -502,8 +502,15 @@ export default function AdminPage(): React.ReactElement {
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerFor = (ev: DeloitteEvent): boolean =>
     !!currentEmailLc && !!ev.qrScannerEmails && ev.qrScannerEmails.some(e => e.toLowerCase() === currentEmailLc);
-  const isOrganizerFor = (ev: DeloitteEvent): boolean =>
-    !!currentEmailLc && !!ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc);
+  // v9.18: Co-Organizer haben pro Event die gleichen Rechte wie der Hauptorganizer.
+  // isOrganizerFor returned true sowohl fuer event.organizerEmails als auch
+  // fuer event.coOrganizerEmails (per-Event-Rolle).
+  const isOrganizerFor = (ev: DeloitteEvent): boolean => {
+    if (!currentEmailLc) return false;
+    if (ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc)) return true;
+    if (ev.coOrganizerEmails && ev.coOrganizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
+    return false;
+  };
   const adminEvents = isAdmin
     ? events
     : events.filter(e => isOrganizerFor(e) || isQRScannerFor(e));

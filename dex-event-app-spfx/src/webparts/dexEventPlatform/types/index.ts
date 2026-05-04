@@ -22,6 +22,16 @@ export interface DeloitteEvent {
    *  Persistenz: EmailTemplateOverrides._qrScanners (JSON). qrScannerNames + qrScannerEmails sind index-synchron. */
   qrScannerNames: string[];
   qrScannerEmails: string[];
+  /** v9.18: Co-Organizer pro Event — beliebiger Deloitte-User, kein Admin/Organizer-Status nötig.
+   *  Diese User haben für DIESES eine Event die gleichen Rechte wie der Hauptorganizer:
+   *  - Können das Event editieren (Stammdaten, Felder, Templates)
+   *  - Sehen das Event auch im Entwurfsmodus
+   *  - Sehen + verwalten Teilnehmer im Admin Center, dürfen QR-Codes versenden, Massmail etc.
+   *  - Können selbst weitere Co-Organizer (oder QR-Scanner) hinzufügen
+   *  - Erscheinen in der Organizer-Anzeige auf der Registration-Page als gleichwertige Ansprechpartner
+   *  Persistenz: EmailTemplateOverrides._coOrganizers (JSON, analog _qrScanners). */
+  coOrganizerNames?: string[];
+  coOrganizerEmails?: string[];
   location: string;
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];

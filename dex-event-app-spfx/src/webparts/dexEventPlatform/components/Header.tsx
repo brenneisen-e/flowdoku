@@ -24,11 +24,15 @@ export default function Header(): React.ReactElement {
   // das Event aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
   // v6.26: Zugriff auch fuer User, die per E-Mail in event.qrScannerEmails
   // mindestens eines Events eingetragen sind — ohne globale Organizer-Rolle.
+  // v9.18: Co-Organizer pro Event ebenfalls Check-In-faehig.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerOfAny = !!currentEmailLc && (events || []).some(
     e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
   );
-  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny;
+  const isCoOrganizerOfAny = !!currentEmailLc && (events || []).some(
+    e => (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
+  );
+  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny || isCoOrganizerOfAny;
   const { t, locale, setLocale } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
