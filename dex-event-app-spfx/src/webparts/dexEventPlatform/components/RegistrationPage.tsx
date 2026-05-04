@@ -14,6 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
+import { InfoTooltip } from './InfoTooltip';
 import OrganizerList from './OrganizerList';
 
 function formatDate(iso: string): string {
@@ -570,7 +571,25 @@ export default function RegistrationPage(): React.ReactElement {
         }}>
           {t('reg.locationnotice')}
           {event && event.locationAudience.length > 0 && <> {t('reg.locationfilter')}: <strong>{event.locationAudience.join(', ')}</strong>.</>}
-          {event && event.audienceFilter && event.audienceFilter.length > 0 && <> {t('reg.audience')}: <strong>{event.audienceFilter.join(', ')}</strong>.</>}
+          {/* v9.17: bei Einzel-E-Mail-Whitelists in audienceFilter wuerden bei
+              groesseren Verteilern (50+ Adressen) der Banner zugekleistert.
+              Statt alle Mails auflisten: nur die Anzahl + die ersten 3
+              Adressen zeigen, der Rest als "+N weitere". Gruppen-/Group-Namen
+              (ohne "@") werden weiterhin alle aufgefuehrt — die sind kurz. */}
+          {event && event.audienceFilter && event.audienceFilter.length > 0 && (() => {
+            const items = event.audienceFilter;
+            const emails = items.filter(s => s.includes('@'));
+            const groups = items.filter(s => !s.includes('@'));
+            const showLabel = (() => {
+              if (emails.length === 0) return groups.join(', ');
+              if (emails.length <= 3) return [...groups, ...emails].join(', ');
+              const head = emails.slice(0, 3).join(', ');
+              const more = emails.length - 3;
+              const tail = `${head} (+${more} ${t('reg.audience.more') || 'weitere E-Mail-Adressen'})`;
+              return groups.length > 0 ? `${groups.join(', ')}, ${tail}` : tail;
+            })();
+            return <> {t('reg.audience')}: <strong>{showLabel}</strong>.</>;
+          })()}
           {event && event.filterMode === 'AND' && <> ({t('reg.andmode')})</>}
           {' '}{t('reg.yourlocation')}: {currentUser.location || t('reg.unknown')}.
         </div>
@@ -888,14 +907,22 @@ export default function RegistrationPage(): React.ReactElement {
 
             {canRegisterForOther && (
               <>
+                {/* v9.17: registerForOther-Toggle als unscheinbarer Text-Link
+                    statt prominentem Button — die Mehrheit registriert sich
+                    selbst, der Link ist nur fuer den Sonderfall gedacht. */}
                 <button
-                  className="btn btn-outline"
-                  style={{ marginBottom: 20, fontSize: '0.85rem' }}
+                  type="button"
                   onClick={() => {
                     setRegisterForOther(!registerForOther);
                     setThirdPartyCheck(null);
                     if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                     else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
+                  }}
+                  style={{
+                    background: 'none', border: 'none', padding: 0,
+                    color: 'var(--dex-green-dark)', fontSize: '0.78rem',
+                    textDecoration: 'underline', cursor: 'pointer',
+                    marginBottom: 16, display: 'inline-block',
                   }}
                 >
                   {registerForOther ? t('reg.registerself') : t('reg.registerother')}
@@ -1220,7 +1247,10 @@ export default function RegistrationPage(): React.ReactElement {
                     <label className="form-label">
                       {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
                       {field.label}
-                      {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+                      {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
+                          gibt schoenes Hover-Popover mit der vom Organizer
+                          beim Event-Anlegen hinterlegten Beschreibung. */}
+                      {field.helpText && <InfoTooltip text={field.helpText} />}
                     </label>
                   )}
                   {field.type === 'select' && field.multi ? (

@@ -1049,10 +1049,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
 
   const openSuggestedModal = (): void => {
-    // Standard: alle ausgewaehlt, User kann dann abwaehlen was er nicht braucht
-    const init: Record<string, boolean> = {};
-    for (const s of SUGGESTED_FIELDS_CATALOG) init[s.key] = true;
-    setSuggestedSelection(init);
+    // v9.17: Standard ist KEINS ausgewaehlt — User waehlt aktiv aus, was er
+    // wirklich braucht. Vorher waren alle vorgewaehlt, was zu unbeabsichtigt
+    // viele uebernommenen Feldern fuehrte.
+    setSuggestedSelection({});
     setShowSuggestedModal(true);
   };
 
@@ -1967,7 +1967,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
       'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-      'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+      'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
       'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
       'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
       'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
@@ -1997,7 +1997,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
       'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
       'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
     ],
     [
       'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
@@ -2016,7 +2016,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Event title and description — shown on the event list and registration page',
       'Upload an event image (used at the top of the detail page and in emails)',
-      'Flag as test event — only visible to admins / test users',
+      'Save as draft — only visible to admins, organizers and the test team',
       'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
       'Optional: QR scanner users for check-in on event day (no further editing rights)',
       'Set location filter and audience — who sees the event in the list',
@@ -2046,7 +2046,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
       'Upload a custom logo / header image for the email and Outlook event',
       'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-      'Optionally disable notifications entirely — e.g. for internal test events',
+      'Optionally disable notifications entirely — e.g. for internal draft events',
     ],
     [
       'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
@@ -2547,7 +2547,7 @@ export default function EventCreationPage(): React.ReactElement {
                 [
                   'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
                   'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-                  'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+                  'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
                   'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
                   'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
                   'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
@@ -2555,7 +2555,7 @@ export default function EventCreationPage(): React.ReactElement {
                 [
                   'Event title and description — shown on the event list and registration page',
                   'Upload an event image (used at the top of the detail page and in emails)',
-                  'Flag as test event — only visible to admins / test users',
+                  'Save as draft — only visible to admins, organizers and the test team',
                   'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
                   'Optional: QR scanner users for check-in on event day (no further editing rights)',
                   'Set location filter and audience — who sees the event in the list',
@@ -3739,23 +3739,10 @@ export default function EventCreationPage(): React.ReactElement {
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deregAfterStart')}</p>}
 
-              {/* Explizite Wahl: Lauf-Event mit getrennten Starter-Kapazitäten (seit v6.5)? */}
-              <div className="form-group" style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)', marginBottom: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={useSplitCapacities}
-                    onChange={e => setUseSplitCapacities(e.target.checked)}
-                    style={{ width: 18, height: 18, cursor: 'pointer' }}
-                  />
-                  <span>
-                    <strong>Lauf-Event mit getrennten Starter-Kapazitäten</strong>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                      z.B. B2Run: getrennte Plätze und Wartelisten für Durchstarter und Funstarter. Wenn deaktiviert, gilt eine einzige Teilnehmerzahl.
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v9.17: Reihenfolge umgestellt — Standard-Teilnehmerzahl
+                  steht oben, Split-Toggle wird unter dem Block subtler
+                  angezeigt. Die Mehrheit der Events nutzt nur eine
+                  Gesamtkapazitaet; der B2Run-Sonderfall ist Opt-in. */}
 
               {/* B2Run: Split-Kapazitäten für Durchstarter + Funstarter */}
               {useSplitCapacities ? (
@@ -3878,6 +3865,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <div className="form-group">
                     <label className="form-label">
                       {t('create.maxparticipants')}
+                      <InfoTooltip text={t('create.maxparticipants.hint')} />
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
                       <label className="toggle">
@@ -3929,6 +3917,25 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                 </div>
               )}
+
+              {/* v9.17: Split-Capacity-Toggle UNTER dem Teilnehmerzahl-Block,
+                  bewusst subtil — der Großteil der Events nutzt eine einzige
+                  Teilnehmerzahl. Nur wer einen Lauf mit getrennten Starter-
+                  Töpfen anlegt, klickt diesen Toggle. */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', cursor: 'pointer', padding: '8px 0', marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={useSplitCapacities}
+                  onChange={e => setUseSplitCapacities(e.target.checked)}
+                  style={{ marginTop: 2, cursor: 'pointer' }}
+                />
+                <span>
+                  {t('create.splitcap.label')}
+                  <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>
+                    {t('create.splitcap.hint')}
+                  </span>
+                </span>
+              </label>
 
               </div>
 
@@ -4553,14 +4560,14 @@ export default function EventCreationPage(): React.ReactElement {
                     'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
                     'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
                     'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
                   ],
                   [
                     'Pick the email language (DE/EN) for automatic emails to attendees',
                     'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
                     'Upload a custom logo / header image for the email and Outlook event',
                     'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-                    'Optionally disable notifications entirely — e.g. for internal test events',
+                    'Optionally disable notifications entirely — e.g. for internal draft events',
                   ]
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
@@ -4745,6 +4752,12 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      // v9.17: Hinweis vor Upload — Stockfotos / komplexe Bilder
+                      // funktionieren nicht zuverlaessig in Mails (siehe
+                      // EmailImageBase64-Pipeline). Empfehlung sind die
+                      // offiziellen Deloitte Circular Motifs.
+                      const ok = window.confirm(t('create.logoupload.warning'));
+                      if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
                       reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
@@ -4778,6 +4791,8 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      const ok = window.confirm(t('create.logoupload.warning'));
+                      if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
                       reader.onload = (ev) => setOutlookLogoPreview(ev.target?.result as string || '');
@@ -4810,8 +4825,12 @@ export default function EventCreationPage(): React.ReactElement {
                   {t('create.templates.hint')}
                 </p>
 
-                {/* TemplateType in DEX_EmailTemplates ist ASCII 'Nachruecken' (Umlaut nicht erlaubt in Choice-Feld). */}
-                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
+                {/* TemplateType in DEX_EmailTemplates ist ASCII 'Nachruecken' (Umlaut nicht erlaubt in Choice-Feld).
+                    v9.17: Warteliste/Nachruecken-Templates nur anzeigen, wenn das Event eine
+                    Warteliste hat — sonst werden sie ohnehin nie genutzt. */}
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken']
+                  .filter(tType => waitlistEnabled || (tType !== 'Warteliste' && tType !== 'Nachruecken'))
+                  .map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
                   const currentSubject = override?.subject || defaultTpl?.subject || '';
