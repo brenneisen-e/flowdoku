@@ -342,17 +342,29 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
  * Wird vom Admin im Settings-Bildschirm nach dem Anlegen einer neuen Rolle
  * optional ausgelöst. Enthält Link zur App, Link zum Handbuch und kurze
  * Bullet-Points zum Anlegen eines ersten Test-Events.
+ *
+ * Deloitte-displayName ist "Nachname, Vorname" — fuer die Anrede nur den
+ * Vornamen verwenden (analog qrCodeEmail / registrationEmail).
  */
 export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
   const manualUrl = `${APP_URL}&action=manual`;
   const roleLabelDe = role === 'Admin' ? 'Admin' : 'Organizer';
+  // Anrede: Vorname extrahieren. "Nachname, Vorname" -> Teil nach Komma,
+  // sonst erstes Wort. Fallback: kompletter Name.
+  const firstName = (() => {
+    const n = (recipientName || '').trim();
+    if (!n) return '';
+    const c = n.indexOf(',');
+    if (c >= 0) return n.substring(c + 1).trim().split(/\s+/)[0];
+    return n.split(/\s+/)[0];
+  })();
   return {
     subject: `Willkommen als ${roleLabelDe} auf der Deloitte Event Experience Platform`,
     body: wrapTemplate(
       GREEN,
       'Willkommen an Bord',
       `Dein Start als ${roleLabelDe}`,
-      `<p>Hallo ${recipientName},</p>
+      `<p>Hallo ${firstName},</p>
       <p>du wurdest soeben als <strong>${roleLabelDe}</strong> für die Deloitte
       <strong>Event Experience Platform</strong> freigeschaltet. Damit kannst du
       eigene Events anlegen, Teilnehmer verwalten und Einladungen versenden.</p>
