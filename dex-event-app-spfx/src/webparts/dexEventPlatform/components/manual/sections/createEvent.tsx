@@ -57,8 +57,8 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </p>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Organisatoren fügst du als Chips hinzu: ins Suchfeld tippen, aus der Liste wählen — der Chip erscheint oben. Reihenfolge per ◀ ▶, Entfernen per ×. Standardmäßig bist du selbst als erster Organizer eingetragen. In derselben Sektion findest du auch den QR-Code-Scanner-Picker (orange Pills) für Leute, die am Event-Tag nur einchecken sollen.'
-                    : 'Add organizers as chips: type in the search field, pick from the list — the chip appears above. Reorder via ◀ ▶, remove via ×. You\'re added as the first organizer by default. The same section holds the QR code scanner picker (orange pills) for people who should only handle check-in on event day.'}
+                    ? 'Organisatoren fügst du als Chips hinzu: ins Suchfeld tippen, aus der Liste wählen — der Chip erscheint oben. Reihenfolge per ◀ ▶, Entfernen per ×. Standardmäßig bist du selbst als erster Organizer eingetragen. Alle Organizer werden beim Anlegen des Events gemeinsam als Pflicht-Teilnehmer in den Outlook-Termin eingeladen — egal wie viele du eingibst. In derselben Sektion findest du auch den QR-Code-Scanner-Picker (orange Pills) für Leute, die am Event-Tag nur einchecken sollen.'
+                    : 'Add organizers as chips: type in the search field, pick from the list — the chip appears above. Reorder via ◀ ▶, remove via ×. You\'re added as the first organizer by default. All organizers are jointly invited as required attendees to the Outlook event when it\'s created — no matter how many you add. The same section holds the QR code scanner picker (orange pills) for people who should only handle check-in on event day.'}
                 </p>
               </>
             ),

@@ -59,8 +59,16 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
   const { navigate } = useNavigation();
   const { t } = useLanguage();
   const { canCreateEvents } = useRoles();
-  const isUnlimited = !event.maxParticipants || event.maxParticipants === 0;
-  const freePlaces = isUnlimited ? Infinity : event.maxParticipants - event.currentParticipants;
+  // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazitaet auf
+  // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
+  // Gesamtkapazitaet — sonst zeigt die Karte faelschlich "Unbegrenzt", obwohl
+  // es z.B. 140 Plaetze gibt.
+  const splitCapacity = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
+  const effectiveMax = event.maxParticipants && event.maxParticipants > 0
+    ? event.maxParticipants
+    : splitCapacity;
+  const isUnlimited = !effectiveMax || effectiveMax === 0;
+  const freePlaces = isUnlimited ? Infinity : effectiveMax - event.currentParticipants;
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
   const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();

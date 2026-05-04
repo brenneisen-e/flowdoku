@@ -802,9 +802,22 @@ export default function RegistrationPage(): React.ReactElement {
                             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                               {ce.startDate && <>{formatDate(ce.startDate)}</>}
                               {ce.location && <> · {ce.location}</>}
-                              {hasCap && (
-                                <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit' }}>{meta.count}/{ce.maxParticipants}</span></>
-                              )}
+                              {hasCap && (() => {
+                                // v9.8: Klartext-Anzeige damit der User auf einen Blick
+                                // sieht, wie viele Plaetze noch frei sind. Vorher stand
+                                // dort nur "0/25" ohne Label, was die User-Frage
+                                // "warum steht da 0/25?" ausgeloest hat.
+                                const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
+                                return (
+                                  <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
+                                    {meta.count}/{ce.maxParticipants} {t('reg.subevents.taken')}
+                                  </span>
+                                  {!isSessionFull && (
+                                    <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {t('reg.free')}</span>
+                                  )}
+                                  </>
+                                );
+                              })()}
                             </div>
                             {deadlinePassed && !isSel && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>

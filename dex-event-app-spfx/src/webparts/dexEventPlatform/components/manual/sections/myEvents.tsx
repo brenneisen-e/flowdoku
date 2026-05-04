@@ -64,8 +64,8 @@ export function myEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Über "Abmelden" kannst du deine Teilnahme zurücknehmen. Die Abmeldung ist bis zur festgelegten Abmeldefrist möglich — danach blockiert die App die Abmeldung, weil Zimmer/Caterer/Busse bereits gebucht sind.'
-                  : 'Via "Cancel" you can withdraw your participation. Cancellation is possible until the defined deadline — after that the app blocks self-cancellation because rooms/catering/buses are already booked.'}
+                  ? 'Auf jeder Event-Karte gibt es einen prominenten roten "Abmelden"-Button (rot umrandet, mit X-Icon). Beim ersten Klick wird er rot ausgefüllt und wartet auf eine zweite Bestätigung — daneben erscheint ein "Doch behalten"-Button, falls du dich verklickt hast. Erst der zweite Klick auf "Wirklich abmelden?" zieht deine Anmeldung zurück. Die Abmeldung ist bis zur festgelegten Abmeldefrist möglich — danach blockiert die App die Abmeldung, weil Zimmer/Caterer/Busse bereits gebucht sind.'
+                  : 'Every event card has a prominent red "Cancel" button (red outline, with X icon). The first click fills it red and waits for a second confirmation — a "Keep registration" button appears next to it in case you misclicked. Only the second click on "Really cancel?" actually withdraws your registration. Cancellation is possible until the defined deadline — after that the app blocks self-cancellation because rooms/catering/buses are already booked.'}
               </>
             ),
             warning: isDe
