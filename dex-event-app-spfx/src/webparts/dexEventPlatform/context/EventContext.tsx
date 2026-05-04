@@ -12,7 +12,8 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail } from '../services/EmailTemplates';
+import * as QRCode from 'qrcode';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -119,6 +120,11 @@ interface EventContextType {
    * Deloitte-Layout gewrappt (siehe organizerOnboardingEmail in EmailTemplates).
    */
   sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
+  /** v9.16: Globale Test-Team-Email-Liste (lowercase). Wer in der Liste
+   *  steht, sieht Test-Events (isFictive=true) auch ohne Organizer/Admin-Rolle. */
+  testTeamEmails: string[];
+  refreshTestTeamEmails: () => Promise<void>;
+  setTestTeamEmails: (emails: string[]) => Promise<boolean>;
 }
 
 export interface CreateEventInput {
@@ -172,6 +178,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   const subsiteMap = React.useRef<Record<string, string>>({});
 
   const eventService = React.useMemo(() => new EventService(props.context), []);
+
+  // v9.16: Globale Test-Team-Liste (lowercase Emails). Aus dem _Config-Item
+  // der DEX_EmailTemplates-Liste geladen — wird beim App-Start einmalig geholt
+  // und bei Settings-Aenderung neu gefragt.
+  const [testTeamEmails, setTestTeamEmailsState] = React.useState<string[]>([]);
+  const refreshTestTeamEmails = React.useCallback(async () => {
+    try {
+      const emails = await eventService.getTestTeamEmails();
+      setTestTeamEmailsState(emails);
+    } catch { /* fallback: leere Liste */ }
+  }, [eventService]);
+  const setTestTeamEmailsFn = React.useCallback(async (emails: string[]): Promise<boolean> => {
+    const ok = await eventService.setTestTeamEmails(emails);
+    if (ok) await refreshTestTeamEmails();
+    return ok;
+  }, [eventService, refreshTestTeamEmails]);
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
   // Vorname fuer E-Mail-Anreden ({{Name}} im Template).
@@ -206,6 +228,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try { await eventService.ensureAssetsFolders(); } catch { /* */ }
     try { await eventService.ensureLogosInConfig(); } catch { /* */ }
     try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
+    // v9.16: Test-Team-Liste laden — bestimmt fuer welche User Test-Events sichtbar sind.
+    try { await refreshTestTeamEmails(); } catch { /* */ }
     // Seed-Migrationen entfernt - erfolgreich abgeschlossen
     await loadEvents();
     setIsEventsLoading(false);
@@ -305,6 +329,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       lastDeregisterDate: e.LastDeregisterDate || '',
       description: e.Description || '',
       maxParticipants: e.MaxParticipants || 0,
+      waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
+      autoSendQRCode: e.AutoSendQRCode === true, // v9.15 — explizites opt-in pro Event
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
@@ -334,14 +360,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
+      // v9.18: Co-Organizer-Liste aus EmailTemplateOverrides._coOrganizers (piggyback, gleicher Pattern).
       ...(() => {
         try {
           const parsed = JSON.parse(e.EmailTemplateOverrides || '{}');
-          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [] };
+          if (!parsed || typeof parsed !== 'object') return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const b = (parsed as any)._b2run;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const qr = (parsed as any)._qrScanners;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const co = (parsed as any)._coOrganizers;
           const b2Part = b && typeof b === 'object' ? {
             durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
             funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
@@ -351,8 +380,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const qrNames: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.name || '')) : [];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const qrEmails: string[] = Array.isArray(qr) ? qr.map((x: any) => String(x?.email || '')) : [];
-          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails };
-        } catch { return { qrScannerNames: [], qrScannerEmails: [] }; }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const coNames: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.name || '')) : [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const coEmails: string[] = Array.isArray(co) ? co.map((x: any) => String(x?.email || '')) : [];
+          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails };
+        } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [] }; }
       })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),
       transferTimes: (() => { try { return e.Transfers ? JSON.parse(e.Transfers) : []; } catch { return []; } })(),
@@ -568,6 +601,37 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailData.subject, emailToUse, nameToUse, emailData.body,
           templateType, event.title, eventId, undefined, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+
+        // v9.15: Auto-Send QR-Code wenn am Event aktiviert. Nur fuer
+        // Status='Angemeldet' (Wartelistler bekommen keinen QR — sie sind
+        // noch nicht confirmed). Setting wird im Admin-Center per QR-Versand-
+        // Modal pro Event umgeschaltet (autoSendQRCode → SP-Feld AutoSendQRCode).
+        if (event.autoSendQRCode && status === 'Angemeldet') {
+          (async (): Promise<void> => {
+            try {
+              const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
+              let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+              try {
+                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+              } catch { /* fallback bleibt Text */ }
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
+              await eventService.queueEmail(
+                qrMail.subject, emailToUse, nameToUse, qrMail.body,
+                'QRCode', event.title, eventId
+              );
+              // Status auf 'QR versendet' setzen, damit der Admin-Center-View
+              // sofort zeigt, dass der QR-Code raus ist (analog zum
+              // manuellen Massen-QR-Versand).
+              if (event.subsiteUrl) {
+                const myReg = await eventService.getMyRegistration(event.subsiteUrl, emailToUse);
+                if (myReg && myReg.Id) {
+                  await eventService.setQRSentStatus(event.subsiteUrl, myReg.Id);
+                }
+              }
+            } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
+          })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
+        }
       }
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
       // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-
@@ -919,6 +983,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
+        testTeamEmails,
+        refreshTestTeamEmails,
+        setTestTeamEmails: setTestTeamEmailsFn,
       },
     },
     props.children

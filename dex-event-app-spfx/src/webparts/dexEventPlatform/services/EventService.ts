@@ -225,6 +225,7 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
+  AutoSendQRCode?: boolean; // v9.15: true = nach Anmeldung automatisch QR-Code-Mail versenden
   // v8.5: Granulare Organizer-BCC-Modi
   NotifyOrgRegisterMode?: string; // 'Never' | 'Always' | 'FromDate'
   NotifyOrgRegisterFromDate?: string;
@@ -1435,9 +1436,13 @@ export class EventService {
   private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
     try {
       // 1. Logo-Spalten nachtraeglich anlegen falls fehlend
+      // v9.16: TestTeamEmails ergaenzt — globale Liste (";"-separiert) der
+      // User die Test-Events sehen + sich anmelden duerfen, auch wenn sie
+      // keine Organizer/Admin-Rolle haben.
       const logoFields = [
         { title: 'LogoBase64', type: 3 },
         { title: 'DefaultImageBase64', type: 3 },
+        { title: 'TestTeamEmails', type: 3 }, // Note (multi-line text), ";"-separiert
       ];
       for (const f of logoFields) {
         try {
@@ -1581,6 +1586,46 @@ export class EventService {
    * Email-Template aus DEX_EmailTemplates laden.
    * Fallback auf eingebautes Template wenn nicht gefunden.
    */
+  // v9.16: Test-Team — globale ";"-separierte E-Mail-Liste, gespeichert auf
+  // dem _Config-Eintrag der DEX_EmailTemplates-Liste. Erlaubt nicht-Admin/
+  // -Organizer-Usern Test-Events zu sehen + sich anzumelden.
+  public async getTestTeamEmails(): Promise<string[]> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=TestTeamEmails`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return [];
+      const raw: string = (items[0].TestTeamEmails || '').toString();
+      return raw.split(/[;,\n]/).map(s => s.trim().toLowerCase()).filter(s => !!s && s.includes('@'));
+    } catch { return []; }
+  }
+
+  public async setTestTeamEmails(emails: string[]): Promise<boolean> {
+    try {
+      const cleaned = (emails || []).map(s => (s || '').trim()).filter(s => !!s && s.includes('@'));
+      const value = cleaned.join(';');
+      // _Config-Item-ID lookup
+      const lookup = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (!lookup.ok) return false;
+      const data = await lookup.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return false;
+      const itemId = items[0].Id;
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${itemId})`,
+        { 'TestTeamEmails': value }
+      );
+      return resp.ok;
+    } catch { return false; }
+  }
+
   public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
     try {
       const resp = await this.context.spHttpClient.get(
@@ -1957,6 +2002,7 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'AutoSendQRCode', type: 8, metaType: 'SP.Field' }, // v9.15 Boolean - QR-Code automatisch nach Anmeldung versenden
       { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
       { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur fuer Mode='FromDate'
       { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
@@ -2227,7 +2273,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
@@ -2380,11 +2426,24 @@ export class EventService {
         throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
       }
 
-      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen
-      await this.setSubsitePermissions(subsiteUrl, event.organizerEmail);
+      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen.
+      // v9.18: Co-Organizer-Emails aus emailTemplateOverrides._coOrganizers extrahieren
+      // und mit dem Hauptorganizer zusammen Full Control erteilen.
+      const coOrgEmailsForPerm: string[] = (() => {
+        try {
+          const o = JSON.parse(event.emailTemplateOverrides || '{}');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const list = (o as any)._coOrganizers;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (Array.isArray(list)) return list.map((x: any) => String(x?.email || '')).filter(Boolean);
+        } catch { /* */ }
+        return [];
+      })();
+      const allOrgEmails = [event.organizerEmail || '', ...coOrgEmailsForPerm].filter(Boolean).join(';');
+      await this.setSubsitePermissions(subsiteUrl, allOrgEmails);
 
       // 3. Teilnehmerliste auf der Subsite erstellen
-      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, event.organizerEmail);
+      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, allOrgEmails);
 
       // Custom Fields mit SP InternalName anreichern
       const enrichedCustomFields = event.customFields.map(cf => ({
@@ -2910,22 +2969,27 @@ export class EventService {
         );
       }
 
-      // Organizer: Full Control auf der Subsite
+      // Organizer: Full Control auf der Subsite. v9.18: organizerEmail kann
+      // ";"-separiert mehrere Emails enthalten — Hauptorganizer + Co-Organizer
+      // bekommen alle Full Control auf der Subsite.
       if (organizerEmail) {
-        try {
-          const userResponse = await this.context.spHttpClient.get(
-            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            const userId = userData.d?.Id || userData.Id;
-            await this._post(
-              `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
-              {}
+        const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        for (const em of emails) {
+          try {
+            const userResponse = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+              SPHttpClient.configurations.v1
             );
-          }
-        } catch { /* Organizer-Berechtigung optional */ }
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              const userId = userData.d?.Id || userData.Id;
+              await this._post(
+                `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+                {}
+              );
+            }
+          } catch { /* Organizer-Berechtigung optional */ }
+        }
       }
     } catch {
       console.warn('[DEX] Subsite-Berechtigungen konnten nicht gesetzt werden');
@@ -2991,21 +3055,25 @@ export class EventService {
         );
       }
 
-      // Organizer: Full Control
+      // Organizer: Full Control. v9.18: organizerEmail kann ";"-separiert
+      // mehrere Emails enthalten (Hauptorganizer + Co-Organizer).
       if (organizerEmail) {
-        try {
-          const userResponse = await this.context.spHttpClient.get(
-            `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(organizerEmail)}')?$select=Id`,
-            SPHttpClient.configurations.v1
-          );
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            await this._post(
-              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
-              {}
+        const emails = organizerEmail.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        for (const em of emails) {
+          try {
+            const userResponse = await this.context.spHttpClient.get(
+              `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+              SPHttpClient.configurations.v1
             );
-          }
-        } catch { /* Organizer-Berechtigung optional */ }
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              await this._post(
+                `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userData.Id}, roledefid=1073741829)`,
+                {}
+              );
+            }
+          } catch { /* Organizer-Berechtigung optional */ }
+        }
       }
     } catch {
       // Berechtigungen konnten nicht gesetzt werden
@@ -3694,15 +3762,12 @@ export class EventService {
       } catch { errors++; }
     }
 
-    // v7.31 / v9.13: Counter konsistent halten + Permissions sicherstellen.
-    // - ensureCounterList: legt Counter-Liste an falls fehlt + patcht
-    //   Visitors-Permissions auf Contribute (Recovery fuer alte Listen
-    //   die nur Read-Inheritance hatten — genau der Bug der bei der
-    //   Mass-Anmeldung Theresa zu TID=1 gefuehrt hat).
-    // - syncCounterToMax (v9.12+): monotonic up-only — patcht Counter
-    //   auf neuen Max, blockiert NIE eine parallele Anmeldung die schon
-    //   hoeher hochgepacked hat.
-    try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
+    // v7.31 / v9.14: Counter konsistent halten — syncCounterToMax patcht
+    // Counter (monotonic up-only). ensureCounterList wurde hier urspruenglich
+    // (v9.13) ebenfalls gerufen, hat aber Race-Conditions ausgeloest. Die
+    // Counter-Liste sollte zum Zeitpunkt eines Reorders ohnehin existieren —
+    // sonst hat die App ein anderes Problem das ein expliziter Klick auf
+    // "Counter zurücksetzen" loest.
     try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
 
     return { success, errors };
@@ -5039,11 +5104,14 @@ export class EventService {
     if (probe.ok) {
       // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
       try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
-      // v9.13: Permissions auf bestehender Liste idempotent nachpatchen.
-      // Existierende Counter-Listen aus v7.28..v9.12 vererben nur Read von
-      // der Subsite — normale User koennen den Counter nicht inkrementieren.
-      // setCounterListPermissions setzt break-inheritance + Visitors=Contribute.
-      try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
+      // v9.13/v9.14: setCounterListPermissions wurde hier urspruenglich
+      // mitaufgerufen, hat aber bei laufender Event-Anlage Race-Conditions
+      // ausgeloest (breakroleinheritance gegen frisch provisionierte Liste
+      // in derselben Request-Welle). Permissions werden jetzt nur noch
+      // explizit ueber den "Counter zurücksetzen"-Button gefixt — siehe
+      // resetCounterToMax. Bestehende Events koennen damit per Admin-Klick
+      // geheilt werden, neue Events bekommen ihre Permissions im
+      // create-Branch unten gesetzt.
       const itemListResp = await this.context.spHttpClient.get(
         `${itemsUrl}?$top=1`,
         SPHttpClient.configurations.v1

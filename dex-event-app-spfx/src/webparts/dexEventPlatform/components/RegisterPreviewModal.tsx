@@ -145,7 +145,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
             Registrierungsseite — Vorschau
             {data.isFictive && (
               <span style={{ marginLeft: 10, padding: '2px 10px', borderRadius: 999, background: 'var(--dex-orange, #ed8b00)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 0.5 }}>
-                TEST-EVENT
+                ENTWURF
               </span>
             )}
             <span style={{ marginLeft: 10, fontSize: '0.7rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>

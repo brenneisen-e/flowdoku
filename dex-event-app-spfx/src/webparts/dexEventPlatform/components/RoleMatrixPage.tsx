@@ -13,6 +13,12 @@ interface PermissionRow {
   description: string;
   user: boolean | string;
   assistenz: boolean | string;
+  /** v9.18+: Per-Event-Rolle "Co-Organizer" — gleiche Rechte wie Organizer am eigenen Event. */
+  coorganizer: boolean | string;
+  /** v9.16+: Globales Test-Team-Mitglied — sieht Entwurfs-Events, kann sich anmelden. */
+  testteam: boolean | string;
+  /** v6.19+: Per-Event-Rolle "Check-In-Team" (QR-Scanner) — nur Check-In-Tool. */
+  checkin: boolean | string;
   organizer: boolean | string;
   admin: boolean | string;
 }
@@ -31,184 +37,211 @@ const PERMISSIONS: PermissionRow[] = [
   // Events ansehen
   { category: 'Events ansehen', feature: 'Events des eigenen Standorts sehen',
     description: 'Events die per Location-/Audience-Filter für den eigenen Standort freigegeben sind in der Event-Liste sehen.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Events ansehen', feature: 'Alle Events sehen',
     description: 'Sieht auch Events, die per Location- oder Audience-Filter auf andere Standorte/Zielgruppen beschränkt sind.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Events ansehen', feature: 'Prozess-Übersicht (Flowcharts)',
     description: 'Zugriff auf die technischen Prozessdiagramme (Registrierungsflow, E-Mail-Pipeline, Outlook-Flow).',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
 
   // Event-Verwaltung
   { category: 'Event-Verwaltung', feature: 'Events erstellen',
     description: 'Neues Event inkl. Subsite, Teilnehmerliste und Default-E-Mail-Templates anlegen.',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
   { category: 'Event-Verwaltung', feature: 'Eigene Events bearbeiten',
     description: 'Metadaten (Titel, Zeiten, Ort, Filter, ...) von Events ändern, bei denen man in OrganizerEmail steht.',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
   { category: 'Event-Verwaltung', feature: 'Alle Events bearbeiten',
     description: 'Auch fremde Events bearbeiten, für die man selbst nicht als Organizer hinterlegt ist.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Event-Verwaltung', feature: 'Events löschen',
     description: 'Event unwiderruflich entfernen: Subsite, Teilnehmerliste und DEX_Events-Eintrag weg.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Event-Bild hochladen (Item-Attachment)',
     description: 'Titelbild des Events hochladen/ersetzen — wird als Item-Attachment in DEX_Events gespeichert.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Event-Dokumente hochladen',
     description: 'Zusatzdateien (PDFs, Agenda, Hotelinfo) anhängen — Teilnehmer sehen sie unter "Meine Events".',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Agenda / Transferzeiten / Quiz pflegen',
     description: 'Tages-Agenda, Bus-/Transferzeiten und Quiz-Fragen des Events anlegen und bearbeiten.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'E-Mail-Templates pro Event anpassen',
     description: 'Subject/Heading/BodyHtml der Registrierungs-Mails für dieses eine Event überschreiben.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'E-Mails pro Event deaktivieren',
     description: 'Automatische Bestätigungs-Mails (Anmeldung/Abmeldung/Warteliste) für dieses Event abschalten.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Outlook-Einladungen pro Event deaktivieren',
     description: 'Automatische Outlook-Kalendereinträge für dieses Event abschalten.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Sub-Events (Sessions) anlegen/editieren/löschen',
     description: 'Sub-Events (z.B. Trainingssessions bei B2Run) als eigene DEX_Events-Items mit gesetztem parentEventId anlegen. Jede Session hat eigene Teilnehmerliste, eigenen Outlook-Termin und eigene Mails. Gelöscht werden Child-Events kaskadierend mit dem Parent.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
   { category: 'Event-Verwaltung', feature: 'Split-Kapazitäten (B2Run) aktivieren',
     description: 'In Schritt 3 (Kapazität) die Checkbox "Lauf-Event mit getrennten Starter-Kapazitäten" aktivieren. Ermöglicht separate Durchstarter/Funstarter-Zahlen mit eigenen Wartelisten und typ-bewusstem Nachrücken.',
-    user: false, assistenz: false, organizer: 'Eigene', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene', testteam: false, checkin: false, organizer: 'Eigene', admin: true },
 
   // Registrierungen
   { category: 'Registrierungen', feature: 'Selbst registrieren',
     description: 'Sich selbst für ein Event anmelden — solange die Anmeldefrist nicht abgelaufen ist. Bei Split-Kapazitäten (B2Run): Wunsch-Starter-Typ wählen. Ist er voll, bietet ein Dialog den Alt-Typ oder die Warteliste für den Wunsch-Typ.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Sub-Event-Sessions buchen',
     description: 'Nach der Hauptevent-Anmeldung zusätzliche Sub-Events (z.B. Trainingssessions) buchen. Jede Session schreibt eine eigene Teilnehmerliste in ihrer Subsite und bekommt eigene Mail/Outlook-Einladung.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Auf Warteliste kommen',
     description: 'Wenn das Event (oder der Wunsch-Starter-Typ) voll ist, landet der User auf der Warteliste. PreferredStarterType wird für das typ-bewusste Nachrücken gespeichert.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Angaben bearbeiten',
     description: 'Eigene Registrierungsdaten (Custom Fields, T-Shirt-Größe, Notfallkontakt etc.) nachträglich ändern.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren',
     description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Für andere registrieren',
     description: 'Eine andere Person stellvertretend anmelden. Audit: RegisteredBy wird auf den eingeloggten User gesetzt.',
-    user: false, assistenz: 'Nur Partner/Director ¹', organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: 'Nur Partner/Director ¹', coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Registrierungen', feature: 'Nach Anmeldefrist registrieren',
     description: 'Registrierungsformular auch nach Ablauf der RegistrationDeadline noch absenden.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Registrierungen', feature: 'Audit-Trail: RegisteredBy wird automatisch gesetzt',
     description: 'RegisteredByName/RegisteredByEmail werden bei jeder Anmeldung automatisch befüllt — unabhängig von der Rolle.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
 
   // Teilnehmerverwaltung (Admin Center)
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmerliste sehen',
     description: 'Alle Teilnehmer des Events im Admin Center als Tabelle (mit Filter, Sortierung, Spaltenauswahl) sehen.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer suchen / sortieren',
     description: 'Freitextsuche + Spaltensortierung in der Admin-Teilnehmertabelle.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
-  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer ein-/auschecken',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'QR-Code-Scanner / Check-In-Tool',
+    description: 'Check-In-Bildschirm öffnen, QR-Codes scannen, Teilnehmer manuell ein-/auschecken. Check-In-Team (per Event) hat Zugriff aber NUR auf das Check-In-Tool — keine Bearbeitung, kein Mail-Versand, keine Teilnehmerliste.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: 'Eigene Events ²', organizer: 'Eigene Events ²', admin: true },
+  { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer ein-/auschecken (manuell)',
     description: 'Check-in-Status eines Teilnehmers manuell setzen/zurücksetzen — ohne QR-Scanner.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: 'Eigene Events ²', organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer abmelden',
     description: 'Fremde Teilnehmer abmelden; löst Outlook-Ausladung und Cancellation-Mail aus. Seit v6.8: client-seitiger typ-bewusster Nachrück-Promote + Feedback-Toast "Nachgerückt: XY" (statt Warten auf Flow).',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Teilnehmer-Daten in der App bearbeiten',
     description: 'Edit-Button neben jedem Teilnehmer öffnet ein Modal zum direkten Anpassen von Vor-/Nachname und E-Mail-Adresse sowie aller Custom-Felder. Beim Ändern der E-Mail wird die Adresse gegen den Deloitte-Tenant validiert (nur @deloitte.de / @deloitte.com, Person muss existieren — externe Adressen werden abgewiesen, Tippfehler liefern eine klare Fehlermeldung). Profil-Felder (Phone/Department/Location/JobTitle) werden bei Mail-Wechsel automatisch nachgezogen. Jede Änderung landet im ChangeLog der Zeile (wer/wann/Vorher → Nachher) plus zentralem Audit-Log plus LastModifiedDate. Ersetzt das fehleranfällige direkte Editieren in der SharePoint-Liste.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Getrennte Wartelisten sehen (B2Run-Split)',
     description: 'Bei Events mit aktivierter Split-Kapazität zeigt die Admin-Warteliste drei getrennte Tabellen (Durchstarter, Funstarter, "ohne Typ"). Zusätzliche Spalte "Startblock" in der Teilnehmer-Tabelle zeigt tatsächlichen StarterType + Wunsch-Typ in Klammern falls anders.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'QR-Codes versenden',
     description: 'Massen-Versand der persönlichen QR-Codes an alle bestätigten Teilnehmer.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'E-Mail-Adressen kopieren',
     description: 'Semikolon-separierte Liste aller Teilnehmer-Mails in die Zwischenablage kopieren.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Massenmail an Teilnehmer',
     description: 'Freitext-Mail via RichText-Editor an alle Teilnehmer verschicken — im Deloitte-Template-Wrapper.',
-    user: false, assistenz: false, organizer: 'Eigene Events ²', admin: true },
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'IDs neu vergeben (Renummerierung)',
     description: 'TeilnehmerID sequentiell neu durchnummerieren (z.B. nach vielen Abmeldungen); läuft als Power Automate Batch.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Spalten fixen (Schema reparieren)',
     description: 'Fehlende Basis-Spalten nachlegen + View-Reihenfolge korrigieren; entfernt B2Run/Quiz-Spalten auf Events, die sie nicht brauchen.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Profile neu laden',
     description: 'Per Teilnehmer JobTitle/Standort/Department/Phone aus dem SP-User-Profil neu ziehen — inkl. UPN!=SMTP-Fallback.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
 
   // Administration
   { category: 'Administration', feature: 'Admin-Bereich öffnen',
     description: 'Zugriff auf das Admin Center mit Event-Liste und Management-Aktionen.',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Rollen verwalten',
     description: 'Rollen von Usern (User / Organizer / Admin) in DEX_Roles hinzufügen, ändern, entfernen.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
+  { category: 'Administration', feature: 'Test-Team verwalten (global)',
+    description: 'Globale Liste von Personen pflegen, die alle Entwurfs-Events sehen + sich anmelden können — auch ohne Organizer/Admin-Rolle. Per People-Picker hinzufügen/entfernen, gespeichert auf dem _Config-Item der DEX_EmailTemplates-Liste.',
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
+  { category: 'Administration', feature: 'Co-Organizer pro Event hinzufügen',
+    description: 'Im Event-Wizard (Schritt 2) einen oder mehrere weitere Deloitte-User als Co-Organizer für dieses eine Event eintragen. Diese haben dann gleiche Rechte wie der Hauptorganizer am Event — können auch ihrerseits weitere Co-Organizer und Check-In-Personen hinzufügen.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Administration', feature: 'Check-In-Team pro Event hinzufügen',
+    description: 'Im Event-Wizard (Schritt 2) Personen als reines Check-In-Team eintragen. Sie sehen das Event in ihrer Liste, dürfen NUR das Check-In-Tool nutzen — keine Bearbeitung, keine Teilnehmerliste, keine Mails.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Administration', feature: 'Event aktivieren / deaktivieren',
+    description: 'Im Admin-Center per Toggle-Button zwischen "Active" (für alle berechtigten User sichtbar + buchbar) und "Under Construction" (nur Organizer/Admin/Test-Team sichtbar) wechseln. Schnellster Weg, ein Event zu pausieren oder live zu schalten.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Administration', feature: 'Counter zurücksetzen (TeilnehmerID-Recovery)',
+    description: 'Setzt den DEX_TeilnehmerCounter auf den aktuellen Max-TID-Wert + repariert dabei die Visitors-Permissions auf der Counter-Liste. Recovery-Button für den (sehr seltenen) Fall, dass der Counter unter den Max-TID gefallen ist.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
+  { category: 'Administration', feature: 'QR-Code Auto-Send bei Anmeldung',
+    description: 'Per Toggle pro Event: jede neue Anmeldung bekommt automatisch ihren QR-Code direkt mit der Bestätigungsmail (statt manuell Massen-Versand). Wird im "QR-Codes versenden"-Modal aktiviert.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Administration', feature: 'Onboarding-Mail an neuen Organizer/Admin senden',
     description: 'Nach Anlage einer neuen Organizer- oder Admin-Rolle bietet die App an, eine Begrüßungsmail im Deloitte-Layout zu verschicken (Links zur App, zum Handbuch, Kurzanleitung Test-Event). ebrenneisen@deloitte.de und nifelten@deloitte.de stehen automatisch im Cc.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Rollen-Matrix einsehen',
     description: 'Diese Übersichtsseite öffnen.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'User suchen',
     description: 'Tenant-weite User-Suche (People-Picker) in den Admin-Settings nutzen.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Standort-Filter konfigurieren',
     description: 'Globale Standort-Liste pflegen, die in Event-Filtern (locationAudience) verwendet wird.',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Zielgruppen-Filter konfigurieren',
     description: 'Globale Audience-Gruppen (z.B. "M&A", "SR&T") pflegen; werden in Event-Filtern genutzt.',
-    user: false, assistenz: false, organizer: true, admin: true },
+    user: false, assistenz: false, coorganizer: true, testteam: false, checkin: false, organizer: true, admin: true },
   { category: 'Administration', feature: 'Globale E-Mail-Templates bearbeiten',
     description: 'Standard-Templates in DEX_EmailTemplates (gilt für alle Events ohne eigene Overrides) anpassen.',
-    user: false, assistenz: false, organizer: false, admin: true },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
 
   // SharePoint (Visitors = DEALL, Owners = Admins)
   { category: 'SharePoint', feature: 'DEX_Events: Lesen',
     description: 'Leserechte auf die zentrale Event-Liste.',
-    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', organizer: 'Contribute', admin: 'Full Control' },
+    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', coorganizer: 'Contribute', testteam: 'Visitors (Read)', checkin: false, organizer: 'Contribute', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Events: Schreiben (inkl. Item-Attachments)',
     description: 'Schreibrechte auf DEX_Events inkl. Bild + Dokumenten-Attachments.',
-    user: false, assistenz: false, organizer: 'Contribute', admin: 'Full Control' },
+    user: false, assistenz: false, coorganizer: 'Contribute', testteam: false, checkin: false, organizer: 'Contribute', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Lesen',
     description: 'Leserechte auf die Rollen-Liste (für UI-Rollenerkennung).',
-    user: false, assistenz: false, organizer: 'Read', admin: 'Full Control' },
+    user: false, assistenz: false, coorganizer: 'Read', testteam: false, checkin: false, organizer: 'Read', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Roles: Schreiben',
     description: 'Schreibrechte auf DEX_Roles (Rollen-Zuweisung).',
-    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Emails: Queue (eigene)',
     description: 'Mail-Queue-Liste; mit Item-Level-Security: User sieht nur seine eigenen Einträge.',
-    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', coorganizer: 'Contribute + ILS', testteam: 'Contribute + ILS', checkin: false, organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Outlook: Queue (eigene)',
     description: 'Outlook-Termin-Queue; mit Item-Level-Security.',
-    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', coorganizer: 'Contribute + ILS', testteam: 'Contribute + ILS', checkin: false, organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_IDReorder: Queue',
     description: 'Queue für TeilnehmerID-Renummerierungen — nur Admin, triggert Power Automate Batch.',
-    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_EmailTemplates: Schreiben',
     description: 'Schreibrechte auf die globale Template-Liste.',
-    user: false, assistenz: false, organizer: false, admin: 'Full Control' },
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: 'Full Control' },
   { category: 'SharePoint', feature: 'DEX_Participants: eigene Einträge',
     description: 'Participant-Directory mit Item-Level-Security — User sieht/schreibt nur den eigenen Eintrag.',
-    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Contribute + ILS', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', coorganizer: 'Contribute + ILS', testteam: 'Contribute + ILS', checkin: false, organizer: 'Contribute + ILS', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Event-Subsite',
     description: 'Zugriffsrechte auf die Subsite des Events (enthält die Teilnehmerliste).',
-    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', organizer: 'Full Control', admin: 'Full Control' },
+    user: 'Visitors (Read)', assistenz: 'Visitors (Read)', coorganizer: 'Full Control', testteam: 'Visitors (Read)', checkin: false, organizer: 'Full Control', admin: 'Full Control' },
   { category: 'SharePoint', feature: 'Teilnehmerliste: eigener Eintrag',
     description: 'Lese-/Schreibrechte auf den eigenen Teilnehmer-Eintrag über Item-Level-Security.',
-    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', organizer: 'Full Control', admin: 'Full Control' },
+    user: 'Contribute + ILS', assistenz: 'Contribute + ILS', coorganizer: 'Full Control', testteam: 'Contribute + ILS', checkin: false, organizer: 'Full Control', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_TeilnehmerCounter (pro Subsite)',
+    description: 'Atomarer Counter für TeilnehmerID-Vergabe (ein Item, NextValue-Feld). Visitors brauchen Contribute, damit der ETag-CAS-Inkrement bei der Anmeldung durchgeht — ohne Schreibrechte landet die TID auf null und die Anmeldung ist unvollständig.',
+    user: 'Contribute', assistenz: 'Contribute', coorganizer: 'Full Control', testteam: 'Contribute', checkin: 'Contribute', organizer: 'Full Control', admin: 'Full Control' },
+  { category: 'SharePoint', feature: 'DEX_ChangeLog: Audit-Log',
+    description: 'Zentrales Audit-Log für Event- und Teilnehmer-Änderungen. Wird von der App geschrieben (registerForEvent, cancelRegistration, adminUpdateRegistration etc.). Lesezugriff für Admin zur Nachvollziehbarkeit.',
+    user: false, assistenz: false, coorganizer: 'Append-only', testteam: false, checkin: false, organizer: 'Append-only', admin: 'Full Control' },
 
   // Profil
   { category: 'Profil', feature: 'Eigenes Profil ansehen',
     description: 'Eigene Profilseite mit Name, Rolle, Office, JobTitle öffnen.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Profil', feature: 'Settings-Seite öffnen',
     description: 'Persönliche Einstellungen (Sprache, Profilbild-Refresh) öffnen.',
-    user: true, assistenz: true, organizer: true, admin: true },
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
 ];
 
 function renderCell(value: boolean | string): React.ReactElement {
@@ -244,17 +277,26 @@ export default function RoleMatrixPage(): React.ReactElement {
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.85rem' }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, ...stickyHeaderCell, width: '40%', borderRight: '1px solid var(--dex-gray-300)' }}>Funktion</th>
-                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '14%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, width: '32%', borderRight: '1px solid var(--dex-gray-300)' }}>Funktion</th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '9%', borderRight: '1px solid var(--dex-gray-300)' }}>
                   <span style={roleBadgeStyle('#3b82f6')}>User</span>
                 </th>
-                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '16%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '10%', borderRight: '1px solid var(--dex-gray-300)' }}>
                   <span style={roleBadgeStyle('#9333ea')}>Assistenz</span>
                 </th>
-                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '15%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '10%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                  <span style={roleBadgeStyle('#0ea5e9')}>Test-Team</span>
+                </th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '10%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                  <span style={roleBadgeStyle('#14b8a6')}>Check-In</span>
+                </th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '10%', borderRight: '1px solid var(--dex-gray-300)' }}>
+                  <span style={roleBadgeStyle('#10b981')}>Co-Organizer</span>
+                </th>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '10%', borderRight: '1px solid var(--dex-gray-300)' }}>
                   <span style={roleBadgeStyle('#f59e0b')}>Organizer</span>
                 </th>
-                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '15%' }}>
+                <th style={{ ...thStyle, ...stickyHeaderCell, textAlign: 'center', width: '9%' }}>
                   <span style={roleBadgeStyle('#86bc25')}>Admin</span>
                 </th>
               </tr>
@@ -266,7 +308,7 @@ export default function RoleMatrixPage(): React.ReactElement {
                 return (
                   <React.Fragment key={cat}>
                     <tr>
-                      <td colSpan={5} style={{
+                      <td colSpan={8} style={{
                         padding: '14px 20px 10px 16px',
                         fontWeight: 700,
                         fontSize: '0.82rem',
@@ -289,10 +331,13 @@ export default function RoleMatrixPage(): React.ReactElement {
                           <div style={{ fontWeight: 600, marginBottom: 3 }}>{row.feature}</div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{row.description}</div>
                         </td>
-                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.user)}</td>
-                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.assistenz)}</td>
-                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.organizer)}</td>
-                        <td style={{ ...dataCellStyle, padding: '12px 16px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.admin)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.user)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.assistenz)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.testteam)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.checkin)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.coorganizer)}</td>
+                        <td style={{ ...dataCellStyle, borderRight: '1px solid var(--dex-gray-200)', padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.organizer)}</td>
+                        <td style={{ ...dataCellStyle, padding: '12px 8px', textAlign: 'center', verticalAlign: 'middle' }}>{renderCell(row.admin)}</td>
                       </tr>
                     ))}
                   </React.Fragment>

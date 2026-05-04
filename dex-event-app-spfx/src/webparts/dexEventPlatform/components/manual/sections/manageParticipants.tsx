@@ -113,7 +113,7 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 6,
-            title: isDe ? 'Aktualisieren-Button (v7.37+)' : 'Refresh button (v7.37+)',
+            title: isDe ? 'Aktualisieren-Button' : 'Refresh button',
             description: (
               <>
                 {isDe

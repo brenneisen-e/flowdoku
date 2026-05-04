@@ -1270,7 +1270,18 @@ export default function MyEventsPage(): React.ReactElement {
                     </span>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {cancellingId === event.id && !isCancelling && event.lastDeregisterDate && new Date(event.lastDeregisterDate) < new Date() && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--dex-orange)', display: 'block', marginBottom: 4, width: '100%' }}>
+                        // v9.17: prominenter Late-Cancel-Hinweis — der User soll
+                        // klar sehen, dass der Organizer durch die Abmeldung
+                        // automatisch informiert wird (entscheidend wenn z.B.
+                        // Hotel/Catering noch reagieren muss).
+                        <span style={{
+                          fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)',
+                          background: 'var(--dex-orange-light, #fff3e0)',
+                          border: '1px solid var(--dex-orange, #ed8b00)',
+                          padding: '6px 10px', borderRadius: 6,
+                          display: 'block', marginBottom: 6, width: '100%',
+                          fontWeight: 500,
+                        }}>
                           {t('myevents.latecancel')}
                         </span>
                       )}

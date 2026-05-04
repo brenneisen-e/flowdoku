@@ -674,6 +674,20 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [qrScannerSearch, setQrScannerSearch] = React.useState('');
   const [qrScannerResults, setQrScannerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  // v9.18: Debounce-Timer fuer Graph-Search (statt nur Role-Filter)
+  const qrScannerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // v9.18: Co-Organizer pro Event (analog QR-Scanner — beliebiger Deloitte-User
+  // mit vollen Organizer-Rechten fuer DIESES eine Event).
+  const [coOrganizerNames, setCoOrganizerNames] = React.useState<string[]>(
+    editEvent && editEvent.coOrganizerNames ? editEvent.coOrganizerNames.slice() : []
+  );
+  const [coOrganizerEmails, setCoOrganizerEmails] = React.useState<string[]>(
+    editEvent && editEvent.coOrganizerEmails ? editEvent.coOrganizerEmails.slice() : []
+  );
+  const [coOrganizerSearch, setCoOrganizerSearch] = React.useState('');
+  const [coOrganizerResults, setCoOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const coOrganizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -783,7 +797,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [excludeSortDir, setExcludeSortDir] = React.useState<'asc' | 'desc'>('asc');
   const [excludePage, setExcludePage] = React.useState(0); // v8.9: 0-indexed Seite (200 pro Seite)
   const EXCLUDE_PAGE_SIZE = 200;
-  const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : false);
+  // v9.16: neue Events starten standardmaessig als Test-Event — der Organizer
+  // kann sich erst alles in Ruhe anschauen, das Test-Team probiert die
+  // Anmeldung durch, und erst wenn alles passt wird der Schalter rausgenommen.
+  const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : true);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -1046,10 +1063,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
 
   const openSuggestedModal = (): void => {
-    // Standard: alle ausgewaehlt, User kann dann abwaehlen was er nicht braucht
-    const init: Record<string, boolean> = {};
-    for (const s of SUGGESTED_FIELDS_CATALOG) init[s.key] = true;
-    setSuggestedSelection(init);
+    // v9.17: Standard ist KEINS ausgewaehlt — User waehlt aktiv aus, was er
+    // wirklich braucht. Vorher waren alle vorgewaehlt, was zu unbeabsichtigt
+    // viele uebernommenen Feldern fuehrte.
+    setSuggestedSelection({});
     setShowSuggestedModal(true);
   };
 
@@ -1372,7 +1389,8 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (!title || !description) return;
+    // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
+    if (!title) return;
     setIsSubmitting(true);
     setError('');
     setProgress(0);
@@ -1478,12 +1496,17 @@ export default function EventCreationPage(): React.ReactElement {
       const qrScannerConfig = qrScannerEmails.length > 0
         ? { _qrScanners: qrScannerNames.map((n, i) => ({ name: n, email: qrScannerEmails[i] || '' })).filter(x => x.email) }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0)
+      // v9.18: Co-Organizer-Liste piggyback in EmailTemplateOverrides._coOrganizers
+      const coOrganizerConfig = coOrganizerEmails.length > 0
+        ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
             ...b2runExtraConfig,
             ...qrScannerConfig,
+            ...coOrganizerConfig,
             ...emailTemplateOverrides,
           })
         : '';
@@ -1723,13 +1746,18 @@ export default function EventCreationPage(): React.ReactElement {
           const qrExtra = qrScannerEmails.length > 0
             ? { _qrScanners: qrScannerNames.map((n, i) => ({ name: n, email: qrScannerEmails[i] || '' })).filter(x => x.email) }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0;
+          // v9.18: Co-Organizer ebenso in EmailTemplateOverrides piggybacken.
+          const coExtra = coOrganizerEmails.length > 0
+            ? { _coOrganizers: coOrganizerNames.map((n, i) => ({ name: n, email: coOrganizerEmails[i] || '' })).filter(x => x.email) }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
                 ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
                 ...b2runExtra,
                 ...qrExtra,
+                ...coExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -1963,7 +1991,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
       'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-      'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+      'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
       'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
       'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
       'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
@@ -1993,7 +2021,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
       'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
       'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+      'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
     ],
     [
       'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
@@ -2012,7 +2040,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Event title and description — shown on the event list and registration page',
       'Upload an event image (used at the top of the detail page and in emails)',
-      'Flag as test event — only visible to admins / test users',
+      'Save as draft — only visible to admins, organizers and the test team',
       'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
       'Optional: QR scanner users for check-in on event day (no further editing rights)',
       'Set location filter and audience — who sees the event in the list',
@@ -2042,7 +2070,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
       'Upload a custom logo / header image for the email and Outlook event',
       'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-      'Optionally disable notifications entirely — e.g. for internal test events',
+      'Optionally disable notifications entirely — e.g. for internal draft events',
     ],
     [
       'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
@@ -2077,7 +2105,7 @@ export default function EventCreationPage(): React.ReactElement {
       case 0:
         if (!title) errors.push('title');
         if (!organizer) errors.push('organizer');
-        if (!description) errors.push('description');
+        // v9.14: description ist optional — kein Pflichtfeld mehr
         break;
       case 1:
         if (!startDate) errors.push('startDate');
@@ -2543,7 +2571,7 @@ export default function EventCreationPage(): React.ReactElement {
                 [
                   'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
                   'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
-                  'Event als Test-Event markieren — taucht dann nur für Admins / Test-User auf',
+                  'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
                   'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
                   'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
                   'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
@@ -2551,7 +2579,7 @@ export default function EventCreationPage(): React.ReactElement {
                 [
                   'Event title and description — shown on the event list and registration page',
                   'Upload an event image (used at the top of the detail page and in emails)',
-                  'Flag as test event — only visible to admins / test users',
+                  'Save as draft — only visible to admins, organizers and the test team',
                   'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
                   'Optional: QR scanner users for check-in on event day (no further editing rights)',
                   'Set location filter and audience — who sees the event in the list',
@@ -2814,30 +2842,22 @@ export default function EventCreationPage(): React.ReactElement {
                   onChange={e => {
                     const val = e.target.value;
                     setQrScannerSearch(val);
-                    const lp = val.trim().toLowerCase();
-                    // v6.21: aus den vorhandenen Organizern/Admins (DEX_Roles) filtern,
-                    // statt Graph-API-Suche. Multi-Select per Klick + bereits-hinzugefügte
-                    // werden als ✓ markiert.
-                    const filtered = roles
-                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                      .filter(r => !lp || r.userEmail.toLowerCase().indexOf(lp) >= 0 || (r.userName || '').toLowerCase().indexOf(lp) >= 0)
-                      .slice(0, 50)
-                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                    setQrScannerResults(filtered);
-                  }}
-                  onFocus={() => {
-                    // Bei Fokus direkt alle verfügbaren Organizer/Admins anzeigen —
-                    // selbe UX wie beim Organizer-Picker.
-                    const filtered = roles
-                      .filter(r => r.role === 'Organizer' || r.role === 'Admin')
-                      .slice(0, 50)
-                      .map(r => ({ email: r.userEmail, displayName: r.userName || r.userEmail, location: r.location || '' }));
-                    setQrScannerResults(filtered);
+                    if (qrScannerTimerRef.current) clearTimeout(qrScannerTimerRef.current);
+                    const q = val.trim();
+                    if (!q) { setQrScannerResults([]); return; }
+                    // v9.18: Graph-Search statt Role-Filter — jeder Deloitte-User
+                    // kann QR-Scanner sein. Debounce 350ms.
+                    qrScannerTimerRef.current = setTimeout(async () => {
+                      try {
+                        const results = await searchUsers(q);
+                        setQrScannerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setQrScannerResults([]); }
+                    }, 350);
                   }}
                   onBlur={() => {
                     setTimeout(() => { setQrScannerSearch(''); setQrScannerResults([]); }, 150);
                   }}
-                  placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben und aus der Liste auswählen'}
+                  placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben (alle Deloitte-User)'}
                 />
                 {qrScannerResults.length > 0 && (
                   <div style={{
@@ -2863,6 +2883,135 @@ export default function EventCreationPage(): React.ReactElement {
                             setQrScannerEmails(prev => [...prev, u.email]);
                             setQrScannerSearch('');
                             setQrScannerResults([]);
+                          }}
+                        >
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                            alt={u.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.email}{u.location ? ` · ${u.location}` : ''}
+                            </div>
+                          </div>
+                          {alreadyAdded && <span style={{ color: 'var(--dex-green)', fontSize: '0.85rem', flexShrink: 0 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* v9.18: Co-Organizer pro Event. Beliebiger Deloitte-User mit
+                  vollen Organizer-Rechten fuer DIESES eine Event — analog zum
+                  QR-Scanner-Picker, aber mit allen Bearbeitungs-/Mail-Rechten
+                  und Anzeige in der Organizer-Liste. Eingebaut damit Organizer
+                  Hilfskraefte einbinden koennen, die nicht generell die
+                  Organizer-Rolle haben sollen. */}
+              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Co-Organizer
+                  <InfoTooltip text="Optional: weitere Personen, die als gleichberechtigte Organizer für DIESES Event auftreten. Sie haben die gleichen Rechte wie du auf das Event (bearbeiten, Teilnehmer verwalten, QR-Codes versenden, Mails verschicken, weitere Co-Organizer hinzufügen) — aber nicht für andere Events. Können beliebige Deloitte-User sein, kein vorhandener Organizer-Status nötig." />
+                </label>
+                {coOrganizerNames.length > 0 && (() => {
+                  const move = (idx: number, dir: -1 | 1): void => {
+                    const target = idx + dir;
+                    if (target < 0 || target >= coOrganizerNames.length) return;
+                    const nextNames = [...coOrganizerNames];
+                    const nextEmails = [...coOrganizerEmails];
+                    [nextNames[idx], nextNames[target]] = [nextNames[target], nextNames[idx]];
+                    [nextEmails[idx], nextEmails[target]] = [nextEmails[target], nextEmails[idx]];
+                    setCoOrganizerNames(nextNames);
+                    setCoOrganizerEmails(nextEmails);
+                  };
+                  const remove = (idx: number): void => {
+                    setCoOrganizerNames(coOrganizerNames.filter((_, i) => i !== idx));
+                    setCoOrganizerEmails(coOrganizerEmails.filter((_, i) => i !== idx));
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {coOrganizerNames.map((name, i) => {
+                        const email = coOrganizerEmails[i] || '';
+                        return (
+                          <span
+                            key={`${email}-${i}`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '3px 6px 3px 4px',
+                              background: 'var(--dex-green, #86bc25)', color: '#fff',
+                              borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                            }}
+                          >
+                            {email ? (
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
+                                alt={name}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              />
+                            ) : null}
+                            <span>{name}</span>
+                            {coOrganizerNames.length > 1 && i > 0 && (
+                              <button type="button" onClick={() => move(i, -1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach vorne">◀</button>
+                            )}
+                            {coOrganizerNames.length > 1 && i < coOrganizerNames.length - 1 && (
+                              <button type="button" onClick={() => move(i, 1)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Nach hinten">▶</button>
+                            )}
+                            <button type="button" onClick={() => remove(i)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Entfernen">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <input
+                  className="form-input"
+                  value={coOrganizerSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setCoOrganizerSearch(val);
+                    if (coOrganizerTimerRef.current) clearTimeout(coOrganizerTimerRef.current);
+                    const q = val.trim();
+                    if (!q) { setCoOrganizerResults([]); return; }
+                    coOrganizerTimerRef.current = setTimeout(async () => {
+                      try {
+                        const results = await searchUsers(q);
+                        setCoOrganizerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setCoOrganizerResults([]); }
+                    }, 350);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => { setCoOrganizerSearch(''); setCoOrganizerResults([]); }, 150);
+                  }}
+                  placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
+                />
+                {coOrganizerResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                    background: '#fff', border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    maxHeight: 280, overflowY: 'auto',
+                  }}>
+                    {coOrganizerResults.map(u => {
+                      const alreadyAdded = coOrganizerEmails.indexOf(u.email) >= 0;
+                      return (
+                        <div
+                          key={u.email}
+                          style={{
+                            padding: '8px 12px', cursor: alreadyAdded ? 'not-allowed' : 'pointer', fontSize: '0.85rem',
+                            borderBottom: '1px solid var(--dex-gray-100)',
+                            opacity: alreadyAdded ? 0.45 : 1,
+                            display: 'flex', alignItems: 'center', gap: 10,
+                          }}
+                          onMouseDown={() => {
+                            if (alreadyAdded || !u.email) return;
+                            setCoOrganizerNames(prev => [...prev, u.displayName]);
+                            setCoOrganizerEmails(prev => [...prev, u.email]);
+                            setCoOrganizerSearch('');
+                            setCoOrganizerResults([]);
                           }}
                         >
                           <img
@@ -3305,11 +3454,10 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={6} />
-                  <span className="required">*</span> {t('create.description')}
+                  {t('create.description')}
                   <InfoTooltip text={t('create.description.hint')} />
                 </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
-                {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
               </div>
 
               <div className="form-group">
@@ -3736,23 +3884,10 @@ export default function EventCreationPage(): React.ReactElement {
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deregAfterStart')}</p>}
 
-              {/* Explizite Wahl: Lauf-Event mit getrennten Starter-Kapazitäten (seit v6.5)? */}
-              <div className="form-group" style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)', marginBottom: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={useSplitCapacities}
-                    onChange={e => setUseSplitCapacities(e.target.checked)}
-                    style={{ width: 18, height: 18, cursor: 'pointer' }}
-                  />
-                  <span>
-                    <strong>Lauf-Event mit getrennten Starter-Kapazitäten</strong>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                      z.B. B2Run: getrennte Plätze und Wartelisten für Durchstarter und Funstarter. Wenn deaktiviert, gilt eine einzige Teilnehmerzahl.
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v9.17: Reihenfolge umgestellt — Standard-Teilnehmerzahl
+                  steht oben, Split-Toggle wird unter dem Block subtler
+                  angezeigt. Die Mehrheit der Events nutzt nur eine
+                  Gesamtkapazitaet; der B2Run-Sonderfall ist Opt-in. */}
 
               {/* B2Run: Split-Kapazitäten für Durchstarter + Funstarter */}
               {useSplitCapacities ? (
@@ -3875,6 +4010,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <div className="form-group">
                     <label className="form-label">
                       {t('create.maxparticipants')}
+                      <InfoTooltip text={t('create.maxparticipants.hint')} />
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
                       <label className="toggle">
@@ -3926,6 +4062,25 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                 </div>
               )}
+
+              {/* v9.17: Split-Capacity-Toggle UNTER dem Teilnehmerzahl-Block,
+                  bewusst subtil — der Großteil der Events nutzt eine einzige
+                  Teilnehmerzahl. Nur wer einen Lauf mit getrennten Starter-
+                  Töpfen anlegt, klickt diesen Toggle. */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', cursor: 'pointer', padding: '8px 0', marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={useSplitCapacities}
+                  onChange={e => setUseSplitCapacities(e.target.checked)}
+                  style={{ marginTop: 2, cursor: 'pointer' }}
+                />
+                <span>
+                  {t('create.splitcap.label')}
+                  <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>
+                    {t('create.splitcap.hint')}
+                  </span>
+                </span>
+              </label>
 
               </div>
 
@@ -4550,14 +4705,14 @@ export default function EventCreationPage(): React.ReactElement {
                     'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
                     'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
                     'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
-                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Test-Events',
+                    'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
                   ],
                   [
                     'Pick the email language (DE/EN) for automatic emails to attendees',
                     'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
                     'Upload a custom logo / header image for the email and Outlook event',
                     'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
-                    'Optionally disable notifications entirely — e.g. for internal test events',
+                    'Optionally disable notifications entirely — e.g. for internal draft events',
                   ]
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
@@ -4742,6 +4897,12 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      // v9.17: Hinweis vor Upload — Stockfotos / komplexe Bilder
+                      // funktionieren nicht zuverlaessig in Mails (siehe
+                      // EmailImageBase64-Pipeline). Empfehlung sind die
+                      // offiziellen Deloitte Circular Motifs.
+                      const ok = window.confirm(t('create.logoupload.warning'));
+                      if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
                       reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
@@ -4775,6 +4936,8 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      const ok = window.confirm(t('create.logoupload.warning'));
+                      if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
                       reader.onload = (ev) => setOutlookLogoPreview(ev.target?.result as string || '');
@@ -4807,8 +4970,12 @@ export default function EventCreationPage(): React.ReactElement {
                   {t('create.templates.hint')}
                 </p>
 
-                {/* TemplateType in DEX_EmailTemplates ist ASCII 'Nachruecken' (Umlaut nicht erlaubt in Choice-Feld). */}
-                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken'].map(tType => {
+                {/* TemplateType in DEX_EmailTemplates ist ASCII 'Nachruecken' (Umlaut nicht erlaubt in Choice-Feld).
+                    v9.17: Warteliste/Nachruecken-Templates nur anzeigen, wenn das Event eine
+                    Warteliste hat — sonst werden sie ohnehin nie genutzt. */}
+                {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken']
+                  .filter(tType => waitlistEnabled || (tType !== 'Warteliste' && tType !== 'Nachruecken'))
+                  .map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
                   const currentSubject = override?.subject || defaultTpl?.subject || '';
@@ -5601,9 +5768,9 @@ export default function EventCreationPage(): React.ReactElement {
               {isEditMode && currentStep < steps.length - 1 && (
                 <button
                   className="btn btn-primary"
-                  disabled={!title || !description}
+                  disabled={!title}
                   onClick={handleSubmit}
-                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  style={{ opacity: !title ? 0.5 : 1 }}
                   title="Aenderungen sofort speichern, ohne weitere Schritte"
                 >
                   <Send size={16} /> {t('create.save')}
@@ -5626,9 +5793,9 @@ export default function EventCreationPage(): React.ReactElement {
               ) : (
                 <button
                   className="btn btn-primary"
-                  disabled={!title || !description}
+                  disabled={!title}
                   onClick={handleSubmit}
-                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  style={{ opacity: !title ? 0.5 : 1 }}
                 >
                   <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
                 </button>
@@ -5716,7 +5883,7 @@ export default function EventCreationPage(): React.ReactElement {
               </button>
               <button
                 className="btn btn-primary"
-                disabled={!title || !description}
+                disabled={!title}
                 onClick={() => { setShowPreview(false); handleSubmit(); }}
               >
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
@@ -5936,21 +6103,24 @@ export default function EventCreationPage(): React.ReactElement {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              {/* v9.14: nach erfolgreichem Verarbeiten wird "Speichern und schließen"
+                  zum primary Button — die Audience-Liste ist bereits per setAudience
+                  uebernommen, der Klick schliesst den Dialog. */}
               <button
                 type="button"
-                className="btn btn-secondary"
+                className={bulkImportReport ? 'btn btn-primary' : 'btn btn-secondary'}
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
                 disabled={bulkImportRunning}
               >
-                Schließen
+                {bulkImportReport ? 'Speichern und schließen' : 'Schließen'}
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={bulkImportReport ? 'btn btn-secondary' : 'btn btn-primary'}
                 onClick={runBulkImport}
                 disabled={bulkImportRunning || !bulkImportText.trim()}
               >
-                {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
+                {bulkImportRunning ? 'Suche läuft...' : (bulkImportReport ? 'Erneut verarbeiten' : 'Verarbeiten')}
               </button>
             </div>
           </div>

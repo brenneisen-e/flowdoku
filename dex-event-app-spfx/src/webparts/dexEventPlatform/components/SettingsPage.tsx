@@ -502,6 +502,9 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         )}
 
+        {/* v9.16: Test-Team-Verwaltung — Admin */}
+        {isAdmin && <TestTeamManager />}
+
         {/* Berechtigungs-Übersicht - nur fuer Admin */}
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
 
@@ -676,3 +679,186 @@ function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
     </div>
   );
 }
+
+/**
+ * v9.16: Test-Team-Verwaltung. Admin pflegt eine globale Liste von
+ * E-Mail-Adressen, die Test-Events (isFictive=true) sehen + sich anmelden
+ * koennen — auch wenn sie keine Organizer/Admin-Rolle haben. Damit kann
+ * eine kleine Gruppe von Test-Usern den Anmelde-Flow durchspielen, bevor
+ * der Organizer das Häkchen "Test-Event" wegnimmt und live geht.
+ *
+ * Speicherung: TestTeamEmails-Spalte auf dem _Config-Item der
+ * DEX_EmailTemplates-Liste (";"-separiert).
+ */
+function TestTeamManager(): React.ReactElement {
+  const { testTeamEmails, refreshTestTeamEmails, setTestTeamEmails: saveTestTeamEmails } = useEvents();
+  const { searchUsers } = useRoles();
+  const [draftEmails, setDraftEmails] = React.useState<string[]>(testTeamEmails);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [searchResults, setSearchResults] = React.useState<Array<{ email: string; displayName: string }>>([]);
+  const [isSearching, setIsSearching] = React.useState(false);
+  const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Initial load
+  React.useEffect(() => {
+    refreshTestTeamEmails().catch(() => { /* */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync state mit context
+  React.useEffect(() => {
+    setDraftEmails(testTeamEmails);
+  }, [testTeamEmails]);
+
+  React.useEffect(() => {
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, []);
+
+  const handleSearch = (q: string): void => {
+    setSearch(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 2) { setSearchResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setIsSearching(true);
+      const results = await searchUsers(q);
+      setSearchResults(results.map(r => ({ email: r.email, displayName: r.displayName })));
+      setIsSearching(false);
+    }, 350);
+  };
+
+  const addEmail = (email: string): void => {
+    const lc = email.toLowerCase().trim();
+    if (!lc || !lc.includes('@')) return;
+    if (draftEmails.includes(lc)) return;
+    setDraftEmails([...draftEmails, lc]);
+    setSearch('');
+    setSearchResults([]);
+  };
+
+  const removeEmail = (email: string): void => {
+    setDraftEmails(draftEmails.filter(e => e !== email));
+  };
+
+  const handleSave = async (): Promise<void> => {
+    setIsSaving(true);
+    setSaveMsg('');
+    const ok = await saveTestTeamEmails(draftEmails);
+    setIsSaving(false);
+    setSaveMsg(ok ? 'Test-Team gespeichert.' : 'Fehler beim Speichern.');
+    setTimeout(() => setSaveMsg(''), 3500);
+  };
+
+  const dirty = draftEmails.length !== testTeamEmails.length
+    || draftEmails.some(e => !testTeamEmails.includes(e));
+
+  return (
+    <div className="card mt-24">
+      <h3 className="mb-16">Test-Team</h3>
+      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginTop: 0 }}>
+        Mitglieder dieses Teams sehen Events, die als Test-Event markiert sind, und können sich dort
+        anmelden — auch ohne Organizer- oder Admin-Rolle. Ideal um neue Events vor dem Live-Schalten
+        durch eine kleine Gruppe testen zu lassen.
+      </p>
+
+      {/* Suche zum Hinzufügen */}
+      <div style={{ marginTop: 16, position: 'relative' }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
+          Person hinzufügen
+        </label>
+        <input
+          className="form-input"
+          value={search}
+          onChange={e => handleSearch(e.target.value)}
+          placeholder="Name oder Email eingeben..."
+          style={{ fontSize: '0.85rem' }}
+          autoComplete="off"
+        />
+        {isSearching && (
+          <span style={{ position: 'absolute', right: 12, top: 32, fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+            Suche...
+          </span>
+        )}
+        {searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 5,
+            background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)',
+            boxShadow: 'var(--dex-shadow-hover)', maxHeight: 240, overflowY: 'auto',
+          }}>
+            {searchResults.map((s, i) => (
+              <div
+                key={i}
+                onMouseDown={() => addEmail(s.email)}
+                style={{
+                  padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--dex-gray-100)',
+                  fontSize: '0.85rem',
+                }}
+                onMouseEnter={e => { (e.target as HTMLDivElement).style.background = 'var(--dex-gray-100)'; }}
+                onMouseLeave={e => { (e.target as HTMLDivElement).style.background = '#fff'; }}
+              >
+                <div style={{ fontWeight: 600 }}>{s.displayName}</div>
+                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{s.email}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Aktuelle Mitglieder */}
+      <div style={{ marginTop: 16 }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+          Aktuelle Mitglieder ({draftEmails.length})
+        </label>
+        {draftEmails.length === 0 ? (
+          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+            Noch niemand im Test-Team.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {draftEmails.map(email => (
+              <span
+                key={email}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '4px 8px 4px 12px',
+                  background: 'var(--dex-gray-100)',
+                  borderRadius: 999, fontSize: '0.82rem',
+                }}
+              >
+                {email}
+                <button
+                  type="button"
+                  onClick={() => removeEmail(email)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: 0, color: 'var(--dex-gray-500)', fontSize: '1rem',
+                    width: 18, height: 18, lineHeight: 1,
+                  }}
+                  aria-label={`${email} entfernen`}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={!dirty || isSaving}
+          style={{ fontSize: '0.85rem' }}
+        >
+          {isSaving ? 'Speichere...' : 'Speichern'}
+        </button>
+        {saveMsg && (
+          <span style={{ fontSize: '0.85rem', color: saveMsg.startsWith('Fehler') ? 'var(--dex-red)' : 'var(--dex-green-dark)' }}>
+            {saveMsg}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+

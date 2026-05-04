@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
@@ -76,6 +76,9 @@ interface ActionTileProps {
   busy?: boolean;
   result?: string | null;
   resultIsError?: boolean;
+  // v9.19: filled-Variante fuer Highlight-Aktionen (z.B. Event aktivieren).
+  // accent='green' = grün gefuellt, accent='red' = rot gefuellt.
+  accent?: 'green' | 'red';
   // children: zusaetzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
   // gerendert wird (z.B. das Excel-Dropdown-Menue).
   children?: React.ReactNode;
@@ -84,9 +87,15 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
   const [hover, setHover] = React.useState(false);
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
-  const borderColor = greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)';
-  const bg = greenAccent ? 'rgba(134,188,37,0.06)' : '#fff';
-  const iconColor = greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
+  // v9.19: filled-Look — die Tile ist permanent gruen (oder rot) gefuellt,
+  // unabhaengig vom Hover. Highlight fuer eine Aktion die heraussticht.
+  const isFilled = !!props.accent;
+  const filledBg = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
+  const filledBorder = props.accent === 'green' ? 'var(--dex-green-dark, #6b9a1e)' : props.accent === 'red' ? '#a01e15' : '';
+  const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
+  const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
+  const iconColor = isFilled ? '#fff' : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
+  const filledTextColor = isFilled ? '#fff' : 'var(--dex-gray-800, #1f2937)';
   const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
   const badgeColors = props.badge === 'admin'
     ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
@@ -114,11 +123,12 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: iconColor, transition: 'color 0.15s ease' }}>
           {props.icon}
-          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800, #1f2937)' }}>{props.title}</span>
+          <span style={{ fontWeight: 600, fontSize: '0.88rem', color: filledTextColor }}>{props.title}</span>
         </span>
         <span style={{
           fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
-          background: badgeColors.bg, color: badgeColors.fg, fontWeight: 600,
+          background: isFilled ? 'rgba(255,255,255,0.25)' : badgeColors.bg,
+          color: isFilled ? '#fff' : badgeColors.fg, fontWeight: 600,
           whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
         }}>{badgeLabel}</span>
       </div>
@@ -248,6 +258,10 @@ export default function AdminPage(): React.ReactElement {
   const [copiedEmails, setCopiedEmails] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
+  // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf + Auto-Send-Toggle
+  const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
+  const [qrAutoSendToggle, setQrAutoSendToggle] = React.useState(false);
+  const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
@@ -498,8 +512,15 @@ export default function AdminPage(): React.ReactElement {
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerFor = (ev: DeloitteEvent): boolean =>
     !!currentEmailLc && !!ev.qrScannerEmails && ev.qrScannerEmails.some(e => e.toLowerCase() === currentEmailLc);
-  const isOrganizerFor = (ev: DeloitteEvent): boolean =>
-    !!currentEmailLc && !!ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc);
+  // v9.18: Co-Organizer haben pro Event die gleichen Rechte wie der Hauptorganizer.
+  // isOrganizerFor returned true sowohl fuer event.organizerEmails als auch
+  // fuer event.coOrganizerEmails (per-Event-Rolle).
+  const isOrganizerFor = (ev: DeloitteEvent): boolean => {
+    if (!currentEmailLc) return false;
+    if (ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc)) return true;
+    if (ev.coOrganizerEmails && ev.coOrganizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
+    return false;
+  };
   const adminEvents = isAdmin
     ? events
     : events.filter(e => isOrganizerFor(e) || isQRScannerFor(e));
@@ -1603,6 +1624,37 @@ export default function AdminPage(): React.ReactElement {
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
           }}>
+            {/* v9.19: Event aktivieren/deaktivieren — prominent gefuellt.
+                Aktiv → User koennen sich anmelden. Deaktiv (Under Construction)
+                → Event nur fuer Organizer/Admin/Test-Team sichtbar, Anmeldung
+                blockiert. Der Toggle ist die schnellste Moeglichkeit, ein
+                Event live zu schalten oder kurzfristig "auf Pause" zu setzen
+                (z.B. waehrend kurzfristige Aenderungen). */}
+            {(() => {
+              const isActive = selectedEvent.status === 'Active';
+              return (
+                <ActionTile
+                  icon={isActive ? <X size={18} /> : <Check size={18} />}
+                  title={isActive ? 'Event deaktivieren' : 'Event aktivieren'}
+                  desc={isActive
+                    ? 'Setzt das Event auf "Under Construction" zurueck — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
+                    : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
+                  badge="organizer"
+                  accent={isActive ? 'red' : 'green'}
+                  onClick={async () => {
+                    if (!eventServiceRef) return;
+                    const newStatus = isActive ? 'Under Construction' : 'Active';
+                    const confirmMsg = isActive
+                      ? 'Event auf "Under Construction" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
+                      : 'Event auf "Active" schalten? Alle Berechtigten können sich danach anmelden.';
+                    if (!window.confirm(confirmMsg)) return;
+                    await updateEvent(selectedEvent.id, { 'EventStatus': newStatus });
+                    await refreshEvents();
+                  }}
+                />
+              );
+            })()}
+
             {/* 1. Event bearbeiten */}
             <ActionTile
               icon={<Pencil size={18} />}
@@ -2066,8 +2118,10 @@ export default function AdminPage(): React.ReactElement {
         )}
       </div>
 
-      {/* Zähler + QR/Check-in Aktionen */}
-      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+      {/* Zähler + QR/Check-in Aktionen.
+          v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
+          Sonst Grid auf 4 Spalten. */}
+      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: `repeat(${selectedEvent?.waitlistEnabled ? 5 : 4}, 1fr)`, gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
             {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
@@ -2086,12 +2140,14 @@ export default function AdminPage(): React.ReactElement {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
         </div>
-        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-            {registrations.filter(r => r.Status === 'Warteliste').length}
+        {selectedEvent?.waitlistEnabled && (
+          <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
+              {registrations.filter(r => r.Status === 'Warteliste').length}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
-        </div>
+        )}
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
             {registrations.filter(r => r.Status === 'Abgemeldet').length}
@@ -2162,54 +2218,15 @@ export default function AdminPage(): React.ReactElement {
         >
           {t('admin.checkin')}
         </button>
+        {/* v9.15: QR-Codes versenden ist jetzt eine Quick-Action mit Modal — siehe
+            qrSendModalOpen unten. Beim Klick: Toggle initialisieren + Modal oeffnen. */}
         <button
           className="btn btn-secondary"
           disabled={isSendingQR}
-          onClick={async () => {
-            if (!eventServiceRef || !selectedEvent) return;
-            const eligible = registrations.filter(r => r.Status === 'Angemeldet');
-            if (eligible.length === 0) return;
-            if (!window.confirm(`QR-Codes an ${eligible.length} Teilnehmer versenden?`)) return;
-
-            setIsSendingQR(true);
-            setQrSentCount(0);
-            let sent = 0;
-
-            for (const reg of eligible) {
-              const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
-              const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-              // Vorname fuer die Anrede — fallback auf erstes Token aus ParticipantName
-              const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
-              // QR-Code als Base64-Bild generieren
-              let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-              try {
-                const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-              } catch { /* Fallback: Text */ }
-              // QR-Code E-Mail im Deloitte-Template queuen (Sprache folgt Event.EmailLanguage,
-              // Anrede nutzt nur den Vornamen statt vollem Namen)
-              const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN');
-              await eventServiceRef.queueEmail(
-                emailData.subject,
-                reg.ParticipantEmail,
-                name,
-                emailData.body,
-                'QRCode',
-                selectedEvent.title,
-                selectedEvent.id
-              );
-              // Status auf 'QR versendet' setzen
-              if (selectedEvent.subsiteUrl) {
-                await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
-              }
-              sent++;
-              setQrSentCount(sent);
-            }
-
-            // Registrierungen neu laden
-            const regs = await getAllRegistrations(selectedEvent.id);
-            setRegistrations(regs);
-            setIsSendingQR(false);
+          onClick={() => {
+            setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
+            setQrSendResult(null);
+            setQrSendModalOpen(true);
           }}
           style={{ flex: 1 }}
         >
@@ -3166,6 +3183,177 @@ export default function AdminPage(): React.ReactElement {
       {dangerZoneModal}
 
       {changeLogModal}
+
+      {/* v9.15: QR-Code-Versand-Modal — Test (nur Organizer) / Volldurchlauf
+          (alle Angemeldeten) / Auto-Send-Toggle fuer zukuenftige Anmeldungen. */}
+      {qrSendModalOpen && selectedEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => { if (!isSendingQR) setQrSendModalOpen(false); }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
+              maxWidth: 520, width: '100%', padding: 24,
+              boxShadow: 'var(--dex-shadow-hover)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>QR-Codes versenden</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
+            </p>
+            {/* v9.19: Hinweis aufs Handbuch — User klickt auf den Link und
+                landet direkt in der Check-In-Sektion. */}
+            <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+              Tipp: Wie der Check-In am Eventtag genau abläuft — vom QR-Code-Scan über manuelle Eincheck-Vorgänge bis zu Sonderfällen — steht im{' '}
+              <a
+                href="javascript:void(0)"
+                onClick={(e) => { e.preventDefault(); navigate('manual'); window.location.hash = 'check-in'; }}
+                style={{ color: 'var(--dex-green-dark)', fontWeight: 500 }}
+              >
+                Handbuch-Artikel &bdquo;Check-In am Event-Tag&ldquo;
+              </a>.
+            </p>
+
+            {/* Auto-Send-Toggle */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px',
+              border: '1px solid var(--dex-gray-200)', borderRadius: 8, marginBottom: 16,
+              background: qrAutoSendToggle ? 'var(--dex-green-light, #f0f8e8)' : '#fff',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={qrAutoSendToggle}
+                onChange={e => setQrAutoSendToggle(e.target.checked)}
+                disabled={isSendingQR}
+                style={{ marginTop: 3 }}
+              />
+              <div style={{ fontSize: '0.85rem' }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Automatisch bei Anmeldung versenden</div>
+                <div style={{ color: 'var(--dex-gray-600)' }}>
+                  Wenn aktiv, bekommt jeder neue Teilnehmer direkt nach erfolgreicher Anmeldung seinen QR-Code per Mail. Diese Einstellung wird am Event gespeichert und wirkt für ALLE zukünftigen Anmeldungen.
+                </div>
+              </div>
+            </label>
+
+            {qrSendResult && (
+              <div style={{
+                padding: '8px 12px', marginBottom: 12, borderRadius: 6,
+                background: qrSendResult.startsWith('Fehler') ? 'var(--dex-red-light, #ffe5e5)' : 'var(--dex-green-light, #f0f8e8)',
+                fontSize: '0.85rem', color: qrSendResult.startsWith('Fehler') ? 'var(--dex-red-dark, #b00)' : 'var(--dex-green-dark)',
+              }}>{qrSendResult}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setQrSendModalOpen(false)}
+                disabled={isSendingQR}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Abbrechen
+              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    if (!eventServiceRef || !selectedEvent) return;
+                    // Toggle persistieren (einmal speichern reicht — auch wenn user nur testet)
+                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
+                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
+                    }
+                    // Test-Modus: an Organizer-Mail des aktuellen Users versenden
+                    setIsSendingQR(true);
+                    setQrSendResult(null);
+                    setQrSentCount(0);
+                    try {
+                      const orgEmail = currentUser.email;
+                      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
+                      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
+                      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+                      try {
+                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                      } catch { /* */ }
+                      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+                      await eventServiceRef.queueEmail(
+                        emailData.subject, orgEmail, orgFullName, emailData.body,
+                        'QRCode', selectedEvent.title, selectedEvent.id
+                      );
+                      setQrSendResult(`Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`);
+                    } catch (err) {
+                      setQrSendResult('Fehler beim Test-Versand: ' + (err instanceof Error ? err.message : String(err)));
+                    }
+                    setIsSendingQR(false);
+                  }}
+                  disabled={isSendingQR}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Nur Test (an mich)
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    if (!eventServiceRef || !selectedEvent) return;
+                    const eligible = registrations.filter(r => r.Status === 'Angemeldet');
+                    if (eligible.length === 0) {
+                      setQrSendResult('Fehler: Keine angemeldeten Teilnehmer.');
+                      return;
+                    }
+                    if (!window.confirm(`QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?`)) return;
+
+                    // Auto-Send-Toggle persistieren
+                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
+                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
+                    }
+
+                    setIsSendingQR(true);
+                    setQrSendResult(null);
+                    setQrSentCount(0);
+                    let sent = 0;
+                    for (const reg of eligible) {
+                      const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
+                      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                      const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
+                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+                      try {
+                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                      } catch { /* */ }
+                      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
+                      await eventServiceRef.queueEmail(
+                        emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                        'QRCode', selectedEvent.title, selectedEvent.id
+                      );
+                      if (selectedEvent.subsiteUrl) {
+                        await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
+                      }
+                      sent++;
+                      setQrSentCount(sent);
+                    }
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                    setIsSendingQR(false);
+                    setQrSendResult(`${sent} QR-Codes verschickt.`);
+                  }}
+                  disabled={isSendingQR}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {isSendingQR ? `Versende... (${qrSentCount})` : 'An alle Angemeldeten'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingReg && selectedEvent && (
         <div
