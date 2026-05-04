@@ -1372,7 +1372,8 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (!title || !description) return;
+    // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
+    if (!title) return;
     setIsSubmitting(true);
     setError('');
     setProgress(0);
@@ -2077,7 +2078,7 @@ export default function EventCreationPage(): React.ReactElement {
       case 0:
         if (!title) errors.push('title');
         if (!organizer) errors.push('organizer');
-        if (!description) errors.push('description');
+        // v9.14: description ist optional — kein Pflichtfeld mehr
         break;
       case 1:
         if (!startDate) errors.push('startDate');
@@ -3305,11 +3306,10 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={6} />
-                  <span className="required">*</span> {t('create.description')}
+                  {t('create.description')}
                   <InfoTooltip text={t('create.description.hint')} />
                 </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120, ...errorBorderStyle('description') }} />
-                {fieldHasError('description') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
               </div>
 
               <div className="form-group">
@@ -5601,9 +5601,9 @@ export default function EventCreationPage(): React.ReactElement {
               {isEditMode && currentStep < steps.length - 1 && (
                 <button
                   className="btn btn-primary"
-                  disabled={!title || !description}
+                  disabled={!title}
                   onClick={handleSubmit}
-                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  style={{ opacity: !title ? 0.5 : 1 }}
                   title="Aenderungen sofort speichern, ohne weitere Schritte"
                 >
                   <Send size={16} /> {t('create.save')}
@@ -5626,9 +5626,9 @@ export default function EventCreationPage(): React.ReactElement {
               ) : (
                 <button
                   className="btn btn-primary"
-                  disabled={!title || !description}
+                  disabled={!title}
                   onClick={handleSubmit}
-                  style={{ opacity: !title || !description ? 0.5 : 1 }}
+                  style={{ opacity: !title ? 0.5 : 1 }}
                 >
                   <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
                 </button>
@@ -5716,7 +5716,7 @@ export default function EventCreationPage(): React.ReactElement {
               </button>
               <button
                 className="btn btn-primary"
-                disabled={!title || !description}
+                disabled={!title}
                 onClick={() => { setShowPreview(false); handleSubmit(); }}
               >
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
@@ -5936,21 +5936,24 @@ export default function EventCreationPage(): React.ReactElement {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              {/* v9.14: nach erfolgreichem Verarbeiten wird "Speichern und schließen"
+                  zum primary Button — die Audience-Liste ist bereits per setAudience
+                  uebernommen, der Klick schliesst den Dialog. */}
               <button
                 type="button"
-                className="btn btn-secondary"
+                className={bulkImportReport ? 'btn btn-primary' : 'btn btn-secondary'}
                 onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
                 disabled={bulkImportRunning}
               >
-                Schließen
+                {bulkImportReport ? 'Speichern und schließen' : 'Schließen'}
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={bulkImportReport ? 'btn btn-secondary' : 'btn btn-primary'}
                 onClick={runBulkImport}
                 disabled={bulkImportRunning || !bulkImportText.trim()}
               >
-                {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
+                {bulkImportRunning ? 'Suche läuft...' : (bulkImportReport ? 'Erneut verarbeiten' : 'Verarbeiten')}
               </button>
             </div>
           </div>

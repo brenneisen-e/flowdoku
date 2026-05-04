@@ -3694,15 +3694,12 @@ export class EventService {
       } catch { errors++; }
     }
 
-    // v7.31 / v9.13: Counter konsistent halten + Permissions sicherstellen.
-    // - ensureCounterList: legt Counter-Liste an falls fehlt + patcht
-    //   Visitors-Permissions auf Contribute (Recovery fuer alte Listen
-    //   die nur Read-Inheritance hatten — genau der Bug der bei der
-    //   Mass-Anmeldung Theresa zu TID=1 gefuehrt hat).
-    // - syncCounterToMax (v9.12+): monotonic up-only — patcht Counter
-    //   auf neuen Max, blockiert NIE eine parallele Anmeldung die schon
-    //   hoeher hochgepacked hat.
-    try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
+    // v7.31 / v9.14: Counter konsistent halten — syncCounterToMax patcht
+    // Counter (monotonic up-only). ensureCounterList wurde hier urspruenglich
+    // (v9.13) ebenfalls gerufen, hat aber Race-Conditions ausgeloest. Die
+    // Counter-Liste sollte zum Zeitpunkt eines Reorders ohnehin existieren —
+    // sonst hat die App ein anderes Problem das ein expliziter Klick auf
+    // "Counter zurücksetzen" loest.
     try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
 
     return { success, errors };
@@ -5039,11 +5036,14 @@ export class EventService {
     if (probe.ok) {
       // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
       try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
-      // v9.13: Permissions auf bestehender Liste idempotent nachpatchen.
-      // Existierende Counter-Listen aus v7.28..v9.12 vererben nur Read von
-      // der Subsite — normale User koennen den Counter nicht inkrementieren.
-      // setCounterListPermissions setzt break-inheritance + Visitors=Contribute.
-      try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
+      // v9.13/v9.14: setCounterListPermissions wurde hier urspruenglich
+      // mitaufgerufen, hat aber bei laufender Event-Anlage Race-Conditions
+      // ausgeloest (breakroleinheritance gegen frisch provisionierte Liste
+      // in derselben Request-Welle). Permissions werden jetzt nur noch
+      // explizit ueber den "Counter zurücksetzen"-Button gefixt — siehe
+      // resetCounterToMax. Bestehende Events koennen damit per Admin-Klick
+      // geheilt werden, neue Events bekommen ihre Permissions im
+      // create-Branch unten gesetzt.
       const itemListResp = await this.context.spHttpClient.get(
         `${itemsUrl}?$top=1`,
         SPHttpClient.configurations.v1

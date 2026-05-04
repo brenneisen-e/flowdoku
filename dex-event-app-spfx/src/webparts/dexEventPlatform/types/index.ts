@@ -35,6 +35,7 @@ export interface DeloitteEvent {
   maxParticipants: number;
   currentParticipants: number;
   waitlistCount: number;
+  waitlistEnabled?: boolean;
   imageUrl?: string;
   subsiteUrl?: string;
   outlookBody: string;

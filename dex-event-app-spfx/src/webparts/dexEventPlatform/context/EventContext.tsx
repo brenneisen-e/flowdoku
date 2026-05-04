@@ -305,6 +305,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       lastDeregisterDate: e.LastDeregisterDate || '',
       description: e.Description || '',
       maxParticipants: e.MaxParticipants || 0,
+      waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
       currentParticipants,
       waitlistCount,
       imageUrl: e.EventImageUrl || '',
