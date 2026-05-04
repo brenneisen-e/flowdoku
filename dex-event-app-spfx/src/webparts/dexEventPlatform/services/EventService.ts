@@ -4955,7 +4955,14 @@ export class EventService {
       let data;
       try { data = await getResp.json(); } catch { return undefined; }
       const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
-      const next = current + 1;
+      // v9.12: Defensive baseline. Falls der Counter aus irgendeinem Grund
+      // unter den aktuellen Max gefallen ist (z.B. weil ein alter Build
+      // mit dem broken syncCounterToMax den Counter gedrueckt hat, oder
+      // jemand SP direkt editiert hat), springen wir auf den echten Max.
+      // Das selbstheilt jedes ID-Drift-Problem bei der naechsten Anmeldung.
+      const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
+      const baseline = Math.max(current, liveMax);
+      const next = baseline + 1;
       const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': next }, etag);
       if (patchResp.ok) return next;
       if (patchResp.status !== 412) {
@@ -5072,33 +5079,31 @@ export class EventService {
     return 0;
   }
 
-  // v7.31: Counter auf den aktuellen Max-Wert syncen — wird bei Cancel und
-  // nach Reorder gerufen, damit der NextValue nicht "davonrast" ohne Bezug
-  // zur tatsaechlich vergebenen hoechsten ID. ETag-basiertes optimistic
-  // concurrency mit Retry.
+  // v7.31 / v9.12: Counter mit aktuellem Max-Wert konsistent halten — wird
+  // nach Cancel und nach reorderParticipantIDs aufgerufen. Die Logik ist
+  // **monotonic up-only**: der Counter geht NIE runter (sonst werden
+  // cancelled IDs reused — exakter Duplikat-Bug aus dem Go-Live).
   //
-  // WICHTIG: newMax wird in JEDEM Retry-Versuch neu aus der Teilnehmerliste
-  // gelesen — nicht als Parameter uebergeben. Damit kann eine Anmeldung,
-  // die WAEHREND des Syncs eingetroffen ist (und dabei den Counter schon
-  // hochgesetzt hat), nicht durch eine falsche niedrigere Sync-Schreibung
-  // ueberschrieben werden. Ohne dieses "live re-read" wuerde die Counter-
-  // Vergabe spaeter den Wert kollidieren lassen mit der just-eingetragenen
-  // neuen ID.
+  // - current >= liveMax: nichts zu tun (Counter steht bereits hoch genug).
+  // - current  < liveMax: Counter HOCH auf liveMax setzen (z.B. nach
+  //   reorderParticipantIDs, der die TIDs im Bereich [1..N_active] vergibt
+  //   wo N_active groesser sein kann als der bisherige Counter-Stand).
   //
-  // Wir setzen nur "down": wenn der Counter eh schon <= aktuellem Max ist,
-  // ist nichts zu tun (eine Anmeldung ist gleich schnell oder schneller
-  // gewesen — sie hat eine hoehere ID, der Counter darf nicht runter).
+  // Vorher (Bug bis v9.11): exakt umgekehrt — Counter wurde auf liveMax
+  // RUNTER gesetzt wenn current > liveMax. Das produzierte sowohl bei
+  // Cancel als auch nach IDReorder Duplikate.
+  //
+  // ETag-CAS mit Retry, damit eine parallele Anmeldung den Counter nicht
+  // zwischen Read und Write wegrasselt.
   private async syncCounterToMax(subsiteUrl: string): Promise<void> {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      // Re-Read auf JEDEM Versuch: aktueller Max kommt frisch aus der
-      // Teilnehmerliste, NICHT vom Aufrufer als Parameter.
+    for (let attempt = 0; attempt < 8; attempt++) {
       const liveMax = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
       let getResp: SPHttpClientResponse;
       try {
         getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
       } catch {
-        return; // Counter-Liste fehlt → kein Sync moeglich, ignorieren
+        return;
       }
       if (!getResp.ok) return;
       const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
@@ -5106,14 +5111,17 @@ export class EventService {
       let data;
       try { data = await getResp.json(); } catch { return; }
       const current = typeof data?.NextValue === 'number' ? data.NextValue : 0;
-      if (current <= liveMax) return; // bereits konsistent oder Anmeldung war schneller
+      if (current >= liveMax) return; // bereits konsistent — Counter ist nicht "zu klein"
       const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': liveMax }, etag);
-      if (patchResp.ok) return;
+      if (patchResp.ok) {
+        console.warn(`[DEX] syncCounterToMax: counter von ${current} auf ${liveMax} hochgezogen.`);
+        return;
+      }
       if (patchResp.status !== 412) return;
-      // 412 = jemand war zwischenzeitlich schneller (Anmeldung oder Sync) → retry
+      // 412 = jemand war schneller, nochmal lesen+patchen
       await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
     }
-    // Nach 5 Retries aufgeben — der Sync ist nur "Komfort", keine Pflicht.
+    // Nach 8 Retries aufgeben — best-effort, blockiert keine andere Aktion
   }
 
   private async _delete(url: string): Promise<SPHttpClientResponse> {
