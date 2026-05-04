@@ -1059,7 +1059,7 @@ export default function AdminPage(): React.ReactElement {
   if (!selectedEvent) {
     // Event-Auswahl
     return (
-      <div className="page-container" role="main">
+      <div className="page-container" role="main" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto' }}>
         <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0 }}>{t('admin.title')}</h2>
@@ -1145,13 +1145,20 @@ export default function AdminPage(): React.ReactElement {
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
-                    {event.imageUrl && (
-                      <div style={{
-                        width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
-                        background: `url(${event.imageUrl}) center/cover no-repeat`,
-                        filter: opts?.muted ? 'grayscale(0.4)' : 'none',
-                      }} />
-                    )}
+                    {/* v9.11: Thumbnail-Container immer rendern (auch wenn kein Bild
+                        gesetzt ist) — sonst rutscht der Text nach links und die
+                        Reihen wirken inkonsistent neben Reihen mit Bild. */}
+                    <div style={{
+                      width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                      background: event.imageUrl
+                        ? `url(${event.imageUrl}) center/cover no-repeat`
+                        : 'linear-gradient(135deg, var(--dex-gray-200), var(--dex-gray-100))',
+                      filter: opts?.muted ? 'grayscale(0.4)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--dex-gray-400)', fontSize: '0.7rem',
+                    }}>
+                      {!event.imageUrl && '—'}
+                    </div>
                     <div>
                     <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
@@ -1165,7 +1172,14 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                      {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
+                      {/* v9.10: B2Run-Events haben maxParticipants=0 weil die Kapazitaet
+                          auf durchstarter+funstarter aufgeteilt ist — Summe als
+                          effektive Kapazitaet anzeigen statt "∞". */}
+                      {(() => {
+                        const split = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
+                        const eff = event.maxParticipants && event.maxParticipants > 0 ? event.maxParticipants : split;
+                        return `${event.currentParticipants}/${eff || '∞'} Teilnehmer`;
+                      })()}
                     </span>
                     <span className="badge" style={{
                       background: getStatusColor(event.status) + '22',
@@ -1519,7 +1533,15 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Max. Teilnehmer' : 'Max. attendees'}</span>
-                      <span style={valueStyle}>{selectedEvent.maxParticipants || (isDe ? 'Unbegrenzt' : 'Unlimited')}</span>
+                      <span style={valueStyle}>{(() => {
+                        // v9.11: B2Run-Events nutzen Split-Kapazitaet statt maxParticipants —
+                        // hier die Summe anzeigen statt "Unbegrenzt".
+                        const split = (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0);
+                        const eff = selectedEvent.maxParticipants && selectedEvent.maxParticipants > 0
+                          ? selectedEvent.maxParticipants
+                          : split;
+                        return eff || (isDe ? 'Unbegrenzt' : 'Unlimited');
+                      })()}</span>
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Aktuell registriert' : 'Currently registered'}</span>
