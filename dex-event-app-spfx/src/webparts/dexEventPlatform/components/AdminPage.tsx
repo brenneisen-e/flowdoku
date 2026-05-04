@@ -42,6 +42,17 @@ function getStatusColor(status: string): string {
   }
 }
 
+// v9.20: EventStatus-Labels lokalisieren (DE).
+function localizeStatus(status: string): string {
+  switch (status) {
+    case 'Active': return 'Aktiv';
+    case 'Under Construction': return 'In Vorbereitung';
+    case 'Completed': return 'Abgeschlossen';
+    case 'Cancelled': return 'Abgesagt';
+    default: return status;
+  }
+}
+
 // Status-Werte sind in SP als deutsche Strings gespeichert ('Angemeldet',
 // 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'). Die App
 // rendert sie hier in der UI-Sprache des Users, ohne den Datenbankwert
@@ -87,15 +98,22 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
   const [hover, setHover] = React.useState(false);
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
-  // v9.19: filled-Look — die Tile ist permanent gruen (oder rot) gefuellt,
-  // unabhaengig vom Hover. Highlight fuer eine Aktion die heraussticht.
+  // v9.19/v9.20: filled-Look — Tile dezent eingefaerbt fuer
+  // Highlight-Aktionen. Pastell statt voll gesaettigt, damit nicht
+  // alarmierend wirkt.
   const isFilled = !!props.accent;
-  const filledBg = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
-  const filledBorder = props.accent === 'green' ? 'var(--dex-green-dark, #6b9a1e)' : props.accent === 'red' ? '#a01e15' : '';
+  const filledBg = props.accent === 'green' ? '#e3f0c5' : props.accent === 'red' ? '#ffe5e5' : '';
+  const filledBorder = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
   const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
   const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
-  const iconColor = isFilled ? '#fff' : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
-  const filledTextColor = isFilled ? '#fff' : 'var(--dex-gray-800, #1f2937)';
+  // v9.20: bei pastell-gefuellten Tiles Text/Icon dunkel halten — auf
+  // hellem Pastell-Hintergrund gut lesbar (im Gegensatz zum vorherigen
+  // weiss auf saturated-Color).
+  const filledIconColor = props.accent === 'green' ? 'var(--dex-green-dark, #4a7c1f)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-500, #6b7280)';
+  const iconColor = isFilled ? filledIconColor : (greenAccent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)');
+  const filledTextColor = isFilled
+    ? (props.accent === 'green' ? 'var(--dex-green-dark, #3f5f10)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-800, #1f2937)')
+    : 'var(--dex-gray-800, #1f2937)';
   const badgeLabel = props.badge === 'admin' ? 'Nur Admin' : 'Organizer';
   const badgeColors = props.badge === 'admin'
     ? { bg: 'rgba(237,139,0,0.12)', fg: 'var(--dex-orange, #ed8b00)' }
@@ -127,8 +145,11 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
         </span>
         <span style={{
           fontSize: '0.65rem', padding: '2px 8px', borderRadius: 999,
-          background: isFilled ? 'rgba(255,255,255,0.25)' : badgeColors.bg,
-          color: isFilled ? '#fff' : badgeColors.fg, fontWeight: 600,
+          // v9.20: Badge auf pastell Tiles in normalem badge-Look (auf hellem
+          // Hintergrund gut sichtbar, im Gegensatz zur vorherigen
+          // semi-transparenten weissen Variante auf saturated bg).
+          background: badgeColors.bg,
+          color: badgeColors.fg, fontWeight: 600,
           whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em',
         }}>{badgeLabel}</span>
       </div>
@@ -1204,11 +1225,16 @@ export default function AdminPage(): React.ReactElement {
                         return `${event.currentParticipants}/${eff || '∞'} Teilnehmer`;
                       })()}
                     </span>
+                    {/* v9.20: Status-Badge mit Entwurfs-Override.
+                        Wenn das Event als Entwurf markiert ist, wird "ENTWURF"
+                        statt des EventStatus angezeigt — fuer den Organizer
+                        ist dieser Hinweis wichtiger als der technische Status. */}
                     <span className="badge" style={{
-                      background: getStatusColor(event.status) + '22',
-                      color: getStatusColor(event.status),
+                      background: event.isFictive ? 'rgba(237,139,0,0.15)' : getStatusColor(event.status) + '22',
+                      color: event.isFictive ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(event.status),
+                      fontWeight: 600,
                     }}>
-                      {event.status}
+                      {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
                     </span>
                     <button
                       className="btn btn-secondary"
@@ -1624,6 +1650,31 @@ export default function AdminPage(): React.ReactElement {
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
           }}>
+            {/* v9.20: Check-In starten — prominent als erster Tile.
+                Sowohl Organizer als auch Check-In-Team-Mitglieder duerfen
+                diese Aktion ausloesen (siehe Header.canCheckIn-Logik). */}
+            <ActionTile
+              icon={<Hash size={18} />}
+              title={t('admin.checkin')}
+              desc="Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug."
+              badge="organizer"
+              onClick={() => navigate('check-in', selectedEvent.id)}
+            />
+
+            {/* v9.20: QR-Codes versenden als ActionTile (Modal-Trigger). */}
+            <ActionTile
+              icon={<Send size={18} />}
+              title={isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden`}
+              desc="Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code)."
+              badge="organizer"
+              busy={isSendingQR}
+              onClick={() => {
+                setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
+                setQrSendResult(null);
+                setQrSendModalOpen(true);
+              }}
+            />
+
             {/* v9.19: Event aktivieren/deaktivieren — prominent gefuellt.
                 Aktiv → User koennen sich anmelden. Deaktiv (Under Construction)
                 → Event nur fuer Organizer/Admin/Test-Team sichtbar, Anmeldung
@@ -1640,7 +1691,10 @@ export default function AdminPage(): React.ReactElement {
                     ? 'Setzt das Event auf "Under Construction" zurueck — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
                     : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
                   badge="organizer"
-                  accent={isActive ? 'red' : 'green'}
+                  // v9.19/v9.20: nur "Aktivieren" wird gruen highlighted —
+                  // "Deaktivieren" bleibt unauffaellig (Standard-Tile-Look),
+                  // damit der Button nicht alarmierend wirkt.
+                  accent={isActive ? undefined : 'green'}
                   onClick={async () => {
                     if (!eventServiceRef) return;
                     const newStatus = isActive ? 'Under Construction' : 'Active';
@@ -2193,46 +2247,12 @@ export default function AdminPage(): React.ReactElement {
         );
       })()}
 
-      {/* v6.19: QR-Code-Scanner-Modus — User ist nur als Scanner eingetragen und
-          sieht deshalb NUR die Event-Info + KPIs + "QR-Code scannen"-Button.
-          Alle Organizer-Aktionen (Teilnehmerliste, Mails, Edit, Export etc.)
-          sind für Scanner ausgeblendet. */}
-      {isQRScannerOnlyForSelected && (
-        <div className="admin-actions" style={{ display: 'flex', marginBottom: 24 }}>
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate('check-in', selectedEvent.id)}
-            style={{ flex: 1 }}
-          >
-            {t('admin.checkin') || 'QR-Code scannen'}
-          </button>
-        </div>
-      )}
-
+      {/* v9.20: Check-In starten + QR-Codes versenden sind jetzt im Aktionen-Grid
+          unten als ActionTile gerendert (nicht mehr als eigene Button-Reihe).
+          Damit sind alle Quick-Actions an EINEM Ort zusammengefasst. Auch fuer
+          Check-In-only-User (qrScanner-Mode) — die sehen weiterhin nur den
+          Check-In-Tile, da das Aktionen-Grid fuer sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
-      <div className="admin-actions" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-        <button
-          className="btn btn-primary"
-          onClick={() => navigate('check-in', selectedEvent.id)}
-          style={{ flex: 1 }}
-        >
-          {t('admin.checkin')}
-        </button>
-        {/* v9.15: QR-Codes versenden ist jetzt eine Quick-Action mit Modal — siehe
-            qrSendModalOpen unten. Beim Klick: Toggle initialisieren + Modal oeffnen. */}
-        <button
-          className="btn btn-secondary"
-          disabled={isSendingQR}
-          onClick={() => {
-            setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
-            setQrSendResult(null);
-            setQrSendModalOpen(true);
-          }}
-          style={{ flex: 1 }}
-        >
-          {isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden (${registrations.filter(r => r.Status === 'Angemeldet').length})`}
-        </button>
-      </div>
 
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && (() => {
