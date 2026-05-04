@@ -38,6 +38,25 @@ export default function Header(): React.ReactElement {
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
 
+  const pageIdMap: Record<string, string> = {
+    'landing': 'landing',
+    'start': 'start',
+    'register': 'event-list',
+    'registration': 'register',
+    'my-events': 'my-events',
+    'create-event': 'event-create',
+    'edit-event': 'event-edit',
+    'settings': 'settings',
+    'admin': 'admin-center',
+    'profile': 'profile',
+    'role-matrix': 'role-matrix',
+    'participants': 'participants',
+    'flowcharts': 'flowcharts',
+    'check-in': 'check-in',
+    'manual': 'manual',
+  };
+  const pageIdLabel = pageIdMap[currentPage] || currentPage;
+
   // v6.26: Mobile-Detection fuer die "Jetzt einchecken"-Sprechblase neben dem
   // QR-Icon. Wird nur auf Mobilgeraeten angezeigt (Viewport <= 768px), auf
   // Desktop bleibt der Header schlank.
@@ -303,6 +322,17 @@ export default function Header(): React.ReactElement {
                     <Settings size={14} /> {t('settings.rolemanagement')}
                   </button>
                 )}
+              </div>
+              <div
+                title="Page-ID — bei UI-Anfragen kannst du diese ID nennen, dann finde ich die Seite sofort."
+                style={{
+                  marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)',
+                  fontSize: '0.7rem', color: 'var(--dex-gray-500)',
+                  display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'monospace',
+                }}
+              >
+                <span style={{ color: 'var(--dex-gray-400)' }}>Page-ID:</span>
+                <span style={{ fontWeight: 600, color: 'var(--dex-gray-700)' }}>{pageIdLabel}</span>
               </div>
             </div>
           )}

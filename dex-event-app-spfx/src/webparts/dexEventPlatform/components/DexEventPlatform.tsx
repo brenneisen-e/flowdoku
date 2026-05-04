@@ -16,7 +16,6 @@ import { EventProvider, useEvents } from '../context/EventContext';
 import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
 import Header from './Header';
-import { PageId } from './PageId';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
 import EventListPage from './EventListPage';
@@ -336,35 +335,12 @@ function AppContent(): React.ReactElement {
   // schon die "Jetzt einchecken"-Bubble / QR-Icon blinken bevor der eigentliche
   // Welcome-Screen sichtbar ist.
   const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading);
-  // v9.19: Page-ID anzeigen — kleines Label unten links, damit der User
-  // bei UI-Anfragen praezise sagen kann auf welcher Seite er ist.
-  // Mapping NavigationContext → menschen-lesbare ID.
-  const pageIdMap: Record<string, string> = {
-    'landing': 'landing',
-    'start': 'start',
-    'register': 'event-list',
-    'registration': 'register',
-    'my-events': 'my-events',
-    'create-event': 'event-create',
-    'edit-event': 'event-edit',
-    'settings': 'settings',
-    'admin': 'admin-center',
-    'profile': 'profile',
-    'role-matrix': 'role-matrix',
-    'participants': 'participants',
-    'flowcharts': 'flowcharts',
-    'check-in': 'check-in',
-    'manual': 'manual',
-  };
-  const pageIdLabel = pageIdMap[currentPage] || currentPage;
+  // v9.26: Page-ID jetzt im Header-Avatar-Popup statt unten links.
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
       <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {renderPage()}
-        {/* v9.20: PageId-Label inline am Ende des main-Containers, sichtbar
-            auf jeder Seite (sticky am Container-Bottom). */}
-        {!isBootLoading && <PageId id={pageIdLabel} />}
       </main>
     </div>
   );

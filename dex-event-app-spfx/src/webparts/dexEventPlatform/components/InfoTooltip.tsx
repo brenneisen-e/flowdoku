@@ -73,16 +73,20 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
           style={{
             position: 'absolute',
             zIndex: 1500,
-            padding: '8px 12px',
+            padding: '12px 16px',
             background: 'rgba(40,40,40,0.96)',
             color: '#fff',
-            fontSize: '0.78rem',
+            fontSize: '0.82rem',
             fontWeight: 400,
-            lineHeight: 1.4,
-            borderRadius: 6,
-            boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-            maxWidth: 320,
-            minWidth: 160,
+            lineHeight: 1.55,
+            borderRadius: 8,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
+            // v9.24: breiter als vorher (320 -> 480) damit lange Hilfetexte
+            // — vor allem die ausfuehrlicheren Hints aus v9.17/v9.21 — nicht
+            // mehr in einer schmalen Spalte hochkant umgebrochen werden.
+            width: 'max-content',
+            maxWidth: 480,
+            minWidth: 280,
             whiteSpace: 'normal',
             textAlign: 'left',
             pointerEvents: 'none',
