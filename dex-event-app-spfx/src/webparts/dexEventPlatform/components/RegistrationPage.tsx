@@ -31,7 +31,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { events, registerForEvent, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, isAdmin } = useRoles();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
   // Per-Event-Organizer-Check: ist der eingeloggte User in event.organizerEmails?
@@ -758,7 +758,11 @@ export default function RegistrationPage(): React.ReactElement {
           )}
           {isFull && (
             <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
-              {t('reg.allplaces').replace('{count}', String(event.waitlistCount))}
+              {t('reg.allplaces')
+                .replace('{count}', String(event.waitlistCount))
+                .replace('{personLabel}', event.waitlistCount === 1
+                  ? (locale === 'en' ? 'person' : 'Person')
+                  : (locale === 'en' ? 'people' : 'Personen'))}
             </p>
           )}
           {/* v6.14: Integrierte Event-Auswahl — Parent + Sessions auf einer Seite.

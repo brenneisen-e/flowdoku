@@ -12,7 +12,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book, QrCode } from './Icons';
+import { ChevronLeft, Settings, Book, QrCode, RefreshCw } from './Icons';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
@@ -170,6 +170,27 @@ export default function Header(): React.ReactElement {
             aria-label={t('header.checkin')}
           >
             <QrCode size={20} />
+          </button>
+        )}
+        {/* v9.29: Refresh-Button im Header — ersetzt die alten in-page
+            Aktualisieren-Buttons in AdminPage. Nur auf Seiten anzeigen, auf
+            denen ein Refresh sinnvoll ist (Admin Center, Event-Liste,
+            Meine Events, Teilnehmer-Liste). Triggert ein globales Event,
+            das von der jeweiligen Page abgegriffen wird. */}
+        {(currentPage === 'admin' || currentPage === 'register' || currentPage === 'my-events' || currentPage === 'participants') && (
+          <button
+            className="header-icon-btn"
+            onClick={() => { window.dispatchEvent(new CustomEvent('dex-refresh-page')); }}
+            title={locale === 'de' ? 'Aktualisieren' : 'Refresh'}
+            aria-label={locale === 'de' ? 'Aktualisieren' : 'Refresh'}
+            style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <RefreshCw size={18} />
+            {!isMobile && (
+              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
+                {locale === 'de' ? 'Aktualisieren' : 'Refresh'}
+              </span>
+            )}
           </button>
         )}
         <button

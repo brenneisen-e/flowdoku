@@ -872,6 +872,13 @@ export default function EventCreationPage(): React.ReactElement {
   });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
+  // v9.28: Reorder-Mode toggelt die Hoch/Runter-Pfeile pro Custom-Field.
+  // Standardmäßig aus — sonst sieht das Feld-Listing zu unruhig aus.
+  const [reorderMode, setReorderMode] = React.useState(false);
+  // v9.28: Modal für neuen Quiz-Bereich (statt window.prompt)
+  const [newSectionModalOpen, setNewSectionModalOpen] = React.useState(false);
+  const [newSectionName, setNewSectionName] = React.useState('');
+  const [newSectionError, setNewSectionError] = React.useState('');
   const [agenda, setAgenda] = React.useState<AgendaItem[]>(
     editEvent && editEvent.agenda ? [...editEvent.agenda] : []
   );
@@ -2047,7 +2054,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Veranstaltungsort und Adresse erfassen',
       'Start- und End-Datum (mit Uhrzeit) festlegen',
       'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
-      'Optional: Letzter Storno-Termin — danach ist Self-Cancel gesperrt (Late-Cancel)',
+      'Optional: Letzte Abmeldemöglichkeit — danach können sich Teilnehmer nicht mehr selbst abmelden',
     ],
     [
       'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
@@ -2542,7 +2549,7 @@ export default function EventCreationPage(): React.ReactElement {
                     background: hintStepIdx === idx ? 'var(--dex-green)' : 'transparent',
                     color: hintStepIdx === idx ? '#fff' : 'var(--dex-gray-500)',
                     border: `1px solid ${hintStepIdx === idx ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
-                    fontSize: '0.7rem', fontWeight: 700, fontStyle: 'italic',
+                    fontSize: '0.7rem', fontWeight: 700,
                     cursor: 'help',
                     marginTop: 2,
                     transition: 'all 0.15s ease',
@@ -2599,7 +2606,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              {!isEditMode && (
+              {!isEditMode && currentStep === 0 && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                   <button
                     className="btn btn-outline"
@@ -2701,7 +2708,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={3} />
                   Datum (Start &amp; Ende)
-                  <InfoTooltip text="Start- und Endzeit des Events. Das Datum füllt die Anmelde-Deadline und den letzten Storno-Termin automatisch vor (kannst du im Schritt Kapazität jederzeit überschreiben)." />
+                  <InfoTooltip text={'Start- und Endzeit des Events. Sobald du das Start-Datum setzt, werden die Anmelde-Deadline (7 Tage vor Start) und die Stornierungs-Frist (3 Tage vor Start) automatisch vorgeschlagen — du kannst sie im nächsten Schritt „Kapazität & Sichtbarkeit“ jederzeit anpassen. Die Uhrzeit landet später im Outlook-Kalendereintrag der Teilnehmer.'} />
                 </label>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -3245,15 +3252,35 @@ export default function EventCreationPage(): React.ReactElement {
                   'Optional: add transfer times (bus/train/meeting point)',
                 ]
               )}
+              {/* v9.28: Banner — alle Infos in diesem Schritt landen direkt
+                  beim Teilnehmer (Anmelde-Seite + Meine Events). */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '12px 14px', marginBottom: 20,
+                background: 'rgba(0,118,168,0.06)',
+                border: '1px solid #0076a8',
+                borderRadius: 'var(--dex-radius, 12px)',
+                fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                lineHeight: 1.5,
+              }}>
+                <Icon iconName="Info" style={{ fontSize: 18, color: '#0076a8', flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  {isDe
+                    ? <>Alle Eingaben in diesem Schritt — <strong>Veranstaltungsort, Adresse, Agenda und Transferzeiten</strong> — werden den Teilnehmern direkt auf der <strong>Anmelde-Seite</strong> und später unter <strong>{'„Meine Events“'}</strong> angezeigt.</>
+                    : <>All inputs in this step — <strong>venue, address, agenda and transfer times</strong> — are shown to attendees directly on the <strong>registration page</strong> and later under <strong>{'„My Events“'}</strong>.</>}
+                </div>
+              </div>
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={1} />
                   {t('create.location')}
                   <InfoTooltip text={t('create.location.hint')} />
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={2} />
                   Adresse
                   <InfoTooltip text={t('create.address.hint')} />
                 </label>
@@ -3269,7 +3296,8 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+                  <StepBadge n={3} />
                   {t('create.agenda')}
                   <InfoTooltip text={t('create.agenda.hint')} />
                 </label>
@@ -3399,7 +3427,8 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Transferzeiten Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
-                <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+                  <StepBadge n={4} />
                   {t('create.transfers')}
                   <InfoTooltip text={t('create.transfers.hint')} />
                 </label>
@@ -3467,7 +3496,7 @@ export default function EventCreationPage(): React.ReactElement {
               {renderStepIntro(
                 [
                   'Sichtbarkeit: Standort-Filter und Mailverteiler/User festlegen — wer das Event in der Liste sieht',
-                  'Anmelde-Deadline + letzter Storno-Termin (vorbefüllt anhand des Event-Datums, jederzeit überschreibbar)',
+                  'Anmelde-Deadline + letzte Abmeldemöglichkeit (vorbefüllt anhand des Event-Datums, jederzeit überschreibbar)',
                   'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
                   'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
                   'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
@@ -4317,6 +4346,19 @@ export default function EventCreationPage(): React.ReactElement {
                   <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
                     <Plus size={14} /> {t('create.addfield')}
                   </button>
+                  {customFields.length > 1 && (
+                    <button
+                      type="button"
+                      className={reorderMode ? 'btn btn-primary' : 'btn btn-outline'}
+                      onClick={() => setReorderMode(prev => !prev)}
+                      style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+                      title={isDe ? 'Felder per Hoch/Runter-Pfeile sortieren' : 'Reorder fields with up/down arrows'}
+                    >
+                      {reorderMode
+                        ? (isDe ? 'Fertig' : 'Done')
+                        : (isDe ? 'Reihenfolge ändern' : 'Reorder')}
+                    </button>
+                  )}
                 </div>
 
                 {/* v7.20: Spalten-Header oberhalb der Feld-Karten — erklaert
@@ -4376,27 +4418,29 @@ export default function EventCreationPage(): React.ReactElement {
                       border: '1px solid var(--dex-gray-200)',
                     }}
                   >
-                    {/* Feld-Header: Drag + Name + Typ + Pflicht + Löschen */}
+                    {/* Feld-Header: Name + Typ + Pflicht + Löschen.
+                        v9.28: Drag-Symbol und Hoch/Runter-Pfeile standardmäßig
+                        ausgeblendet — Reorder-Pfeile erscheinen nur wenn der
+                        "Reihenfolge ändern"-Modus aktiv ist. */}
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: field.type === 'select' ? 12 : 0 }}>
-                      <div
-                        style={{ cursor: 'grab', padding: '0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
-                        title="Ziehen zum Verschieben"
-                      >
-                        <span style={{ fontSize: '1rem', color: 'var(--dex-gray-400)', userSelect: 'none', lineHeight: 1 }}>⠿</span>
-                        <div style={{ display: 'flex', gap: 2 }}>
-                          {/* Pfeile-Wrapper */}
+                      {reorderMode && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '0 4px' }}>
                           <button
+                            type="button"
                             onClick={() => moveCustomField(field.id, 'up')}
                             disabled={idx === 0}
-                            style={{ background: 'none', border: 'none', padding: 0, color: idx === 0 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '0.7rem' }}
+                            style={{ background: 'none', border: 'none', padding: 0, color: idx === 0 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '0.85rem', lineHeight: 1 }}
+                            title={isDe ? 'Nach oben' : 'Move up'}
                           >▲</button>
                           <button
+                            type="button"
                             onClick={() => moveCustomField(field.id, 'down')}
                             disabled={idx === customFields.length - 1}
-                            style={{ background: 'none', border: 'none', padding: 0, color: idx === customFields.length - 1 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === customFields.length - 1 ? 'default' : 'pointer', fontSize: '0.7rem' }}
+                            style={{ background: 'none', border: 'none', padding: 0, color: idx === customFields.length - 1 ? 'var(--dex-gray-300)' : 'var(--dex-gray-600)', cursor: idx === customFields.length - 1 ? 'default' : 'pointer', fontSize: '0.85rem', lineHeight: 1 }}
+                            title={isDe ? 'Nach unten' : 'Move down'}
                           >▼</button>
                         </div>
-                      </div>
+                      )}
                       {/* v7.20: Frage-Nummer (1, 2, 3, ...) — folgt der Reihenfolge,
                           beim Verschieben aendert sich automatisch der Wert. */}
                       <span style={{
@@ -4936,7 +4980,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
                       {isDe
-                        ? '"Nach Stornofrist" nutzt das oben gesetzte "Letzter Storno-Termin"-Datum. Vor diesem Datum gelten Stornos als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        ? '„Nur nach Stornofrist" nutzt das oben in Schritt Kapazität gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
                         : '"After cancel deadline" uses the "Last cancel date" set earlier. Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
@@ -5044,7 +5088,15 @@ export default function EventCreationPage(): React.ReactElement {
                     v9.17: Warteliste/Nachruecken-Templates nur anzeigen, wenn das Event eine
                     Warteliste hat — sonst werden sie ohnehin nie genutzt. */}
                 {['Anmeldung', 'Warteliste', 'Abmeldung', 'Nachruecken']
-                  .filter(tType => waitlistEnabled || (tType !== 'Warteliste' && tType !== 'Nachruecken'))
+                  .filter(tType => {
+                    // v9.28: Wartelisten-/Nachrueck-Templates nur zeigen, wenn das Event
+                    // tatsaechlich eine Warteliste haben kann — also Warteliste aktiviert
+                    // UND nicht unbegrenzt Teilnehmer (sonst gibt's nie eine volle Kapazitaet).
+                    if (tType === 'Warteliste' || tType === 'Nachruecken') {
+                      return waitlistEnabled && !unlimitedParticipants;
+                    }
+                    return true;
+                  })
                   .map(tType => {
                   const defaultTpl = emailTemplates.find(t => t.templateType === tType && t.language === emailLanguage);
                   const override = emailTemplateOverrides[tType];
@@ -5390,8 +5442,36 @@ export default function EventCreationPage(): React.ReactElement {
                     'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
                   ]
                 )}
-                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16 }}>
-                  {t('create.documents.hint')}
+                {/* v9.28: Schlagwoerter fett rendern fuer bessere Lesbarkeit. */}
+                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16, lineHeight: 1.6 }}>
+                  {isDe ? (
+                    <>
+                      Lade hier alle Unterlagen hoch, die deine Teilnehmer rund um das Event brauchen — z.B.
+                      die <strong>Detail-Agenda als PDF</strong>, eine <strong>Anfahrtsbeschreibung mit Karte</strong>,
+                      die <strong>Hausordnung</strong> des Veranstaltungsorts, eine <strong>Packliste</strong>, das <strong>Teilnehmer-Briefing</strong>
+                      {' '}oder eine <strong>Datenschutz-/Foto-Einverständniserklärung</strong>. Die Dokumente erscheinen
+                      automatisch unter <strong>{'„Meine Events“'}</strong> in der Detail-Ansicht des Teilnehmers — dort sehen sie eine
+                      <strong> Inline-Vorschau</strong> (bei PDFs) und können das Dokument einzeln <strong>herunterladen</strong>.
+                      Mehrere Dateien gleichzeitig hochladen geht per <strong>Drag &amp; Drop</strong> oder <strong>Mehrfachauswahl</strong>.
+                      Du kannst Dokumente auch <strong>nach dem Event-Live-Gang</strong> noch hinzufügen oder austauschen — die
+                      Teilnehmer sehen immer die aktuelle Version. <strong>Tipp:</strong> für Dokumente, die nur intern für die
+                      Organizer wichtig sind (z.B. Kontaktliste vom Caterer), nutze eine geteilte
+                      <strong> Teams-/SharePoint-Ablage außerhalb von DEX</strong>, da hier alle Teilnehmer Lese-Zugriff haben.
+                    </>
+                  ) : (
+                    <>
+                      Upload everything attendees might need around the event — e.g.
+                      the <strong>detailed agenda as PDF</strong>, <strong>directions with a map</strong>,
+                      the venue&apos;s <strong>house rules</strong>, a <strong>packing list</strong>, the <strong>attendee briefing</strong>
+                      {' '}or a <strong>privacy/photo consent form</strong>. Documents show up automatically under
+                      <strong>{' „My Events“'}</strong> in the attendee detail view — they get an
+                      <strong> inline preview</strong> (for PDFs) and can <strong>download</strong> each file individually.
+                      Multiple files can be uploaded at once via <strong>drag &amp; drop</strong> or <strong>multi-select</strong>.
+                      You can keep adding or replacing documents <strong>after the event has gone live</strong> — attendees always
+                      see the latest version. <strong>Tip:</strong> for documents only meant for organizers (e.g. caterer
+                      contact list), use a shared <strong>Teams/SharePoint folder outside DEX</strong>, because every attendee has read access here.
+                    </>
+                  )}
                 </p>
 
                 {documents.map((doc, idx) => (
@@ -5463,16 +5543,9 @@ export default function EventCreationPage(): React.ReactElement {
                     className="btn btn-outline"
                     style={{ fontSize: '0.82rem', padding: '6px 14px' }}
                     onClick={() => {
-                      const name = (window.prompt('Name des neuen Bereichs (z.B. "Orte"):') || '').trim();
-                      if (!name) return;
-                      const existing = new Set<string>();
-                      for (const q of quiz) if (q.section) existing.add(q.section);
-                      for (const p of pendingSections) existing.add(p);
-                      if (existing.has(name)) {
-                        alert('Ein Bereich mit diesem Namen existiert bereits.');
-                        return;
-                      }
-                      setPendingSections([...pendingSections, name]);
+                      setNewSectionName('');
+                      setNewSectionError('');
+                      setNewSectionModalOpen(true);
                     }}
                   >
                     <Plus size={14} /> Bereich
@@ -6797,6 +6870,88 @@ export default function EventCreationPage(): React.ReactElement {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* v9.28: Modal — neuer Quiz-Bereich anlegen (statt window.prompt) */}
+      {newSectionModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setNewSectionModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--dex-radius-lg, 12px)',
+              padding: '24px 28px', maxWidth: 460, width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: '1.15rem' }}>
+              Neuen Bereich anlegen
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              Bereiche bündeln Quiz-Fragen auf einer gemeinsamen Seite. Vergib einen
+              kurzen, sprechenden Namen — z.B. <em>Orte</em>, <em>Geschichte</em> oder <em>Foto-Quiz</em>.
+            </p>
+            <input
+              type="text"
+              className="form-input"
+              autoFocus
+              value={newSectionName}
+              placeholder='z.B. "Orte"'
+              onChange={e => { setNewSectionName(e.target.value); setNewSectionError(''); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const name = newSectionName.trim();
+                  if (!name) { setNewSectionError('Bitte einen Namen eingeben.'); return; }
+                  const existing = new Set<string>();
+                  for (const q of quiz) if (q.section) existing.add(q.section);
+                  for (const p of pendingSections) existing.add(p);
+                  if (existing.has(name)) { setNewSectionError('Ein Bereich mit diesem Namen existiert bereits.'); return; }
+                  setPendingSections([...pendingSections, name]);
+                  setNewSectionModalOpen(false);
+                } else if (e.key === 'Escape') {
+                  setNewSectionModalOpen(false);
+                }
+              }}
+              style={{ fontSize: '0.95rem', marginBottom: 8 }}
+            />
+            {newSectionError && (
+              <div style={{ color: 'var(--dex-red, #c00)', fontSize: '0.78rem', marginBottom: 10 }}>{newSectionError}</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setNewSectionModalOpen(false)}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const name = newSectionName.trim();
+                  if (!name) { setNewSectionError('Bitte einen Namen eingeben.'); return; }
+                  const existing = new Set<string>();
+                  for (const q of quiz) if (q.section) existing.add(q.section);
+                  for (const p of pendingSections) existing.add(p);
+                  if (existing.has(name)) { setNewSectionError('Ein Bereich mit diesem Namen existiert bereits.'); return; }
+                  setPendingSections([...pendingSections, name]);
+                  setNewSectionModalOpen(false);
+                }}
+              >
+                <Plus size={14} /> Bereich anlegen
+              </button>
+            </div>
           </div>
         </div>
       )}
