@@ -796,7 +796,7 @@ export default function EventCreationPage(): React.ReactElement {
   });
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
-  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
+  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email' | 'description'>('outlook');
   const [htmlEditorTemplateType, setHtmlEditorTemplateType] = React.useState<string>('');
   const [emailLanguage, setEmailLanguage] = React.useState(
     editEvent
@@ -2878,7 +2878,24 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+                {/* v9.39: Beschreibung als HTML-Editor (vorher plain textarea).
+                    Live-Vorschau im HtmlEditorModal — wird auf der Anmelde-Seite
+                    1:1 als HTML gerendert. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); }}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    {isDe ? 'Bearbeiten & Vorschau' : 'Edit & Preview'}
+                  </button>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', flex: 1, minWidth: 200 }}>
+                    {description
+                      ? `${description.replace(/<[^>]+>/g, '').substring(0, 120)}${description.length > 120 ? '…' : ''}`
+                      : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
+                  </span>
+                </div>
               </div>
 
               <div className="form-group">
@@ -5536,12 +5553,16 @@ export default function EventCreationPage(): React.ReactElement {
                   </p>
                 </div>
 
-                {/* Benachrichtigungen abschalten */}
-                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Benachrichtigungen abschalten — v9.39: collapsed by default. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={21} />
                     {t('create.notifications')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.notifications.hint')}
                   </p>
@@ -5590,15 +5611,20 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
-                </div>
+                  </div>
+                </details>
 
                 {/* v8.5: Organizer-BCC-Konfiguration (pro Event) — granular
-                    fuer An- und Abmeldungen getrennt einstellbar. */}
-                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    fuer An- und Abmeldungen getrennt einstellbar. v9.39: collapsed by default. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={22} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                     {isDe
                       ? 'Wenn aktiv, bekommt der Organizer eine versteckte Kopie der Bestätigungs-Mail, die an den Teilnehmer rausgeht — der Teilnehmer sieht nicht, dass jemand mitliest. Praktisch um zu wissen, wer sich gerade an- oder abmeldet. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).'
@@ -5674,14 +5700,19 @@ export default function EventCreationPage(): React.ReactElement {
                         : '„Only after the last cancellation date" uses the date set in step 3 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
-                </div>
+                  </div>
+                </details>
 
-                {/* Custom-Logo fuer E-Mails */}
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Custom-Logo fuer E-Mails — v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={23} />
                     {t('create.eventlogo.mail')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.eventlogo.mail.hint')}
                   </p>
@@ -5716,14 +5747,19 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
-                </div>
+                  </div>
+                </details>
 
-                {/* Custom-Logo fuer Outlook-Termin */}
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Custom-Logo fuer Outlook-Termin — v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={24} />
                     {t('create.outlooklogo')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.outlooklogo.hint')}
                   </p>
@@ -5754,13 +5790,19 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
-                </div>
+                  </div>
+                </details>
 
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={25} />
                     {t('create.outlookdesc')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button
                       type="button"
@@ -5776,12 +5818,19 @@ export default function EventCreationPage(): React.ReactElement {
                         : t('create.outlookdesc.placeholder')}
                     </span>
                   </div>
-                </div>
+                  </div>
+                </details>
 
-                <h4 style={{ marginTop: 24, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={26} />
-                  {t('create.templates.title')} ({emailLanguage})
-                </h4>
+                {/* v9.39: E-Mail-Texte-Block collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 700, fontSize: '1rem' }}>
+                    <StepBadge n={26} />
+                    {t('create.templates.title')} ({emailLanguage})
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
                   {t('create.templates.hint')}
                 </p>
@@ -5869,6 +5918,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   );
                 })}
+                  </div>
+                </details>
 
               </div>{/* close Step 4 */}
 
@@ -6485,27 +6536,35 @@ export default function EventCreationPage(): React.ReactElement {
         </div>
       )}
 
-      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin oder E-Mail-Template) */}
+      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin, E-Mail-Template oder Beschreibung).
+          v9.39: Mode 'description' fuer die Event-Beschreibung — wird auf der Anmelde-Seite
+          1:1 als HTML gerendert, deshalb hier auch ein Bearbeiten/Vorschau-Modal wie bei den
+          Mail-Templates. */}
       {(() => {
         if (!htmlEditorOpen) return null;
         const isOutlook = htmlEditorMode === 'outlook';
+        const isDescription = htmlEditorMode === 'description';
         const tType = htmlEditorTemplateType;
-        const defaultTpl = !isOutlook ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
-        const override = !isOutlook ? emailTemplateOverrides[tType] : undefined;
+        const defaultTpl = (!isOutlook && !isDescription) ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
+        const override = (!isOutlook && !isDescription) ? emailTemplateOverrides[tType] : undefined;
         const currentSubject = override?.subject || defaultTpl?.subject || '';
         const currentHeading = override?.heading || defaultTpl?.heading || '';
         const currentBody = isOutlook
           ? outlookBody
-          : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
+          : isDescription
+            ? description
+            : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
-            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : `E-Mail-Template: ${tType}`}
+            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
             value={currentBody}
             onChange={(html) => {
               if (isOutlook) {
                 setOutlookBody(html);
+              } else if (isDescription) {
+                setDescription(html);
               } else {
                 setEmailTemplateOverrides({
                   ...emailTemplateOverrides,
@@ -6513,18 +6572,18 @@ export default function EventCreationPage(): React.ReactElement {
                 });
               }
             }}
-            previewMode={isOutlook ? 'outlook' : 'email'}
-            emailSubject={!isOutlook ? currentSubject : undefined}
-            onEmailSubjectChange={!isOutlook ? (s) => setEmailTemplateOverrides({
+            previewMode={(isOutlook || isDescription) ? 'outlook' : 'email'}
+            emailSubject={(!isOutlook && !isDescription) ? currentSubject : undefined}
+            onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
               [tType]: { subject: s, heading: currentHeading, bodyHtml: currentBody },
             }) : undefined}
-            emailHeading={!isOutlook ? currentHeading : undefined}
-            onEmailHeadingChange={!isOutlook ? (h) => setEmailTemplateOverrides({
+            emailHeading={(!isOutlook && !isDescription) ? currentHeading : undefined}
+            onEmailHeadingChange={(!isOutlook && !isDescription) ? (h) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
               [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
             }) : undefined}
-            emailHeadingColor={!isOutlook ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            emailHeadingColor={(!isOutlook && !isDescription) ? (defaultTpl?.headingColor || '#86bc25') : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
             outlookSubheading={isOutlook ? outlookSubheading : undefined}
