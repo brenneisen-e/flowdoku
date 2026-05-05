@@ -1491,7 +1491,7 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
    │                            └── Yes: Create_Reminder_Queue_Item in DEX_Emails
    │                                     (EmailType='OutlookDeclineReminder')
    │                                     │
-   │                                     ├── Get_Outlook_EventId (Compose: DEX_Events.OutlookEventId)
+   │                                     ├── Get_Outlook_EventId (Compose: DEX_Events.CalendarLink → iCalUId)
    │                                     │
    │                                     └── Has_Outlook_Event? (length > 0)
    │                                            │
@@ -1534,7 +1534,9 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
 
 → **Approach B implementiert.** Approach A wurde verworfen und nicht deployed.
 
-**Voraussetzung für B:** das Feld `OutlookEventId` in `DEX_Events` ist gesetzt — wird beim erfolgreichen `DEX_CreateOutlookEvent`-Run zurückgeschrieben. Falls leer (alte Events vor Outlook-Integration), springt der Flow über `Has_Outlook_Event?` in den No-Branch und überspringt den Digest stillschweigend.
+**Voraussetzung für B:** das Feld `CalendarLink` in `DEX_Events` ist gesetzt — wird beim erfolgreichen `DEX_CreateOutlookEvent`-Run zurückgeschrieben (enthält die `iCalUId` des Outlook-Termins, die `V3CalendarGetItem` als Lookup-Schlüssel akzeptiert). Falls leer (alte Events vor Outlook-Integration oder DEX_CreateOutlookEvent-Fehler), springt der Flow über `Has_Outlook_Event?` in den No-Branch und überspringt den Digest stillschweigend.
+
+> **Hinweis zur Spalten-Wahl:** in der `DEX_Events`-Liste gibt es zwei Outlook-bezogene Spalten — `OutlookEventId` und `CalendarLink`. Der Decline-Digest nutzt **`CalendarLink`** (= iCalUId), weil `V3CalendarGetItem` damit über alle Mailbox-Kalender hinweg sucht und nicht an die Calendar-ID der Mailbox gekoppelt ist. `OutlookEventId` wird vom App-Code primär genutzt (siehe `EventService.findOutlookEvent`), kann aber auf alten Events fehlen — `CalendarLink` ist die robustere Quelle.
 
 ### UI-Anleitung — Schritte hinzufügen (komplett, Stand 2026-05-05)
 
@@ -1548,7 +1550,7 @@ Diese zwei Actions müssen **vor** dem `Is_Decline_Mail`-If liegen (siehe finale
 #### 1. `Get_Outlook_EventId` (Compose)
 
 - **+ New step** → **Data Operation — Compose**.
-- **Inputs (fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['OutlookEventId'], '')`
+- **Inputs (fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['CalendarLink'], '')`
 - **Configure run after** → `Create_Reminder_Queue_Item` → `Succeeded`.
 - Rename → `Get_Outlook_EventId`.
 
@@ -1694,7 +1696,7 @@ Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt 
 | User lehnt mit „Don't send response" ab | **Reminder feuert nicht** (kein Mail-Trigger), aber **beim nächsten Decline** im selben Event ist er im Digest enthalten — weil der Digest direkt aus `attendees[].status.response` liest. |
 | User lehnt ab und akzeptiert dann doch | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `status.response` zeigt jetzt `accepted`. |
 | User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status eq 'Angemeldet'`. |
-| Event hat keinen Outlook-Termin (`OutlookEventId` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
+| Event hat keinen Outlook-Termin (`CalendarLink` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
 | Event hat 0 noch-angemeldete Decliner | `Has_Decliners` ist false → kein Digest gequeued. |
 
 ## App-seitige Unterstützung (bereits implementiert)
@@ -1743,11 +1745,14 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
     ```
     (EventNumber, nicht ID!)
 
-## Finaler Flow-JSON (Stand 2026-04-14, Recipient-Filter via Filter array)
+## Finaler Flow-JSON v2 (Stand 2026-05-05, mit Decline-Digest via Outlook-Connector)
 
-**Wichtig:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfaenger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
+**Wichtig:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfänger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
 
-**TRIGGER (Office 365 Outlook — SharedMailboxOnNewEmailV2):**
+**Neu in v2 (2026-05-05):** Direkt nach `Create_Reminder_Queue_Item` ein paralleler Digest-Pfad — `Get_Outlook_EventId` (liest **`CalendarLink`** aus `DEX_Events`, das ist die iCalUId) → `Has_Outlook_Event?` → `Get_Outlook_Event` (Office-365-Outlook-Connector `V3CalendarGetItem`) → `Filter_Declined_Attendees` (`status.response == 'declined'`) → pro Decliner einen SP-Lookup auf der Teilnehmerliste (`Status='Angemeldet'`-Filter) → HTML-Tabelle bauen → `OutlookDeclineDigest`-Item in `DEX_Emails` queuen mit Recipient = Organizer-Mail.
+
+### Trigger
+
 ```json
 {
   "type": "OpenApiConnection",
@@ -1770,9 +1775,27 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
 }
 ```
 
-**ROOT Condition `Is_Decline_Mail` + alle Kinder (If)** — Stand mit
-Forward-Support (`Real_Sender`) und On-Behalf-Of-Support (`Decliner_Lastname`
-/ `Decliner_Firstname` / `Final_Recipient_Email`):
+### Top-Level Variables (vor dem Is_Decline_Mail-If)
+
+```json
+{
+  "Init_DeclineRows_HTML": {
+    "type": "InitializeVariable",
+    "inputs": { "variables": [ { "name": "DeclineRowsHtml", "type": "string" } ] },
+    "runAfter": {}
+  },
+  "Init_StillRegistered_Count": {
+    "type": "InitializeVariable",
+    "inputs": { "variables": [ { "name": "StillRegisteredCount", "type": "integer" } ] },
+    "runAfter": { "Init_DeclineRows_HTML": [ "Succeeded" ] }
+  }
+}
+```
+
+### Is_Decline_Mail (Top-Level If, runAfter Init_StillRegistered_Count)
+
+Die Condition ist unverändert gegenüber v1:
+
 ```json
 {
   "type": "If",
@@ -1786,143 +1809,191 @@ Forward-Support (`Real_Sender`) und On-Behalf-Of-Support (`Decliner_Lastname`
       }
     ]
   },
-  "actions": {
-    "Cleaned_Subject": {
-      "type": "Compose",
-      "inputs": "@trim(replace(replace(replace(replace(replace(replace(replace(replace(triggerOutputs()?['body/subject'], 'FW:', ''), 'WG:', ''), 'Declined:', ''), 'Declined ', ''), 'Abgelehnt:', ''), 'Abgelehnt ', ''), 'Refusé :', ''), 'Rifiutato:', ''))"
-    },
-    "Real_Sender": {
-      "type": "Compose",
-      "inputs": "@if(or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'fw:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'wg:')), trim(first(split(first(skip(split(coalesce(triggerOutputs()?['body/bodyPreview'], ''), '<'), 1)), '>'))), triggerOutputs()?['body/from'])",
-      "runAfter": { "Cleaned_Subject": ["Succeeded"] }
-    },
-    "Decliner_Lastname": {
-      "type": "Compose",
-      "inputs": "@if(contains(coalesce(triggerOutputs()?['body/bodyPreview'], ''), 'On Behalf Of '), trim(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'On Behalf Of ')), ','))), '')",
-      "runAfter": { "Real_Sender": ["Succeeded"] }
-    },
-    "Decliner_Firstname": {
-      "type": "Compose",
-      "inputs": "@if(contains(coalesce(triggerOutputs()?['body/bodyPreview'], ''), 'On Behalf Of '), trim(replace(replace(replace(last(split(first(split(last(split(triggerOutputs()?['body/bodyPreview'], 'On Behalf Of ')), decodeUriComponent('%0D%0A'))), ',')), 'Prof. ', ''), 'Dr. ', ''), 'Dipl.-Ing. ', '')), '')",
-      "runAfter": { "Decliner_Lastname": ["Succeeded"] }
-    },
-    "Get_DEX_Event": {
-      "type": "OpenApiConnection",
-      "inputs": {
-        "parameters": {
-          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-          "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
-          "$filter": "@concat('Title eq ''', replace(outputs('Cleaned_Subject'), '''', ''''''), '''')",
-          "$top": 1
-        },
-        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
-      },
-      "runAfter": { "Decliner_Firstname": ["Succeeded"] }
-    },
-    "Event_Found": {
-      "type": "If",
-      "expression": { "and": [ { "greater": ["@length(outputs('Get_DEX_Event')?['body/value'])", 0] } ] },
-      "actions": {
-        "Get_Teilnehmer_Entry": {
-          "type": "OpenApiConnection",
-          "inputs": {
-            "parameters": {
-              "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
-              "parameters/method": "GET",
-              "parameters/uri": "@concat('_api/web/lists/getbytitle(''Teilnehmer'')/items?$filter=', if(empty(outputs('Decliner_Lastname')), concat('ParticipantEmail eq ''', replace(outputs('Real_Sender'), '''', ''''''), ''''), if(empty(outputs('Decliner_Firstname')), concat('Nachname eq ''', replace(outputs('Decliner_Lastname'), '''', ''''''), ''''), concat('Vorname eq ''', replace(outputs('Decliner_Firstname'), '''', ''''''), ''' and Nachname eq ''', replace(outputs('Decliner_Lastname'), '''', ''''''), ''''))), ' and Status ne ''Abgemeldet''&$top=1&$select=Id,Status,Vorname,Nachname,ParticipantEmail')",
-              "parameters/headers": { "Accept": "application/json;odata=nometadata" }
-            },
-            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-          }
-        },
-        "Final_Recipient_Email": {
-          "type": "Compose",
-          "inputs": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['ParticipantEmail'], outputs('Real_Sender'))",
-          "runAfter": { "Get_Teilnehmer_Entry": ["Succeeded"] }
-        },
-        "Still_Registered": {
-          "type": "If",
-          "expression": { "and": [ { "greater": ["@length(body('Get_Teilnehmer_Entry')?['value'])", 0] } ] },
-          "actions": {
-            "Get_Existing_Reminder": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                  "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                  "$filter": "@concat('EmailType eq ''OutlookDeclineReminder'' and EventId eq ''', first(outputs('Get_DEX_Event')?['body/value'])?['ID'], '''')",
-                  "$top": 20
-                },
-                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
-              }
-            },
-            "Filter_By_Recipient": {
-              "type": "Query",
-              "inputs": {
-                "from": "@body('Get_Existing_Reminder')?['value']",
-                "where": "@contains(concat(';', replace(item()?['Recipient'], ' ', ''), ';'), concat(';', outputs('Final_Recipient_Email'), ';'))"
-              },
-              "runAfter": { "Get_Existing_Reminder": ["Succeeded"] }
-            },
-            "No_Reminder_Yet": {
-              "type": "If",
-              "expression": { "and": [ { "equals": ["@length(body('Filter_By_Recipient'))", 0] } ] },
-              "actions": {
-                "Get_Reminder_Template": {
-                  "type": "OpenApiConnection",
-                  "inputs": {
-                    "parameters": {
-                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                      "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
-                      "$filter": "@concat('TemplateType eq ''', if(empty(outputs('Decliner_Lastname')), 'OutlookDeclineReminder', 'OutlookDeclineReminder_OnBehalfOf'), ''' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
-                      "$top": 1
-                    },
-                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
-                  }
-                },
-                "Assistant_Forward_Mailto": {
-                  "type": "Compose",
-                  "inputs": "@concat('mailto:', first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail'], '?subject=', encodeUriComponent(concat('Bitte um Abmeldung: ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' \u2014 ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '&body=', encodeUriComponent(concat('Hallo,', decodeUriComponent('%0D%0A%0D%0A'), 'ich (Assistenz) habe in Vertretung den Outlook-Termin f\u00FCr ', first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ' ', first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], ' (', outputs('Final_Recipient_Email'), ') abgelehnt.', decodeUriComponent('%0D%0A%0D%0A'), 'Bitte storniere die Anmeldung f\u00FCr die Person f\u00FCr das Event \"', first(outputs('Get_DEX_Event')?['body/value'])?['Title'], '\" \u00FCber das Admin Center der Event Experience Platform.', decodeUriComponent('%0D%0A%0D%0A'), 'Danke!')))",
-                  "runAfter": { "Get_Reminder_Template": ["Succeeded"] }
-                },
-                "Create_Reminder_Queue_Item": {
-                  "type": "OpenApiConnection",
-                  "inputs": {
-                    "parameters": {
-                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                      "item/Title": "@replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['Subject'], concat('Outlook-Abmeldung-Reminder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
-                      "item/Recipient": "@outputs('Final_Recipient_Email')",
-                      "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))",
-                      "item/EmailType/Value": "OutlookDeclineReminder",
-                      "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
-                      "item/Status/Value": "Pending",
-                      "item/Body": "@replace(replace(replace(replace(coalesce(first(outputs('Get_Reminder_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{CancelUrl}}', concat('https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView&action=cancel&event=', string(first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']))), '{{AssistantForwardUrl}}', outputs('Assistant_Forward_Mailto'))",
-                      "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
-                    },
-                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
-                  },
-                  "runAfter": { "Assistant_Forward_Mailto": ["Succeeded"] }
-                }
-              },
-              "else": { "actions": {} },
-              "runAfter": { "Filter_By_Recipient": ["Succeeded"] }
-            }
-          },
-          "else": { "actions": {} },
-          "runAfter": { "Final_Recipient_Email": ["Succeeded"] }
-        }
-      },
-      "else": { "actions": {} },
-      "runAfter": { "Get_DEX_Event": ["Succeeded"] }
-    }
-  },
-  "else": { "actions": {} },
-  "runAfter": {}
+  "runAfter": { "Init_StillRegistered_Count": [ "Succeeded" ] }
 }
 ```
 
----
+### Sub-Actions (Reihenfolge im If-yes-Branch)
+
+Die folgenden Actions sind **unverändert gegenüber v1** — Inputs siehe v1-Beschreibung weiter oben in diesem Dokument oder im Archiv-Block:
+
+- `Cleaned_Subject` (Compose)
+- `Real_Sender` (Compose)
+- `Decliner_Lastname` (Compose)
+- `Decliner_Firstname` (Compose)
+- `Get_DEX_Event` (SP Get items, `28457815-1163-4e92-8b08-3ae43f477d9e`)
+- `Event_Found` (If)
+  - `Get_Teilnehmer_Entry` (SP HttpRequest auf Subsite/Teilnehmer)
+  - `Final_Recipient_Email` (Compose)
+  - `Still_Registered` (If)
+    - `Get_Existing_Reminder` (SP Get items, EmailType + EventId)
+    - `Filter_By_Recipient` (Query/Filter array)
+    - `No_Reminder_Yet` (If)
+      - `Get_Reminder_Template` (SP Get items)
+      - `Assistant_Forward_Mailto` (Compose)
+      - `Create_Reminder_Queue_Item` (SP Create item)
+
+### Neu in v2: Digest-Branch nach `Create_Reminder_Queue_Item`
+
+Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Create_Reminder_Queue_Item`, runAfter-Kette:
+`Create_Reminder_Queue_Item → Get_Outlook_EventId → Has_Outlook_Event`.
+
+```json
+{
+  "Get_Outlook_EventId": {
+    "type": "Compose",
+    "inputs": "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['CalendarLink'], '')",
+    "runAfter": { "Create_Reminder_Queue_Item": [ "Succeeded" ] }
+  },
+  "Has_Outlook_Event": {
+    "type": "If",
+    "expression": { "and": [ { "greater": [ "@length(outputs('Get_Outlook_EventId'))", 0 ] } ] },
+    "runAfter": { "Get_Outlook_EventId": [ "Succeeded" ] },
+    "actions": {
+      "Get_Outlook_Event": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
+            "id": "@outputs('Get_Outlook_EventId')"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+            "connection": "shared_office365",
+            "operationId": "V3CalendarGetItem"
+          }
+        }
+      },
+      "Set_variable": {
+        "type": "SetVariable",
+        "inputs": { "name": "StillRegisteredCount", "value": 0 },
+        "runAfter": { "Get_Outlook_Event": [ "Succeeded" ] }
+      },
+      "Filter_Declined_Attendees": {
+        "type": "Query",
+        "inputs": {
+          "from": "@coalesce(outputs('Get_Outlook_Event')?['body/attendees'], createArray())",
+          "where": "@equals(toLower(coalesce(item()?['status']?['response'], '')), 'declined')"
+        },
+        "runAfter": { "Set_variable": [ "Succeeded" ] }
+      },
+      "Apply_To_Each_Decliner": {
+        "type": "Foreach",
+        "foreach": "@body('Filter_Declined_Attendees')",
+        "actions": {
+          "Get_Decliner_Status": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "@concat('https://deudeloitte.sharepoint.com', replace(first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl'], 'https://deudeloitte.sharepoint.com', ''))",
+                "table": "Teilnehmer",
+                "$filter": "@concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status eq ''Angemeldet''')",
+                "$top": 1
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connection": "shared_sharepointonline",
+                "operationId": "GetItems"
+              }
+            }
+          },
+          "Condition_Still_Registered": {
+            "type": "If",
+            "expression": { "and": [ { "greater": [ "@length(body('Get_Decliner_Status')?['value'])", 0 ] } ] },
+            "runAfter": { "Get_Decliner_Status": [ "Succeeded" ] },
+            "actions": {
+              "Increment_Count": {
+                "type": "IncrementVariable",
+                "inputs": { "name": "StillRegisteredCount", "value": 1 }
+              },
+              "Append_Decliner_Row": {
+                "type": "AppendToStringVariable",
+                "inputs": {
+                  "name": "DeclineRowsHtml",
+                  "value": "@concat('<tr><td style=\"padding:6px 10px;border-bottom:1px solid #eee;\">', coalesce(first(body('Get_Decliner_Status')?['value'])?['Vorname'], ''), ' ', coalesce(first(body('Get_Decliner_Status')?['value'])?['Nachname'], ''), '</td><td style=\"padding:6px 10px;border-bottom:1px solid #eee;\">', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], '</td><td style=\"padding:6px 10px;border-bottom:1px solid #eee;\">', coalesce(first(body('Get_Decliner_Status')?['value'])?['Department'], '—'), '</td><td style=\"padding:6px 10px;border-bottom:1px solid #eee;\">', if(empty(first(body('Get_Decliner_Status')?['value'])?['RegistrationDate']), '—', formatDateTime(first(body('Get_Decliner_Status')?['value'])?['RegistrationDate'], 'dd.MM.yyyy')), '</td></tr>')"
+                },
+                "runAfter": { "Increment_Count": [ "Succeeded" ] }
+              }
+            },
+            "else": { "actions": {} }
+          }
+        },
+        "runAfter": { "Filter_Declined_Attendees": [ "Succeeded" ] }
+      },
+      "Compose_DeclineList_Table": {
+        "type": "Compose",
+        "inputs": "@concat('<table style=\"border-collapse:collapse;width:100%;font-size:13px;margin:12px 0;\"><thead><tr style=\"background:#f5f5f5;\"><th style=\"padding:8px 10px;text-align:left;\">Name</th><th style=\"padding:8px 10px;text-align:left;\">E-Mail</th><th style=\"padding:8px 10px;text-align:left;\">Department</th><th style=\"padding:8px 10px;text-align:left;\">Anmeldedatum</th></tr></thead><tbody>', variables('DeclineRowsHtml'), '</tbody></table>')",
+        "runAfter": { "Apply_To_Each_Decliner": [ "Succeeded" ] }
+      },
+      "Has_Decliners": {
+        "type": "If",
+        "expression": { "and": [ { "greater": [ "@variables('StillRegisteredCount')", 0 ] } ] },
+        "runAfter": { "Compose_DeclineList_Table": [ "Succeeded" ] },
+        "actions": {
+          "Get_Digest_Template": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+                "$filter": "@concat('TemplateType eq ''OutlookDeclineDigest'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
+                "$top": 1
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connection": "shared_sharepointonline",
+                "operationId": "GetItems"
+              }
+            }
+          },
+          "Create_Digest_Queue_Item": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                "item/Title": "@replace(replace(coalesce(first(outputs('Get_Digest_Template')?['body/value'])?['Subject'], 'FYI: attendees declined Outlook'), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{DeclineCount}}', string(variables('StillRegisteredCount')))",
+                "item/Recipient": "@first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail']",
+                "item/RecipientName": "Organizer",
+                "item/EmailType/Value": "OutlookDeclineDigest",
+                "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
+                "item/Status/Value": "Pending",
+                "item/Body": "@replace(replace(replace(coalesce(first(outputs('Get_Digest_Template')?['body/value'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{DeclineCount}}', string(variables('StillRegisteredCount'))), '{{DeclineList}}', outputs('Compose_DeclineList_Table'))",
+                "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connection": "shared_sharepointonline",
+                "operationId": "PostItem"
+              }
+            },
+            "runAfter": { "Get_Digest_Template": [ "Succeeded" ] }
+          }
+        },
+        "else": { "actions": {} }
+      }
+    },
+    "else": { "actions": {} }
+  }
+}
+```
+
+### Hinweise zur Calendar-Lookup-Logik
+
+- **`Get_Outlook_Event` table = Default-Calendar-ID des Postfachs `no_reply.events@deloitte.de`.** Aktuell hardcoded als die lange Base64-ID. Bei Tenant-Migration muss der Wert über die Office-365-Outlook-Connector-Dropdowns (Calendar Id) neu picked werden — die Connector-UI tauscht ihn dann automatisch im Code-View.
+- **`Get_Outlook_Event` id = `outputs('Get_Outlook_EventId')`** = `iCalUId` aus `DEX_Events.CalendarLink`. `V3CalendarGetItem` akzeptiert die iCalUId als Lookup-Schlüssel und sucht damit über alle Mailbox-Kalender hinweg — anders als die kalenderspezifische `EntryId`, die mailbox-gebunden wäre.
+- **Get_Decliner_Status table = `Teilnehmer`** (nicht leer lassen — leerer table-Wert führte in einer Vorab-Version zu HTTP 400 auf der Subsite-Liste).
+
+### Test-Plan Decline-Digest (Approach B)
+
+| Szenario | Erwartung |
+|----------|-----------|
+| User lehnt mit „Send response" ab | Reminder + Digest werden gequeued. Digest enthält den User in der Tabelle. |
+| User lehnt mit „Don't send response" ab | **Reminder feuert nicht** (kein Mail-Trigger), aber **beim nächsten Decline** im selben Event ist er im Digest enthalten — weil der Digest direkt aus `attendees[].status.response` liest. |
+| User lehnt ab und akzeptiert dann doch | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `status.response` zeigt jetzt `accepted`. |
+| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status eq 'Angemeldet'`. |
+| Event hat keinen Outlook-Termin (`CalendarLink` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
+| Event hat 0 noch-angemeldete Decliner | `Has_Decliners` ist false → kein Digest gequeued. |
 
 ## Archiv: DEX_OutlookDeclineHandler v1 (event-modified, deprecated 2026-04-14)
 
