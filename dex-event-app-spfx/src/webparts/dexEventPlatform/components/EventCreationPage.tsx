@@ -2583,23 +2583,28 @@ export default function EventCreationPage(): React.ReactElement {
                     <div
                       role="tooltip"
                       style={{
+                        // v9.40: Styling 1:1 wie InfoTooltip (siehe InfoTooltip.tsx),
+                        // damit die zwei Tooltip-Varianten optisch konsistent wirken.
                         position: 'absolute',
                         top: 'calc(100% + 8px)',
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        width: 320,
-                        maxWidth: '90vw',
-                        background: 'var(--dex-gray-900, #1f2937)',
+                        width: 'max-content',
+                        maxWidth: 480,
+                        minWidth: 280,
+                        background: 'rgba(40,40,40,0.96)',
                         color: '#fff',
-                        padding: '12px 14px',
+                        padding: '12px 16px',
                         borderRadius: 8,
-                        boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
-                        fontSize: '0.78rem',
-                        lineHeight: 1.5,
+                        boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
+                        fontFamily: 'inherit',
+                        fontSize: '0.82rem',
+                        lineHeight: 1.55,
                         fontWeight: 400,
                         fontStyle: 'normal',
                         textAlign: 'left',
-                        zIndex: 200,
+                        whiteSpace: 'normal',
+                        zIndex: 1500,
                         pointerEvents: 'none',
                       }}
                     >
@@ -5703,8 +5708,8 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </details>
 
-                {/* Custom-Logo fuer E-Mails — v9.39: collapsed by default */}
-                <details className="form-group" style={{ marginTop: 24 }}>
+                {/* Custom-Logo fuer E-Mails — v9.39: collapsed by default. v9.40: gleiche graue Box wie 21/22. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={23} />
                     {t('create.eventlogo.mail')}
@@ -5750,8 +5755,8 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </details>
 
-                {/* Custom-Logo fuer Outlook-Termin — v9.39: collapsed by default */}
-                <details className="form-group" style={{ marginTop: 24 }}>
+                {/* Custom-Logo fuer Outlook-Termin — v9.39: collapsed by default. v9.40: gleiche graue Box. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={24} />
                     {t('create.outlooklogo')}
@@ -5793,8 +5798,8 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </details>
 
-                {/* v9.39: collapsed by default */}
-                <details className="form-group" style={{ marginTop: 24 }}>
+                {/* v9.39: collapsed by default. v9.40: gleiche graue Box. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={25} />
                     {t('create.outlookdesc')}
@@ -5821,9 +5826,9 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </details>
 
-                {/* v9.39: E-Mail-Texte-Block collapsed by default */}
-                <details className="form-group" style={{ marginTop: 24 }}>
-                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 700, fontSize: '1rem' }}>
+                {/* v9.39: E-Mail-Texte-Block collapsed by default. v9.40: gleiche graue Box, gleiche Schriftgröße wie 21-25. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={26} />
                     {t('create.templates.title')} ({emailLanguage})
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
