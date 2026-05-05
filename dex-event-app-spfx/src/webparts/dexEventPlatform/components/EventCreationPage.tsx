@@ -796,7 +796,7 @@ export default function EventCreationPage(): React.ReactElement {
   });
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
-  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email'>('outlook');
+  const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email' | 'description'>('outlook');
   const [htmlEditorTemplateType, setHtmlEditorTemplateType] = React.useState<string>('');
   const [emailLanguage, setEmailLanguage] = React.useState(
     editEvent
@@ -2878,7 +2878,24 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
+                {/* v9.39: Beschreibung als HTML-Editor (vorher plain textarea).
+                    Live-Vorschau im HtmlEditorModal — wird auf der Anmelde-Seite
+                    1:1 als HTML gerendert. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => { setHtmlEditorMode('description'); setHtmlEditorOpen(true); }}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    {isDe ? 'Bearbeiten & Vorschau' : 'Edit & Preview'}
+                  </button>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', flex: 1, minWidth: 200 }}>
+                    {description
+                      ? `${description.replace(/<[^>]+>/g, '').substring(0, 120)}${description.length > 120 ? '…' : ''}`
+                      : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
+                  </span>
+                </div>
               </div>
 
               <div className="form-group">
@@ -3714,6 +3731,279 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               </div>
 
+                {/* ===== Sub-Events (Trainingssessions etc.) ===== */}
+                <div className="form-group" style={{ marginTop: 32 }}>
+                  <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={13} />
+                    {t('create.subevents')}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
+                        <strong>Anzeige in der App:</strong> Teilnehmer sehen die Sessions auf der Anmelde-Seite als <strong>eigene Anmelde-Bereiche</strong> — Haupt-Event und Sessions können <strong>unabhängig voneinander</strong> an- und abgewählt werden. Niemand muss zwingend das Haupt-Event mitbuchen, um sich für eine Session anzumelden.<br /><br />
+                        <strong>Automatismen:</strong> pro Session-An-/Abmeldung gibt es eine <strong>eigene Bestätigungs-Mail</strong> und einen <strong>eigenen Outlook-Termin</strong> (im Deloitte-Layout). Pro Session optional ein- oder ausschaltbar (Mails / Outlook).<br /><br />
+                        <strong>Empfehlung:</strong> nutze Sub-Events für mehrtägige Trainings, optionale Add-on-Workshops, oder regelmäßige Side-Sessions zu einem Haupt-Event. Bei einfachen Single-Day-Events nicht nötig.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> <strong>additional sessions</strong> attached to the main event — e.g. a training series, optional workshops, side events on the day before. One entry per session with title, location, start/end, registration cutoff and capacity.<br /><br />
+                        <strong>Shown in the app:</strong> attendees see the sessions on the registration page as <strong>independent registration blocks</strong> — main event and sessions can be picked or skipped <strong>independently</strong>. Nobody has to book the main event to sign up for a session.<br /><br />
+                        <strong>Automation:</strong> each session registration / cancellation triggers its <strong>own confirmation mail</strong> and its <strong>own Outlook event</strong> (in the Deloitte template). Per session optionally toggleable (mails / Outlook).<br /><br />
+                        <strong>Tip:</strong> use sub-events for multi-day trainings, optional add-on workshops, or recurring side sessions of a main event. Not needed for simple single-day events.
+                      </>
+                    )} />
+                  </label>
+                  {subEvents.length === 0 && (
+                    <div style={{
+                      padding: 10, border: '1px dashed var(--dex-gray-300)', borderRadius: 'var(--dex-radius)',
+                      color: 'var(--dex-gray-500)', fontSize: '0.82rem', marginBottom: 8, marginTop: 4,
+                      textAlign: 'center', background: 'var(--dex-gray-50, #fafafa)',
+                    }}>
+                      {t('create.subevents.empty')}
+                    </div>
+                  )}
+                  {subEvents.map((se, idx) => {
+                    // SubEvent-Daten werden intern als UTC-ISO gespeichert, fuer die
+                    // react-datepicker-Komponenten brauchen wir Date-Objekte mit den
+                    // richtigen Berlin-Lokalzeiten. Wir parsen via isoToLocal, was den
+                    // Berlin-Wert als "YYYY-MM-DDTHH:MM" liefert, und bauen daraus ein
+                    // JavaScript-Date-Objekt mit lokalen Werten.
+                    const startDateObj = se.startDate ? (() => {
+                      const local = isoToLocal(se.startDate); // "YYYY-MM-DDTHH:MM" in Berlin
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const endDateObj = se.endDate ? (() => {
+                      const local = isoToLocal(se.endDate);
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const deadlineObj = se.registrationDeadline ? (() => {
+                      const local = isoToLocal(se.registrationDeadline);
+                      if (!local) return null;
+                      const [dp, tp] = local.split('T');
+                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
+                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+                      return new Date(y, mo - 1, da, h, mi, 0, 0);
+                    })() : null;
+                    const dateToBerlinIso = (d: Date | null): string => {
+                      if (!d) return '';
+                      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                      return berlinLocalToUtcIso(local);
+                    };
+                    return (
+                      <div key={se.id} style={{
+                        padding: '14px 16px', marginBottom: 10, marginTop: 4,
+                        background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                        border: '1px solid var(--dex-gray-200)', borderLeft: '3px solid var(--dex-green, #86bc25)',
+                      }}>
+                        {/* Header-Zeile: Titel (prominent) + Loeschen */}
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.title')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.title}
+                              placeholder={t('create.subevents.title.placeholder')}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, title: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem', fontWeight: 600 }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSubEvents(subEvents.filter(x => x.id !== se.id))}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                              fontSize: '1.1rem', padding: '4px', lineHeight: 1, marginTop: 18,
+                            }}
+                            title={t('create.subevents.remove')}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 10, marginBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
+                            <DatePicker
+                              selected={startDateObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, startDate: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Datum und Uhrzeit"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              maxDate={endDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.end')}</label>
+                            <DatePicker
+                              selected={endDateObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, endDate: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Datum und Uhrzeit"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              minDate={startDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.deadline')}</label>
+                            <DatePicker
+                              selected={deadlineObj}
+                              onChange={(date: Date | null) => {
+                                const iso = dateToBerlinIso(date);
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, registrationDeadline: iso } : x));
+                              }}
+                              showTimeSelect
+                              timeFormat="HH:mm"
+                              timeIntervals={15}
+                              timeCaption="Uhrzeit"
+                              dateFormat="dd.MM.yyyy, HH:mm"
+                              locale="de"
+                              placeholderText="Optional"
+                              className="form-input"
+                              wrapperClassName="dex-datepicker-wrapper"
+                              calendarClassName="dex-datepicker-calendar"
+                              popperPlacement="bottom-start"
+                              maxDate={startDateObj || undefined}
+                              isClearable
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.max')}</label>
+                            <input
+                              type="number"
+                              min={0}
+                              className="form-input"
+                              value={se.maxParticipants || 0}
+                              onChange={e => {
+                                const v = parseInt(e.target.value, 10) || 0;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, maxParticipants: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Ort + Beschreibung */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.location')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.location || ''}
+                              placeholder={t('create.subevents.location.placeholder')}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, location: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.description')}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={se.description || ''}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, description: v } : x));
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Toggles: Mails + Outlook */}
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingTop: 6, borderTop: '1px dashed var(--dex-gray-200)' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!se.disableEmails}
+                              onChange={e => {
+                                const v = !e.target.checked;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableEmails: v } : x));
+                              }}
+                              style={{ width: 14, height: 14, cursor: 'pointer' }}
+                            />
+                            {t('create.subevents.emails')}
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!se.disableOutlook}
+                              onChange={e => {
+                                const v = !e.target.checked;
+                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableOutlook: v } : x));
+                              }}
+                              style={{ width: 14, height: 14, cursor: 'pointer' }}
+                            />
+                            {t('create.subevents.outlook')}
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}
+                    onClick={() => {
+                      const newSub: SubEventDraft = {
+                        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                        title: '',
+                        description: '',
+                        location: '',
+                        startDate: '',
+                        endDate: '',
+                        maxParticipants: 0,
+                        disableEmails: false,
+                        disableOutlook: false,
+                      };
+                      setSubEvents([...subEvents, newSub]);
+                    }}
+                  >
+                    <Plus size={14} /> {t('create.subevents.add')}
+                  </button>
+                </div>
               </div>
 
               {/* ===== Step 2: Kapazität, Fristen & Sichtbarkeit ===== */}
@@ -5263,12 +5553,16 @@ export default function EventCreationPage(): React.ReactElement {
                   </p>
                 </div>
 
-                {/* Benachrichtigungen abschalten */}
-                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Benachrichtigungen abschalten — v9.39: collapsed by default. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={21} />
                     {t('create.notifications')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.notifications.hint')}
                   </p>
@@ -5317,15 +5611,20 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
-                </div>
+                  </div>
+                </details>
 
                 {/* v8.5: Organizer-BCC-Konfiguration (pro Event) — granular
-                    fuer An- und Abmeldungen getrennt einstellbar. */}
-                <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    fuer An- und Abmeldungen getrennt einstellbar. v9.39: collapsed by default. */}
+                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={22} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                     {isDe
                       ? 'Wenn aktiv, bekommt der Organizer eine versteckte Kopie der Bestätigungs-Mail, die an den Teilnehmer rausgeht — der Teilnehmer sieht nicht, dass jemand mitliest. Praktisch um zu wissen, wer sich gerade an- oder abmeldet. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).'
@@ -5392,23 +5691,28 @@ export default function EventCreationPage(): React.ReactElement {
                       </label>
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
                         <input type="radio" name="notifyOrgCancel" checked={notifyOrgCancelMode === 'afterDeadline'} onChange={() => setNotifyOrgCancelMode('afterDeadline')} />
-                        {isDe ? 'Nur nach Stornofrist' : 'Only after cancel deadline'}
+                        {isDe ? 'Erst nach der letzten Abmeldemöglichkeit' : 'Only after the last cancellation date'}
                       </label>
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
                       {isDe
-                        ? '„Nur nach Stornofrist" nutzt das oben in Schritt Kapazität gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
-                        : '"After cancel deadline" uses the "Last cancel date" set earlier. Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
+                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 3 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        : '„Only after the last cancellation date" uses the date set in step 3 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
-                </div>
+                  </div>
+                </details>
 
-                {/* Custom-Logo fuer E-Mails */}
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Custom-Logo fuer E-Mails — v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={23} />
                     {t('create.eventlogo.mail')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.eventlogo.mail.hint')}
                   </p>
@@ -5443,14 +5747,19 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
-                </div>
+                  </div>
+                </details>
 
-                {/* Custom-Logo fuer Outlook-Termin */}
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Custom-Logo fuer Outlook-Termin — v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={24} />
                     {t('create.outlooklogo')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.outlooklogo.hint')}
                   </p>
@@ -5481,13 +5790,19 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
-                </div>
+                  </div>
+                </details>
 
-                <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* v9.39: collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={25} />
                     {t('create.outlookdesc')}
-                  </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button
                       type="button"
@@ -5503,12 +5818,19 @@ export default function EventCreationPage(): React.ReactElement {
                         : t('create.outlookdesc.placeholder')}
                     </span>
                   </div>
-                </div>
+                  </div>
+                </details>
 
-                <h4 style={{ marginTop: 24, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={26} />
-                  {t('create.templates.title')} ({emailLanguage})
-                </h4>
+                {/* v9.39: E-Mail-Texte-Block collapsed by default */}
+                <details className="form-group" style={{ marginTop: 24 }}>
+                  <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 700, fontSize: '1rem' }}>
+                    <StepBadge n={26} />
+                    {t('create.templates.title')} ({emailLanguage})
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                    </span>
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
                   {t('create.templates.hint')}
                 </p>
@@ -5596,280 +5918,9 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   );
                 })}
+                  </div>
+                </details>
 
-                {/* ===== Sub-Events (Trainingssessions etc.) ===== */}
-                <div className="form-group" style={{ marginTop: 32 }}>
-                  <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={27} />
-                    {t('create.subevents')}
-                    <InfoTooltip text={isDe ? (
-                      <>
-                        <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
-                        <strong>Anzeige in der App:</strong> Teilnehmer sehen die Sessions auf der Anmelde-Seite als <strong>eigene Anmelde-Bereiche</strong> — Haupt-Event und Sessions können <strong>unabhängig voneinander</strong> an- und abgewählt werden. Niemand muss zwingend das Haupt-Event mitbuchen, um sich für eine Session anzumelden.<br /><br />
-                        <strong>Automatismen:</strong> pro Session-An-/Abmeldung gibt es eine <strong>eigene Bestätigungs-Mail</strong> und einen <strong>eigenen Outlook-Termin</strong> (im Deloitte-Layout). Pro Session optional ein- oder ausschaltbar (Mails / Outlook).<br /><br />
-                        <strong>Empfehlung:</strong> nutze Sub-Events für mehrtägige Trainings, optionale Add-on-Workshops, oder regelmäßige Side-Sessions zu einem Haupt-Event. Bei einfachen Single-Day-Events nicht nötig.
-                      </>
-                    ) : (
-                      <>
-                        <strong>What you set here:</strong> <strong>additional sessions</strong> attached to the main event — e.g. a training series, optional workshops, side events on the day before. One entry per session with title, location, start/end, registration cutoff and capacity.<br /><br />
-                        <strong>Shown in the app:</strong> attendees see the sessions on the registration page as <strong>independent registration blocks</strong> — main event and sessions can be picked or skipped <strong>independently</strong>. Nobody has to book the main event to sign up for a session.<br /><br />
-                        <strong>Automation:</strong> each session registration / cancellation triggers its <strong>own confirmation mail</strong> and its <strong>own Outlook event</strong> (in the Deloitte template). Per session optionally toggleable (mails / Outlook).<br /><br />
-                        <strong>Tip:</strong> use sub-events for multi-day trainings, optional add-on workshops, or recurring side sessions of a main event. Not needed for simple single-day events.
-                      </>
-                    )} />
-                  </label>
-                  {subEvents.length === 0 && (
-                    <div style={{
-                      padding: 10, border: '1px dashed var(--dex-gray-300)', borderRadius: 'var(--dex-radius)',
-                      color: 'var(--dex-gray-500)', fontSize: '0.82rem', marginBottom: 8, marginTop: 4,
-                      textAlign: 'center', background: 'var(--dex-gray-50, #fafafa)',
-                    }}>
-                      {t('create.subevents.empty')}
-                    </div>
-                  )}
-                  {subEvents.map((se, idx) => {
-                    // SubEvent-Daten werden intern als UTC-ISO gespeichert, fuer die
-                    // react-datepicker-Komponenten brauchen wir Date-Objekte mit den
-                    // richtigen Berlin-Lokalzeiten. Wir parsen via isoToLocal, was den
-                    // Berlin-Wert als "YYYY-MM-DDTHH:MM" liefert, und bauen daraus ein
-                    // JavaScript-Date-Objekt mit lokalen Werten.
-                    const startDateObj = se.startDate ? (() => {
-                      const local = isoToLocal(se.startDate); // "YYYY-MM-DDTHH:MM" in Berlin
-                      if (!local) return null;
-                      const [dp, tp] = local.split('T');
-                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
-                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
-                      return new Date(y, mo - 1, da, h, mi, 0, 0);
-                    })() : null;
-                    const endDateObj = se.endDate ? (() => {
-                      const local = isoToLocal(se.endDate);
-                      if (!local) return null;
-                      const [dp, tp] = local.split('T');
-                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
-                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
-                      return new Date(y, mo - 1, da, h, mi, 0, 0);
-                    })() : null;
-                    const deadlineObj = se.registrationDeadline ? (() => {
-                      const local = isoToLocal(se.registrationDeadline);
-                      if (!local) return null;
-                      const [dp, tp] = local.split('T');
-                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
-                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
-                      return new Date(y, mo - 1, da, h, mi, 0, 0);
-                    })() : null;
-                    const dateToBerlinIso = (d: Date | null): string => {
-                      if (!d) return '';
-                      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                      return berlinLocalToUtcIso(local);
-                    };
-                    return (
-                      <div key={se.id} style={{
-                        padding: '14px 16px', marginBottom: 10, marginTop: 4,
-                        background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
-                        border: '1px solid var(--dex-gray-200)', borderLeft: '3px solid var(--dex-green, #86bc25)',
-                      }}>
-                        {/* Header-Zeile: Titel (prominent) + Loeschen */}
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.title')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.title}
-                              placeholder={t('create.subevents.title.placeholder')}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, title: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem', fontWeight: 600 }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setSubEvents(subEvents.filter(x => x.id !== se.id))}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                              fontSize: '1.1rem', padding: '4px', lineHeight: 1, marginTop: 18,
-                            }}
-                            title={t('create.subevents.remove')}
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-
-                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
-                            <DatePicker
-                              selected={startDateObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, startDate: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              placeholderText="Datum und Uhrzeit"
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              maxDate={endDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.end')}</label>
-                            <DatePicker
-                              selected={endDateObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, endDate: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              placeholderText="Datum und Uhrzeit"
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              minDate={startDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.deadline')}</label>
-                            <DatePicker
-                              selected={deadlineObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, registrationDeadline: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              placeholderText="Optional"
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              maxDate={startDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.max')}</label>
-                            <input
-                              type="number"
-                              min={0}
-                              className="form-input"
-                              value={se.maxParticipants || 0}
-                              onChange={e => {
-                                const v = parseInt(e.target.value, 10) || 0;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, maxParticipants: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Ort + Beschreibung */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.location')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.location || ''}
-                              placeholder={t('create.subevents.location.placeholder')}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, location: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.description')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.description || ''}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, description: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Toggles: Mails + Outlook */}
-                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingTop: 6, borderTop: '1px dashed var(--dex-gray-200)' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={!se.disableEmails}
-                              onChange={e => {
-                                const v = !e.target.checked;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableEmails: v } : x));
-                              }}
-                              style={{ width: 14, height: 14, cursor: 'pointer' }}
-                            />
-                            {t('create.subevents.emails')}
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={!se.disableOutlook}
-                              onChange={e => {
-                                const v = !e.target.checked;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableOutlook: v } : x));
-                              }}
-                              style={{ width: 14, height: 14, cursor: 'pointer' }}
-                            />
-                            {t('create.subevents.outlook')}
-                          </label>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}
-                    onClick={() => {
-                      const newSub: SubEventDraft = {
-                        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                        title: '',
-                        description: '',
-                        location: '',
-                        startDate: '',
-                        endDate: '',
-                        maxParticipants: 0,
-                        disableEmails: false,
-                        disableOutlook: false,
-                      };
-                      setSubEvents([...subEvents, newSub]);
-                    }}
-                  >
-                    <Plus size={14} /> {t('create.subevents.add')}
-                  </button>
-                </div>
               </div>{/* close Step 4 */}
 
               {/* ===== Step 5: Dokumente ===== */}
@@ -6485,27 +6536,35 @@ export default function EventCreationPage(): React.ReactElement {
         </div>
       )}
 
-      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin oder E-Mail-Template) */}
+      {/* HTML-Editor-Modal mit Live-Preview (Outlook-Termin, E-Mail-Template oder Beschreibung).
+          v9.39: Mode 'description' fuer die Event-Beschreibung — wird auf der Anmelde-Seite
+          1:1 als HTML gerendert, deshalb hier auch ein Bearbeiten/Vorschau-Modal wie bei den
+          Mail-Templates. */}
       {(() => {
         if (!htmlEditorOpen) return null;
         const isOutlook = htmlEditorMode === 'outlook';
+        const isDescription = htmlEditorMode === 'description';
         const tType = htmlEditorTemplateType;
-        const defaultTpl = !isOutlook ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
-        const override = !isOutlook ? emailTemplateOverrides[tType] : undefined;
+        const defaultTpl = (!isOutlook && !isDescription) ? emailTemplates.find(tp => tp.templateType === tType && tp.language === emailLanguage) : undefined;
+        const override = (!isOutlook && !isDescription) ? emailTemplateOverrides[tType] : undefined;
         const currentSubject = override?.subject || defaultTpl?.subject || '';
         const currentHeading = override?.heading || defaultTpl?.heading || '';
         const currentBody = isOutlook
           ? outlookBody
-          : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
+          : isDescription
+            ? description
+            : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
-            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : `E-Mail-Template: ${tType}`}
+            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
             value={currentBody}
             onChange={(html) => {
               if (isOutlook) {
                 setOutlookBody(html);
+              } else if (isDescription) {
+                setDescription(html);
               } else {
                 setEmailTemplateOverrides({
                   ...emailTemplateOverrides,
@@ -6513,18 +6572,18 @@ export default function EventCreationPage(): React.ReactElement {
                 });
               }
             }}
-            previewMode={isOutlook ? 'outlook' : 'email'}
-            emailSubject={!isOutlook ? currentSubject : undefined}
-            onEmailSubjectChange={!isOutlook ? (s) => setEmailTemplateOverrides({
+            previewMode={(isOutlook || isDescription) ? 'outlook' : 'email'}
+            emailSubject={(!isOutlook && !isDescription) ? currentSubject : undefined}
+            onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
               [tType]: { subject: s, heading: currentHeading, bodyHtml: currentBody },
             }) : undefined}
-            emailHeading={!isOutlook ? currentHeading : undefined}
-            onEmailHeadingChange={!isOutlook ? (h) => setEmailTemplateOverrides({
+            emailHeading={(!isOutlook && !isDescription) ? currentHeading : undefined}
+            onEmailHeadingChange={(!isOutlook && !isDescription) ? (h) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
               [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
             }) : undefined}
-            emailHeadingColor={!isOutlook ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            emailHeadingColor={(!isOutlook && !isDescription) ? (defaultTpl?.headingColor || '#86bc25') : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
             outlookSubheading={isOutlook ? outlookSubheading : undefined}

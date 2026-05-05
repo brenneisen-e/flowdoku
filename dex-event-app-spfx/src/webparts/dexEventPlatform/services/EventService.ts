@@ -139,6 +139,37 @@ const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
+// v9.38: OutlookDeclineDigest — Info-Mail an Organizer, sobald jemand den
+// Outlook-Termin abgelehnt hat. Listet alle Teilnehmer, die noch angemeldet
+// sind, aber den Outlook-Termin abgelehnt haben. Wird nach jedem neuen
+// Decline gequeued (Power-Automate-Flow DEX_OutlookDeclineHandler).
+//   {{EventTitle}}    — Event-Titel
+//   {{DeclineCount}}  — Anzahl der noch-angemeldeten Decliner
+//   {{DeclineList}}   — HTML-Tabelle mit Vorname/Nachname/Mail/RegDate/Department
+const OUTLOOK_DECLINE_DIGEST_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00',
+  'FYI: attendees declined the Outlook invite',
+  'Event {{EventTitle}}',
+  `<p>Hi,</p>
+<p>The following <strong>{{DeclineCount}}</strong> attendees are still registered for <strong>{{EventTitle}}</strong> but have declined the Outlook calendar invite. They received a reminder mail asking them to also cancel their registration if they cannot attend — until then, they still count towards the capacity.</p>
+{{DeclineList}}
+<p>You may want to reach out to them directly if their attendance is critical for the event.</p>
+<p style="font-size:12px;color:#999;margin-top:24px;">This summary is sent automatically every time someone declines the Outlook invite. The list always reflects the current state of registered-but-declined attendees.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+
+const OUTLOOK_DECLINE_DIGEST_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00',
+  'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
+  'Event {{EventTitle}}',
+  `<p>Hallo,</p>
+<p>folgende <strong>{{DeclineCount}}</strong> Teilnehmer sind noch für <strong>{{EventTitle}}</strong> angemeldet, haben aber den Outlook-Termin <strong>abgelehnt</strong>. Sie haben bereits eine Erinnerungs-Mail bekommen mit der Bitte, sich auch offiziell abzumelden — bis dahin zählen sie aber zur Kapazität.</p>
+{{DeclineList}}
+<p>Falls die Teilnahme dieser Personen für das Event wichtig ist, sprich sie ggf. direkt an.</p>
+<p style="font-size:12px;color:#999;margin-top:24px;">Diese Übersicht geht automatisch raus, sobald jemand den Outlook-Termin ablehnt. Die Liste zeigt immer den aktuellen Stand der noch-angemeldeten Decliner.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
 // Nachruecken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
 // weil die Flow-seite den BodyHtml raw verwendet (ohne wrapTemplate). Client-Code
 // erkennt die Pre-Wrap in buildEmailFromTemplate() und skippt den Wrap dann.
@@ -1219,6 +1250,11 @@ export class EventService {
         BodyHtml: OUTLOOK_FORWARD_BODY_EN },
       { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
         BodyHtml: OUTLOOK_FORWARD_BODY_DE },
+      // v9.38: OutlookDeclineDigest — geht an Organizer nach jedem Decline mit Liste aller noch-angemeldeten Decliner.
+      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
+      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -1283,6 +1319,11 @@ export class EventService {
         BodyHtml: OUTLOOK_FORWARD_BODY_EN },
       { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
         BodyHtml: OUTLOOK_FORWARD_BODY_DE },
+      // v9.38: OutlookDeclineDigest — wird bei bestehenden Tenants nachgerüstet.
+      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
+      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
