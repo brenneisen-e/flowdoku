@@ -1987,6 +1987,12 @@ export default function EventCreationPage(): React.ReactElement {
     }
   }, [currentStep]);
 
+  // v9.46: Success-Fallback-Page entfernt. Seit v9.45 wird `setSubmitted(true)`
+  // nicht mehr aufgerufen — der Wizard verlässt sich auf den Soft-Refresh-Pfad
+  // (CustomEvent + DexEventPlatform-Banner). Der `if (submitted)`-Block bleibt
+  // als Defensiv-Fallback für den unwahrscheinlichen Fall, dass der Submit-
+  // Erfolg nicht via Event ankommt — dann zeigen wir eine minimale Bestätigung
+  // mit Soft-Navigate (kein Hard-Reload mehr).
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -1999,32 +2005,20 @@ export default function EventCreationPage(): React.ReactElement {
             <button
               className="btn btn-primary"
               onClick={() => {
-                // v9.43: Hard-Reload mit Deep-Link statt Soft-Navigate. Grund:
-                // nach Event-Erstellung braucht SharePoint ein paar Sekunden, bis
-                // die neue Subsite + Listen API-konsistent sind, und der
-                // Permission-Cache des Browsers hat für die frische Subsite noch
-                // keine gültigen Tokens. Ein Soft-Navigate führt deshalb in einen
-                // Render-Crash mit weißem Screen (React #300).
-                //
-                // Der Hard-Reload räumt den Permission-Cache auf. Damit der User
-                // nicht auf der Landing-Seite landet und manuell zur Eventliste
-                // klicken muss, hängen wir einen Deep-Link ?action=event-created
-                // dran. Der Bootstrap der App liest diesen Parameter, navigiert
-                // automatisch zur Eventliste und zeigt eine grüne Erfolgs-Banner-
-                // Meldung mit dem Event-Titel.
-                const action = isEditMode ? 'event-updated' : 'event-created';
-                const targetEventId = selectedEventId || '';
-                const url = window.location.pathname + '?action=' + action + (targetEventId ? '&event=' + encodeURIComponent(targetEventId) : '');
-                window.location.href = url;
+                // v9.46: Soft-Refresh über CustomEvent (gleicher Mechanismus wie der
+                // Standard-Submit-Pfad in v9.45). Kein Page-Reload mehr.
+                try {
+                  window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
+                    detail: { title, eventId: String(selectedEventId || ''), type: isEditMode ? 'update' : 'create' },
+                  }));
+                } catch { /* */ }
+                setSubmitted(false);
               }}
             >
               Zur Übersicht
             </button>
             <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Weiteres Event erstellen</button>
           </div>
-          <p style={{ marginTop: 20, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-            <em>Hinweis: Beim Klick auf {'„Zur Übersicht“'} wird die Seite einmal neu geladen, damit SharePoint die frisch erstellte Subsite überall sauber einbindet — du landest direkt in der Eventliste mit einer Erfolgs-Meldung.</em>
-          </p>
         </div>
       </div>
     );
