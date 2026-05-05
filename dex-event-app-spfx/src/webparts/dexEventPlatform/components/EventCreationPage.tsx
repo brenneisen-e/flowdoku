@@ -474,20 +474,46 @@ export default function EventCreationPage(): React.ReactElement {
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
   // Mehrere Organizer werden mit '; ' getrennt gespeichert (innerhalb eines Namens kann ',' vorkommen, z.B. 'Maerzluft, Petra')
-  const [organizer, setOrganizer] = React.useState(
-    editEvent ? editEvent.organizers.join('; ') : `${currentUser.firstName} ${currentUser.surname}`
-  );
+  // Auto-Heal: bei Längen-Mismatch zwischen organizers und organizerEmails (Legacy-Daten
+  // aus v10.0–v10.2-Closure-Bug) wird auch die Names-Liste auf das Minimum gekürzt.
+  // Siehe Kommentar bei organizerEmails-State weiter unten.
+  const [organizer, setOrganizer] = React.useState(() => {
+    if (!editEvent) return `${currentUser.firstName} ${currentUser.surname}`;
+    const names = editEvent.organizers || [];
+    const emails = editEvent.organizerEmails || [];
+    const min = Math.min(names.length, emails.length || names.length);
+    return names.slice(0, names.length === emails.length ? names.length : min).join('; ');
+  });
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [organizerSearch, setOrganizerSearch] = React.useState('');
   // Beim Edit: organizerEmails aus dem gespeicherten Event uebernehmen, nicht auf currentUser
   // zuruecksetzen. Sonst ueberschreibt ein Edit+Save die gesamte Organizer-Email-Liste mit
   // nur der Mail des aktuellen Editors — alle anderen Organizer wuerden stumm aus der
   // Late-Cancel- / Organizer-Mail-Verteilung rausfallen.
-  const [organizerEmails, setOrganizerEmails] = React.useState<string[]>(
-    editEvent && editEvent.organizerEmails && editEvent.organizerEmails.length > 0
-      ? editEvent.organizerEmails.slice()
-      : [currentUser.email]
-  );
+  //
+  // Auto-Heal: wenn organizers (Names) und organizerEmails unterschiedliche Längen haben
+  // (Symptom des Closure-Bugs aus v10.0–v10.2: in dem Fenster wurden Emails per prev =>
+  // korrekt akkumuliert, Names aber nur einmal geschrieben → mehr Emails als Namen
+  // gespeichert), wird das längere Array auf die Länge des kürzeren abgeschnitten. Sonst
+  // produziert die Index-basierte Render-Logik Phantom-Chips ohne Namen oder zeigt Fotos
+  // zur falschen Email — und der Picker grayt Personen aus, die sichtbar gar nicht in
+  // der Liste sind, weil ihre Email noch im Array liegt.
+  const [organizerEmails, setOrganizerEmails] = React.useState<string[]>(() => {
+    if (!editEvent || !editEvent.organizerEmails || editEvent.organizerEmails.length === 0) {
+      return [currentUser.email];
+    }
+    const names = editEvent.organizers || [];
+    const emails = editEvent.organizerEmails;
+    if (names.length === emails.length) return emails.slice();
+    const min = Math.min(names.length, emails.length);
+    if (names.length !== emails.length) {
+      console.warn(
+        `[DEX] EventCreationPage: organizers/organizerEmails Längen-Mismatch (${names.length} vs ${emails.length}) — `
+        + `kürze auf ${min}. Ursache: Legacy-Daten aus v10.0–v10.2-Closure-Bug. Manueller Re-Save heilt.`
+      );
+    }
+    return emails.slice(0, min);
+  });
   // isSearchingOrganizer entfaellt seit v4.8.0 — Filter laeuft sync gegen den
   // bereits geladenen DEX_Roles-State, kein Async-Spinner mehr noetig.
   const isSearchingOrganizer = false;
@@ -2929,9 +2955,21 @@ export default function EventCreationPage(): React.ReactElement {
                     });
                   };
                   const remove = (idx: number): void => {
+                    // Email-aware Remove: bei State-Korruption (z.B. Events aus
+                    // v10.0–v10.2 wo der Closure-Bug emails ohne Namen schrieb)
+                    // kann die gleiche Email mehrfach in organizerEmails stehen,
+                    // während orgList nur einen Eintrag hat. Ein reiner Index-Filter
+                    // würde dann nur EINEN Email-Eintrag killen, der Rest bleibt
+                    // drin → die Person bleibt für den Picker „bekannt" und ist
+                    // ausgegraut. Deshalb: emailToRemove ermitteln und ALLE
+                    // Vorkommen aus organizerEmails entfernen.
+                    const emailToRemove = (organizerEmails[idx] || '').toLowerCase();
                     const nextNames = orgList.filter((_, i) => i !== idx);
                     setOrganizer(nextNames.join('; '));
-                    setOrganizerEmails(prev => prev.filter((_, i) => i !== idx));
+                    setOrganizerEmails(prev => {
+                      if (!emailToRemove) return prev.filter((_, i) => i !== idx);
+                      return prev.filter(e => (e || '').toLowerCase() !== emailToRemove);
+                    });
                   };
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
