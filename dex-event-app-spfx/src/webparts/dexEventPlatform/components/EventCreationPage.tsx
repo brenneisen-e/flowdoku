@@ -19,6 +19,7 @@ import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
+import BulkUserImportModal from './BulkUserImportModal';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -351,16 +352,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [memberModalLoading, setMemberModalLoading] = React.useState(false);
   const [memberModalMembers, setMemberModalMembers] = React.useState<Array<{ email: string; displayName: string }>>([]);
   const [memberModalError, setMemberModalError] = React.useState('');
-  // Modal: Massenimport fuer Audience
-  const [bulkImportOpen, setBulkImportOpen] = React.useState(false);
-  const [bulkImportText, setBulkImportText] = React.useState('');
-  const [bulkImportRunning, setBulkImportRunning] = React.useState(false);
-  const [bulkImportReport, setBulkImportReport] = React.useState<{
-    added: Array<{ lastname: string; firstname: string; email: string; originalInput?: string }>;
-    notFound: string[];
-    alreadyIn: Array<{ lastname: string; firstname: string; email: string }>;
-    ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }>;
-  } | null>(null);
+  // Modal: Massenimport für Sichtbarkeits-Filter (Audience). Logik + UI sind in
+  // BulkUserImportModal gekapselt — gleiche Komponente wie für die drei Team-Felder.
+  const [bulkAudienceOpen, setBulkAudienceOpen] = React.useState(false);
   // Audience-Chip-Pagination + Inline-Suche
   const [audienceShowAll, setAudienceShowAll] = React.useState(false);
   const [audienceChipSearch, setAudienceChipSearch] = React.useState('');
@@ -383,171 +377,6 @@ export default function EventCreationPage(): React.ReactElement {
     setAudience(list.join(', '));
   };
 
-  /**
-   * Massenimport: Text parsen (getrennt mit ',', ';' oder Zeilenumbruch, plus
-   * Tab als Fallback fuer Excel-Copy-Paste). Fuer jedes Fragment:
-   *   - Wenn schon eine Email (x@y.z): direkt als Audience uebernehmen
-   *   - Sonst: searchUsers(fragment) → bei genau 1 Treffer: uebernehmen; bei
-   *     mehreren Treffern: in 'ambiguous' zwischenspeichern (User entscheidet
-   *     per Modal manuell); bei 0 Treffern: in 'notFound'.
-   * Sequenziell + mit kleinen Pausen, um die Graph-API nicht zu hammer.
-   */
-  const runBulkImport = async (): Promise<void> => {
-    const raw = bulkImportText;
-    if (!raw || !raw.trim()) return;
-    setBulkImportRunning(true);
-    setBulkImportReport(null);
-    const existing = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
-    const existingLc = new Set(existing.map(e => e.toLowerCase()));
-    // Split auf ',', ';', Zeilenumbruch und Tab
-    const fragments = raw
-      .split(/[,;\n\r\t]/)
-      .map(s => s.trim())
-      .filter(Boolean);
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    // Hilfs-Parser: 'Nachname, Vorname' oder 'Vorname Nachname' -> {lastname, firstname}
-    const parseDisplayName = (displayName: string, fallbackEmail: string): { lastname: string; firstname: string } => {
-      const dn = (displayName || '').trim();
-      if (!dn) return { lastname: fallbackEmail || '', firstname: '' };
-      if (dn.indexOf(',') >= 0) {
-        const parts = dn.split(',').map(s => s.trim());
-        return { lastname: parts[0] || dn, firstname: parts[1] || '' };
-      }
-      // Space-separiert: letztes Wort = Nachname
-      const words = dn.split(/\s+/);
-      if (words.length >= 2) {
-        return { lastname: words[words.length - 1], firstname: words.slice(0, -1).join(' ') };
-      }
-      return { lastname: dn, firstname: '' };
-    };
-
-    const added: Array<{ lastname: string; firstname: string; email: string; originalInput?: string }> = [];
-    const notFound: string[] = [];
-    const alreadyIn: Array<{ lastname: string; firstname: string; email: string }> = [];
-    const ambiguous: Array<{ input: string; matches: Array<{ email: string; displayName: string }> }> = [];
-    const newEntries = existing.slice();
-
-    for (const f of fragments) {
-      // Schon drin?
-      if (existingLc.has(f.toLowerCase())) {
-        // Versuch Name-Lookup auch fuer 'alreadyIn', damit Report lesbar ist
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const hits: any[] = emailRegex.test(f) ? await searchUsers(f) : [];
-          if (hits.length > 0) {
-            const { lastname, firstname } = parseDisplayName(hits[0].displayName, f);
-            alreadyIn.push({ lastname, firstname, email: f });
-          } else {
-            alreadyIn.push({ lastname: f, firstname: '', email: f });
-          }
-        } catch {
-          alreadyIn.push({ lastname: f, firstname: '', email: f });
-        }
-        continue;
-      }
-      // Direkt-Email: Name per searchUsers(email) nachladen
-      if (emailRegex.test(f)) {
-        newEntries.push(f);
-        existingLc.add(f.toLowerCase());
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const hits: any[] = await searchUsers(f);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const exact = hits.find((h: any) => h.email && h.email.toLowerCase() === f.toLowerCase());
-          if (exact) {
-            const { lastname, firstname } = parseDisplayName(exact.displayName, f);
-            added.push({ lastname, firstname, email: exact.email });
-          } else {
-            added.push({ lastname: f, firstname: '', email: f });
-          }
-        } catch {
-          added.push({ lastname: f, firstname: '', email: f });
-        }
-        await new Promise(res => setTimeout(res, 80));
-        continue;
-      }
-      // Name / Teilstring → searchUsers
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const hits: any[] = await searchUsers(f);
-        if (!hits || hits.length === 0) {
-          notFound.push(f);
-          continue;
-        }
-        if (hits.length === 1) {
-          const em = hits[0].email;
-          if (em && !existingLc.has(em.toLowerCase())) {
-            newEntries.push(em);
-            existingLc.add(em.toLowerCase());
-            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em);
-            added.push({ lastname, firstname, email: em, originalInput: f });
-          } else {
-            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em || f);
-            alreadyIn.push({ lastname, firstname, email: em || f });
-          }
-          continue;
-        }
-        // Mehrere Treffer: User muss manuell entscheiden
-        ambiguous.push({
-          input: f,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          matches: hits.slice(0, 5).map((h: any) => ({ email: h.email, displayName: h.displayName })),
-        });
-      } catch {
-        notFound.push(f);
-      }
-      await new Promise(res => setTimeout(res, 120));
-    }
-
-    // Alphabetisch sortieren: Nachname, dann Vorname
-    const sortFn = (a: { lastname: string; firstname: string }, b: { lastname: string; firstname: string }): number => {
-      const ln = a.lastname.localeCompare(b.lastname, 'de', { sensitivity: 'base' });
-      if (ln !== 0) return ln;
-      return a.firstname.localeCompare(b.firstname, 'de', { sensitivity: 'base' });
-    };
-    added.sort(sortFn);
-    alreadyIn.sort(sortFn);
-    notFound.sort();
-
-    setAudience(newEntries.join(', '));
-    setBulkImportReport({ added, notFound, alreadyIn, ambiguous });
-    setBulkImportRunning(false);
-  };
-
-  /** Ambiguous-Eintrag manuell aufloesen: pickt eine Match-Email aus. */
-  const resolveAmbiguous = (input: string, email: string, displayName: string): void => {
-    const list = audience.split(',').map((s: string) => s.trim()).filter(Boolean);
-    if (list.indexOf(email) < 0) list.push(email);
-    setAudience(list.join(', '));
-    if (bulkImportReport) {
-      const dn = (displayName || '').trim();
-      let lastname = email;
-      let firstname = '';
-      if (dn.indexOf(',') >= 0) {
-        const parts = dn.split(',').map(s => s.trim());
-        lastname = parts[0] || email;
-        firstname = parts[1] || '';
-      } else if (dn.indexOf(' ') >= 0) {
-        const words = dn.split(/\s+/);
-        lastname = words[words.length - 1];
-        firstname = words.slice(0, -1).join(' ');
-      } else if (dn) {
-        lastname = dn;
-      }
-      const newAdded = [...bulkImportReport.added, { lastname, firstname, email, originalInput: input }];
-      newAdded.sort((a, b) => {
-        const ln = a.lastname.localeCompare(b.lastname, 'de', { sensitivity: 'base' });
-        if (ln !== 0) return ln;
-        return a.firstname.localeCompare(b.firstname, 'de', { sensitivity: 'base' });
-      });
-      setBulkImportReport({
-        ...bulkImportReport,
-        ambiguous: bulkImportReport.ambiguous.filter(a => a.input !== input),
-        added: newAdded,
-      });
-    }
-  };
 
   const openMembersModal = async (groupEmail: string): Promise<void> => {
     setMemberModalOpen(true);
@@ -695,6 +524,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [testTeamSearch, setTestTeamSearch] = React.useState('');
   const [testTeamResults, setTestTeamResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const testTeamTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Massenimport-Modale für die drei Team-Felder (Co-Organizer, Test-Team,
+  // Check-In Team). Pattern analog zum Audience-Massenimport (Sichtbarkeits-
+  // Reiter), aber pro Team-Liste eigenes Modal mit eigenem Import-Target.
+  const [bulkOrganizerOpen, setBulkOrganizerOpen] = React.useState(false);
+  const [bulkTestTeamOpen, setBulkTestTeamOpen] = React.useState(false);
+  const [bulkQrScannerOpen, setBulkQrScannerOpen] = React.useState(false);
 
   // v9.21: Active-From-Datum (optional) — Event auto-aktiv ab diesem Zeitpunkt.
   const [activeFrom, setActiveFrom] = React.useState(editEvent ? (editEvent.activeFrom || '') : '');
@@ -3065,6 +2901,18 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
+                <div style={{ marginTop: -4, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    onClick={() => setBulkOrganizerOpen(true)}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={12} /> Massenimport (Liste einfügen)
+                    </span>
+                  </button>
+                </div>
                 {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
                 {(() => {
                   const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
@@ -3238,6 +3086,18 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
+                <div style={{ marginTop: -4, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    onClick={() => setBulkTestTeamOpen(true)}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={12} /> Massenimport (Liste einfügen)
+                    </span>
+                  </button>
+                </div>
                 {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
                     setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
@@ -3358,6 +3218,18 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
+                <div style={{ marginTop: -4, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    onClick={() => setBulkQrScannerOpen(true)}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={12} /> Massenimport (Liste einfügen)
+                    </span>
+                  </button>
+                </div>
                 {qrScannerNames.length > 0 && (() => {
                   const move = (idx: number, dir: -1 | 1): void => {
                     const target = idx + dir;
@@ -3478,7 +3350,158 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+              {/* Duplikat-Hinweis: gleiche Person in mehreren Team-Listen.
+                  Co-Organizer haben automatisch Check-In- und Test-Team-Rechte
+                  (Header.canCheckIn-Logik, Drafts-Sichtbarkeit für Organizer),
+                  doppelte Einträge sind redundant. Test-Team und Check-In allein
+                  sind orthogonale Rollen — die warnen wir nicht.
 
+                  Pattern: nach jedem Add (Massenimport oder Einzel-Pick) updated
+                  sich die Memo automatisch und die Warnung erscheint inline. Pro
+                  Eintrag ein Ein-Klick-Button um die Person aus der überflüssigen
+                  Liste zu entfernen. */}
+              {(() => {
+                const orgSet = new Set(organizerEmails.map(e => (e || '').toLowerCase()));
+                const ttSet = new Set(testTeamEmails.map(e => (e || '').toLowerCase()));
+                const qrSet = new Set(qrScannerEmails.map(e => (e || '').toLowerCase()));
+                const allEmails = new Set<string>();
+                organizerEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+                testTeamEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+                qrScannerEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+
+                const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                const dups: Array<{ email: string; name: string; inOrg: boolean; inTt: boolean; inQr: boolean }> = [];
+                for (const e of allEmails) {
+                  if (!e) continue;
+                  const inOrg = orgSet.has(e);
+                  const inTt = ttSet.has(e);
+                  const inQr = qrSet.has(e);
+                  // Nur Co-Organizer + (Test|Check-In) ist redundant. Test+Check-In
+                  // ohne Co-Organizer sind unterschiedliche Funktionen → nicht warnen.
+                  if (!inOrg) continue;
+                  if (!inTt && !inQr) continue;
+                  // Display-Name aus dem ersten Treffer ziehen (Org bevorzugt).
+                  let name = e;
+                  const idxOrg = organizerEmails.findIndex(x => (x || '').toLowerCase() === e);
+                  if (idxOrg >= 0 && orgNames[idxOrg]) name = orgNames[idxOrg];
+                  else {
+                    const idxTt = testTeamEmails.findIndex(x => (x || '').toLowerCase() === e);
+                    if (idxTt >= 0 && testTeamNames[idxTt]) name = testTeamNames[idxTt];
+                    else {
+                      const idxQr = qrScannerEmails.findIndex(x => (x || '').toLowerCase() === e);
+                      if (idxQr >= 0 && qrScannerNames[idxQr]) name = qrScannerNames[idxQr];
+                    }
+                  }
+                  dups.push({ email: e, name, inOrg, inTt, inQr });
+                }
+                if (dups.length === 0) return null;
+
+                const removeFromTestTeam = (emailLc: string): void => {
+                  const idx = testTeamEmails.findIndex(x => (x || '').toLowerCase() === emailLc);
+                  if (idx < 0) return;
+                  setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
+                  setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
+                };
+                const removeFromQr = (emailLc: string): void => {
+                  const idx = qrScannerEmails.findIndex(x => (x || '').toLowerCase() === emailLc);
+                  if (idx < 0) return;
+                  setQrScannerNames(qrScannerNames.filter((_, i) => i !== idx));
+                  setQrScannerEmails(qrScannerEmails.filter((_, i) => i !== idx));
+                };
+                const removeAllOverlap = (emailLc: string): void => {
+                  removeFromTestTeam(emailLc);
+                  removeFromQr(emailLc);
+                };
+
+                return (
+                  <div
+                    className="form-group"
+                    style={{
+                      background: '#fff8e1',
+                      border: '1px solid #f0c419',
+                      borderRadius: 'var(--dex-radius)',
+                      padding: '12px 14px',
+                      marginBottom: 20,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                      <strong style={{ fontSize: '0.95rem' }}>
+                        {dups.length === 1
+                          ? '1 Person ist mehrfach gelistet'
+                          : `${dups.length} Personen sind mehrfach gelistet`}
+                      </strong>
+                    </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                      Co-Organizer dürfen automatisch das <strong>Check-In-Tool</strong> nutzen und sehen
+                      Events auch im <strong>Entwurfsmodus</strong> — ein zusätzlicher Eintrag im Test-Team oder
+                      Check-In-Team ist daher nicht nötig. Du kannst die überflüssigen Einträge hier auf
+                      einen Klick entfernen.
+                    </p>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                      {dups.map(d => {
+                        const teamsLabel: string[] = [];
+                        if (d.inOrg) teamsLabel.push('Co-Organizer');
+                        if (d.inTt) teamsLabel.push('Test-Team');
+                        if (d.inQr) teamsLabel.push('Check-In-Team');
+                        return (
+                          <li
+                            key={d.email}
+                            style={{
+                              padding: '8px 0',
+                              borderTop: '1px solid #f0c419',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                              <strong>{d.name}</strong>{' '}
+                              <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{d.email}</span>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                                Aktuell in: {teamsLabel.join(', ')}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {d.inTt && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeFromTestTeam(d.email)}
+                                >
+                                  Aus Test-Team entfernen
+                                </button>
+                              )}
+                              {d.inQr && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeFromQr(d.email)}
+                                >
+                                  Aus Check-In-Team entfernen
+                                </button>
+                              )}
+                              {d.inTt && d.inQr && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeAllOverlap(d.email)}
+                                >
+                                  Aus beiden entfernen
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
 
               </div>
 
@@ -4341,7 +4364,7 @@ export default function EventCreationPage(): React.ReactElement {
                     type="button"
                     className="btn btn-secondary"
                     style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                    onClick={() => { setBulkImportText(''); setBulkImportReport(null); setBulkImportOpen(true); }}
+                    onClick={() => setBulkAudienceOpen(true)}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Users size={12} /> Massenimport (Liste einfügen)</span>
                   </button>
@@ -6722,175 +6745,90 @@ export default function EventCreationPage(): React.ReactElement {
         }}
       />
 
-      {/* Massenimport-Modal fuer Audience */}
-      {bulkImportOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}>
-          <div className="card" style={{ width: '90%', maxWidth: 720, maxHeight: '85vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
-            <div className="flex-between mb-16">
-              <h3 style={{ margin: 0 }}>Massenimport User</h3>
-              <button
-                type="button"
-                onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-                aria-label="Schließen"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, lineHeight: 1.55 }}>
-              Hier kannst du einzelne User <strong>direkt in den Sichtbarkeits-Filter dieses Events</strong> aufnehmen
-              — z.B. wenn du eine konkrete Liste an Personen aus Outlook, Excel oder einer Mail kopiert hast und
-              nicht jeden einzeln per People-Picker auswählen willst. Die Eingabe darf <strong>Namen und/oder
-              Email-Adressen</strong> mischen, getrennt durch
-              <code style={{ margin: '0 4px' }}>,</code>
-              <code style={{ margin: '0 4px' }}>;</code>
-              <code style={{ margin: '0 4px' }}>Tab</code>
-              oder <code style={{ marginLeft: 4 }}>Zeilenumbruch</code>.
-            </p>
-            <ul style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, paddingLeft: 18, lineHeight: 1.5 }}>
-              <li><strong>Email-Adressen</strong> (z.B. <code>vorname.nachname@deloitte.de</code>) werden direkt übernommen.</li>
-              <li><strong>Namen</strong> werden im Deloitte-Tenant gesucht — eindeutige Treffer werden automatisch hinzugefügt, mehrdeutige Namen musst du unten manuell auflösen.</li>
-              <li>Personen die <strong>schon im Filter sind</strong>, werden übersprungen (Doppel-Einträge ausgeschlossen).</li>
-              <li>Externe (kein <code>@deloitte.de</code>) werden zwar in den Filter geschrieben, sehen das Event aber NICHT — die Plattform ist DEALL-only.</li>
-            </ul>
-            <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
-              <strong>Ablauf:</strong> 1. Liste einfügen 2. &bdquo;Verarbeiten&ldquo; klicken (Such-Lauf gegen den Tenant) 3. Ergebnis prüfen + ggf. mehrdeutige Namen auflösen 4. &bdquo;Speichern&ldquo; oder &bdquo;Speichern und schließen&ldquo; klicken.
-            </p>
-            <textarea
-              className="form-input"
-              style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.8rem' }}
-              placeholder="z.B.:&#10;max.mustermann@deloitte.de; erika.mustermann@deloitte.de&#10;Schmitz, Alexander, Kraus, Annika&#10;oder aus Excel kopiert (Tab-getrennt)"
-              value={bulkImportText}
-              onChange={e => setBulkImportText(e.target.value)}
-              disabled={bulkImportRunning}
-            />
-
-            {bulkImportReport && (
-              <div style={{ marginTop: 16, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 'var(--dex-radius)', fontSize: '0.8rem' }}>
-                {bulkImportReport.added.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-green-dark)' }}>✓ Hinzugefügt ({bulkImportReport.added.length}):</strong>
-                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                      {bulkImportReport.added.map((a, i) => (
-                        <li key={`a-${i}`}>
-                          <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ color: 'var(--dex-gray-400)' }}>— {a.email}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {bulkImportReport.alreadyIn.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-gray-500)' }}>— Bereits im Filter ({bulkImportReport.alreadyIn.length}):</strong>
-                    <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
-                      {bulkImportReport.alreadyIn.map((a, i) => (
-                        <li key={`w-${i}`}>
-                          <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span>— {a.email}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {bulkImportReport.notFound.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-red)' }}>✗ Nicht gefunden ({bulkImportReport.notFound.length}):</strong>
-                    <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-red)' }}>
-                      {bulkImportReport.notFound.map((a, i) => <li key={`n-${i}`}>{a} — bitte manuell suchen oder als Email eintragen</li>)}
-                    </ul>
-                  </div>
-                )}
-                {bulkImportReport.ambiguous.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>? Mehrdeutig — bitte auswählen ({bulkImportReport.ambiguous.length}):</strong>
-                    {bulkImportReport.ambiguous.map((a, i) => (
-                      <div key={`m-${i}`} style={{ marginTop: 6, padding: 8, background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 4 }}>
-                        <div style={{ fontWeight: 600, marginBottom: 4 }}>&bdquo;{a.input}&ldquo;</div>
-                        {a.matches.map((m, j) => (
-                          <button
-                            key={`mm-${i}-${j}`}
-                            type="button"
-                            onClick={() => resolveAmbiguous(a.input, m.email, m.displayName)}
-                            style={{
-                              display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
-                              marginTop: 4, background: '#fff', border: '1px solid var(--dex-gray-200)',
-                              borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem',
-                            }}
-                          >
-                            <strong>{m.displayName}</strong> <span style={{ color: 'var(--dex-gray-400)' }}>{m.email}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              {/* v9.14/v9.23: Audience wird beim "Verarbeiten" bereits in den
-                  Form-State uebernommen (setAudience). Nach Verarbeiten gibt
-                  es zwei Optionen — "Speichern" (Modal bleibt offen, fuer
-                  weitere Listen) und "Speichern und schließen" (primary). */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
-                disabled={bulkImportRunning}
-              >
-                {bulkImportReport ? 'Verwerfen' : 'Schließen'}
-              </button>
-              {!bulkImportReport && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={runBulkImport}
-                  disabled={bulkImportRunning || !bulkImportText.trim()}
-                >
-                  {bulkImportRunning ? 'Suche läuft...' : 'Verarbeiten'}
-                </button>
-              )}
-              {bulkImportReport && (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={runBulkImport}
-                    disabled={bulkImportRunning || !bulkImportText.trim()}
-                  >
-                    Erneut verarbeiten
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      // Speichern: Audience ist bereits per setAudience
-                      // uebernommen — Modal bleibt offen, Eingabefeld wird
-                      // geleert damit der User direkt eine weitere Liste
-                      // einfuegen kann.
-                      setBulkImportText('');
-                      setBulkImportReport(null);
-                    }}
-                    disabled={bulkImportRunning}
-                  >
-                    Speichern (weitere Liste hinzufügen)
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => { if (!bulkImportRunning) setBulkImportOpen(false); }}
-                    disabled={bulkImportRunning}
-                  >
-                    Speichern und schließen
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Massenimport-Modale — eine generische Komponente, vier Aufruf-Stellen.
+          Audience speichert eine `,`-separierte Email-Liste in einem String,
+          Teams speichern parallele Names[] + Emails[]-Arrays. Die onAdd-Callbacks
+          übersetzen jeweils zwischen Modal-Output (Email + DisplayName) und der
+          jeweiligen State-Form. */}
+      <BulkUserImportModal
+        open={bulkAudienceOpen}
+        onClose={() => setBulkAudienceOpen(false)}
+        title="Massenimport — Sichtbarkeit"
+        description={(
+          <p style={{ marginTop: 0 }}>
+            Trag Personen, Verteilergruppen oder Email-Adressen direkt in den
+            <strong> Sichtbarkeits-Filter</strong> ein. Externe (kein
+            <code style={{ margin: '0 4px' }}>@deloitte.de</code>) werden zwar
+            geschrieben, sehen das Event aber NICHT — die Plattform ist DEALL-only.
+          </p>
+        )}
+        existingEmails={audience.split(',').map(s => s.trim()).filter(Boolean)}
+        searchUsers={searchUsers}
+        onAdd={({ email }) => {
+          // Audience ist `,`-separierte String-Liste — Email anhängen wenn
+          // noch nicht drin (Doppel-Check zur Sicherheit, das Modal filtert
+          // schon vor).
+          setAudience(prev => {
+            const list = (prev || '').split(',').map(s => s.trim()).filter(Boolean);
+            if (list.indexOf(email) < 0) list.push(email);
+            return list.join(', ');
+          });
+        }}
+      />
+      <BulkUserImportModal
+        open={bulkOrganizerOpen}
+        onClose={() => setBulkOrganizerOpen(false)}
+        title="Massenimport — Co-Organizer"
+        description={(
+          <p style={{ marginTop: 0 }}>
+            Mehrere <strong>Co-Organizer</strong> auf einmal hinzufügen. Reihenfolge
+            spielt eine Rolle — der erste Eintrag in der Liste bleibt der Haupt-Organizer.
+            Massenimport hängt neue Personen <strong>hinten</strong> an.
+          </p>
+        )}
+        existingEmails={organizerEmails}
+        searchUsers={searchUsers}
+        onAdd={({ email, displayName }) => {
+          const existingNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+          setOrganizer([...existingNames, displayName].join('; '));
+          setOrganizerEmails(prev => [...prev, email]);
+        }}
+      />
+      <BulkUserImportModal
+        open={bulkTestTeamOpen}
+        onClose={() => setBulkTestTeamOpen(false)}
+        title="Massenimport — Test-Team"
+        description={(
+          <p style={{ marginTop: 0 }}>
+            Mehrere <strong>Test-Team-Mitglieder</strong> auf einmal hinzufügen. Test-Team
+            sieht das Event schon im Entwurfsmodus und kann sich testweise anmelden.
+          </p>
+        )}
+        existingEmails={testTeamEmails}
+        searchUsers={searchUsers}
+        onAdd={({ email, displayName }) => {
+          setTestTeamNames(prev => [...prev, displayName]);
+          setTestTeamEmails(prev => [...prev, email]);
+        }}
+      />
+      <BulkUserImportModal
+        open={bulkQrScannerOpen}
+        onClose={() => setBulkQrScannerOpen(false)}
+        title="Massenimport — Check-In Team"
+        description={(
+          <p style={{ marginTop: 0 }}>
+            Mehrere <strong>Check-In-Team-Mitglieder</strong> auf einmal hinzufügen. Diese
+            Personen dürfen am Eventtag den QR-Scanner / Check-In-Tool benutzen, haben aber
+            keine weiteren Admin-Rechte.
+          </p>
+        )}
+        existingEmails={qrScannerEmails}
+        searchUsers={searchUsers}
+        onAdd={({ email, displayName }) => {
+          setQrScannerNames(prev => [...prev, displayName]);
+          setQrScannerEmails(prev => [...prev, email]);
+        }}
+      />
 
       {/* Mitglieder-Modal: zeigt die Members einer Entra-Gruppe an */}
       {memberModalOpen && (

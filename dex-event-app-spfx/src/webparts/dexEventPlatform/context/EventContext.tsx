@@ -203,6 +203,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Idempotent: skipt wenn Feld bereits Note ist. Nur Admin hat Write-Rechte,
     // fuer normale User faellt der Call still durch.
     try { await eventService.upgradeAudienceFieldToNote(); } catch { /* */ }
+    // Migration: Organizer + OrganizerEmail von Text auf Note umstellen. Bei Events
+    // mit 10+ Co-Organizern lief der 255-Zeichen-Cutoff voll und Saves brachen mit
+    // HTTP 500 „Invalid text value" ab. Idempotent: skipt wenn Felder schon Note sind.
+    try { await eventService.upgradeOrganizerFieldsToNote(); } catch { /* */ }
     try { await eventService.ensureEmailsList(); } catch { /* */ }
     try { await eventService.ensureOutlookList(); } catch { /* */ }
     try { await eventService.ensureParticipantsList(); } catch { /* */ }
