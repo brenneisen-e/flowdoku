@@ -1613,6 +1613,26 @@ export default function EventCreationPage(): React.ReactElement {
 
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
+        // sein, die bisher nur in EmailTemplateOverrides._coOrganizers stehen, aber
+        // noch keine SharePoint-Berechtigung auf Subsite + Teilnehmerliste haben.
+        // ensureOrganizerPermissions ist idempotent: bestehende Rechte werden nicht
+        // doppelt vergeben, neue kommen sauber dazu.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ctxPerm = (window as any).__dexSpfxContext;
+          if (ctxPerm && editEvent?.subsiteUrl) {
+            const svcPerm = new EventService(ctxPerm);
+            const allOrgEmailsForPerm = [
+              organizerEmails.join(';'),
+              coOrganizerEmails.join(';'),
+            ].filter(Boolean).join(';');
+            if (allOrgEmailsForPerm) {
+              await svcPerm.ensureOrganizerPermissions(editEvent.subsiteUrl, allOrgEmailsForPerm);
+            }
+          }
+        } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
+
         // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
         try { await persistSubEventsForParent(selectedEventId); }
         catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
