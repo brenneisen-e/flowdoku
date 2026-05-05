@@ -55,8 +55,6 @@ interface Props {
   onAdd: (item: BulkImportItem) => void;
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const parseDisplayName = (displayName: string, fallbackEmail: string): { lastname: string; firstname: string } => {
   const dn = (displayName || '').trim();
   if (!dn) return { lastname: fallbackEmail || '', firstname: '' };
@@ -104,17 +102,63 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
     setRunning(true);
     setReport(null);
     const existingLc = buildExistingSet();
-    const fragments = text.split(/[,;\n\r\t]/).map(s => s.trim()).filter(Boolean);
+
+    // Zwei-Pass-Parser für Excel-/GAL-Pastes wie „Lastname, Firstname email@x.de;":
+    //
+    // 1. **Email-Pass** — Zeile-für-Zeile nach Email-SUBSTRINGS suchen (nicht
+    //    Full-String-Match). Wenn eine Zeile eine oder mehrere Emails enthält,
+    //    werden DIESE Emails als Identifier genommen — der Namens-Schnipsel
+    //    drumherum (z.B. "Lastname, Firstname ") wird ignoriert, weil
+    //    `searchUsers(email)` den korrekten Display-Namen ohnehin liefert.
+    //    Vorher wurde die Zeile durch Komma-Split zerhackt: aus "Pagano,
+    //    Giovanna gpagano@deloitte.de" wurden ["Pagano", "Giovanna gpagano@..."]
+    //    — der erste Teil landete als Lastname-only-Suche in „mehrdeutig", der
+    //    zweite scheiterte am Full-String-Email-Match.
+    //
+    // 2. **Name-Pass** — nur für Zeilen OHNE Email. Die ganze Zeile geht als
+    //    Suchquery zu searchUsers. Falls 0 Treffer und Zeile enthält Komma:
+    //    Retry mit Komma → Space (für „Lastname, Firstname"-Format).
+    const SUBSTRING_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+    const lines = text.split(/[\n\r]/).map(s => s.trim()).filter(Boolean);
+
+    interface QueueItem { kind: 'email' | 'name'; value: string; }
+    const queue: QueueItem[] = [];
+    for (const line of lines) {
+      const emails = line.match(SUBSTRING_EMAIL_RE);
+      if (emails && emails.length > 0) {
+        // Eine oder mehrere Emails auf der Zeile gefunden → 1 Eintrag pro Email.
+        // Lowercase-Normalisierung beim Vergleich, aber Original-Casing fürs Display
+        // bleibt erhalten (manche Tenants pushen ALLCAPS-Domains aus historischen
+        // Gründen — das stört nicht und sieht im Report mit Original-Casing besser aus).
+        for (const em of emails) queue.push({ kind: 'email', value: em.trim() });
+      } else {
+        // Keine Email → Zeile als Namens-Suchquery behandeln. Falls die Zeile mehrere
+        // durch `;` oder `,` getrennte Namen enthält (z.B. „Mustermann, Max; Schmitz,
+        // Anna") splitten wir konservativ — ABER nur wenn die Zeile MEHR als ein
+        // Komma-getrenntes Paar hat. „Mustermann, Max" allein bleibt als Ganzes
+        // erhalten, sonst würde Graph einzeln nach „Mustermann" und „Max" suchen.
+        const semiSplit = line.split(';').map(s => s.trim()).filter(Boolean);
+        if (semiSplit.length > 1) {
+          for (const part of semiSplit) queue.push({ kind: 'name', value: part });
+        } else {
+          queue.push({ kind: 'name', value: line });
+        }
+      }
+    }
 
     const added: BulkImportReport['added'] = [];
     const alreadyIn: BulkImportReport['alreadyIn'] = [];
     const notFound: string[] = [];
     const ambiguous: BulkImportReport['ambiguous'] = [];
 
-    for (const f of fragments) {
-      if (existingLc.has(f.toLowerCase())) {
+    for (const item of queue) {
+      const f = item.value;
+      const fLc = f.toLowerCase();
+
+      // Schon drin (Email-Identität, case-insensitive)?
+      if (item.kind === 'email' && existingLc.has(fLc)) {
         try {
-          const hits = EMAIL_REGEX.test(f) ? await searchUsers(f) : [];
+          const hits = await searchUsers(f);
           if (hits.length > 0) {
             const { lastname, firstname } = parseDisplayName(hits[0].displayName, f);
             alreadyIn.push({ lastname, firstname, email: f });
@@ -126,10 +170,11 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
         }
         continue;
       }
-      if (EMAIL_REGEX.test(f)) {
+
+      if (item.kind === 'email') {
         try {
           const hits = await searchUsers(f);
-          const exact = hits.find(h => h.email && h.email.toLowerCase() === f.toLowerCase());
+          const exact = hits.find(h => h.email && h.email.toLowerCase() === fLc);
           if (exact) {
             const { lastname, firstname } = parseDisplayName(exact.displayName, f);
             onAdd({ email: exact.email, displayName: exact.displayName });
@@ -139,43 +184,56 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
             // Email passt syntaktisch aber Tenant kennt sie nicht — trotzdem übernehmen,
             // weil externe oder neu-aktivierte Accounts manuell legitim sein können.
             onAdd({ email: f, displayName: f });
-            existingLc.add(f.toLowerCase());
+            existingLc.add(fLc);
             added.push({ lastname: f, firstname: '', email: f });
           }
         } catch {
           onAdd({ email: f, displayName: f });
-          existingLc.add(f.toLowerCase());
+          existingLc.add(fLc);
           added.push({ lastname: f, firstname: '', email: f });
         }
         await new Promise(res => setTimeout(res, 80));
         continue;
       }
-      try {
-        const hits = await searchUsers(f);
-        if (!hits || hits.length === 0) {
-          notFound.push(f);
-          continue;
+
+      // Name-Pass.
+      const tryName = async (query: string): Promise<SearchHit[]> => {
+        try { return await searchUsers(query); } catch { return []; }
+      };
+      let hits = await tryName(f);
+      if ((!hits || hits.length === 0) && f.indexOf(',') >= 0) {
+        // Retry: „Lastname, Firstname" → „Firstname Lastname" (Graph mag oft
+        // diese Reihenfolge besser).
+        const parts = f.split(',').map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          const reordered = parts.slice(1).concat(parts[0]).join(' ');
+          hits = await tryName(reordered);
         }
-        if (hits.length === 1) {
-          const em = hits[0].email;
-          if (em && !existingLc.has(em.toLowerCase())) {
-            onAdd({ email: em, displayName: hits[0].displayName });
-            existingLc.add(em.toLowerCase());
-            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em);
-            added.push({ lastname, firstname, email: em, originalInput: f });
-          } else {
-            const { lastname, firstname } = parseDisplayName(hits[0].displayName, em || f);
-            alreadyIn.push({ lastname, firstname, email: em || f });
-          }
-          continue;
-        }
-        ambiguous.push({
-          input: f,
-          matches: hits.slice(0, 5).map(h => ({ email: h.email, displayName: h.displayName })),
-        });
-      } catch {
-        notFound.push(f);
       }
+
+      if (!hits || hits.length === 0) {
+        notFound.push(f);
+        await new Promise(res => setTimeout(res, 120));
+        continue;
+      }
+      if (hits.length === 1) {
+        const em = hits[0].email;
+        if (em && !existingLc.has(em.toLowerCase())) {
+          onAdd({ email: em, displayName: hits[0].displayName });
+          existingLc.add(em.toLowerCase());
+          const { lastname, firstname } = parseDisplayName(hits[0].displayName, em);
+          added.push({ lastname, firstname, email: em, originalInput: f });
+        } else {
+          const { lastname, firstname } = parseDisplayName(hits[0].displayName, em || f);
+          alreadyIn.push({ lastname, firstname, email: em || f });
+        }
+        await new Promise(res => setTimeout(res, 120));
+        continue;
+      }
+      ambiguous.push({
+        input: f,
+        matches: hits.slice(0, 5).map(h => ({ email: h.email, displayName: h.displayName })),
+      });
       await new Promise(res => setTimeout(res, 120));
     }
 
