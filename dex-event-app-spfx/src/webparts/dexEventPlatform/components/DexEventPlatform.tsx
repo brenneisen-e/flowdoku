@@ -86,6 +86,20 @@ function AppContent(): React.ReactElement {
     } catch { return false; }
   }, []);
 
+  // v9.43: Deep-Link Handling für ?action=event-created/event-updated&event=<id>.
+  // Wird beim Klick auf 'Zur Übersicht' nach Event-Erstellung/-Update aufgerufen
+  // (Hard-Reload). Zeigt eine grüne Erfolgs-Banner-Meldung und navigiert
+  // automatisch in die Event-Liste. Die Action wird im useEffect-Block direkt
+  // ausgewertet (s.u.) — kein extra useMemo nötig.
+  const [successBanner, setSuccessBanner] = React.useState<{ title: string; type: 'create' | 'update' } | null>(null);
+
+  // v9.43: Banner nach 8 Sekunden automatisch ausblenden — User hat genug Zeit zu lesen.
+  React.useEffect(() => {
+    if (!successBanner) return;
+    const t = setTimeout(() => setSuccessBanner(null), 8000);
+    return () => clearTimeout(t);
+  }, [successBanner]);
+
   const didHandleDeepLink = React.useRef(false);
   React.useEffect(() => {
     if (didHandleDeepLink.current) return;
@@ -105,6 +119,24 @@ function AppContent(): React.ReactElement {
             navigate('my-events');
           }
         }
+      } else if (action === 'event-created' || action === 'event-updated') {
+        // v9.43: Deep-Link nach Event-Erstellung/-Update. Wird vom EventCreationPage-
+        // Success-Button aufgerufen mit window.location.href = '...?action=event-
+        // created&event=<id>'. Hard-Reload räumt den SP-Permission-Cache auf
+        // (frische Subsite kann sonst 400/404 werfen) und der App-Bootstrap
+        // navigiert dann sauber zur Event-Liste mit grüner Erfolgs-Banner.
+        didHandleDeepLink.current = true;
+        const evt = events.find(e => e.id === eventParam);
+        setSuccessBanner({
+          title: evt?.title || 'Event',
+          type: action === 'event-updated' ? 'update' : 'create',
+        });
+        navigate('register');
+        // URL aufräumen, damit ein zweiter Reload nicht erneut den Banner triggert
+        try {
+          const cleanUrl = window.location.pathname + (window.location.hash || '');
+          window.history.replaceState({}, '', cleanUrl);
+        } catch { /* */ }
       } else if (action === 'manual') {
         // v6.23: Deep-Link ins Handbuch. Optionaler `section`-Query-Parameter
         // steuert die initial angezeigte Sektion (wird in ManualPage direkt aus
@@ -339,6 +371,41 @@ function AppContent(): React.ReactElement {
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
+      {successBanner && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 2500, maxWidth: 'calc(100vw - 32px)',
+            padding: '14px 22px', borderRadius: 12,
+            background: 'linear-gradient(135deg, #86bc25, #6b9a1e)',
+            color: '#fff', boxShadow: '0 8px 24px rgba(107,154,30,0.35)',
+            display: 'flex', alignItems: 'center', gap: 14,
+            fontSize: '0.95rem', fontWeight: 500,
+            animation: 'dexBannerSlideIn 0.4s ease-out',
+          }}
+        >
+          <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>✓</span>
+          <span style={{ lineHeight: 1.4 }}>
+            <strong>{successBanner.type === 'update' ? 'Event aktualisiert!' : 'Event erstellt!'}</strong>
+            {' '}
+            <span style={{ opacity: 0.95 }}>{'„'}{successBanner.title}{'“ '}{successBanner.type === 'update' ? 'wurde gespeichert' : 'wurde angelegt'} — {successBanner.type === 'create' ? 'taucht jetzt in der Eventliste auf' : 'die Änderungen sind live'}.</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setSuccessBanner(null)}
+            aria-label="Schließen"
+            style={{
+              background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
+              width: 26, height: 26, borderRadius: '50%', cursor: 'pointer',
+              fontSize: '1rem', lineHeight: 1, padding: 0,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >×</button>
+          <style>{`@keyframes dexBannerSlideIn { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+        </div>
+      )}
       <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {renderPage()}
       </main>
