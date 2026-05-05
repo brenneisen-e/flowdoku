@@ -2437,6 +2437,24 @@ export class EventService {
   private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
+   * Strip SharePoint-Note-Field-Wrapper.
+   *
+   * Seit der Note-Migration wickelt SP die Werte für `Organizer` + `OrganizerEmail`
+   * beim REST-Read in `<div class="ExternalClassXXXX">…</div>`. Vor dem Splitten
+   * via `;` muss der Wrapper raus, sonst landen die Tag-Reste in den
+   * Email-Listen → falsche Match-Vergleiche, kaputte Permissions.
+   *
+   * Idempotent: Werte ohne Wrapper bleiben unverändert.
+   */
+  private static stripNoteWrapper(value: string | null | undefined): string {
+    if (!value) return '';
+    let v = value.trim();
+    v = v.replace(/^<div\b[^>]*>/i, '');
+    v = v.replace(/<\/div>\s*$/i, '');
+    return v.trim();
+  }
+
+  /**
    * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
    */
   public async seedEvents(): Promise<void> {
@@ -3326,7 +3344,7 @@ export class EventService {
           const items = evData.value || evData.d?.results || [];
           if (items.length > 0) {
             eventDeadline = items[0].RegistrationDeadline || '';
-            const orgStr: string = items[0].OrganizerEmail || '';
+            const orgStr: string = EventService.stripNoteWrapper(items[0].OrganizerEmail);
             eventOrganizerEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
           }
         }
@@ -3557,7 +3575,7 @@ export class EventService {
           const items = evData.value || evData.d?.results || [];
           if (items.length > 0) {
             const deadline = items[0].RegistrationDeadline || '';
-            const orgStr: string = items[0].OrganizerEmail || '';
+            const orgStr: string = EventService.stripNoteWrapper(items[0].OrganizerEmail);
             const orgEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
             if (deadline) {
               const deadlineDate = new Date(deadline);
@@ -4814,7 +4832,7 @@ export class EventService {
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
         if (items.length > 0) {
-          const orgStr: string = items[0].OrganizerEmail || '';
+          const orgStr: string = EventService.stripNoteWrapper(items[0].OrganizerEmail);
           const orgEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
           if (orgEmails.indexOf(sessionEmail) >= 0) return true;
         }
