@@ -2900,19 +2900,17 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>Order matters:</strong> the first organizer is the main organizer and is used as the sender name in mails.
                     </>
                   )} />
-                </label>
-                <div style={{ marginTop: -4, marginBottom: 10 }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
                     onClick={() => setBulkOrganizerOpen(true)}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Users size={12} /> Massenimport (Liste einfügen)
+                      <Users size={12} /> Massenimport
                     </span>
                   </button>
-                </div>
+                </label>
                 {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
                 {(() => {
                   const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
@@ -3085,19 +3083,17 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>Tip:</strong> 1–3 people are usually enough — a co-organizer and one naive tester who has not seen the event yet.
                     </>
                   )} />
-                </label>
-                <div style={{ marginTop: -4, marginBottom: 10 }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
                     onClick={() => setBulkTestTeamOpen(true)}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Users size={12} /> Massenimport (Liste einfügen)
+                      <Users size={12} /> Massenimport
                     </span>
                   </button>
-                </div>
+                </label>
                 {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
                     setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
@@ -3217,19 +3213,17 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>Tip:</strong> for each event, list exactly the people who will actually staff the welcome desk.
                     </>
                   )} />
-                </label>
-                <div style={{ marginTop: -4, marginBottom: 10 }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
                     onClick={() => setBulkQrScannerOpen(true)}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Users size={12} /> Massenimport (Liste einfügen)
+                      <Users size={12} /> Massenimport
                     </span>
                   </button>
-                </div>
+                </label>
                 {qrScannerNames.length > 0 && (() => {
                   const move = (idx: number, dir: -1 | 1): void => {
                     const target = idx + dir;
