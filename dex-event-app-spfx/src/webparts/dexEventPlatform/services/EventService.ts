@@ -2034,8 +2034,14 @@ export class EventService {
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'EventImageUrl', type: 2 },
       { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild fuer E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
-      { title: 'Organizer', type: 2 },
-      { title: 'OrganizerEmail', type: 2 },
+      // Organizer + OrganizerEmail sind Multi-Line-Text (Note) damit sie auch bei
+      // 10+ Co-Organizern nicht abgeschnitten werden (Single-Line-Text ist auf 255
+      // Zeichen limitiert — bei ~17 Personen mit Format `vorname.nachname@deloitte.de;`
+      // wird das überschritten und SP antwortet mit „Invalid text value" beim Update).
+      // Für bestehende Events siehe upgradeOrganizerFieldsToNote() — migriert die
+      // alten Text-Spalten ohne Datenverlust.
+      { title: 'Organizer', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
+      { title: 'OrganizerEmail', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
       { title: 'EventNumber', type: 9 },
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
@@ -2209,6 +2215,118 @@ export class EventService {
       console.warn(`[DEX] upgradeAudienceFieldToNote: Migration fertig — ${restored} Werte zurueckgeschrieben, ${failed} Fehler.`);
     } catch (e) {
       console.warn('[DEX] upgradeAudienceFieldToNote Error:', e);
+    }
+  }
+
+  /**
+   * Migration: alte `Organizer` + `OrganizerEmail`-Spalten (Type 2, Single-Line-Text,
+   * 255 Zeichen Limit) auf Multi-Line-Text (Type 3, Plain-Text, 63.999 Zeichen) umstellen.
+   *
+   * Noetig weil bei Events mit 10+ Co-Organizern der 255-Zeichen-Cutoff greift und
+   * SharePoint beim Update mit „Invalid text value. A text field contains invalid data."
+   * (HTTP 500, Microsoft.SharePoint.SPException) antwortet — der Save bricht komplett ab.
+   *
+   * Beispiel-Overflow: 17 × `vorname.nachname@deloitte.de;` ≈ 425 Zeichen.
+   *
+   * Ablauf pro Feld (idempotent, parallel fuer beide Felder):
+   *   1. Check TypeAsString. Wenn schon 'Note' -> skip.
+   *   2. Backup aller Event-Werte (id -> wert) im Speicher.
+   *   3. Alte Spalte loeschen.
+   *   4. Neue Spalte als SP.FieldMultiLineText (RichText=false, NumberOfLines=4) anlegen.
+   *   5. Werte aus dem Backup zurueckschreiben (MERGE pro Event).
+   *
+   * Laeuft beim App-Start (nur fuer Admins, weil wir Write-Rechte auf DEX_Events brauchen).
+   */
+  public async upgradeOrganizerFieldsToNote(): Promise<void> {
+    await this._upgradeTextFieldToNote('DEX_Events', 'Organizer');
+    await this._upgradeTextFieldToNote('DEX_Events', 'OrganizerEmail');
+  }
+
+  /**
+   * Generischer Helper: migriert ein einzelnes Single-Line-Text-Feld einer Liste auf
+   * Multi-Line-Text (Note). Idempotent — wenn das Feld schon Note ist, no-op. Wenn das
+   * Feld einen anderen Typ hat (Choice/Number/etc.), no-op mit Warnung.
+   *
+   * Wird von `upgradeAudienceFieldToNote()` (existierendes Audience-Feld) und
+   * `upgradeOrganizerFieldsToNote()` (Organizer + OrganizerEmail) genutzt. Die alte
+   * `upgradeAudienceFieldToNote()`-Implementierung ist aus Kompatibilitaetsgruenden
+   * unberuehrt geblieben — neue Migrationen sollten diesen Helper nutzen.
+   */
+  private async _upgradeTextFieldToNote(listName: string, fieldName: string): Promise<void> {
+    const tag = `_upgradeTextFieldToNote(${listName}.${fieldName})`;
+    try {
+      const fieldResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${fieldName}')?$select=TypeAsString,FieldTypeKind`,
+        SPHttpClient.configurations.v1
+      );
+      if (!fieldResp.ok) return;
+      const fieldData = await fieldResp.json();
+      const typeAsString: string = fieldData.TypeAsString || fieldData.d?.TypeAsString || '';
+      const fieldTypeKind: number = fieldData.FieldTypeKind ?? fieldData.d?.FieldTypeKind ?? 0;
+      if (typeAsString === 'Note' || fieldTypeKind === 3) return;
+      if (typeAsString !== 'Text' && fieldTypeKind !== 2) {
+        console.warn(`[DEX] ${tag}: unerwarteter Typ '${typeAsString}' (kind=${fieldTypeKind}) — skip.`);
+        return;
+      }
+
+      const itemsResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$select=Id,${fieldName}&$top=2000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!itemsResp.ok) return;
+      const itemsData = await itemsResp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items: Array<any> = itemsData.value || itemsData.d?.results || [];
+      const backup: Record<number, string> = {};
+      for (const it of items) {
+        const v = it[fieldName];
+        if (v) backup[it.Id] = v;
+      }
+      console.warn(`[DEX] ${tag}: Backup ${Object.keys(backup).length} von ${items.length} Werten.`);
+
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${fieldName}')/deleteObject`,
+          {}
+        );
+      } catch (e) {
+        console.warn(`[DEX] ${tag}: Delete alte Spalte fehlgeschlagen, Migration abgebrochen:`, e);
+        return;
+      }
+
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+          {
+            '__metadata': { 'type': 'SP.FieldMultiLineText' },
+            'Title': fieldName,
+            'FieldTypeKind': 3,
+            'Required': false,
+            'RichText': false,
+            'NumberOfLines': 4,
+          }
+        );
+      } catch (e) {
+        console.error(`[DEX] ${tag}: Konnte neue Note-Spalte nicht anlegen — Daten koennten verloren gehen:`, e, backup);
+        return;
+      }
+
+      let restored = 0;
+      let failed = 0;
+      for (const idStr of Object.keys(backup)) {
+        const id = Number(idStr);
+        try {
+          const resp = await this._merge(
+            `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${id})`,
+            { [fieldName]: backup[id] }
+          );
+          if (resp.ok) restored += 1;
+          else failed += 1;
+        } catch { failed += 1; }
+      }
+      console.warn(`[DEX] ${tag}: Migration fertig — ${restored} Werte zurueckgeschrieben, ${failed} Fehler.`);
+    } catch (e) {
+      console.warn(`[DEX] ${tag} Error:`, e);
     }
   }
 
