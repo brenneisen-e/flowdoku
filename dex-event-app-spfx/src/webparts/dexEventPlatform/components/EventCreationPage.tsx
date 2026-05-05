@@ -3371,7 +3371,9 @@ export default function EventCreationPage(): React.ReactElement {
 
                 const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
                 const dups: Array<{ email: string; name: string; inOrg: boolean; inTt: boolean; inQr: boolean }> = [];
-                for (const e of allEmails) {
+                // Array.from() statt `for ... of Set` — TS-Target ES5 erlaubt kein
+                // direktes Set-Iterieren ohne --downlevelIteration.
+                for (const e of Array.from(allEmails)) {
                   if (!e) continue;
                   const inOrg = orgSet.has(e);
                   const inTt = ttSet.has(e);

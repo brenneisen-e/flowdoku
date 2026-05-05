@@ -25,6 +25,20 @@ When deploying changes to the SPFx project:
 
 The `dist/dex-event-platform.sppkg` must always reflect the latest build so it can be downloaded directly from GitHub.
 
+### Kein lokales Testen — immer direkt bauen
+
+**WICHTIG:** Der Maintainer testet **nicht lokal** (kein `gulp serve`, kein Workbench, kein Browser-Run-Through). Schlag das auch nicht vor.
+
+Stattdessen: Sobald Code-Änderungen abgeschlossen sind, **direkt** bauen und deployen — ohne Zwischenschritt „lokal testen ob es klappt". Konkret heißt das pro Iteration:
+
+1. Code-Änderung committen.
+2. Version bumpen (Minor, siehe unten).
+3. `rm -rf dist release temp sharepoint/solution/debug && npx gulp bundle --ship && npx gulp package-solution --ship`
+4. `cp sharepoint/solution/dex-event-platform.sppkg ../dist/`
+5. `dist/dex-event-platform.sppkg` zum Commit dazu, push.
+
+Validierung erfolgt direkt im SharePoint-Tenant nach Upload, nicht lokal. Wenn ein Bug auftaucht: nächste Iteration mit Fix + Bump + Build, fertig. Kein „bitte erst lokal verifizieren" als Antwort — das blockiert den Maintainer-Flow.
+
 ### Versioning Strategy
 
 **WICHTIG (Stand 2026-04-16): Jede Build-Iteration muss um +0.1 (Minor) hochgezaehlt werden.**

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { X } from 'lucide-react';
+import { X } from './Icons';
 
 /**
  * Generischer Massenimport-Dialog für Team-Felder im Event-Wizard.
