@@ -3272,7 +3272,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={1} />
+                  <StepBadge n={9} />
                   {t('create.location')}
                   <InfoTooltip text={t('create.location.hint')} />
                 </label>
@@ -3280,7 +3280,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={2} />
+                  <StepBadge n={10} />
                   Adresse
                   <InfoTooltip text={t('create.address.hint')} />
                 </label>
@@ -3297,7 +3297,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={3} />
+                  <StepBadge n={11} />
                   {t('create.agenda')}
                   <InfoTooltip text={t('create.agenda.hint')} />
                 </label>
@@ -3428,7 +3428,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Transferzeiten Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={4} />
+                  <StepBadge n={12} />
                   {t('create.transfers')}
                   <InfoTooltip text={t('create.transfers.hint')} />
                 </label>
@@ -3547,7 +3547,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={1} />
+                  <StepBadge n={13} />
                   {isDe ? 'Standortfilter' : 'Location filter'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -3583,7 +3583,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={2} />
+                  <StepBadge n={14} />
                   {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
                 </label>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -3768,7 +3768,8 @@ export default function EventCreationPage(): React.ReactElement {
                   es nichts zu kombinieren. */}
               {locationFilter && audience && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', paddingLeft: 30 }}>
-                  <label className="form-label">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={15} />
                     {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                   </label>
                   <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -3930,8 +3931,16 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={16} />
+                  {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
+                  <InfoTooltip text={isDe
+                    ? 'Bis wann können sich Teilnehmer anmelden bzw. ohne Rückfrage abmelden? Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
+                    : 'Until when can attendees register / cancel themselves without consequence? Both values are auto-suggested from the event date and can be overridden at any time.'} />
+                </label>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     {t('create.deadline')}
                     <InfoTooltip text={t('create.deadline.hint')} />
@@ -3954,7 +3963,7 @@ export default function EventCreationPage(): React.ReactElement {
                     autoComplete="off"
                   />
                 </div>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     {t('create.lastcancel')}
                     <InfoTooltip text={t('create.lastcancel.hint')} />
@@ -3978,14 +3987,20 @@ export default function EventCreationPage(): React.ReactElement {
                   />
                 </div>
               </div>
-              {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deadlineAfterStart')}</p>}
-              {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.deregAfterStart')}</p>}
+              {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deadlineAfterStart')}</p>}
+              {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
+              </div>
 
               {/* v9.17: Reihenfolge umgestellt — Standard-Teilnehmerzahl
                   steht oben, Split-Toggle wird unter dem Block subtler
                   angezeigt. Die Mehrheit der Events nutzt nur eine
                   Gesamtkapazitaet; der B2Run-Sonderfall ist Opt-in. */}
 
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={17} />
+                  {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
+                </label>
               {/* B2Run: Split-Kapazitäten für Durchstarter + Funstarter */}
               {useSplitCapacities ? (
                 <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
@@ -4178,6 +4193,7 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 </span>
               </label>
+              </div>
 
               </div>
 
@@ -4240,7 +4256,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Felder entfernt (siehe applyTemplate-Fix), nicht alle. */}
               {!isEditMode && (
                 <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ marginBottom: 8 }}>
+                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={18} />
                     {t('create.template')}
                     <InfoTooltip text={t('create.template.hint')} />
                   </label>
@@ -4329,6 +4346,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* Dynamische Felder */}
               <div>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <StepBadge n={19} />
+                  {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
+                </label>
                 {/* v7.20: "Vorgeschlagene Felder" + "Feld hinzufuegen" stehen
                     nach links (vor dem Custom-Fields-Label), damit alle Action-
                     Buttons konsistent links aligned sind (wie auch der Typ-
@@ -4832,7 +4853,10 @@ export default function EventCreationPage(): React.ReactElement {
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
                 <div className="form-group">
-                  <label className="form-label">{t('create.emaillanguage')}</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={20} />
+                    {t('create.emaillanguage')}
+                  </label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {(['DE', 'EN'] as const).map(lang => (
                       <button
@@ -4852,7 +4876,10 @@ export default function EventCreationPage(): React.ReactElement {
 
                 {/* Benachrichtigungen abschalten */}
                 <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8 }}>{t('create.notifications')}</label>
+                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={21} />
+                    {t('create.notifications')}
+                  </label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.notifications.hint')}
                   </p>
@@ -4906,7 +4933,8 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v8.5: Organizer-BCC-Konfiguration (pro Event) — granular
                     fuer An- und Abmeldungen getrennt einstellbar. */}
                 <div className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
-                  <label className="form-label" style={{ marginBottom: 8 }}>
+                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={22} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
                   </label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
@@ -4988,7 +5016,10 @@ export default function EventCreationPage(): React.ReactElement {
 
                 {/* Custom-Logo fuer E-Mails */}
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">{t('create.eventlogo.mail')}</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={23} />
+                    {t('create.eventlogo.mail')}
+                  </label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.eventlogo.mail.hint')}
                   </p>
@@ -5027,7 +5058,10 @@ export default function EventCreationPage(): React.ReactElement {
 
                 {/* Custom-Logo fuer Outlook-Termin */}
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">{t('create.outlooklogo')}</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={24} />
+                    {t('create.outlooklogo')}
+                  </label>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.outlooklogo.hint')}
                   </p>
@@ -5061,7 +5095,10 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
 
                 <div className="form-group" style={{ marginTop: 24 }}>
-                  <label className="form-label">{t('create.outlookdesc')}</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={25} />
+                    {t('create.outlookdesc')}
+                  </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button
                       type="button"
@@ -5079,7 +5116,10 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 </div>
 
-                <h4 style={{ marginTop: 24, marginBottom: 12 }}>{t('create.templates.title')} ({emailLanguage})</h4>
+                <h4 style={{ marginTop: 24, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={26} />
+                  {t('create.templates.title')} ({emailLanguage})
+                </h4>
                 <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
                   {t('create.templates.hint')}
                 </p>
@@ -5170,7 +5210,8 @@ export default function EventCreationPage(): React.ReactElement {
 
                 {/* ===== Sub-Events (Trainingssessions etc.) ===== */}
                 <div className="form-group" style={{ marginTop: 32 }}>
-                  <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StepBadge n={27} />
                     {t('create.subevents')}
                     <InfoTooltip text={t('create.subevents.hint')} />
                   </label>
@@ -5442,6 +5483,10 @@ export default function EventCreationPage(): React.ReactElement {
                     'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
                   ]
                 )}
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <StepBadge n={28} />
+                  {isDe ? 'Dokumente hochladen' : 'Upload documents'}
+                </label>
                 {/* v9.28: Schlagwoerter fett rendern fuer bessere Lesbarkeit. */}
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 16, lineHeight: 1.6 }}>
                   {isDe ? (
@@ -5532,6 +5577,10 @@ export default function EventCreationPage(): React.ReactElement {
                   {t('create.funzone.hint')}
                 </p>
 
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <StepBadge n={29} />
+                  {isDe ? 'Quiz-Bereiche' : 'Quiz sections'}
+                </label>
                 {/* Bereiche: Header + "+ Bereich"-Button. Fragen koennen per Drag&Drop
                     in Bereiche gezogen werden; jeder Bereich wird im Quiz zusammen
                     auf einer Seite angezeigt. */}
