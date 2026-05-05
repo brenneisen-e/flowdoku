@@ -2618,8 +2618,18 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              {/* ===== Step 0: Grundlagen ===== */}
+              {/* ===== Schritt 1: Grundlagen =====
+                  v9.32: 1-basierte UI-Nummerierung (in der Logik bleibt
+                  currentStep 0-basiert) — siehe CLAUDE.md. */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics'}
+              </h2>
+              <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung, Bild und die Personen, die das Event verantworten oder testen.'
+                  : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
+              </p>
 
               {renderStepIntro(
                 [
@@ -2670,7 +2680,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ marginTop: 12, paddingLeft: 4 }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginBottom: 4, fontWeight: 500 }}>
                     Aktiv ab (optional)
-                    <InfoTooltip text="Wenn du hier ein Datum + Uhrzeit setzt, wird das Event ab diesem Zeitpunkt automatisch fuer alle berechtigten User sichtbar — auch wenn das Entwurf-Haekchen noch gesetzt ist. Praktisch um die Anmeldung erst zu einem geplanten Zeitpunkt zu oeffnen. Leer = kein Auto-Aktivierung." />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> einen Zeitpunkt, ab dem das Event automatisch live geht — auch wenn der <strong>Entwurf-Haken</strong> noch gesetzt ist.<br /><br />
+                        <strong>Auswirkung in der App:</strong> bis zu diesem Zeitpunkt sehen <strong>nur Admins, Organizer und Test-Team</strong> das Event. Ab dem gesetzten Datum prüft die App bei jedem Aufruf, ob die Zeit schon erreicht ist; falls ja, wird das Event in der allgemeinen Eventliste eingeblendet.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> bis zum Aktiv-ab-Zeitpunkt taucht das Event nicht in der Liste auf, kann nicht aufgerufen werden und bekommt keine Mails. Ab dem Stichtag ist es ganz normal anmeldbar.<br /><br />
+                        <strong>Leer lassen</strong> = kein Auto-Go-Live. Du musst dann manuell den Entwurf-Haken entfernen oder im Admin Center auf <strong>Event aktivieren</strong> klicken.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> a date/time at which the event automatically goes live — even if the <strong>draft toggle</strong> is still on.<br /><br />
+                        <strong>Effect in the app:</strong> until that point, only <strong>admins, organizers and the test team</strong> see the event. Once the timestamp is reached, the app reveals the event in the general event list.<br /><br />
+                        <strong>Effect for attendees:</strong> until the active-from date the event is not listed, not openable, and produces no mails. After the timestamp it behaves like any other published event.<br /><br />
+                        <strong>Leave empty</strong> = no auto-go-live. Publish manually by clearing the draft toggle or by clicking <strong>Activate event</strong> in the admin center.
+                      </>
+                    )} />
                   </label>
                   <DatePicker
                     selected={activeFrom ? new Date(activeFrom) : null}
@@ -2696,7 +2720,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={2} />
                   <span className="required">*</span> {t('create.eventtitle')}
-                  <InfoTooltip text={t('create.eventtitle.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den offiziellen Namen des Events, z.B. <em>Sommerfest 2026</em> oder <em>JPMorgan Lauf 2026</em>.<br /><br />
+                      <strong>Auswirkung in der App:</strong> der Titel erscheint in der <strong>Eventliste</strong>, im <strong>Header der Detailseite</strong>, in <strong>Meine Events</strong> und im <strong>Admin Center</strong>. Wird auch für die Subsite-URL und für interne Verweise herangezogen.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> der Titel wird 1:1 in den <strong>Betreff aller automatischen Mails</strong> übernommen (Anmelde-Bestätigung, Storno, Warteliste, Nachrück-Mail, QR-Code) sowie in den <strong>Outlook-Termin-Titel</strong> der Teilnehmer.<br /><br />
+                      <strong>Empfehlung:</strong> sprechend wählen — der Titel ist das Erste, was Teilnehmer sehen, und identifiziert das Event in ihrem Outlook-Kalender.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the official name of the event, e.g. <em>Summer Party 2026</em> or <em>JPMorgan Run 2026</em>.<br /><br />
+                      <strong>Effect in the app:</strong> shown in the <strong>event list</strong>, the <strong>detail page header</strong>, in <strong>My Events</strong> and the <strong>admin center</strong>. Also feeds the subsite URL and internal references.<br /><br />
+                      <strong>Effect in automation:</strong> the title is used 1:1 as the <strong>subject of every automated mail</strong> (registration, cancellation, waitlist, promotion, QR-code) and as the <strong>Outlook event title</strong> in attendees{'’'} calendars.<br /><br />
+                      <strong>Tip:</strong> pick something descriptive — it is the first thing attendees see and identifies the event in their Outlook calendar.
+                    </>
+                  )} />
                 </label>
                 <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
                 {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
@@ -2708,13 +2746,35 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={3} />
                   Datum (Start &amp; Ende)
-                  <InfoTooltip text={'Start- und Endzeit des Events. Sobald du das Start-Datum setzt, werden die Anmelde-Deadline (7 Tage vor Start) und die Stornierungs-Frist (3 Tage vor Start) automatisch vorgeschlagen — du kannst sie im nächsten Schritt „Kapazität & Sichtbarkeit“ jederzeit anpassen. Die Uhrzeit landet später im Outlook-Kalendereintrag der Teilnehmer.'} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> Start- und Endzeit des Events (Datum + Uhrzeit, jeweils Berliner Zeit).<br /><br />
+                      <strong>Auswirkung in der App:</strong> die Werte erscheinen <strong>oben auf der Anmelde-Seite</strong>, in der <strong>Eventliste</strong>, in <strong>Meine Events</strong> und im Admin Center. Die App nutzt sie auch für <strong>Sortierung</strong> (nächste Events zuerst) und für die Logik <strong>Event ist vorbei</strong> (danach werden manche Aktionen wie Anmeldung gesperrt).<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Datum + Uhrzeit landen 1:1 im <strong>Outlook-Termin der Teilnehmer</strong> — der Termin blockt damit den richtigen Slot im Kalender. Außerdem werden die <strong>Anmelde-Deadline</strong> (7 Tage vor Start) und die <strong>Letzte Abmeldemöglichkeit</strong> (3 Tage vor Start) automatisch vorgeschlagen — beide kannst du im Schritt <strong>Kapazität & Sichtbarkeit</strong> jederzeit überschreiben.<br /><br />
+                      <strong>Auswirkung für Teilnehmer:</strong> sehen das Datum sofort in der Liste, bekommen es in jeder Bestätigungs-Mail und als Outlook-Eintrag.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> start and end (date + time, Berlin local time).<br /><br />
+                      <strong>Effect in the app:</strong> shown <strong>at the top of the registration page</strong>, in the <strong>event list</strong>, in <strong>My Events</strong> and the admin center. Also drives <strong>sort order</strong> (upcoming first) and the <strong>event is over</strong> logic (some actions get locked after that).<br /><br />
+                      <strong>Effect in automation:</strong> date + time go 1:1 into the <strong>attendee{'’'}s Outlook event</strong> so the right slot gets blocked. The <strong>registration deadline</strong> (7 days before start) and <strong>last cancellation date</strong> (3 days before start) are auto-suggested — both can be overridden in step <strong>Capacity & Visibility</strong>.<br /><br />
+                      <strong>Effect for attendees:</strong> they see the date in the list, in every confirmation email and as an Outlook entry.
+                    </>
+                  )} />
                 </label>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     <span className="required">*</span> {t('create.startdate')}
-                    <InfoTooltip text={t('create.startdate.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Startzeitpunkt</strong> — Datum + Uhrzeit, ab wann das Event läuft. Wandert 1:1 in den <strong>Outlook-Termin</strong> jedes Teilnehmers (blockt den Kalender-Slot) und in <strong>jede Bestätigungs-Mail</strong>. Bestimmt außerdem die Standard-Vorschläge für <strong>Anmelde-Deadline</strong> (7 Tage vor Start) und <strong>Letzte Abmeldemöglichkeit</strong> (3 Tage vor Start).
+                      </>
+                    ) : (
+                      <>
+                        <strong>Start time</strong> — date + time when the event begins. Goes 1:1 into every attendee Outlook event (blocks the calendar slot) and into every <strong>confirmation email</strong>. Also drives the auto-suggestions for <strong>registration deadline</strong> (7 days before start) and <strong>last cancellation date</strong> (3 days before start).
+                      </>
+                    )} />
                   </label>
                   <DatePicker
                     selected={startDate ? new Date(startDate) : null}
@@ -2738,7 +2798,15 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     <span className="required">*</span> {t('create.enddate')}
-                    <InfoTooltip text={t('create.enddate.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Endzeitpunkt</strong> — Datum + Uhrzeit, wann das Event vorbei ist. Wandert 1:1 in den <strong>Outlook-Termin</strong> der Teilnehmer (sonst läuft der Termin endlos). Wichtig auch für interne Logik: nach diesem Zeitpunkt zählt das Event als <strong>vorbei</strong> — Anmeldungen werden gesperrt, das Event rutscht in der Liste nach unten und manche Flows (z.B. Late-Cancel-Mails) reagieren darauf.
+                      </>
+                    ) : (
+                      <>
+                        <strong>End time</strong> — date + time when the event finishes. Goes 1:1 into the attendee Outlook event (otherwise it would never end). Also feeds internal logic: past this point the event counts as <strong>over</strong> — registrations get locked, it drops down the list, and some flows (e.g. late-cancel mails) react to it.
+                      </>
+                    )} />
                   </label>
                   <DatePicker
                     selected={endDate ? new Date(endDate) : null}
@@ -2771,7 +2839,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={4} />
                   {t('create.description')}
-                  <InfoTooltip text={t('create.description.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> die <strong>Hauptbeschreibung</strong> des Events — was findet statt, an wen richtet es sich, was sollten Teilnehmer wissen.<br /><br />
+                      <strong>Auswirkung in der App:</strong> wird oben auf der <strong>Anmelde-Seite</strong> und unter <strong>Meine Events</strong> angezeigt. Du kannst <strong>HTML-Formatierung</strong> nutzen (Fettdruck, Listen, Links, Bilder) — die App rendert sie 1:1.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> wenn der Outlook-Termin-Body leer ist, wird die Beschreibung als <strong>Fallback in den Outlook-Kalendereintrag</strong> übernommen.<br /><br />
+                      <strong>Auswirkung für Teilnehmer:</strong> erste inhaltliche Information vor der Anmeldung. Optional — leer ist erlaubt, aber bei externen Empfängerkreisen empfehlenswert.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>main event description</strong> — what is happening, who it is for, what attendees should know.<br /><br />
+                      <strong>Effect in the app:</strong> shown at the top of the <strong>registration page</strong> and under <strong>My Events</strong>. You can use <strong>HTML formatting</strong> (bold, lists, links, images) — the app renders it 1:1.<br /><br />
+                      <strong>Effect in automation:</strong> if the Outlook event body is empty, the description is used as a <strong>fallback in the Outlook calendar entry</strong>.<br /><br />
+                      <strong>Effect for attendees:</strong> first piece of substantive information before registering. Optional — leaving it blank is fine, but recommended for broader audiences.
+                    </>
+                  )} />
                 </label>
                 <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} style={{ minHeight: 120 }} />
               </div>
@@ -2780,7 +2862,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={5} />
                   {t('create.eventimage')}
-                  <InfoTooltip text={t('create.eventimage.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> ein <strong>Hauptbild fürs Event</strong> (Foto vom Veranstaltungsort, Eventlogo, Stimmungsbild). Wird zentral als Item-Attachment am Event gespeichert.<br /><br />
+                      <strong>Auswirkung in der App:</strong> erscheint <strong>oben auf der Anmelde-Seite</strong>, <strong>als Kachel-Hintergrund</strong> in der Eventliste und <strong>in Meine Events</strong>. Macht Events visuell unterscheidbar in einer langen Liste.<br /><br />
+                      <strong>Empfehlung:</strong> Querformat (z.B. 16:9), gute Auflösung (mind. 1200px breit). Hochformat funktioniert auch — die App erkennt das automatisch und legt das Bild dann links neben den Detail-Rows ab statt als Banner.<br /><br />
+                      <strong>Auswirkung für Teilnehmer:</strong> visueller Wiedererkennungswert in ihrer Eventliste und auf der Anmelde-Seite — beeinflusst nicht die Mails (dort gibt es ein separates Logo).
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>main event image</strong> (venue photo, event logo, mood shot). Stored centrally as an item attachment.<br /><br />
+                      <strong>Effect in the app:</strong> shown <strong>at the top of the registration page</strong>, <strong>as the tile background</strong> in the event list and <strong>under My Events</strong>. Makes events visually distinguishable in a long list.<br /><br />
+                      <strong>Tip:</strong> landscape (e.g. 16:9), high resolution (at least 1200px wide). Portrait works too — the app detects orientation and places the image to the left of the detail rows instead of as a banner.<br /><br />
+                      <strong>Effect for attendees:</strong> visual recognition in their list and on the registration page — does not affect emails (there is a separate logo for those).
+                    </>
+                  )} />
                 </label>
                 {imagePreview && (
                   <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
@@ -2847,7 +2943,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={6} />
                   <span className="required">*</span> {t('create.organizer')}
-                  <InfoTooltip text={t('create.organizer.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> die <strong>verantwortlichen Personen</strong> für dieses Event — beliebige Deloitte-User per Graph-Suche. Du selbst bist standardmäßig vorbefüllt, kannst aber Co-Organizer hinzunehmen oder dich selbst rauslöschen.<br /><br />
+                      <strong>Auswirkung in der App:</strong> Organizer dürfen das Event <strong>bearbeiten, deaktivieren, löschen</strong>, die <strong>Teilnehmerliste</strong> einsehen, <strong>QR-Codes versenden</strong> und <strong>Massenmails</strong> verschicken. Sie tauchen auf der Anmelde-Seite und in Meine Events als <strong>Ansprechpartner</strong> mit Foto + Mail-Adresse auf.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 5 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
+                      <strong>Reihenfolge zählt:</strong> der erste Organizer ist der Haupt-Organizer und wird in Mails als Absender-Name verwendet.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>responsible people</strong> for this event — any Deloitte user via Graph search. You are pre-filled by default, but you can add co-organizers or remove yourself.<br /><br />
+                      <strong>Effect in the app:</strong> organizers can <strong>edit, deactivate, delete</strong> the event, see the <strong>attendee list</strong>, <strong>send QR codes</strong> and <strong>mass emails</strong>. They appear on the registration page and in My Events as <strong>contacts</strong> with photo + email.<br /><br />
+                      <strong>Effect in automation:</strong> depending on the setting in <strong>step 5 (Communication)</strong>, organizers receive BCC copies of registration / cancellation mails. Late-cancel and roommate mails go to all organizers. If an attendee forwards the Outlook invite to someone unregistered, organizers receive an FYI mail.<br /><br />
+                      <strong>Order matters:</strong> the first organizer is the main organizer and is used as the sender name in mails.
+                    </>
+                  )} />
                 </label>
                 {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
                 {(() => {
@@ -3006,7 +3116,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={7} />
                   Test-Team
-                  <InfoTooltip text="Optional: Personen, die diesen Event bereits im Entwurfsmodus sehen + sich anmelden dürfen. Nutze das Test-Team um die Anmelde-Strecke und die Mails von einer kleinen Gruppe testen zu lassen, bevor das Event für alle live geht. Test-Team-Mitglieder haben sonst keine Admin-Rechte (kein Edit, keine Mails versenden)." />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> eine kleine Gruppe von Personen, die das Event <strong>schon im Entwurfsmodus</strong> sieht und sich testweise anmelden darf — bevor du es für die echte Zielgruppe freigibst.<br /><br />
+                      <strong>Auswirkung in der App:</strong> Test-Team-Mitglieder sehen das Event in ihrer Liste, können auf die Anmelde-Seite, sich registrieren, abmelden, eigene Daten ändern. Sie haben <strong>keine Admin-Rechte</strong> — kein Bearbeiten, keine Teilnehmerliste, keine Massenmails. Reguläre User sehen das Event weiterhin nicht, solange der Entwurf-Haken gesetzt ist.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Test-Anmeldungen lösen ganz normal <strong>Bestätigungs-Mails</strong> und <strong>Outlook-Termine</strong> aus — perfekt um den kompletten Flow zu testen. Bei externen Mails (nicht @deloitte.de) greift die normale Umleitung an dich als Organizer.<br /><br />
+                      <strong>Empfehlung:</strong> 1–3 Personen reichen typischerweise — ein Co-Organizer und ein naiver Tester, der noch nichts vom Event weiß.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> a small group of people who can see the event <strong>already in draft mode</strong> and register as a test — before you publish it to the real audience.<br /><br />
+                      <strong>Effect in the app:</strong> test-team members see the event in their list, can open the registration page, register, cancel, edit their own data. They have <strong>no admin rights</strong> — no edit, no attendee list, no mass mails. Regular users still do not see the event while the draft toggle is on.<br /><br />
+                      <strong>Effect in automation:</strong> test registrations trigger normal <strong>confirmation mails</strong> and <strong>Outlook events</strong> — perfect for testing the full flow. External mails (non-@deloitte.de) follow the standard organizer-redirect rule.<br /><br />
+                      <strong>Tip:</strong> 1–3 people are usually enough — a co-organizer and one naive tester who has not seen the event yet.
+                    </>
+                  )} />
                 </label>
                 {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
@@ -3112,7 +3236,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={8} />
                   {t('create.qrscanners') || 'QR-Code-Scanner'}
-                  <InfoTooltip text={t('create.qrscanners.hint') || 'Optional: Personen die nur das QR-Code-Scanner-Tool + Check-In-KPIs nutzen dürfen. Keine Bearbeitungs-/Mail-Rechte, tauchen nicht in der Organizer-Liste auf.'} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> Personen, die am Event-Tag <strong>nur das Check-In-Tool</strong> bedienen dürfen — z.B. Helfer am Empfangstresen oder am Stadioneingang. Beliebige Deloitte-User per Graph-Suche.<br /><br />
+                      <strong>Auswirkung in der App:</strong> Check-In-Team-Mitglieder sehen oben im Header das <strong>QR-Scanner-Icon</strong> und können den <strong>Check-In-Modus</strong> öffnen — QR-Codes scannen, Teilnehmer manuell ein-/auschecken, Check-In-KPIs sehen. Sie haben <strong>keine weiteren Rechte</strong>: kein Edit, keine Teilnehmerliste, keine Mails.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Check-In-Team taucht <strong>nicht in der Organizer-Liste</strong> auf der Anmelde-Seite auf und bekommt <strong>keine Organizer-Mails</strong> (BCC, Late-Cancel etc.).<br /><br />
+                      <strong>Empfehlung:</strong> für jedes Event genau die Personen eintragen, die am Veranstaltungstag wirklich am Empfang stehen.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> people who may operate <strong>only the check-in tool</strong> on the event day — e.g. helpers at the welcome desk or stadium entrance. Any Deloitte user via Graph search.<br /><br />
+                      <strong>Effect in the app:</strong> check-in team members see the <strong>QR scanner icon</strong> in the header and can open the <strong>check-in mode</strong> — scan QR codes, manually check attendees in/out, view check-in KPIs. They have <strong>no further rights</strong>: no edit, no attendee list, no emails.<br /><br />
+                      <strong>Effect in automation:</strong> check-in team does <strong>not appear in the organizer list</strong> on the registration page and does <strong>not receive organizer emails</strong> (BCC, late-cancel etc.).<br /><br />
+                      <strong>Tip:</strong> for each event, list exactly the people who will actually staff the welcome desk.
+                    </>
+                  )} />
                 </label>
                 {qrScannerNames.length > 0 && (() => {
                   const move = (idx: number, dir: -1 | 1): void => {
@@ -3240,6 +3378,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 1: Ort & Programm ===== */}
               <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 2 — Ort & Programm' : 'Step 2 — Location & Programme'}
+              </h2>
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? 'Hier sagst du, wo das Event stattfindet, wie der Tagesablauf aussieht und wie Teilnehmer hinkommen.'
+                  : 'Here you say where the event takes place, what the schedule looks like and how attendees get there.'}
+              </p>
               {renderStepIntro(
                 [
                   'Veranstaltungsort und Adresse erfassen',
@@ -3274,7 +3420,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={9} />
                   {t('create.location')}
-                  <InfoTooltip text={t('create.location.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den <strong>Namen des Veranstaltungsortes</strong> (z.B. RheinEnergieStadion, Köln oder Deloitte Düsseldorf, Schwannstraße 6).<br /><br />
+                      <strong>Auswirkung in der App:</strong> erscheint auf der <strong>Anmelde-Seite</strong>, in der <strong>Eventliste</strong>, in <strong>Meine Events</strong> als Ort-Information.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> wandert in den <strong>Outlook-Termin der Teilnehmer</strong> als Ort-Feld — so sehen sie auf einen Blick, wo sie hin müssen. Falls Bing Maps den Ort findet, blendet Outlook automatisch eine Karte ein.<br /><br />
+                      <strong>Empfehlung:</strong> sprechender Name + Stadt — verwende die Adresse für die strukturierte Detail-Adresse darunter, hier reicht der Veranstaltungsort.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>name of the venue</strong> (e.g. RheinEnergieStadion, Cologne or Deloitte Düsseldorf, Schwannstraße 6).<br /><br />
+                      <strong>Effect in the app:</strong> appears on the <strong>registration page</strong>, in the <strong>event list</strong> and in <strong>My Events</strong> as the location.<br /><br />
+                      <strong>Effect in automation:</strong> goes into the attendee Outlook event as the location field — so they immediately see where to go. If Bing Maps recognises it, Outlook auto-inserts a map.<br /><br />
+                      <strong>Tip:</strong> descriptive name + city — use the structured address below for full details, here just the venue name.
+                    </>
+                  )} />
                 </label>
                 <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. RheinEnergieStadion, Köln" />
               </div>
@@ -3282,7 +3442,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={10} />
                   Adresse
-                  <InfoTooltip text={t('create.address.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> die <strong>strukturierte Adresse</strong> (Straße, Hausnr., PLZ, Ort) — getrennt eingegeben, damit die Adresse einheitlich aussieht.<br /><br />
+                      <strong>Auswirkung in der App:</strong> wird auf der <strong>Anmelde-Seite</strong> und in <strong>Meine Events</strong> sauber formatiert angezeigt — Teilnehmer können auf die Adresse klicken und sie z.B. in Google Maps öffnen.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> wird in <strong>Bestätigungs-Mails</strong> und im <strong>Outlook-Termin-Body</strong> als Klartext-Adresse mitgegeben — z.B. zum Kopieren ins Navi.<br /><br />
+                      <strong>Optional:</strong> wenn der Veranstaltungsort oben schon eindeutig genug ist, kannst du die strukturierte Adresse leer lassen.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>structured address</strong> (street, number, ZIP, city) — entered field by field for consistent formatting.<br /><br />
+                      <strong>Effect in the app:</strong> shown nicely on the <strong>registration page</strong> and under <strong>My Events</strong> — attendees can click it and e.g. open it in Google Maps.<br /><br />
+                      <strong>Effect in automation:</strong> goes into the <strong>confirmation mails</strong> and the <strong>Outlook event body</strong> as plain text — handy to copy into a navigation device.<br /><br />
+                      <strong>Optional:</strong> if the venue name above is already explicit enough, you can leave the structured address empty.
+                    </>
+                  )} />
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
                   <input className="form-input" value={addrStreet} onChange={e => setAddrStreet(e.target.value)} placeholder="Straße" />
@@ -3299,7 +3473,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
                   <StepBadge n={11} />
                   {t('create.agenda')}
-                  <InfoTooltip text={t('create.agenda.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den <strong>Programmablauf des Events</strong> als Liste — pro Punkt: Datum, Start- und Endzeit, Titel, optionale Beschreibung und ein Icon (z.B. Kaffee, Vortrag, Pause).<br /><br />
+                      <strong>Auswirkung in der App:</strong> erscheint als <strong>schöner Timeline-Block</strong> auf der Anmelde-Seite und in Meine Events — Punkte werden automatisch nach Datum + Uhrzeit sortiert. Mehrtägige Events werden tageweise gruppiert.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 5).<br /><br />
+                      <strong>Empfehlung:</strong> hilft Teilnehmern, sich auf den Tag einzustellen — bei Tagungen oder Auswärtsterminen sehr empfohlen, bei kurzen Office-Events optional.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>event programme</strong> as a list — per item: date, start/end time, title, optional description and an icon (e.g. coffee, talk, break).<br /><br />
+                      <strong>Effect in the app:</strong> shown as a <strong>nice timeline block</strong> on the registration page and in My Events — items are auto-sorted by date + time. Multi-day events are grouped per day.<br /><br />
+                      <strong>Effect in automation:</strong> the agenda is <strong>not</strong> automatically pulled into the Outlook event body (there is a dedicated field <strong>Text in the Outlook event</strong> in step 5 for that).<br /><br />
+                      <strong>Tip:</strong> helps attendees plan their day — strongly recommended for off-site events / conferences, optional for short office events.
+                    </>
+                  )} />
                 </label>
                 {agenda
                   .slice()
@@ -3430,7 +3618,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
                   <StepBadge n={12} />
                   {t('create.transfers')}
-                  <InfoTooltip text={t('create.transfers.hint')} />
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> <strong>An- und Abreise-Infos</strong> für Teilnehmer — z.B. Bus-/Shuttle-/Bahn-Treffpunkte mit Datum, Abfahrt, Ankunft und optionaler Zusatzinfo (Bus-Kennzeichen, Treffpunkt-Schild, Wagen-Nr.). Pro Stadt ein eigener Eintrag möglich.<br /><br />
+                      <strong>Auswirkung in der App:</strong> erscheint als <strong>eigener Block</strong> auf der Anmelde-Seite und in Meine Events mit allen Details auf einen Blick.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Transferzeiten gehen <strong>nicht</strong> in den Outlook-Termin (sonst würde der Termin Bus als Konkurrenz-Termin im Kalender blocken). Sie sind nur in der App sichtbar.<br /><br />
+                      <strong>Empfehlung:</strong> bei Auswärtsterminen mit organisierter Anreise sehr empfohlen — bei rein lokalen Office-Events nicht nötig.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> <strong>arrival and departure info</strong> for attendees — e.g. bus/shuttle/train pickups with date, departure, arrival and an optional note (bus number, meeting-point sign, carriage no.). One entry per city.<br /><br />
+                      <strong>Effect in the app:</strong> shown as a <strong>dedicated block</strong> on the registration page and in My Events with all details at a glance.<br /><br />
+                      <strong>Effect in automation:</strong> transfer times do <strong>not</strong> end up in the Outlook event (otherwise the bus trip would clash with the actual event in the calendar). They live only in the app.<br /><br />
+                      <strong>Tip:</strong> strongly recommended for off-site events with organised travel — not needed for local office events.
+                    </>
+                  )} />
                 </label>
                 {transferTimes.map((tt) => (
                   <div key={tt.id} style={{
@@ -3493,6 +3695,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 2: Kapazität, Fristen & Sichtbarkeit ===== */}
               <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 3 — Kapazität & Sichtbarkeit' : 'Step 3 — Capacity & Visibility'}
+              </h2>
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? 'Hier legst du fest, wer das Event überhaupt sieht, wie viele Plätze es gibt und bis wann sich Teilnehmer an- bzw. abmelden können.'
+                  : 'Here you decide who can see the event in the first place, how many spots there are, and the deadlines for registration and cancellation.'}
+              </p>
               {renderStepIntro(
                 [
                   'Sichtbarkeit: Standort-Filter und Mailverteiler/User festlegen — wer das Event in der Liste sieht',
@@ -3965,7 +4175,15 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     {t('create.deadline')}
-                    <InfoTooltip text={t('create.deadline.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Anmelde-Deadline</strong> — bis zu diesem Stichtag können sich Teilnehmer selbst registrieren. Danach ist der <strong>Anmelden-Button gesperrt</strong> (auch via Direktlink), neue Anmeldungen kommen nur noch über den Organizer manuell rein. Vorbefüllt mit <strong>7 Tagen vor Event-Start</strong>, frei überschreibbar.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Registration deadline</strong> — until this cutoff attendees can self-register. After that the <strong>register button is locked</strong> (also via direct link), new sign-ups have to be added by the organizer manually. Pre-filled with <strong>7 days before event start</strong>, freely overridable.
+                      </>
+                    )} />
                   </label>
                   <DatePicker
                     selected={registrationDeadline ? new Date(registrationDeadline) : null}
@@ -3988,7 +4206,15 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     {t('create.lastcancel')}
-                    <InfoTooltip text={t('create.lastcancel.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Letzte Abmeldemöglichkeit</strong> — bis zu diesem Stichtag können sich Teilnehmer <strong>ohne Rückfrage</strong> selbst abmelden. Danach ist die Self-Cancel-Funktion ausgeblendet — der Teilnehmer muss aktiv beim Organizer bitten. Je nach Einstellung in <strong>Schritt 5 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden, damit Hotel/Catering/Bus angepasst werden können. Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Last cancellation date</strong> — until this cutoff attendees can <strong>self-cancel without consequences</strong>. After that, the self-cancel button is hidden — the attendee has to ask the organizer. Depending on the setting in <strong>step 5 (Communication)</strong>, organizers receive a <strong>late-cancel mail</strong> with name + email of the person, so hotel/catering/bus can be adjusted. Pre-filled with <strong>3 days before event start</strong>.
+                      </>
+                    )} />
                   </label>
                   <DatePicker
                     selected={lastDeregisterDate ? new Date(lastDeregisterDate) : null}
@@ -4028,7 +4254,21 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.b2runcap')}
-                    <InfoTooltip text={t('create.b2runcap.hint')} />
+                    <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> getrennte Kapazitäten für <strong>Durchstarter</strong> (sportliche Läufer) und <strong>Funstarter</strong> (Spaß-Läufer / Walker) bei B2Run-Events. Pro Typ ein eigener Slot mit eigener Warteliste.<br /><br />
+                      <strong>Auswirkung in der App:</strong> Teilnehmer wählen bei der Anmeldung den Starter-Typ und werden dem entsprechenden Slot zugeordnet. Im Admin Center werden die Kapazitäten <strong>pro Starter-Typ</strong> angezeigt.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> wenn der Durchstarter-Slot voll ist, kommen Durchstarter-Anmeldungen auf die <strong>Durchstarter-Warteliste</strong> (nicht auf die allgemeine). Beim Nachrücken (DEX_IDReorder_TeilnehmerIDs) wird typ-bewusst nachgezogen — ein Funstarter rückt nicht in einen Durchstarter-Platz.<br /><br />
+                      <strong>Empfehlung:</strong> nur verwenden, wenn ihr B2Run-Plätze beim Veranstalter wirklich getrennt eingekauft habt.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> separate capacities for <strong>Durchstarter</strong> (sporty runners) and <strong>Funstarter</strong> (fun runners / walkers) for B2Run events. Each type has its own slot and its own waitlist.<br /><br />
+                      <strong>Effect in the app:</strong> attendees pick a starter type at registration and land in the matching slot. The admin center shows capacities <strong>per starter type</strong>.<br /><br />
+                      <strong>Effect in automation:</strong> when the Durchstarter slot is full, Durchstarter sign-ups go on the <strong>Durchstarter waitlist</strong> (not the general one). Promotion (DEX_IDReorder_TeilnehmerIDs) is type-aware — a Funstarter is never auto-promoted into a Durchstarter slot.<br /><br />
+                      <strong>Tip:</strong> only use this if you have actually bought B2Run slots separately from the organiser.
+                    </>
+                  )} />
                   </label>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.b2runcap.desc')}
@@ -4076,7 +4316,21 @@ export default function EventCreationPage(): React.ReactElement {
                     <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff', borderRadius: 8 }}>
                       <label className="form-label" style={{ marginBottom: 6 }}>
                         {t('create.b2runcap.starterblock.title') || 'Starter-Typ → Startblock-Zuordnung'}
-                        <InfoTooltip text={t('create.b2runcap.starterblock.hint') || 'Wenn gesetzt: der Startblock wird bei der Registrierung automatisch anhand des gewählten Starter-Typs gesetzt. Freie Plätze pro Starter-Typ entsprechen den freien Plätzen im zugeordneten Block.'} />
+                        <InfoTooltip text={isDe ? (
+                          <>
+                            <strong>Was du hier einstellst:</strong> eine <strong>fixe Zuordnung Starter-Typ → Startblock</strong>. Beispiel: Durchstarter immer Block A, Funstarter immer Block C.<br /><br />
+                            <strong>Auswirkung in der App:</strong> Teilnehmer wählen <strong>nur</strong> den Starter-Typ — der Startblock wird automatisch gesetzt, der Block-Selector verschwindet aus der Anmelde-Maske. Eine Frage weniger für den User.<br /><br />
+                            <strong>Auswirkung in Automatik:</strong> die Startblock-Kapazität wird gegen den jeweiligen Starter-Typ gerechnet — freie Plätze pro Typ = freie Plätze im zugeordneten Block.<br /><br />
+                            <strong>Leer:</strong> Teilnehmer wählen Starter-Typ <em>und</em> Startblock manuell — der Organizer hat dann gemischte Blöcke und muss bei Engpässen selbst zuteilen.
+                          </>
+                        ) : (
+                          <>
+                            <strong>What you set here:</strong> a <strong>fixed mapping starter type → start block</strong>. Example: Durchstarter always block A, Funstarter always block C.<br /><br />
+                            <strong>Effect in the app:</strong> attendees only pick the <strong>starter type</strong> — the start block is set automatically, the block selector disappears from the form. One question less for the user.<br /><br />
+                            <strong>Effect in automation:</strong> the start-block capacity counts against the matching starter type — free slots per type = free slots in the assigned block.<br /><br />
+                            <strong>Empty:</strong> attendees pick starter type <em>and</em> start block manually — the organizer ends up with mixed blocks and has to redistribute manually when slots get tight.
+                          </>
+                        )} />
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
@@ -4128,7 +4382,15 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginTop: 12 }}>
                     <label className="form-label" style={{ marginBottom: 4 }}>
                       {t('create.waitlist')}
-                      <InfoTooltip text={t('create.b2runcap.waitlist.hint')} />
+                      <InfoTooltip text={isDe ? (
+                        <>
+                          <strong>Wartelisten für Split-Kapazitäten</strong> — bei aktivierter Warteliste hat <strong>jeder Starter-Typ seine eigene Liste</strong>. Durchstarter-Anmeldungen über der Durchstarter-Kapazität landen auf der Durchstarter-Warteliste, dasselbe für Funstarter. Beim Nachrücken (Power-Automate) wird typ-bewusst befördert — der älteste Durchstarter-Eintrag rückt in einen frei werdenden Durchstarter-Platz, kein Mix.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Waitlists for split capacities</strong> — when the waitlist is on, <strong>each starter type has its own queue</strong>. Durchstarter sign-ups beyond the Durchstarter capacity go on the Durchstarter waitlist, same for Funstarter. Promotion (Power Automate) is type-aware — the oldest Durchstarter waiting moves into a freed Durchstarter slot, no mixing.
+                        </>
+                      )} />
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4 }}>
                       <label className="toggle">
@@ -4144,7 +4406,21 @@ export default function EventCreationPage(): React.ReactElement {
                   <div className="form-group">
                     <label className="form-label">
                       {t('create.maxparticipants')}
-                      <InfoTooltip text={t('create.maxparticipants.hint')} />
+                      <InfoTooltip text={isDe ? (
+                        <>
+                          <strong>Was du hier einstellst:</strong> die <strong>maximale Teilnehmerzahl</strong> oder den Modus <strong>Unbegrenzt</strong>.<br /><br />
+                          <strong>Auswirkung in der App:</strong> ist die Kapazität voll, sehen Teilnehmer den <strong>roten Banner Alle Plätze sind belegt</strong> auf der Anmelde-Seite. Im Admin Center wird ein Auslastungs-KPI live mitgeführt.<br /><br />
+                          <strong>Auswirkung in Automatik:</strong> ist <strong>Warteliste</strong> aktiv und die Kapazität voll, werden neue Anmeldungen automatisch auf <strong>Status Warteliste</strong> gesetzt und bekommen die Wartelisten-Bestätigungs-Mail. Bei einer Abmeldung rückt der älteste Wartelisten-Eintrag automatisch nach (Power-Automate-Flow <em>DEX_IDReorder_TeilnehmerIDs</em>) und bekommt Nachrück-Mail + Outlook-Termin.<br /><br />
+                          <strong>Modus Unbegrenzt:</strong> keine Auslastungs-Anzeige, keine Warteliste — wird typischerweise für interne All-Hands-Mails oder reine Info-Events verwendet.
+                        </>
+                      ) : (
+                        <>
+                          <strong>What you set here:</strong> the <strong>maximum attendee count</strong> or the <strong>Unlimited</strong> mode.<br /><br />
+                          <strong>Effect in the app:</strong> when full, attendees see the <strong>red banner All spots are taken</strong> on the registration page. The admin center shows live capacity KPIs.<br /><br />
+                          <strong>Effect in automation:</strong> if <strong>waitlist</strong> is on and capacity is full, new sign-ups land in <strong>status Waitlist</strong> and get a waitlist confirmation mail. On cancellation, the oldest waitlist entry is auto-promoted (Power-Automate flow <em>DEX_IDReorder_TeilnehmerIDs</em>) and receives a promotion mail + Outlook event.<br /><br />
+                          <strong>Unlimited mode:</strong> no capacity indicator, no waitlist — typically used for internal all-hands or info-only events.
+                        </>
+                      )} />
                     </label>
                     <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
                       <label className="toggle">
@@ -4183,7 +4459,23 @@ export default function EventCreationPage(): React.ReactElement {
                     <div className="form-group">
                       <label className="form-label">
                         {t('create.waitlist')}
-                        <InfoTooltip text={t('create.waitlist.hint')} />
+                        <InfoTooltip text={isDe ? (
+                          <>
+                            <strong>Was du hier einstellst:</strong> ob bei vollem Event eine <strong>Warteliste</strong> akzeptiert wird oder neue Anmeldungen sofort blockiert werden.<br /><br />
+                            <strong>Auswirkung in der App:</strong> bei aktiver Warteliste können Teilnehmer sich auch über die Kapazitäts-Grenze hinaus anmelden — bekommen Status <strong>Warteliste</strong> mit Positions-Nummer. Im Admin Center erscheint eine eigene <strong>Warteliste-Kachel</strong>.<br /><br />
+                            <strong>Auswirkung in Automatik:</strong> Wartelisten-Anmeldungen bekommen die <strong>Wartelisten-Bestätigungs-Mail</strong>. Sobald jemand absagt, rückt der älteste Wartelisten-Eintrag automatisch nach (FIFO) — bekommt eine <strong>Nachrück-Mail</strong> mit Outlook-Termin und der Status wechselt auf Angemeldet. Diese Logik läuft in Power-Automate (<em>DEX_IDReorder_TeilnehmerIDs</em>), nicht in der App selbst.<br /><br />
+                            <strong>Auswirkung für Teilnehmer:</strong> sie sehen ihre Position auf der Warteliste auf der Anmelde-Seite und werden automatisch informiert, wenn ein Platz frei wird.<br /><br />
+                            <strong>Aus:</strong> bei vollem Event ist der Anmelde-Button gesperrt — neue Interessenten müssen den Organizer direkt kontaktieren.
+                          </>
+                        ) : (
+                          <>
+                            <strong>What you set here:</strong> whether full events accept a <strong>waitlist</strong> or new registrations are blocked immediately.<br /><br />
+                            <strong>Effect in the app:</strong> when waitlist is on, attendees can register past the capacity limit — they get status <strong>Waitlist</strong> with a position number. The admin center shows a dedicated <strong>waitlist tile</strong>.<br /><br />
+                            <strong>Effect in automation:</strong> waitlist sign-ups receive the <strong>waitlist confirmation mail</strong>. As soon as someone cancels, the oldest entry is auto-promoted (FIFO) — they receive a <strong>promotion mail</strong> with Outlook event and their status flips to Registered. This logic runs in Power Automate (<em>DEX_IDReorder_TeilnehmerIDs</em>), not in the app.<br /><br />
+                            <strong>Effect for attendees:</strong> they see their waitlist position on the registration page and are notified automatically when a spot frees up.<br /><br />
+                            <strong>Off:</strong> when capacity is full, the register button is locked — new interested people have to contact the organizer directly.
+                          </>
+                        )} />
                       </label>
                       <div className="toggle-wrapper" style={{ marginTop: 8 }}>
                         <label className="toggle">
@@ -4221,6 +4513,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 3: Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 4 — Felder' : 'Step 4 — Fields'}
+              </h2>
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? 'Hier definierst du, welche Daten du von den Teilnehmern bei der Anmeldung abfragen willst — vom Standardfeld bis zu eigenen Fragen.'
+                  : 'Here you define which data to ask from attendees at registration — from standard fields to your own questions.'}
+              </p>
 
               {renderStepIntro(
                 [
@@ -4281,7 +4581,21 @@ export default function EventCreationPage(): React.ReactElement {
                   <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={18} />
                     {t('create.template')}
-                    <InfoTooltip text={t('create.template.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> eine <strong>Vorlage</strong>, mit der die Felder für die Anmeldung vorausgefüllt werden — entweder <strong>Deloitte Event</strong> (leer, keine Sonderfelder) oder <strong>B2Run</strong> (mit Starter-Typ, Startblöcken, Leistungsnachweis-Option).<br /><br />
+                        <strong>Auswirkung in der App:</strong> bei B2Run werden zusätzliche Felder angelegt: <strong>Starter-Typ</strong> (Durchstarter / Funstarter), <strong>Startblock</strong>, optional <strong>Leistungsnachweis-Pflicht</strong>. Diese Felder sind im B2Run-Kontext geschäftslogisch relevant — z.B. für Split-Kapazitäten und Startblock-Zuordnung.<br /><br />
+                        <strong>Auswirkung in Automatik:</strong> bei B2Run greift in Schritt 3 der <strong>Split-Kapazitäten-Modus</strong> (getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ). Bei Deloitte Event gibt es nur eine einzige Kapazität.<br /><br />
+                        <strong>Wechsel:</strong> beim Umschalten von B2Run zurück auf Deloitte Event werden <strong>nur die B2Run-spezifischen Felder</strong> entfernt — andere Custom-Fields, die du angelegt hast, bleiben erhalten.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> a <strong>template</strong> that pre-fills the registration fields — either <strong>Deloitte event</strong> (empty, no special fields) or <strong>B2Run</strong> (with starter type, start blocks, performance proof option).<br /><br />
+                        <strong>Effect in the app:</strong> for B2Run, additional fields are added: <strong>starter type</strong> (Durchstarter / Funstarter), <strong>start block</strong>, optionally <strong>performance proof requirement</strong>. These are business-relevant in the B2Run context — e.g. for split capacities and start-block assignment.<br /><br />
+                        <strong>Effect in automation:</strong> B2Run activates the <strong>split-capacity mode</strong> in step 3 (separate slots for Durchstarter and Funstarter, own waitlists per type). Deloitte event uses a single shared capacity.<br /><br />
+                        <strong>Switching back:</strong> when toggling B2Run back to Deloitte event, <strong>only the B2Run-specific fields</strong> are removed — other custom fields you created remain.
+                      </>
+                    )} />
                   </label>
                   <select
                     className="form-select"
@@ -4305,7 +4619,19 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.startblocks')}
-                    <InfoTooltip text={t('create.startblocks.hint')} />
+                    <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> die <strong>Startblöcke</strong>, in denen Teilnehmer ihren Lauf starten — z.B. Block A (schnell), Block B (mittel), Block C (Walking). Pro Block ein eigener Eintrag.<br /><br />
+                      <strong>Auswirkung in der App:</strong> bei der Anmeldung erscheint ein <strong>Dropdown Startblock</strong>, das diese Liste enthält. Falls du oben in Schritt 3 eine Starter-Typ-Zuordnung gemacht hast, ist das Dropdown automatisch gefüllt und disabled.<br /><br />
+                      <strong>Auswirkung für Teilnehmer:</strong> der gewählte Startblock landet in der Bestätigungs-Mail und im Admin Center — wichtig damit ihr beim Veranstalter wisst, in welcher Welle wer startet.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>start blocks</strong> in which attendees begin their run — e.g. block A (fast), block B (medium), block C (walking). One entry per block.<br /><br />
+                      <strong>Effect in the app:</strong> at registration, a <strong>start-block dropdown</strong> appears that contains this list. If you set up a starter-type mapping in step 3 above, the dropdown is auto-filled and disabled.<br /><br />
+                      <strong>Effect for attendees:</strong> the selected start block ends up in the confirmation mail and in the admin center — important so you know which wave each attendee is in when coordinating with the organiser.
+                    </>
+                  )} />
                   </label>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.startblocks.hint')}
@@ -4854,6 +5180,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 4: Kommunikation ===== */}
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                  {isDe ? 'Schritt 5 — Kommunikation' : 'Step 5 — Communication'}
+                </h2>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  {isDe
+                    ? 'Hier konfigurierst du alle automatischen E-Mails und Outlook-Einladungen — Sprache, Logos, Vorlagen und Versandregeln pro Aktion.'
+                    : 'Here you configure all automated emails and Outlook invites — language, logos, templates and per-action send rules.'}
+                </p>
                 {renderStepIntro(
                   [
                     'Sprache der automatischen E-Mails wählen (Deutsch oder Englisch)',
@@ -5235,7 +5569,21 @@ export default function EventCreationPage(): React.ReactElement {
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={27} />
                     {t('create.subevents')}
-                    <InfoTooltip text={t('create.subevents.hint')} />
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
+                        <strong>Auswirkung in der App:</strong> Teilnehmer sehen die Sessions auf der Anmelde-Seite als <strong>eigene Anmelde-Bereiche</strong> — Haupt-Event und Sessions können <strong>unabhängig voneinander</strong> an- und abgewählt werden. Niemand muss zwingend das Haupt-Event mitbuchen, um sich für eine Session anzumelden.<br /><br />
+                        <strong>Auswirkung in Automatik:</strong> pro Session-An-/Abmeldung gibt es eine <strong>eigene Bestätigungs-Mail</strong> und einen <strong>eigenen Outlook-Termin</strong> (im Deloitte-Layout). Pro Session optional ein- oder ausschaltbar (Mails / Outlook).<br /><br />
+                        <strong>Empfehlung:</strong> nutze Sub-Events für mehrtägige Trainings, optionale Add-on-Workshops, oder regelmäßige Side-Sessions zu einem Haupt-Event. Bei einfachen Single-Day-Events nicht nötig.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> <strong>additional sessions</strong> attached to the main event — e.g. a training series, optional workshops, side events on the day before. One entry per session with title, location, start/end, registration cutoff and capacity.<br /><br />
+                        <strong>Effect in the app:</strong> attendees see the sessions on the registration page as <strong>independent registration blocks</strong> — main event and sessions can be picked or skipped <strong>independently</strong>. Nobody has to book the main event to sign up for a session.<br /><br />
+                        <strong>Effect in automation:</strong> each session registration / cancellation triggers its <strong>own confirmation mail</strong> and its <strong>own Outlook event</strong> (in the Deloitte template). Per session optionally toggleable (mails / Outlook).<br /><br />
+                        <strong>Tip:</strong> use sub-events for multi-day trainings, optional add-on workshops, or recurring side sessions of a main event. Not needed for simple single-day events.
+                      </>
+                    )} />
                   </label>
                   {subEvents.length === 0 && (
                     <div style={{
@@ -5493,6 +5841,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 5: Dokumente ===== */}
               <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                  {isDe ? 'Schritt 6 — Dokumente' : 'Step 6 — Documents'}
+                </h2>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  {isDe
+                    ? 'Hier lädst du alle Unterlagen hoch, die deine Teilnehmer rund um das Event brauchen — von der Agenda bis zur Anfahrt.'
+                    : 'Here you upload all documents attendees might need around the event — from the agenda to the travel directions.'}
+                </p>
                 {renderStepIntro(
                   [
                     'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
@@ -5578,6 +5934,14 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 6: Fun-Zone ===== */}
               <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                  {isDe ? 'Schritt 7 — Fun-Zone' : 'Step 7 — Fun Zone'}
+                </h2>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  {isDe
+                    ? 'Optional: ein Quiz für die Teilnehmer — Multiple-Choice-Fragen mit Live-Highscore. Perfekt für Networking, Tagungs-Pausen oder Foto-Quiz.'
+                    : 'Optional: a quiz for attendees — multiple-choice questions with live highscore. Perfect for networking, breaks at conferences, or photo quizzes.'}
+                </p>
                 {renderStepIntro(
                   [
                     'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',

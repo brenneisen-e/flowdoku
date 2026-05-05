@@ -203,6 +203,35 @@ import { Icon } from '@fluentui/react/lib/Icon';
 - Alle Icons einfarbig, skalierbar, einheitliches Design
 - Keine Emoji-Symbole (❌ 📍📅🚌📄), stattdessen Fluent UI Icons (✅ MapPin, Calendar, Bus, Page)
 
+### Wizard-Schritt-Nummerierung (1-basiert in UI / 0-basiert in Logik)
+
+**WICHTIG (ab v9.32):** Der Event-Erstellungs-Wizard hat 7 Schritte. In der UI und in jeglicher Kommunikation mit dem User (Tooltips, Hilfetexte, Handbuch, Mail-Texte, Commit-Messages) sprechen wir **immer 1-basiert**:
+
+- Schritt 1 = **Grundlagen** (Entwurf, Title, Datum, Beschreibung, Bild, Organizer, Test-Team, Check-In Team)
+- Schritt 2 = **Ort & Programm** (Veranstaltungsort, Adresse, Agenda, Transferzeiten)
+- Schritt 3 = **Kapazität & Sichtbarkeit** (Standortfilter, Mailverteiler, Filterverknüpfung, Deadlines, Teilnehmerzahl & Warteliste)
+- Schritt 4 = **Felder** (Template, eigene Abfragen)
+- Schritt 5 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
+- Schritt 6 = **Dokumente** (PDFs für Teilnehmer)
+- Schritt 7 = **Fun-Zone** (Quiz)
+
+In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 5 (Kommunikation)" statt „Schritt 4 (Kommunikation)").
+
+Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-green-dark, #4a7c1f)`) im Format `Schritt N — Name` mit einem kurzen ein-Satz-Lead darunter, was in diesem Schritt eingestellt wird.
+
+### Tooltip-Stil (ab v9.32)
+
+InfoTooltips erklären jedem Admin/Organizer **ausführlich und in Klartext**:
+
+1. **Was du hier einstellst** — die Bedeutung des Felds in plain language
+2. **Auswirkung in der App** — wo erscheint der Wert, wer sieht ihn
+3. **Auswirkung in Automatik** — welche Mails / Outlook-Termine / Power-Automate-Flows reagieren
+4. **Auswirkung für Teilnehmer** — wie wirkt sich die Einstellung auf den Teilnehmer-Flow aus
+
+Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe und Zustände gesetzt, sodass das Auge beim Überfliegen die Kerninfo sofort findet. Tooltips dürfen lang sein — die Komponente ist bereits auf max. 480px Breite ausgelegt und scrollt nicht.
+
+Die `InfoTooltip`-Komponente nimmt ab v9.32 `text: React.ReactNode` an (vorher nur `string`) — bei JSX-Tooltips bilingual als `{isDe ? <>...</> : <>...</>}` rendern. Bei einfachen Texten ist weiterhin ein String erlaubt.
+
 ### German Text / Sonderzeichen
 
 **IMPORTANT (strikt ab v6.3.0):** Alle deutschen Texte — sowohl in der sichtbaren UI als auch in Code-Kommentaren, Mail-Bodies, Outlook-Termin-Bodies, Alert-/Console-Texten, Commit-Messages, Handbuch-Einträgen (`src/webparts/dexEventPlatform/components/manual/sections/*`) und `docs/*.md` — MÜSSEN echte Sonderzeichen verwenden (ä, ö, ü, ß, Ä, Ö, Ü). **Keine ASCII-Substitutionen** (ae, oe, ue, ss). Alle Dateien sind UTF-8, Encoding-Probleme sind daher kein Argument.
