@@ -335,7 +335,7 @@ function LocationMultiSelect({
 }
 
 export default function EventCreationPage(): React.ReactElement {
-  const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
+  const { goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
@@ -1003,6 +1003,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
+  // v9.43: Just-created event-ID merken, damit der Deep-Link nach Hard-Reload
+  // den richtigen Event in der Liste findet und die Erfolgs-Banner-Meldung anzeigt.
+  const [submittedEventId, setSubmittedEventId] = React.useState<string>('');
   const [error, setError] = React.useState('');
   const [imageUploadError, setImageUploadError] = React.useState('');
   const [iconPickerOpen, setIconPickerOpen] = React.useState<string | null>(null);
@@ -1924,6 +1927,8 @@ export default function EventCreationPage(): React.ReactElement {
             }
           }
         } catch { /* E-Mail-Fehler ignorieren */ }
+        // v9.43: ID für Deep-Link merken
+        setSubmittedEventId(String(eventId));
         // Kurz 100% zeigen, dann zur Erfolgsseite
         setTimeout(() => {
           setIsSubmitting(false);
@@ -1964,20 +1969,36 @@ export default function EventCreationPage(): React.ReactElement {
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             &bdquo;{title}&ldquo; wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
-          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
+          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
               className="btn btn-primary"
-              onClick={async () => {
-                // v9.41: erst jetzt refreshen — SP hatte ein paar Sekunden Zeit,
-                // die neue Subsite + Listen API-seitig konsistent zu machen.
-                try { await refreshEvents(); } catch { /* nicht kritisch, EventListPage refreshed auf Mount */ }
-                navigate('register');
+              onClick={() => {
+                // v9.43: Hard-Reload mit Deep-Link statt Soft-Navigate. Grund:
+                // nach Event-Erstellung braucht SharePoint ein paar Sekunden, bis
+                // die neue Subsite + Listen API-konsistent sind, und der
+                // Permission-Cache des Browsers hat für die frische Subsite noch
+                // keine gültigen Tokens. Ein Soft-Navigate führt deshalb in einen
+                // Render-Crash mit weißem Screen (React #300).
+                //
+                // Der Hard-Reload räumt den Permission-Cache auf. Damit der User
+                // nicht auf der Landing-Seite landet und manuell zur Eventliste
+                // klicken muss, hängen wir einen Deep-Link ?action=event-created
+                // dran. Der Bootstrap der App liest diesen Parameter, navigiert
+                // automatisch zur Eventliste und zeigt eine grüne Erfolgs-Banner-
+                // Meldung mit dem Event-Titel.
+                const action = isEditMode ? 'event-updated' : 'event-created';
+                const targetEventId = isEditMode ? selectedEventId : submittedEventId;
+                const url = window.location.pathname + '?action=' + action + (targetEventId ? '&event=' + encodeURIComponent(targetEventId) : '');
+                window.location.href = url;
               }}
             >
-              Events anzeigen
+              Zur Übersicht
             </button>
             <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Weiteres Event erstellen</button>
           </div>
+          <p style={{ marginTop: 20, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+            <em>Hinweis: Beim Klick auf {'„Zur Übersicht“'} wird die Seite einmal neu geladen, damit SharePoint die frisch erstellte Subsite überall sauber einbindet — du landest direkt in der Eventliste mit einer Erfolgs-Meldung.</em>
+          </p>
         </div>
       </div>
     );
