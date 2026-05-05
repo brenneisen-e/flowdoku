@@ -6785,8 +6785,16 @@ export default function EventCreationPage(): React.ReactElement {
         existingEmails={organizerEmails}
         searchUsers={searchUsers}
         onAdd={({ email, displayName }) => {
-          const existingNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
-          setOrganizer([...existingNames, displayName].join('; '));
+          // WICHTIG: functional setState für `organizer`-String, sonst sehen
+          // schnelle Sequenz-Calls (Massenimport mit 10+ Namen) alle dieselbe
+          // closure-stale Version und nur der letzte Name landet, während
+          // organizerEmails über `prev => ...` korrekt akkumuliert. Das führte
+          // zu out-of-sync orgNames/orgEmails-Arrays mit falscher Namen-Email-
+          // Zuordnung im Duplikat-Hinweis.
+          setOrganizer(prev => {
+            const existingNames = (prev || '').split(';').map(s => s.trim()).filter(Boolean);
+            return [...existingNames, displayName].join('; ');
+          });
           setOrganizerEmails(prev => [...prev, email]);
         }}
       />
