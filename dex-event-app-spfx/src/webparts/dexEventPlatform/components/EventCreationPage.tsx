@@ -335,7 +335,7 @@ function LocationMultiSelect({
 }
 
 export default function EventCreationPage(): React.ReactElement {
-  const { navigate, goBack, selectedEventId, currentPage } = useNavigation();
+  const { goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
@@ -1964,20 +1964,30 @@ export default function EventCreationPage(): React.ReactElement {
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>
             &bdquo;{title}&ldquo; wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
-          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
+          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
               className="btn btn-primary"
-              onClick={async () => {
-                // v9.41: erst jetzt refreshen — SP hatte ein paar Sekunden Zeit,
-                // die neue Subsite + Listen API-seitig konsistent zu machen.
-                try { await refreshEvents(); } catch { /* nicht kritisch, EventListPage refreshed auf Mount */ }
-                navigate('register');
+              onClick={() => {
+                // v9.42: Hard reload statt Soft-Navigate. Grund: nach Event-Erstellung
+                // braucht SharePoint einige Sekunden, bis die neu angelegte Subsite +
+                // Teilnehmerliste + DEX_TeilnehmerCounter API-konsistent abrufbar sind.
+                // Der Browser-Permission-Cache hat zudem für die gerade erstellte
+                // Subsite noch keine gültigen Tokens. Ein Soft-Navigate (refreshEvents
+                // + navigate) führt deshalb zuverlässig in einen Render-Crash mit
+                // weißem Screen (React #300). Hard Reload löst das Problem definitiv:
+                // Permission-Cache wird neu aufgebaut, alle Subsite-Reads sind dann
+                // konsistent. User landet zwar auf der Landing-Seite und muss einmal
+                // auf "Registrierung" klicken, dafür ist der Flow 100% stabil.
+                window.location.reload();
               }}
             >
-              Events anzeigen
+              Zur Übersicht
             </button>
             <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Weiteres Event erstellen</button>
           </div>
+          <p style={{ marginTop: 20, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+            <em>Hinweis: Die Seite wird beim Klick auf {'„Zur Übersicht“'} einmal neu geladen, damit SharePoint die frisch erstellte Subsite überall sauber einbindet.</em>
+          </p>
         </div>
       </div>
     );
