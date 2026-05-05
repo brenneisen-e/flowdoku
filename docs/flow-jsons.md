@@ -1162,9 +1162,12 @@ CHECK_CALENDARLINK (CalendarLink vorhanden? + Einladen/Ausladen/UpdateEvent):
 
 ---
 
-# FLOW: DEX_OutlookDeclineHandler (Mail-basiert, Stand 2026-04-14)
+# FLOW: DEX_OutlookDeclineHandler (Mail-basiert + Decline-Digest, Stand 2026-05-05)
 
-**Zweck:** Wenn ein User einen Outlook-Kalender-Termin im `no_reply.events@deloitte.de`-Postfach **ablehnt**, aber in der DEX-Teilnehmerliste noch als angemeldet steht, bekommt er eine Erinnerungsmail mit einem Action-Button "Anmeldung stornieren". Der Link öffnet die DEX App im Abmelde-Modus (Deep-Link `?action=cancel&event=<eventNumber>`).
+**Zweck:** Zwei verzahnte Aufgaben in einem Flow:
+
+1. **Reminder an den Decliner** — wenn jemand einen Outlook-Kalender-Termin im `no_reply.events@deloitte.de`-Postfach ablehnt, aber in der DEX-Teilnehmerliste noch als angemeldet steht, bekommt er eine Erinnerungsmail mit Action-Button „Anmeldung stornieren". Der Link öffnet die DEX App im Abmelde-Modus (Deep-Link `?action=cancel&event=<eventNumber>`).
+2. **Digest an die Organizer** *(seit 2026-05-05, app-seitig ab v9.38 mit `OutlookDeclineDigest`-Template)* — direkt nach dem Reminder fragt der Flow den **echten Outlook-Termin** via `V3CalendarGetItem` ab und liest pro Attendee den `status.response`-Wert aus. Alle mit `response == 'declined'` werden gegen die Teilnehmerliste gegen-gecheckt; jeder, der dort noch `Status == 'Angemeldet'` steht, landet als Zeile in einer HTML-Tabelle. Die Tabelle geht als `OutlookDeclineDigest`-Mail an die Organizer.
 
 **Trigger:** `When a new email arrives (V3)` auf der Shared Mailbox — nicht `When an event is modified`, weil der Event-Trigger keine pro-Attendee-`status.response`-Felder liefert und damit nicht erkennbar ist, WER abgelehnt hat.
 
@@ -1487,10 +1490,212 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
    │                            │
    │                            └── Yes: Create_Reminder_Queue_Item in DEX_Emails
    │                                     (EmailType='OutlookDeclineReminder')
+   │                                     │
+   │                                     ├── Get_Outlook_EventId (Compose: DEX_Events.OutlookEventId)
+   │                                     │
+   │                                     └── Has_Outlook_Event? (length > 0)
+   │                                            │
+   │                                            └── Yes: Get_Outlook_Event (V3CalendarGetItem)
+   │                                                     │
+   │                                                     ├── Set_variable (StillRegisteredCount = 0)
+   │                                                     ├── Filter_Declined_Attendees (status.response == 'declined')
+   │                                                     │
+   │                                                     ├── Apply_To_Each_Decliner:
+   │                                                     │     └── Get_Decliner_Status (Teilnehmerliste, ParticipantEmail + Status='Angemeldet')
+   │                                                     │           └── Condition_Still_Registered? (length > 0)
+   │                                                     │                 └── Yes: Increment_Count
+   │                                                     │                          + Append_Decliner_Row to DeclineRowsHtml
+   │                                                     │
+   │                                                     ├── Compose_DeclineList_Table (HTML <table>)
+   │                                                     │
+   │                                                     └── Has_Decliners? (StillRegisteredCount > 0)
+   │                                                            └── Yes: Get_Digest_Template (DEX_EmailTemplates,
+   │                                                                              OutlookDeclineDigest, Lang)
+   │                                                                     + Create_Digest_Queue_Item in DEX_Emails
+   │                                                                              (EmailType='OutlookDeclineDigest',
+   │                                                                              Recipient=OrganizerEmail)
    │
    └── DEX_SEND_MAIL picks up Pending Mails und sendet mit Template,
        {{CancelUrl}} zeigt auf DEX.aspx?action=cancel&event=<eventNumber>
+       (Digest-Mail rendert {{DeclineCount}} + {{DeclineList}} aus dem
+        OutlookDeclineDigest-Template, Recipients = Organizer-Mails.)
 ```
+
+## Decline-Digest (Approach B via Outlook-Connector, Stand 2026-05-05)
+
+**Hintergrund:** Vor der Digest-Erweiterung gab es nur den Reminder an den einzelnen Decliner. Die Organizer hatten **keine konsolidierte Sicht** darüber, wer aktuell zwar in der Kapazität zählt (Status `Angemeldet` in der Teilnehmerliste), den Outlook-Termin aber abgelehnt hat. Das ist relevant für Catering-/Hotel-/Bus-Planung.
+
+**Zwei Implementierungs-Optionen waren auf dem Tisch:**
+
+| Approach | Quelle der Decliner-Liste | Catched silent declines | Reflektiert Re-Accepts |
+|----------|---------------------------|--------------------------|-------------------------|
+| A — über `DEX_Emails` | Eigene OutlookDeclineReminder-Records dieses Events | ❌ Nein (nur Decliner mit „Antwort senden") | ❌ Nein (Reminder-Eintrag bleibt) |
+| **B — Outlook-Connector** | `attendees[].status.response` aus dem echten Outlook-Termin | ✅ Ja | ✅ Ja |
+
+→ **Approach B implementiert.** Approach A wurde verworfen und nicht deployed.
+
+**Voraussetzung für B:** das Feld `OutlookEventId` in `DEX_Events` ist gesetzt — wird beim erfolgreichen `DEX_CreateOutlookEvent`-Run zurückgeschrieben. Falls leer (alte Events vor Outlook-Integration), springt der Flow über `Has_Outlook_Event?` in den No-Branch und überspringt den Digest stillschweigend.
+
+### UI-Anleitung — Schritte hinzufügen (komplett, Stand 2026-05-05)
+
+Alle folgenden Schritte werden **innerhalb des `No_Reminder_Yet`-If-yes-Branches** angefügt, **nach** `Create_Reminder_Queue_Item`. Voraussetzung sind die zwei Top-Level-`InitializeVariable`-Actions außerhalb der äußeren If-Bedingung:
+
+- `Init_DeclineRows_HTML` — String, default leer.
+- `Init_StillRegistered_Count` — Integer, default `0`. **Run after** `Init_DeclineRows_HTML` Succeeded.
+
+Diese zwei Actions müssen **vor** dem `Is_Decline_Mail`-If liegen (siehe finaler Flow-JSON unten).
+
+#### 1. `Get_Outlook_EventId` (Compose)
+
+- **+ New step** → **Data Operation — Compose**.
+- **Inputs (fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['OutlookEventId'], '')`
+- **Configure run after** → `Create_Reminder_Queue_Item` → `Succeeded`.
+- Rename → `Get_Outlook_EventId`.
+
+#### 2. `Has_Outlook_Event` (Condition)
+
+- **+ New step** → **Control — Condition**.
+- Linke Seite (fx): `length(outputs('Get_Outlook_EventId'))`
+- Operator: `is greater than`
+- Rechte Seite: `0`
+- Rename → `Has_Outlook_Event`.
+
+Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt leer (kein Outlook-Termin → kein Digest).
+
+#### 3. `Get_Outlook_Event` (Office 365 Outlook — Get event V3)
+
+- **+ Add an action** → **Office 365 Outlook — Get event (V3)**.
+- Connection: gleiche, die bereits den Trigger bedient (Account mit Zugriff auf `no_reply.events@deloitte.de`).
+- **Calendar Id:** der Default-Kalender des Postfachs. In unserem Tenant aktuell:
+  ```
+  AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=
+  ```
+  *(Bei Tenant-Wechsel: über die Connector-Dropdowns neu picken — der Wert ändert sich.)*
+- **Event Id (fx):** `outputs('Get_Outlook_EventId')`
+
+#### 4. `Set_variable` (Set variable — StillRegisteredCount = 0)
+
+*Technisch redundant (PA-Variables resetten beim Run-Start), aber explizit für die Lesbarkeit.*
+
+- **+ Add an action** → **Variables — Set variable**.
+- Name: `StillRegisteredCount`
+- Value: `0`
+- Configure run after → `Get_Outlook_Event` → `Succeeded`.
+
+#### 5. `Filter_Declined_Attendees` (Data Operation — Filter array)
+
+- **+ Add an action** → **Data Operation — Filter array**.
+- **From (fx):** `coalesce(outputs('Get_Outlook_Event')?['body/attendees'], createArray())`
+  *(coalesce: Events ohne Attendees → leeres Array, kein Null-Pointer.)*
+- **Edit in advanced mode** und Filter-Expression:
+  ```
+  @equals(toLower(coalesce(item()?['status']?['response'], '')), 'declined')
+  ```
+- Run after `Set_variable` Succeeded.
+
+#### 6. `Apply_To_Each_Decliner` (Apply to each)
+
+- **+ Add an action** → **Control — Apply to each**.
+- Output (fx): `body('Filter_Declined_Attendees')`
+- Run after `Filter_Declined_Attendees` Succeeded.
+
+**Innerhalb der Loop:**
+
+##### 6.a — `Get_Decliner_Status` (SharePoint — Get items)
+
+- Site Address (fx): `concat('https://deudeloitte.sharepoint.com', replace(first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl'], 'https://deudeloitte.sharepoint.com', ''))`
+- List Name: leer lassen oder `Teilnehmer` — die Connection nutzt das Filter-Query, der List-Name ist nur kosmetisch.
+- Filter Query (fx):
+  ```
+  concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status eq ''Angemeldet''')
+  ```
+- Top Count: `1`
+
+##### 6.b — `Condition_Still_Registered` (Condition)
+
+- Linke Seite (fx): `length(body('Get_Decliner_Status')?['value'])`
+- Operator: `is greater than`
+- Rechte Seite: `0`
+
+**Im `If yes`-Branch:**
+
+###### 6.b.i — `Increment_Count` (Variables — Increment variable)
+
+- Name: `StillRegisteredCount`
+- Value: `1`
+
+###### 6.b.ii — `Append_Decliner_Row` (Variables — Append to string variable)
+
+- Name: `DeclineRowsHtml`
+- Value (fx, eine lange Zeile):
+  ```
+  concat('<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;">', coalesce(first(body('Get_Decliner_Status')?['value'])?['Vorname'], ''), ' ', coalesce(first(body('Get_Decliner_Status')?['value'])?['Nachname'], ''), '</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], '</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">', coalesce(first(body('Get_Decliner_Status')?['value'])?['Department'], '—'), '</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">', if(empty(first(body('Get_Decliner_Status')?['value'])?['RegistrationDate']), '—', formatDateTime(first(body('Get_Decliner_Status')?['value'])?['RegistrationDate'], 'dd.MM.yyyy')), '</td></tr>')
+  ```
+- Run after `Increment_Count` Succeeded.
+
+`If no`-Branch von `Condition_Still_Registered` bleibt leer.
+
+#### 7. `Compose_DeclineList_Table` (Data Operation — Compose, **außerhalb** der Loop)
+
+- Inputs (fx):
+  ```
+  concat('<table style="border-collapse:collapse;width:100%;font-size:13px;margin:12px 0;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px 10px;text-align:left;">Name</th><th style="padding:8px 10px;text-align:left;">E-Mail</th><th style="padding:8px 10px;text-align:left;">Department</th><th style="padding:8px 10px;text-align:left;">Anmeldedatum</th></tr></thead><tbody>', variables('DeclineRowsHtml'), '</tbody></table>')
+  ```
+- Run after `Apply_To_Each_Decliner` Succeeded.
+
+#### 8. `Has_Decliners` (Condition)
+
+- Linke Seite (fx): `variables('StillRegisteredCount')`
+- Operator: `is greater than`
+- Rechte Seite: `0`
+- Run after `Compose_DeclineList_Table` Succeeded.
+
+`If no` bleibt leer (alle Decliner sind schon abgemeldet → kein Digest nötig).
+
+**Im `If yes`-Branch:**
+
+##### 8.a — `Get_Digest_Template` (SharePoint — Get items)
+
+- Site Address: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
+- List GUID: `2c428d35-e6fb-42f9-8a20-580acd6d05f4` (DEX_EmailTemplates)
+- Filter Query (fx):
+  ```
+  concat('TemplateType eq ''OutlookDeclineDigest'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')
+  ```
+- Top Count: `1`
+
+##### 8.b — `Create_Digest_Queue_Item` (SharePoint — Create item, in `DEX_Emails`)
+
+- Site Address: gleich
+- List GUID: `57aa0840-df98-41ae-a39b-323c0b80ae3b` (DEX_Emails)
+- **Title (fx):**
+  ```
+  replace(replace(coalesce(first(outputs('Get_Digest_Template')?['body/value'])?['Subject'], 'FYI: attendees declined Outlook'), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{DeclineCount}}', string(variables('StillRegisteredCount')))
+  ```
+- **Recipient (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['OrganizerEmail']`
+- **RecipientName:** Klartext `Organizer`
+- **EmailType Value:** `OutlookDeclineDigest`
+- **EventTitle (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['Title']`
+- **EventId (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['ID']`
+- **Status Value:** `Pending`
+- **Body (fx):**
+  ```
+  replace(replace(replace(coalesce(first(outputs('Get_Digest_Template')?['body/value'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title']), '{{DeclineCount}}', string(variables('StillRegisteredCount'))), '{{DeclineList}}', outputs('Compose_DeclineList_Table'))
+  ```
+- Run after `Get_Digest_Template` Succeeded.
+
+`DEX_SEND_MAIL` braucht keine Änderung — der `OutlookDeclineDigest`-Eintrag verhält sich wie jeder andere Pending-Mail-Eintrag und wird gerendert + versendet.
+
+### Test-Plan für den Digest
+
+| Szenario | Erwartung |
+|----------|-----------|
+| User lehnt mit „Send response" ab | Reminder + Digest werden gequeued. Digest enthält den User in der Tabelle. |
+| User lehnt mit „Don't send response" ab | **Reminder feuert nicht** (kein Mail-Trigger), aber **beim nächsten Decline** im selben Event ist er im Digest enthalten — weil der Digest direkt aus `attendees[].status.response` liest. |
+| User lehnt ab und akzeptiert dann doch | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `status.response` zeigt jetzt `accepted`. |
+| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status eq 'Angemeldet'`. |
+| Event hat keinen Outlook-Termin (`OutlookEventId` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
+| Event hat 0 noch-angemeldete Decliner | `Has_Decliners` ist false → kein Digest gequeued. |
 
 ## App-seitige Unterstützung (bereits implementiert)
 
