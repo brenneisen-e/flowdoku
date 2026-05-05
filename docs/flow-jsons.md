@@ -1495,19 +1495,17 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
    │                                     │
    │                                     └── Has_Outlook_Event? (length > 0)
    │                                            │
-   │                                            └── Yes: Get_Outlook_Event (V3CalendarGetItem)
-   │                                                     │
+   │                                            └── Yes:
+   │                                                     ├── Find_Outlook_Event (V4CalendarGetItems, $filter=iCalUId)
+   │                                                     ├── Get_Outlook_Event_Full (V3CalendarGetItem, id=V4.id)
    │                                                     ├── Set_variable (StillRegisteredCount = 0)
    │                                                     ├── Filter_Declined_Attendees (status.response == 'declined')
-   │                                                     │
    │                                                     ├── Apply_To_Each_Decliner:
    │                                                     │     └── Get_Decliner_Status (Teilnehmerliste, ParticipantEmail + Status='Angemeldet')
    │                                                     │           └── Condition_Still_Registered? (length > 0)
    │                                                     │                 └── Yes: Increment_Count
    │                                                     │                          + Append_Decliner_Row to DeclineRowsHtml
-   │                                                     │
    │                                                     ├── Compose_DeclineList_Table (HTML <table>)
-   │                                                     │
    │                                                     └── Has_Decliners? (StillRegisteredCount > 0)
    │                                                            └── Yes: Get_Digest_Template (DEX_EmailTemplates,
    │                                                                              OutlookDeclineDigest, Lang)
@@ -1534,7 +1532,9 @@ Trigger: When a new email arrives (V3) — no_reply.events@deloitte.de / Inbox
 
 → **Approach B implementiert.** Approach A wurde verworfen und nicht deployed.
 
-**Voraussetzung für B:** das Feld `CalendarLink` in `DEX_Events` ist gesetzt — wird beim erfolgreichen `DEX_CreateOutlookEvent`-Run zurückgeschrieben (enthält die `iCalUId` des Outlook-Termins, die `V3CalendarGetItem` als Lookup-Schlüssel akzeptiert). Falls leer (alte Events vor Outlook-Integration oder DEX_CreateOutlookEvent-Fehler), springt der Flow über `Has_Outlook_Event?` in den No-Branch und überspringt den Digest stillschweigend.
+**Voraussetzung für B:** das Feld `CalendarLink` in `DEX_Events` ist gesetzt — wird beim erfolgreichen `DEX_CreateOutlookEvent`-Run zurückgeschrieben (enthält die `iCalUId` des Outlook-Termins). Falls leer (alte Events vor Outlook-Integration oder DEX_CreateOutlookEvent-Fehler), springt der Flow über `Has_Outlook_Event?` in den No-Branch und überspringt den Digest stillschweigend.
+
+**WICHTIG — Connector-Wahl (Bug-Fix 2026-05-05):** Approach B braucht die volle Attendee-Status-Liste pro Person (`attendees[].status.response`). Diese liefert **nur** `V3CalendarGetItem` (`Get event (V3)`). Der naheliegende `V4CalendarGetItems` (`Get events (V4)`) liefert nur flache Strings (`requiredAttendees: "a@x.de;b@x.de"`, `responseType: "organizer"` als globaler Mailbox-Status) — damit ist der Decline-Filter immer leer und der Digest läuft nie. V3 nimmt aber nur die Outlook Event Id (`AAMkAD…`-Token), nicht die `iCalUId`. Lösung: V4 zum Auffinden via `iCalUId` (liefert die `id` als Output), dann V3 mit dieser `id` für das volle Event. Siehe Schritte 3 + 3a unten.
 
 > **Hinweis zur Spalten-Wahl:** in der `DEX_Events`-Liste gibt es zwei Outlook-bezogene Spalten — `OutlookEventId` und `CalendarLink`. Der Decline-Digest nutzt **`CalendarLink`** (= iCalUId), weil `V3CalendarGetItem` damit über alle Mailbox-Kalender hinweg sucht und nicht an die Calendar-ID der Mailbox gekoppelt ist. `OutlookEventId` wird vom App-Code primär genutzt (siehe `EventService.findOutlookEvent`), kann aber auf alten Events fehlen — `CalendarLink` ist die robustere Quelle.
 
@@ -1564,16 +1564,33 @@ Diese zwei Actions müssen **vor** dem `Is_Decline_Mail`-If liegen (siehe finale
 
 Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt leer (kein Outlook-Termin → kein Digest).
 
-#### 3. `Get_Outlook_Event` (Office 365 Outlook — Get event V3)
+#### 3. `Find_Outlook_Event` (Office 365 Outlook — Get events V4)
 
-- **+ Add an action** → **Office 365 Outlook — Get event (V3)**.
+**WICHTIG (Bug-Fix 2026-05-05):** Hier sind ZWEI Schritte nötig — `Get events (V4)` zum Auffinden via `iCalUId`, dann `Get event (V3)` zum Holen der vollen Attendee-Liste mit Status.
+
+Hintergrund: `V4CalendarGetItems` (`Get events (V4)`) erlaubt zwar `$filter=iCalUId eq '...'`, liefert aber im Response nur **flache String-Felder** zurück (`requiredAttendees: "a@x.de;b@x.de;"`, `responseType: "organizer"` als globaler Mailbox-Status). Es gibt **kein** `attendees`-Array mit `status.response` pro Person. Filter auf `item()?['status']?['response'] == 'declined'` läuft dadurch immer ins Leere → Digest feuert nie.
+
+`V3CalendarGetItem` (`Get event (V3)`) liefert dagegen das volle Event-Objekt inklusive `attendees: [{ emailAddress: { address, name }, status: { response, time } }]` — aber nur per **Outlook Event Id** (das lange `AAMkAD…`-Token), nicht per `iCalUId`. Deshalb V4→V3-Kette: V4 findet das Event per `iCalUId` und liefert die `id` mit, V3 holt damit das volle Schema.
+
+- **+ Add an action** → **Office 365 Outlook — Get events (V4)** (Operation `V4CalendarGetItems`).
 - Connection: gleiche, die bereits den Trigger bedient (Account mit Zugriff auf `no_reply.events@deloitte.de`).
 - **Calendar Id:** der Default-Kalender des Postfachs. In unserem Tenant aktuell:
   ```
   AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=
   ```
   *(Bei Tenant-Wechsel: über die Connector-Dropdowns neu picken — der Wert ändert sich.)*
-- **Event Id (fx):** `outputs('Get_Outlook_EventId')`
+- **Filter Query (fx):** `concat('iCalUId eq ''', outputs('Get_Outlook_EventId'), '''')`
+- **Top:** `1`
+- Rename → `Find_Outlook_Event`.
+
+#### 3a. `Get_Outlook_Event_Full` (Office 365 Outlook — Get event V3)
+
+- **+ Add an action** → **Office 365 Outlook — Get event (V3)** (Operation `V3CalendarGetItem`).
+- Connection: gleiche wie bei `Find_Outlook_Event`.
+- **Calendar Id:** gleicher Wert wie bei `Find_Outlook_Event` (über Dropdown picken).
+- **Event Id (fx):** `first(body('Find_Outlook_Event')?['value'])?['id']`
+- Run after `Find_Outlook_Event` Succeeded.
+- Rename → `Get_Outlook_Event_Full`.
 
 #### 4. `Set_variable` (Set variable — StillRegisteredCount = 0)
 
@@ -1582,13 +1599,13 @@ Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt 
 - **+ Add an action** → **Variables — Set variable**.
 - Name: `StillRegisteredCount`
 - Value: `0`
-- Configure run after → `Get_Outlook_Event` → `Succeeded`.
+- Configure run after → `Get_Outlook_Event_Full` → `Succeeded`.
 
 #### 5. `Filter_Declined_Attendees` (Data Operation — Filter array)
 
 - **+ Add an action** → **Data Operation — Filter array**.
-- **From (fx):** `coalesce(first(body('Get_Outlook_Event')?['value'])?['attendees'], json('[]'))`
-  *(`first(body('...')?['value'])` weil `Get events (V4)` ein Array zurückliefert — wir picken das erste/einzige Match. `json('[]')` als Fallback statt `createArray()`, weil `createArray()` ohne Args einen `Unable to process template language expressions`-Fehler wirft.)*
+- **From (fx):** `coalesce(body('Get_Outlook_Event_Full')?['attendees'], json('[]'))`
+  *(V3 liefert das Event direkt — kein `value`-Array drumherum wie bei V4. `attendees` ist auf der Top-Level vom Body. `json('[]')` als Fallback statt `createArray()`, weil `createArray()` ohne Args einen `Unable to process template language expressions`-Fehler wirft.)*
   *(coalesce: Events ohne Attendees → leeres Array, kein Null-Pointer.)*
 - **Edit in advanced mode** und Filter-Expression:
   ```
@@ -1750,7 +1767,7 @@ Der Body enthält einen großen roten "Anmeldung stornieren" / "Cancel my regist
 
 **Wichtig:** Die `Recipient`-Spalte in `DEX_Emails` ist ein **Note-Feld** (Multi-line text, weil es auch `;`-separierte Mehrfach-Empfänger enthalten kann). SP-OData `$filter` erlaubt keinen `eq` auf Note-Feldern. Deshalb filtert `Get_Existing_Reminder` nur nach `EmailType + EventId`, und ein nachgeschalteter `Filter array`-Schritt (`Filter_By_Recipient`) pickt den aktuellen Sender heraus — mit Semikolon-Wrapping um Teil-Matches (z.B. `alice@x.de` in `alicebackup@x.de`) zu vermeiden.
 
-**Neu in v2 (2026-05-05):** Direkt nach `Create_Reminder_Queue_Item` ein paralleler Digest-Pfad — `Get_Outlook_EventId` (liest **`CalendarLink`** aus `DEX_Events`, das ist die iCalUId) → `Has_Outlook_Event?` → `Get_Outlook_Event` (Office-365-Outlook-Connector `V3CalendarGetItem`) → `Filter_Declined_Attendees` (`status.response == 'declined'`) → pro Decliner einen SP-Lookup auf der Teilnehmerliste (`Status='Angemeldet'`-Filter) → HTML-Tabelle bauen → `OutlookDeclineDigest`-Item in `DEX_Emails` queuen mit Recipient = Organizer-Mail.
+**Neu in v2 (2026-05-05, Bug-Fix-Update):** Direkt nach `Create_Reminder_Queue_Item` ein paralleler Digest-Pfad — `Get_Outlook_EventId` (liest **`CalendarLink`** aus `DEX_Events`, das ist die iCalUId) → `Has_Outlook_Event?` → `Find_Outlook_Event` (Office-365-Outlook `V4CalendarGetItems`, `$filter=iCalUId`) → `Get_Outlook_Event_Full` (`V3CalendarGetItem`, `id` aus V4-Result) → `Filter_Declined_Attendees` auf `body('Get_Outlook_Event_Full')?['attendees']` (`status.response == 'declined'`) → pro Decliner einen SP-Lookup auf der Teilnehmerliste (`Status='Angemeldet'`-Filter) → HTML-Tabelle bauen → `OutlookDeclineDigest`-Item in `DEX_Emails` queuen mit Recipient = Organizer-Mail. Die Zwei-Stufen-V4→V3-Kette ist nötig weil V4 zwar nach iCalUId filtern kann aber nur flache String-Felder zurückgibt (kein `attendees`-Array mit `status.response`), während V3 das volle Schema liefert aber nur per Outlook-EntryId angesprochen werden kann.
 
 ### Trigger
 
@@ -1851,17 +1868,18 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
     "expression": { "and": [ { "greater": [ "@length(outputs('Get_Outlook_EventId'))", 0 ] } ] },
     "runAfter": { "Get_Outlook_EventId": [ "Succeeded" ] },
     "actions": {
-      "Get_Outlook_Event": {
+      "Find_Outlook_Event": {
         "type": "OpenApiConnection",
         "inputs": {
           "parameters": {
             "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
-            "id": "@outputs('Get_Outlook_EventId')"
+            "$filter": "@concat('iCalUId eq ''', outputs('Get_Outlook_EventId'), '''')",
+            "$top": 1
           },
           "host": {
             "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
             "connection": "shared_office365",
-            "operationId": "V3CalendarGetItem"
+            "operationId": "V4CalendarGetItems"
           },
           "retryPolicy": {
             "type": "exponential",
@@ -1870,15 +1888,30 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
           }
         }
       },
+      "Get_Outlook_Event_Full": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
+            "id": "@first(body('Find_Outlook_Event')?['value'])?['id']"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+            "connection": "shared_office365",
+            "operationId": "V3CalendarGetItem"
+          }
+        },
+        "runAfter": { "Find_Outlook_Event": [ "Succeeded" ] }
+      },
       "Set_variable": {
         "type": "SetVariable",
         "inputs": { "name": "StillRegisteredCount", "value": 0 },
-        "runAfter": { "Get_Outlook_Event": [ "Succeeded" ] }
+        "runAfter": { "Get_Outlook_Event_Full": [ "Succeeded" ] }
       },
       "Filter_Declined_Attendees": {
         "type": "Query",
         "inputs": {
-          "from": "@coalesce(first(body('Get_Outlook_Event')?['value'])?['attendees'], json('[]'))",
+          "from": "@coalesce(body('Get_Outlook_Event_Full')?['attendees'], json('[]'))",
           "where": "@equals(toLower(coalesce(item()?['status']?['response'], '')), 'declined')"
         },
         "runAfter": { "Set_variable": [ "Succeeded" ] }
@@ -1989,14 +2022,13 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
 
 ### Hinweise zur Calendar-Lookup-Logik
 
-- **`Get_Outlook_Event` table = Default-Calendar-ID des Postfachs `no_reply.events@deloitte.de`.** Aktuell hardcoded als die lange Base64-ID. Bei Tenant-Migration muss der Wert über die Office-365-Outlook-Connector-Dropdowns (Calendar Id) neu picked werden — die Connector-UI tauscht ihn dann automatisch im Code-View.
-- **`Get_Outlook_Event` id = `outputs('Get_Outlook_EventId')`** = `iCalUId` aus `DEX_Events.CalendarLink`. `V3CalendarGetItem` akzeptiert die iCalUId als Lookup-Schlüssel und sucht damit über alle Mailbox-Kalender hinweg — anders als die kalenderspezifische `EntryId`, die mailbox-gebunden wäre.
+- **`Find_Outlook_Event` / `Get_Outlook_Event_Full` table = Default-Calendar-ID des Postfachs `no_reply.events@deloitte.de`.** Aktuell hardcoded als die lange Base64-ID. Bei Tenant-Migration muss der Wert über die Office-365-Outlook-Connector-Dropdowns (Calendar Id) neu picked werden — die Connector-UI tauscht ihn dann automatisch im Code-View.
+- **Zwei-Stufen-Lookup V4 → V3 (Bug-Fix 2026-05-05):** `Find_Outlook_Event` ruft `V4CalendarGetItems` (`Get events (V4)`) mit `$filter=iCalUId eq '<id>'` auf — die iCalUId stammt aus `DEX_Events.CalendarLink`. V4 liefert das Event zwar zurück, aber **nur mit flachen String-Feldern** (`requiredAttendees: "a@x.de;b@x.de"`, `responseType: "organizer"` als globaler Mailbox-Status) — es gibt **kein** `attendees`-Array mit `status.response` pro Person. Deshalb muss anschließend `Get_Outlook_Event_Full` per `V3CalendarGetItem` (`Get event (V3)`) das volle Event holen, mit `id = first(body('Find_Outlook_Event')?['value'])?['id']` (Outlook Event ID aus dem V4-Result). Erst V3 liefert `attendees: [{ emailAddress: { address, name }, status: { response, time } }]` — und nur damit findet `Filter_Declined_Attendees` echte Decliner. Vor dem Fix wurde versehentlich nur V4 genutzt → Filter immer leer → Digest feuerte nie.
+- **Warum nicht V3 direkt mit iCalUId?** `V3CalendarGetItem` erwartet die **Outlook EntryId** (das lange `AAMkAD…`-Token), nicht die iCalUId. Übergibt man ihm eine iCalUId, antwortet der Connector mit `ErrorInvalidIdMalformed`. V4 ist dagegen filter-fähig auf iCalUId. Daher die Kette V4 (find by iCalUId) → V3 (fetch full by EntryId).
 - **Get_Decliner_Status table = `Teilnehmer`** (nicht leer lassen — leerer table-Wert führte in einer Vorab-Version zu HTTP 400 auf der Subsite-Liste).
-- **Outlook-Event-Lookup nutzt `Get events (V4)` (Plural) mit `$filter=iCalUId eq '<id>'`, NICHT `Get event (V4)` (Singular).** Die Singular-Action (`V3CalendarGetItem`) erwartet eine **EntryId** — wenn man ihr eine **iCalUId** (aus `DEX_Events.CalendarLink`) übergibt, antwortet der Connector mit `ErrorInvalidIdMalformed`. Mit Plural + Filter umgeht man das, weil iCalUId eine Standard-Property der Event-Resource in Microsoft Graph ist und filterbar.
-- **`Filter_Declined_Attendees.from = json('[]')` als Fallback, NICHT `createArray()`.** PA-`createArray()` braucht mindestens 1 Parameter; ohne Args wirft es einen Compile-Error („createArray expects a comma separated list of parameters"). `json('[]')` parst den String als JSON und liefert ein leeres Array — das saubere PA-Idiom für „leeres Array, falls null".
-- **Plural-Result-Access:** seit der Umstellung auf `Get events (V4)` ist `body('Get_Outlook_Event')?['value']` ein Array. Zugriff auf den einzelnen Treffer immer mit `first(body('Get_Outlook_Event')?['value'])?['attendees']` — NICHT mehr mit `outputs('Get_Outlook_Event')?['body/attendees']`.
+- **`Filter_Declined_Attendees.from = coalesce(body('Get_Outlook_Event_Full')?['attendees'], json('[]'))`.** V3 liefert das Event direkt im Body — kein `value`-Array drumherum wie bei V4. `attendees` ist Top-Level. `json('[]')` als Fallback, NICHT `createArray()`: PA-`createArray()` braucht mindestens 1 Parameter; ohne Args wirft es einen Compile-Error („createArray expects a comma separated list of parameters"). `json('[]')` parst den String als JSON und liefert ein leeres Array — das saubere PA-Idiom für „leeres Array, falls null".
 - **`Apply_To_Each_Decliner.runtimeConfiguration.concurrency.repetitions = 1`** ist Pflicht. Power Automate führt `Foreach` per Default mit bis zu **20 parallelen Iterationen** aus. Innerhalb der Loop wird an `DeclineRowsHtml` (string) appended und `StillRegisteredCount` (int) incrementiert — beides shared Variables. Bei paralleler Ausführung gehen Schreibvorgänge verloren (lost update) und die Digest-Tabelle hat verstümmelte Zeilen / falschen Counter. Sequentiell (`repetitions: 1`) löst das — Performance-Verlust ist minimal, weil pro Decliner nur ein SP-Read und zwei Variable-Writes laufen.
-- **`Get_Outlook_Event.retryPolicy = exponential, count: 4, interval: PT5S`** fängt transiente Outlook-Connector-Fehler (`429 Too Many Requests`, `503`, kurzfristige Timeouts) ab. Ohne Retry würde der ganze Flow-Run kippen und der Digest für diese eine Decline-Mail wäre verloren — der Reminder ist ja bereits gequeued, also stünde der Decliner danach im nächsten Digest mit einer Run-Zeit Verspätung. Mit Retry ist beides resilient.
+- **`Find_Outlook_Event.retryPolicy = exponential, count: 4, interval: PT5S`** fängt transiente Outlook-Connector-Fehler (`429 Too Many Requests`, `503`, kurzfristige Timeouts) am V4-Lookup ab. Ohne Retry würde der ganze Flow-Run kippen und der Digest für diese eine Decline-Mail wäre verloren — der Reminder ist ja bereits gequeued, also stünde der Decliner danach im nächsten Digest mit einer Run-Zeit Verspätung. Mit Retry ist beides resilient. (Auf `Get_Outlook_Event_Full` ist kein Retry nötig — wenn V4 erfolgreich war, ist die EntryId sofort gültig und V3 antwortet zuverlässig.)
 
 ### Test-Plan Decline-Digest (Approach B)
 
