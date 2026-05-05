@@ -55,6 +55,29 @@ export function applyEventTemplateOverride(
   }
 }
 
+/**
+ * Strip SharePoint-Note-Field-Wrapper.
+ *
+ * Seit der Migration der Felder Organizer + OrganizerEmail von Single-Line-Text
+ * auf Note (Multi-Line-Text, Plain) — nötig wegen 255-Char-Limit bei 10+ Co-
+ * Organizern — wickelt SharePoint die Werte beim REST-Read in einen
+ * `<div class="ExternalClassXXXX">…</div>`-Container. Das passiert obwohl
+ * `RichText: false` gesetzt ist und ist eine bekannte SP-Quirk.
+ *
+ * Folge ohne Strip: `(e.Organizer || '').split(';')` zerhackt den Wrapper an
+ * den Semikolons, das erste und letzte Stück enthalten dann die Tag-Reste
+ * `<div class="…">…` bzw. `…</div>` und landen so in den Chip-Labels.
+ *
+ * Idempotent: Eingaben ohne Wrapper bleiben unverändert.
+ */
+export function stripSpNoteWrapper(value: string | null | undefined): string {
+  if (!value) return '';
+  let v = value.trim();
+  v = v.replace(/^<div\b[^>]*>/i, '');
+  v = v.replace(/<\/div>\s*$/i, '');
+  return v.trim();
+}
+
 export function formatOrganizerList(organizers: string[], lang: string): string {
   const names: string[] = [];
   for (const entry of organizers || []) {
@@ -313,8 +336,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       type: (e.EventType as DeloitteEvent['type'])
         || (customFields.some(f => f.id === 'b2run_startblock') ? 'B2Run' : 'Other'),
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
-      organizers: (e.Organizer || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
-      organizerEmails: (e.OrganizerEmail || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
+      organizers: (stripSpNoteWrapper(e.Organizer) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
+      organizerEmails: (stripSpNoteWrapper(e.OrganizerEmail) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       location: e.Location || '',
       locationAddress: (() => {
         try {
