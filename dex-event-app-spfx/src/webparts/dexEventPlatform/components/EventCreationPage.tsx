@@ -1890,8 +1890,12 @@ export default function EventCreationPage(): React.ReactElement {
                 const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(eventId), compressed);
                 if (uploadedUrl) {
                   await svc.updateEventImageUrl(Number(eventId), uploadedUrl);
-                  // Events neu laden, damit das gerade hochgeladene Bild sofort sichtbar ist
-                  await refreshEvents();
+                  // v9.41: KEIN refreshEvents direkt nach Create. Die Subsite ist
+                  // gerade erst angelegt und die SP-API ist noch nicht konsistent —
+                  // ein Refresh hier kann zu 400/404 auf den Subsite-Listen und im
+                  // schlimmsten Fall zu einem React-Render-Crash führen. Refresh
+                  // wird verschoben auf den Klick 'Events anzeigen' auf der
+                  // Erfolgsseite, dann hat SP genug Zeit zum Propagieren.
                 } else {
                   setImageUploadError('Bild-Upload fehlgeschlagen.');
                 }
@@ -1961,7 +1965,17 @@ export default function EventCreationPage(): React.ReactElement {
             &bdquo;{title}&ldquo; wurde {isEditMode ? 'aktualisiert' : 'angelegt'}.
           </p>
           <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
-            <button className="btn btn-primary" onClick={() => navigate('register')}>Events anzeigen</button>
+            <button
+              className="btn btn-primary"
+              onClick={async () => {
+                // v9.41: erst jetzt refreshen — SP hatte ein paar Sekunden Zeit,
+                // die neue Subsite + Listen API-seitig konsistent zu machen.
+                try { await refreshEvents(); } catch { /* nicht kritisch, EventListPage refreshed auf Mount */ }
+                navigate('register');
+              }}
+            >
+              Events anzeigen
+            </button>
             <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setTitle(''); }}>Weiteres Event erstellen</button>
           </div>
         </div>

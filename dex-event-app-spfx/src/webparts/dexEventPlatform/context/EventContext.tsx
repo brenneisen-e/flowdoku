@@ -222,7 +222,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function loadEvents(): Promise<void> {
     const spEvents = await eventService.getEvents();
-    const mapped = await Promise.all(spEvents.map(e => mapSPEventToDeloitteEvent(e)));
+    // v9.41: jedes Event-Mapping einzeln in try/catch wrappen — wenn EIN
+    // Event-Mapping fehlschlägt (z.B. weil eine frisch erstellte Subsite noch
+    // nicht API-konsistent ist), kippt nicht die ganze Eventliste in einen
+    // Fehlerzustand. Stattdessen wird der einzelne kaputte Event ausgelassen
+    // und beim nächsten Refresh erneut versucht. (Kein Promise.allSettled
+    // benutzt, weil die SPFx-tsconfig auf ES2018 steht.)
+    const safeMapped = await Promise.all(spEvents.map(async (e) => {
+      try {
+        return await mapSPEventToDeloitteEvent(e);
+      } catch (err) {
+        console.warn('[DEX] mapSPEventToDeloitteEvent fehlgeschlagen für Event', e?.Id, err);
+        return null;
+      }
+    }));
+    const mapped = safeMapped.filter((x): x is DeloitteEvent => x !== null);
     // Teilnehmerzahlen fuer alle Events mit Subsite laden
     const withCounts = await loadParticipantCountsForEvents(mapped);
     // Attachments (Dokumente) fuer alle Events laden
@@ -425,12 +439,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventTitle: input.title,
         details: { eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants },
       }).catch(() => { /* */ });
-      // Events neu laden OHNE Participant Counts (neue Subsite ist noch nicht bereit)
-      try {
-        const spEvents = await eventService.getEvents();
-        const mapped = await Promise.all(spEvents.map(e => mapSPEventToDeloitteEvent(e)));
-        setEvents(mapped);
-      } catch { /* Events-Refresh fehlgeschlagen, nicht kritisch */ }
+      // v9.41: KEIN Auto-Refresh mehr direkt nach Create. Grund: SharePoint braucht
+      // einige Sekunden, bis die frisch angelegte Subsite + Teilnehmerliste +
+      // DEX_TeilnehmerCounter-Liste API-seitig konsistent abrufbar sind. Wenn wir
+      // hier sofort getEvents() + mapSPEventToDeloitteEvent() laufen lassen, fallen
+      // die Subsite-Reads mit 400/404 ins Leere und das nachfolgende Event-List-
+      // Rendering kann in eine Render-Loop laufen (React #300 → weißer Screen).
+      //
+      // Stattdessen wird der Refresh erst getriggert, wenn der User auf der Success-
+      // Seite auf 'Events anzeigen' klickt — bis dahin hatte SP genug Zeit zum
+      // Propagieren. Falls jemand auf der Erfolgs-Seite stehen bleibt und nichts
+      // klickt, wird beim nächsten Page-Mount ohnehin gerefreshed.
     }
     return eventId;
   }
@@ -839,7 +858,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventTitle: ev?.title || '',
         details: { changedFields: Object.keys(updates) },
       }).catch(() => { /* */ });
-      await loadEvents();
+      // v9.41: loadEvents im try/catch — wenn ein einzelner Event-Mapping (z.B.
+      // ein frisch erstellter Sibling) fehlschlägt, soll das den updateEvent-
+      // Erfolg nicht zu einem white-screen-blow-up führen. allSettled in loadEvents
+      // selbst sollte das auch schon abfangen, hier nur belt-and-suspenders.
+      try { await loadEvents(); } catch (err) { console.warn('[DEX] post-update loadEvents fehlgeschlagen:', err); }
     }
     return success;
   }
