@@ -15,7 +15,9 @@ import * as React from 'react';
 import { X } from './Icons';
 import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
 
-type PreviewMode = 'outlook' | 'email';
+// v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
+// Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
+type PreviewMode = 'outlook' | 'email' | 'plain';
 
 export interface HtmlEditorModalProps {
   open: boolean;
@@ -152,6 +154,18 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     const bodyWithVars = replacePlaceholders(value || '', previewVars);
     const cachedLogo = getCachedLogoBase64();
     const cachedOrb = getCachedOrbBase64();
+
+    if (previewMode === 'plain') {
+      // v9.40: kein Wrapper — die Beschreibung wird auf der Anmelde-Seite genauso
+      // gerendert, eingebettet in die normale Seitentypografie. Wir simulieren das
+      // mit minimalen Default-Styles (System-Font + 14px), damit der Editor-Text
+      // nicht in irgendeinem rohen Browser-Default aussieht.
+      const empty = !bodyWithVars || bodyWithVars.trim() === '';
+      const html = empty
+        ? '<p style="color:#999;font-style:italic;">Hier erscheint die Beschreibung, sobald du im Editor links etwas tippst — sie wird 1:1 auf der Anmelde-Seite angezeigt.</p>'
+        : bodyWithVars;
+      return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#333;margin:0;padding:24px;background:#fff;}img{max-width:100%;height:auto;}a{color:#0076a8;}h1,h2,h3,h4{color:#222;}</style></head><body>${html}</body></html>`;
+    }
 
     if (previewMode === 'email') {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
@@ -374,7 +388,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           {/* === PREVIEW === */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--dex-gray-50)', minHeight: 0 }}>
             <div style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--dex-gray-500)', borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
-              Live-Vorschau {previewMode === 'outlook' ? '(Outlook-Termin)' : '(Deloitte-Mail)'} — Variablen werden mit Beispielwerten ersetzt
+              Live-Vorschau {previewMode === 'outlook' ? '(Outlook-Termin)' : previewMode === 'plain' ? '(Anmelde-Seite)' : '(Deloitte-Mail)'} — Variablen werden mit Beispielwerten ersetzt
             </div>
             <iframe
               title="Vorschau"
