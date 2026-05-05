@@ -124,8 +124,80 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
   );
 }
 
+/**
+ * Extrahiert Lastname-Tokens aus einem Display-Namen.
+ *  "von Albedyll, Benedikt" → ["von", "albedyll"]
+ *  "Benedikt von Albedyll" → ["von", "albedyll"]  (letzte 2 Worte als Lastname-Heuristik bei Adelspräfix)
+ *  "Heymann, Thorsten"     → ["heymann"]
+ *  "Eike Brenneisen"       → ["brenneisen"]
+ */
+function lastnameTokens(name: string): string[] {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return [];
+  let lastnamePart: string;
+  if (trimmed.indexOf(',') >= 0) {
+    lastnamePart = trimmed.split(',')[0].trim();
+  } else {
+    // Heuristik: letztes Wort ist Lastname; falls vorletztes Wort ein Adelspräfix ist,
+    // nimm die letzten beiden.
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [];
+    if (words.length === 1) return [words[0].toLowerCase()];
+    const PREFIXES = new Set(['von', 'van', 'de', 'der', 'den', 'di', 'da', 'du', 'la', 'le']);
+    if (words.length >= 2 && PREFIXES.has(words[words.length - 2].toLowerCase())) {
+      lastnamePart = words.slice(-2).join(' ');
+    } else {
+      lastnamePart = words[words.length - 1];
+    }
+  }
+  return lastnamePart.toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+}
+
+/**
+ * Defensives Pairing: bevorzugt Index-Match wenn die Email-Local-Part den Lastname
+ * der Person enthält, sonst sucht den ersten passenden Email-Eintrag aus dem Pool.
+ *
+ * Hintergrund: bei legacy oder closure-bug-betroffenen Events kann es vorkommen,
+ * dass `organizers[]` und `organizerEmails[]` aus dem SP-Storage out-of-sync sind.
+ * Reines `emails[i]`-Pairing zeigt dann das falsche Foto neben dem Namen. Mit dem
+ * Lastname-Matcher korrigiert sich das visuell, auch wenn die Storage-Reihenfolge
+ * gedreht ist.
+ */
+function pairNamesEmails(names: string[], emails: string[]): Array<{ name: string; email: string }> {
+  const used = new Set<number>();
+  const result: Array<{ name: string; email: string }> = [];
+  const localParts = emails.map(e => (e || '').toLowerCase().split('@')[0]);
+
+  const matchesLastname = (emailIdx: number, tokens: string[]): boolean => {
+    if (emailIdx < 0 || emailIdx >= localParts.length) return false;
+    const local = localParts[emailIdx];
+    if (!local) return false;
+    return tokens.some(t => local.indexOf(t) >= 0);
+  };
+
+  for (let i = 0; i < names.length; i++) {
+    const tokens = lastnameTokens(names[i]);
+    let chosen = -1;
+    if (!used.has(i) && matchesLastname(i, tokens)) {
+      chosen = i;
+    } else {
+      for (let j = 0; j < emails.length; j++) {
+        if (!used.has(j) && matchesLastname(j, tokens)) { chosen = j; break; }
+      }
+    }
+    if (chosen < 0) {
+      // Kein Lastname-Match — Index-Fallback wenn Slot frei, sonst nächster freier Slot.
+      if (!used.has(i) && i < emails.length) chosen = i;
+      else for (let j = 0; j < emails.length; j++) if (!used.has(j)) { chosen = j; break; }
+    }
+    if (chosen >= 0) used.add(chosen);
+    result.push({ name: names[i].trim(), email: chosen >= 0 ? (emails[chosen] || '').trim() : '' });
+  }
+  return result;
+}
+
 export default function OrganizerList({ names, emails, size = 'md', compact = false }: OrganizerListProps): React.ReactElement | null {
-  const items = names.map((n, i) => ({ name: n.trim(), email: (emails[i] || '').trim() })).filter(o => !!o.name);
+  const items = pairNamesEmails(names, emails).filter(o => !!o.name);
   if (items.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 4 : 6 }}>
