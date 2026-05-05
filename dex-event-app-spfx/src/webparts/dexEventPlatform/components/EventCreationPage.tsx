@@ -3350,7 +3350,158 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+              {/* Duplikat-Hinweis: gleiche Person in mehreren Team-Listen.
+                  Co-Organizer haben automatisch Check-In- und Test-Team-Rechte
+                  (Header.canCheckIn-Logik, Drafts-Sichtbarkeit für Organizer),
+                  doppelte Einträge sind redundant. Test-Team und Check-In allein
+                  sind orthogonale Rollen — die warnen wir nicht.
 
+                  Pattern: nach jedem Add (Massenimport oder Einzel-Pick) updated
+                  sich die Memo automatisch und die Warnung erscheint inline. Pro
+                  Eintrag ein Ein-Klick-Button um die Person aus der überflüssigen
+                  Liste zu entfernen. */}
+              {(() => {
+                const orgSet = new Set(organizerEmails.map(e => (e || '').toLowerCase()));
+                const ttSet = new Set(testTeamEmails.map(e => (e || '').toLowerCase()));
+                const qrSet = new Set(qrScannerEmails.map(e => (e || '').toLowerCase()));
+                const allEmails = new Set<string>();
+                organizerEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+                testTeamEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+                qrScannerEmails.forEach(e => allEmails.add((e || '').toLowerCase()));
+
+                const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                const dups: Array<{ email: string; name: string; inOrg: boolean; inTt: boolean; inQr: boolean }> = [];
+                for (const e of allEmails) {
+                  if (!e) continue;
+                  const inOrg = orgSet.has(e);
+                  const inTt = ttSet.has(e);
+                  const inQr = qrSet.has(e);
+                  // Nur Co-Organizer + (Test|Check-In) ist redundant. Test+Check-In
+                  // ohne Co-Organizer sind unterschiedliche Funktionen → nicht warnen.
+                  if (!inOrg) continue;
+                  if (!inTt && !inQr) continue;
+                  // Display-Name aus dem ersten Treffer ziehen (Org bevorzugt).
+                  let name = e;
+                  const idxOrg = organizerEmails.findIndex(x => (x || '').toLowerCase() === e);
+                  if (idxOrg >= 0 && orgNames[idxOrg]) name = orgNames[idxOrg];
+                  else {
+                    const idxTt = testTeamEmails.findIndex(x => (x || '').toLowerCase() === e);
+                    if (idxTt >= 0 && testTeamNames[idxTt]) name = testTeamNames[idxTt];
+                    else {
+                      const idxQr = qrScannerEmails.findIndex(x => (x || '').toLowerCase() === e);
+                      if (idxQr >= 0 && qrScannerNames[idxQr]) name = qrScannerNames[idxQr];
+                    }
+                  }
+                  dups.push({ email: e, name, inOrg, inTt, inQr });
+                }
+                if (dups.length === 0) return null;
+
+                const removeFromTestTeam = (emailLc: string): void => {
+                  const idx = testTeamEmails.findIndex(x => (x || '').toLowerCase() === emailLc);
+                  if (idx < 0) return;
+                  setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
+                  setTestTeamEmails(testTeamEmails.filter((_, i) => i !== idx));
+                };
+                const removeFromQr = (emailLc: string): void => {
+                  const idx = qrScannerEmails.findIndex(x => (x || '').toLowerCase() === emailLc);
+                  if (idx < 0) return;
+                  setQrScannerNames(qrScannerNames.filter((_, i) => i !== idx));
+                  setQrScannerEmails(qrScannerEmails.filter((_, i) => i !== idx));
+                };
+                const removeAllOverlap = (emailLc: string): void => {
+                  removeFromTestTeam(emailLc);
+                  removeFromQr(emailLc);
+                };
+
+                return (
+                  <div
+                    className="form-group"
+                    style={{
+                      background: '#fff8e1',
+                      border: '1px solid #f0c419',
+                      borderRadius: 'var(--dex-radius)',
+                      padding: '12px 14px',
+                      marginBottom: 20,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                      <strong style={{ fontSize: '0.95rem' }}>
+                        {dups.length === 1
+                          ? '1 Person ist mehrfach gelistet'
+                          : `${dups.length} Personen sind mehrfach gelistet`}
+                      </strong>
+                    </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                      Co-Organizer dürfen automatisch das <strong>Check-In-Tool</strong> nutzen und sehen
+                      Events auch im <strong>Entwurfsmodus</strong> — ein zusätzlicher Eintrag im Test-Team oder
+                      Check-In-Team ist daher nicht nötig. Du kannst die überflüssigen Einträge hier auf
+                      einen Klick entfernen.
+                    </p>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                      {dups.map(d => {
+                        const teamsLabel: string[] = [];
+                        if (d.inOrg) teamsLabel.push('Co-Organizer');
+                        if (d.inTt) teamsLabel.push('Test-Team');
+                        if (d.inQr) teamsLabel.push('Check-In-Team');
+                        return (
+                          <li
+                            key={d.email}
+                            style={{
+                              padding: '8px 0',
+                              borderTop: '1px solid #f0c419',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                              <strong>{d.name}</strong>{' '}
+                              <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{d.email}</span>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
+                                Aktuell in: {teamsLabel.join(', ')}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {d.inTt && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeFromTestTeam(d.email)}
+                                >
+                                  Aus Test-Team entfernen
+                                </button>
+                              )}
+                              {d.inQr && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeFromQr(d.email)}
+                                >
+                                  Aus Check-In-Team entfernen
+                                </button>
+                              )}
+                              {d.inTt && d.inQr && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                  onClick={() => removeAllOverlap(d.email)}
+                                >
+                                  Aus beiden entfernen
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
 
               </div>
 
