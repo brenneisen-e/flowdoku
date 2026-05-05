@@ -224,9 +224,9 @@ Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-
 InfoTooltips erklären jedem Admin/Organizer **ausführlich und in Klartext**:
 
 1. **Was du hier einstellst** — die Bedeutung des Felds in plain language
-2. **Auswirkung in der App** — wo erscheint der Wert, wer sieht ihn
-3. **Auswirkung in Automatik** — welche Mails / Outlook-Termine / Power-Automate-Flows reagieren
-4. **Auswirkung für Teilnehmer** — wie wirkt sich die Einstellung auf den Teilnehmer-Flow aus
+2. **Anzeige in der App** — wo erscheint der Wert, wer sieht ihn (vorher „Auswirkung in der App" — zu negativ formuliert)
+3. **Automatismen** *(nur falls es welche gibt)* — welche Mails / Outlook-Termine reagieren automatisch (vorher „Auswirkung in Automatik")
+4. **Auswirkung für Teilnehmer** — was bedeutet das konkret für reguläre User, mit Beispielen wie „können sich ab dem Datum nicht mehr selbst anmelden, aber Organizer und Co-Organizer schon"
 
 Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe und Zustände gesetzt, sodass das Auge beim Überfliegen die Kerninfo sofort findet. Tooltips dürfen lang sein — die Komponente ist bereits auf max. 480px Breite ausgelegt und scrollt nicht.
 
