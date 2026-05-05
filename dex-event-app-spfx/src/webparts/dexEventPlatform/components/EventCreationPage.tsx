@@ -1003,9 +1003,6 @@ export default function EventCreationPage(): React.ReactElement {
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
-  // v9.43: Just-created event-ID merken, damit der Deep-Link nach Hard-Reload
-  // den richtigen Event in der Liste findet und die Erfolgs-Banner-Meldung anzeigt.
-  const [submittedEventId, setSubmittedEventId] = React.useState<string>('');
   const [error, setError] = React.useState('');
   const [imageUploadError, setImageUploadError] = React.useState('');
   const [iconPickerOpen, setIconPickerOpen] = React.useState<string | null>(null);
@@ -1718,8 +1715,14 @@ export default function EventCreationPage(): React.ReactElement {
           // Sub-Event dieselbe Updateevent-Logik nutzt wie ein Top-Level-Event.
         }
         setProgress(100);
-        setProgressLabel('Änderungen gespeichert!');
-        setTimeout(() => { setIsSubmitting(false); setSubmitted(true); }, 500);
+        setProgressLabel('Änderungen gespeichert — Seite wird neu geladen...');
+        // v9.44: Hard-Reload mit Deep-Link analog zum Create-Pfad — vermeidet
+        // den seltenen White-Screen, wenn nach Update Subsite-Reads in einen
+        // Render-Loop laufen.
+        setTimeout(() => {
+          const url = window.location.pathname + '?action=event-updated&event=' + encodeURIComponent(String(selectedEventId));
+          window.location.href = url;
+        }, 800);
       } else {
         setIsSubmitting(false);
         setProgress(0);
@@ -1927,13 +1930,21 @@ export default function EventCreationPage(): React.ReactElement {
             }
           }
         } catch { /* E-Mail-Fehler ignorieren */ }
-        // v9.43: ID für Deep-Link merken
-        setSubmittedEventId(String(eventId));
-        // Kurz 100% zeigen, dann zur Erfolgsseite
+        // v9.44: Statt Success-Page zu rendern → DIREKT Hard-Reload mit Deep-Link.
+        // Grund: zwischen createEvent und der Success-Page-Render trat sporadisch
+        // React #300 (Maximum update depth exceeded) auf — verursacht durch Subsite-
+        // Reads (Teilnehmerliste, DEX_TeilnehmerCounter), die für die frisch
+        // angelegte Subsite mit 400/404 fehlschlugen und anscheinend irgendwo
+        // einen Render-Loop triggerten. Der Hard-Reload überspringt diesen Render-
+        // Pfad komplett. Beim Bootstrap nach dem Reload liest DexEventPlatform
+        // den Deep-Link-Parameter aus, navigiert zur Eventliste und zeigt einen
+        // grünen Erfolgs-Banner — kein weißer Screen, klare Erfolgs-Bestätigung.
+        setProgressLabel('Fertig — Seite wird neu geladen...');
+        setProgress(100);
         setTimeout(() => {
-          setIsSubmitting(false);
-          setSubmitted(true);
-        }, 500);
+          const url = window.location.pathname + '?action=event-created&event=' + encodeURIComponent(String(eventId));
+          window.location.href = url;
+        }, 800);
       } else {
         setIsSubmitting(false);
         setProgress(0);
@@ -1987,7 +1998,7 @@ export default function EventCreationPage(): React.ReactElement {
                 // automatisch zur Eventliste und zeigt eine grüne Erfolgs-Banner-
                 // Meldung mit dem Event-Titel.
                 const action = isEditMode ? 'event-updated' : 'event-created';
-                const targetEventId = isEditMode ? selectedEventId : submittedEventId;
+                const targetEventId = selectedEventId || '';
                 const url = window.location.pathname + '?action=' + action + (targetEventId ? '&event=' + encodeURIComponent(targetEventId) : '');
                 window.location.href = url;
               }}
