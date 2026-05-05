@@ -13,6 +13,29 @@ export default function StartPage(): React.ReactElement {
 
   return (
     <div className="page-container">
+      {/* v9.36: Keyframes inline injizieren — SPFx hasht sonst die Names im
+          .module.scss und die Animation findet sie nicht. */}
+      <style>{`
+        @keyframes dexStartIconBounce {
+          0%   { transform: translateY(0) scale(1); }
+          30%  { transform: translateY(-8px) scale(1.1); }
+          60%  { transform: translateY(0) scale(1); }
+          80%  { transform: translateY(-3px) scale(1.04); }
+          100% { transform: translateY(0) scale(1); }
+        }
+        @keyframes dexStartIconWiggle {
+          0%   { transform: rotate(0deg) scale(1); }
+          20%  { transform: rotate(-10deg) scale(1.08); }
+          40%  { transform: rotate(8deg) scale(1.08); }
+          60%  { transform: rotate(-6deg) scale(1.05); }
+          80%  { transform: rotate(4deg) scale(1.03); }
+          100% { transform: rotate(0deg) scale(1); }
+        }
+        @keyframes dexStartIconSpin {
+          0%   { transform: rotate(0deg) scale(1); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+      `}</style>
       <div className={`start-grid${canCreateEvents ? ' start-grid--with-admin' : ''}`}>
         <div className="card card-clickable start-card" onClick={() => navigate('register')}>
           <div className="start-card__icon">

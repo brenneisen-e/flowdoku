@@ -267,31 +267,14 @@
       background: rgba(255, 255, 255, 0.2); color: var(--dex-white);
       transform: scale(1.06);
     }
-    /* v9.27: Icon-Mini-Animation beim Hover. Pro Kachel ein eigener
-       Effekt: Calendar wackelt kurz, Pin springt, Settings dreht sich. */
+    /* v9.27/v9.36: Icon-Mini-Animation beim Hover. Pro Kachel ein eigener
+       Effekt: Calendar wackelt kurz, Pin springt, Settings dreht sich.
+       v9.36: @keyframes-Namen werden in StartPage.tsx als inline <style>
+       injiziert, weil SPFx die Names sonst hashed (analog dexOrbSpin). */
     .start-card:hover .start-card__icon svg { animation: dexStartIconBounce 0.6s ease; }
     .start-card:nth-child(1):hover .start-card__icon svg { animation: dexStartIconWiggle 0.7s ease; }
     .start-card--admin:hover .start-card__icon svg { animation: dexStartIconSpin 0.8s ease; }
-
-    @keyframes dexStartIconBounce {
-      0%   { transform: translateY(0) scale(1); }
-      30%  { transform: translateY(-8px) scale(1.1); }
-      60%  { transform: translateY(0) scale(1); }
-      80%  { transform: translateY(-3px) scale(1.04); }
-      100% { transform: translateY(0) scale(1); }
-    }
-    @keyframes dexStartIconWiggle {
-      0%   { transform: rotate(0deg) scale(1); }
-      20%  { transform: rotate(-10deg) scale(1.08); }
-      40%  { transform: rotate(8deg) scale(1.08); }
-      60%  { transform: rotate(-6deg) scale(1.05); }
-      80%  { transform: rotate(4deg) scale(1.03); }
-      100% { transform: rotate(0deg) scale(1); }
-    }
-    @keyframes dexStartIconSpin {
-      0%   { transform: rotate(0deg) scale(1); }
-      100% { transform: rotate(360deg) scale(1); }
-    }
+    .start-card__icon svg { transition: transform 0.2s ease; transform-origin: center; }
 
     /* ========== Event Grid ========== */
     .event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
