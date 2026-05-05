@@ -2551,8 +2551,10 @@ export default function EventCreationPage(): React.ReactElement {
                 }}>
                   {step.label}
                 </span>
-                {/* v9.27: i-Icon UNTER dem Step-Label (vorher inline rechts daneben).
-                    Hover zeigt die Hints fuer diesen Step. */}
+                {/* v9.27/v9.37: i-Icon UNTER dem Step-Label (vorher inline rechts daneben).
+                    Hover zeigt die Hints fuer diesen Step.
+                    v9.37: Styling identisch zur InfoTooltip-Komponente (serif, 20x20,
+                    1.5px-Border) — sonst wirkt das wizard-i im Vergleich klobig. */}
                 <span
                   role="button"
                   tabIndex={0}
@@ -2565,14 +2567,15 @@ export default function EventCreationPage(): React.ReactElement {
                   style={{
                     position: 'relative',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 18, height: 18, borderRadius: '50%',
-                    background: hintStepIdx === idx ? 'var(--dex-green)' : 'transparent',
-                    color: hintStepIdx === idx ? '#fff' : 'var(--dex-gray-500)',
-                    border: `1px solid ${hintStepIdx === idx ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
-                    fontSize: '0.7rem', fontWeight: 700,
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: hintStepIdx === idx ? 'var(--dex-gray-100, #f0f0f0)' : 'transparent',
+                    color: 'var(--dex-gray-700, #555)',
+                    border: `1.5px solid ${hintStepIdx === idx ? 'var(--dex-gray-700, #555)' : 'var(--dex-gray-500, #888)'}`,
+                    fontSize: '0.7rem', fontWeight: 700, fontFamily: 'serif',
                     cursor: 'help',
-                    marginTop: 2,
-                    transition: 'all 0.15s ease',
+                    marginTop: 4,
+                    userSelect: 'none',
+                    transition: 'background 0.15s, border-color 0.15s',
                   }}
                 >
                   i

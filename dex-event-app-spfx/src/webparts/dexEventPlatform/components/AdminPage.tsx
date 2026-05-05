@@ -290,6 +290,13 @@ export default function AdminPage(): React.ReactElement {
   const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
   const [qrAutoSendToggle, setQrAutoSendToggle] = React.useState(false);
   const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
+  // v9.37: Vorschau der QR-Code-Mail (analog zur Live-Vorschau im Event-Wizard
+  // unter „Kommunikation"). Der Organizer sieht damit vorab genau die Mail, die
+  // beim Versand rausgeht — inklusive echtem QR-Code für ihn selbst als Empfänger.
+  const [qrPreviewOpen, setQrPreviewOpen] = React.useState(false);
+  const [qrPreviewHtml, setQrPreviewHtml] = React.useState('');
+  const [qrPreviewSubject, setQrPreviewSubject] = React.useState('');
+  const [qrPreviewLoading, setQrPreviewLoading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
@@ -3279,6 +3286,33 @@ export default function AdminPage(): React.ReactElement {
               </button>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
+                  className="btn btn-outline"
+                  disabled={isSendingQR || qrPreviewLoading}
+                  onClick={async () => {
+                    if (!selectedEvent) return;
+                    setQrPreviewLoading(true);
+                    try {
+                      const orgEmail = currentUser.email;
+                      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
+                      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
+                      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+                      try {
+                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+                      } catch { /* */ }
+                      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+                      setQrPreviewSubject(emailData.subject);
+                      setQrPreviewHtml(emailData.body);
+                      setQrPreviewOpen(true);
+                    } finally { setQrPreviewLoading(false); }
+                  }}
+                  style={{ fontSize: '0.85rem' }}
+                  title="So sieht die Mail aus, die beim Versand rausgeht — inklusive echtem QR-Code für dich als Empfänger."
+                >
+                  {qrPreviewLoading ? 'Lade Vorschau…' : '👁 Vorschau Mail'}
+                </button>
+                <button
                   className="btn btn-secondary"
                   onClick={async () => {
                     if (!eventServiceRef || !selectedEvent) return;
@@ -3659,6 +3693,73 @@ export default function AdminPage(): React.ReactElement {
                 style={{ opacity: isSavingEdit ? 0.6 : 1 }}
               >
                 {isSavingEdit ? (isDe ? 'Speichert…' : 'Saving…') : (isDe ? 'Speichern' : 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v9.37: Vorschau-Modal für die QR-Code-Mail. Rendert das wirklich
+          versendete Mail-HTML in einem sandboxed iframe — analog zur Live-
+          Preview im Event-Wizard unter Kommunikation. Editieren ist hier
+          NICHT vorgesehen, der Body wird zentral aus der QR-Code-Vorlage
+          gebaut. */}
+      {qrPreviewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setQrPreviewOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12,
+              width: '100%', maxWidth: 720, maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.28)',
+            }}
+          >
+            <div style={{
+              padding: '14px 18px', borderBottom: '1px solid var(--dex-gray-200)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Vorschau: QR-Code-Mail</h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                  So sieht die Mail aus, die jeder angemeldete Teilnehmer bekommt — der QR-Code in der Vorschau ist auf dich ausgestellt.
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--dex-gray-700)' }}>
+                  <strong>Betreff:</strong> <span style={{ color: 'var(--dex-gray-600)' }}>{qrPreviewSubject}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrPreviewOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', padding: 4 }}
+                aria-label="Schließen"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden', background: '#f5f5f5', padding: 12 }}>
+              <iframe
+                title="QR-Code-Mail-Vorschau"
+                srcDoc={qrPreviewHtml}
+                sandbox=""
+                style={{ width: '100%', height: '100%', minHeight: 480, border: 'none', borderRadius: 6, background: '#fff' }}
+              />
+            </div>
+            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setQrPreviewOpen(false)}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Schließen
               </button>
             </div>
           </div>
