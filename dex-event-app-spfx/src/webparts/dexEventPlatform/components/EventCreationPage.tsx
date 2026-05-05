@@ -2800,11 +2800,11 @@ export default function EventCreationPage(): React.ReactElement {
                     <span className="required">*</span> {t('create.enddate')}
                     <InfoTooltip text={isDe ? (
                       <>
-                        <strong>Endzeitpunkt</strong> — Datum + Uhrzeit, wann das Event vorbei ist. Wandert 1:1 in den <strong>Outlook-Termin</strong> der Teilnehmer (sonst läuft der Termin endlos). Wichtig auch für interne Logik: nach diesem Zeitpunkt zählt das Event als <strong>vorbei</strong> — Anmeldungen werden gesperrt, das Event rutscht in der Liste nach unten und manche Flows (z.B. Late-Cancel-Mails) reagieren darauf.
+                        <strong>Endzeitpunkt</strong> — Datum + Uhrzeit, wann das Event vorbei ist. Wandert 1:1 in den <strong>Outlook-Termin</strong> der Teilnehmer (sonst läuft der Termin endlos). Wichtig auch für interne Logik: nach diesem Zeitpunkt zählt das Event als <strong>vorbei</strong> — Anmeldungen werden gesperrt, das Event rutscht in der Liste nach unten und manche automatische Benachrichtigungen (z.B. Late-Cancel-Hinweise) reagieren darauf.
                       </>
                     ) : (
                       <>
-                        <strong>End time</strong> — date + time when the event finishes. Goes 1:1 into the attendee Outlook event (otherwise it would never end). Also feeds internal logic: past this point the event counts as <strong>over</strong> — registrations get locked, it drops down the list, and some flows (e.g. late-cancel mails) react to it.
+                        <strong>End time</strong> — date + time when the event finishes. Goes 1:1 into the attendee Outlook event (otherwise it would never end). Also feeds internal logic: past this point the event counts as <strong>over</strong> — registrations get locked, it drops down the list, and some automated notifications (e.g. late-cancel alerts) react to it.
                       </>
                     )} />
                   </label>
@@ -3120,7 +3120,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> eine kleine Gruppe von Personen, die das Event <strong>schon im Entwurfsmodus</strong> sieht und sich testweise anmelden darf — bevor du es für die echte Zielgruppe freigibst.<br /><br />
                       <strong>Auswirkung in der App:</strong> Test-Team-Mitglieder sehen das Event in ihrer Liste, können auf die Anmelde-Seite, sich registrieren, abmelden, eigene Daten ändern. Sie haben <strong>keine Admin-Rechte</strong> — kein Bearbeiten, keine Teilnehmerliste, keine Massenmails. Reguläre User sehen das Event weiterhin nicht, solange der Entwurf-Haken gesetzt ist.<br /><br />
-                      <strong>Auswirkung in Automatik:</strong> Test-Anmeldungen lösen ganz normal <strong>Bestätigungs-Mails</strong> und <strong>Outlook-Termine</strong> aus — perfekt um den kompletten Flow zu testen. Bei externen Mails (nicht @deloitte.de) greift die normale Umleitung an dich als Organizer.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> Test-Anmeldungen lösen ganz normal <strong>Bestätigungs-Mails</strong> und <strong>Outlook-Termine</strong> aus — perfekt um den kompletten Anmelde-Ablauf zu testen. Bei externen Mails (nicht @deloitte.de) greift die normale Umleitung an dich als Organizer.<br /><br />
                       <strong>Empfehlung:</strong> 1–3 Personen reichen typischerweise — ein Co-Organizer und ein naiver Tester, der noch nichts vom Event weiß.
                     </>
                   ) : (
@@ -4258,14 +4258,14 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> getrennte Kapazitäten für <strong>Durchstarter</strong> (sportliche Läufer) und <strong>Funstarter</strong> (Spaß-Läufer / Walker) bei B2Run-Events. Pro Typ ein eigener Slot mit eigener Warteliste.<br /><br />
                       <strong>Auswirkung in der App:</strong> Teilnehmer wählen bei der Anmeldung den Starter-Typ und werden dem entsprechenden Slot zugeordnet. Im Admin Center werden die Kapazitäten <strong>pro Starter-Typ</strong> angezeigt.<br /><br />
-                      <strong>Auswirkung in Automatik:</strong> wenn der Durchstarter-Slot voll ist, kommen Durchstarter-Anmeldungen auf die <strong>Durchstarter-Warteliste</strong> (nicht auf die allgemeine). Beim Nachrücken (DEX_IDReorder_TeilnehmerIDs) wird typ-bewusst nachgezogen — ein Funstarter rückt nicht in einen Durchstarter-Platz.<br /><br />
+                      <strong>Auswirkung in Automatik:</strong> wenn der Durchstarter-Slot voll ist, kommen Durchstarter-Anmeldungen auf die <strong>Durchstarter-Warteliste</strong> (nicht auf die allgemeine). Beim Nachrücken wird <strong>typ-bewusst</strong> nachgezogen — ein Funstarter rückt nicht in einen Durchstarter-Platz.<br /><br />
                       <strong>Empfehlung:</strong> nur verwenden, wenn ihr B2Run-Plätze beim Veranstalter wirklich getrennt eingekauft habt.
                     </>
                   ) : (
                     <>
                       <strong>What you set here:</strong> separate capacities for <strong>Durchstarter</strong> (sporty runners) and <strong>Funstarter</strong> (fun runners / walkers) for B2Run events. Each type has its own slot and its own waitlist.<br /><br />
                       <strong>Effect in the app:</strong> attendees pick a starter type at registration and land in the matching slot. The admin center shows capacities <strong>per starter type</strong>.<br /><br />
-                      <strong>Effect in automation:</strong> when the Durchstarter slot is full, Durchstarter sign-ups go on the <strong>Durchstarter waitlist</strong> (not the general one). Promotion (DEX_IDReorder_TeilnehmerIDs) is type-aware — a Funstarter is never auto-promoted into a Durchstarter slot.<br /><br />
+                      <strong>Effect in automation:</strong> when the Durchstarter slot is full, Durchstarter sign-ups go on the <strong>Durchstarter waitlist</strong> (not the general one). Promotion is <strong>type-aware</strong> — a Funstarter is never auto-promoted into a Durchstarter slot.<br /><br />
                       <strong>Tip:</strong> only use this if you have actually bought B2Run slots separately from the organiser.
                     </>
                   )} />
@@ -4384,11 +4384,11 @@ export default function EventCreationPage(): React.ReactElement {
                       {t('create.waitlist')}
                       <InfoTooltip text={isDe ? (
                         <>
-                          <strong>Wartelisten für Split-Kapazitäten</strong> — bei aktivierter Warteliste hat <strong>jeder Starter-Typ seine eigene Liste</strong>. Durchstarter-Anmeldungen über der Durchstarter-Kapazität landen auf der Durchstarter-Warteliste, dasselbe für Funstarter. Beim Nachrücken (Power-Automate) wird typ-bewusst befördert — der älteste Durchstarter-Eintrag rückt in einen frei werdenden Durchstarter-Platz, kein Mix.
+                          <strong>Wartelisten für Split-Kapazitäten</strong> — bei aktivierter Warteliste hat <strong>jeder Starter-Typ seine eigene Liste</strong>. Durchstarter-Anmeldungen über der Durchstarter-Kapazität landen auf der Durchstarter-Warteliste, dasselbe für Funstarter. Beim Nachrücken wird <strong>typ-bewusst</strong> befördert — der älteste Durchstarter-Eintrag rückt in einen frei werdenden Durchstarter-Platz, kein Mix.
                         </>
                       ) : (
                         <>
-                          <strong>Waitlists for split capacities</strong> — when the waitlist is on, <strong>each starter type has its own queue</strong>. Durchstarter sign-ups beyond the Durchstarter capacity go on the Durchstarter waitlist, same for Funstarter. Promotion (Power Automate) is type-aware — the oldest Durchstarter waiting moves into a freed Durchstarter slot, no mixing.
+                          <strong>Waitlists for split capacities</strong> — when the waitlist is on, <strong>each starter type has its own queue</strong>. Durchstarter sign-ups beyond the Durchstarter capacity go on the Durchstarter waitlist, same for Funstarter. Promotion is <strong>type-aware</strong> — the oldest Durchstarter waiting moves into a freed Durchstarter slot, no mixing.
                         </>
                       )} />
                     </label>
@@ -4410,14 +4410,14 @@ export default function EventCreationPage(): React.ReactElement {
                         <>
                           <strong>Was du hier einstellst:</strong> die <strong>maximale Teilnehmerzahl</strong> oder den Modus <strong>Unbegrenzt</strong>.<br /><br />
                           <strong>Auswirkung in der App:</strong> ist die Kapazität voll, sehen Teilnehmer den <strong>roten Banner Alle Plätze sind belegt</strong> auf der Anmelde-Seite. Im Admin Center wird ein Auslastungs-KPI live mitgeführt.<br /><br />
-                          <strong>Auswirkung in Automatik:</strong> ist <strong>Warteliste</strong> aktiv und die Kapazität voll, werden neue Anmeldungen automatisch auf <strong>Status Warteliste</strong> gesetzt und bekommen die Wartelisten-Bestätigungs-Mail. Bei einer Abmeldung rückt der älteste Wartelisten-Eintrag automatisch nach (Power-Automate-Flow <em>DEX_IDReorder_TeilnehmerIDs</em>) und bekommt Nachrück-Mail + Outlook-Termin.<br /><br />
+                          <strong>Auswirkung in Automatik:</strong> ist <strong>Warteliste</strong> aktiv und die Kapazität voll, werden neue Anmeldungen automatisch auf <strong>Status Warteliste</strong> gesetzt und bekommen die Wartelisten-Bestätigungs-Mail. Bei einer Abmeldung rückt der älteste Wartelisten-Eintrag automatisch nach und bekommt Nachrück-Mail + Outlook-Termin.<br /><br />
                           <strong>Modus Unbegrenzt:</strong> keine Auslastungs-Anzeige, keine Warteliste — wird typischerweise für interne All-Hands-Mails oder reine Info-Events verwendet.
                         </>
                       ) : (
                         <>
                           <strong>What you set here:</strong> the <strong>maximum attendee count</strong> or the <strong>Unlimited</strong> mode.<br /><br />
                           <strong>Effect in the app:</strong> when full, attendees see the <strong>red banner All spots are taken</strong> on the registration page. The admin center shows live capacity KPIs.<br /><br />
-                          <strong>Effect in automation:</strong> if <strong>waitlist</strong> is on and capacity is full, new sign-ups land in <strong>status Waitlist</strong> and get a waitlist confirmation mail. On cancellation, the oldest waitlist entry is auto-promoted (Power-Automate flow <em>DEX_IDReorder_TeilnehmerIDs</em>) and receives a promotion mail + Outlook event.<br /><br />
+                          <strong>Effect in automation:</strong> if <strong>waitlist</strong> is on and capacity is full, new sign-ups land in <strong>status Waitlist</strong> and get a waitlist confirmation mail. On cancellation, the oldest waitlist entry is auto-promoted and receives a promotion mail + Outlook event.<br /><br />
                           <strong>Unlimited mode:</strong> no capacity indicator, no waitlist — typically used for internal all-hands or info-only events.
                         </>
                       )} />
@@ -4463,7 +4463,7 @@ export default function EventCreationPage(): React.ReactElement {
                           <>
                             <strong>Was du hier einstellst:</strong> ob bei vollem Event eine <strong>Warteliste</strong> akzeptiert wird oder neue Anmeldungen sofort blockiert werden.<br /><br />
                             <strong>Auswirkung in der App:</strong> bei aktiver Warteliste können Teilnehmer sich auch über die Kapazitäts-Grenze hinaus anmelden — bekommen Status <strong>Warteliste</strong> mit Positions-Nummer. Im Admin Center erscheint eine eigene <strong>Warteliste-Kachel</strong>.<br /><br />
-                            <strong>Auswirkung in Automatik:</strong> Wartelisten-Anmeldungen bekommen die <strong>Wartelisten-Bestätigungs-Mail</strong>. Sobald jemand absagt, rückt der älteste Wartelisten-Eintrag automatisch nach (FIFO) — bekommt eine <strong>Nachrück-Mail</strong> mit Outlook-Termin und der Status wechselt auf Angemeldet. Diese Logik läuft in Power-Automate (<em>DEX_IDReorder_TeilnehmerIDs</em>), nicht in der App selbst.<br /><br />
+                            <strong>Auswirkung in Automatik:</strong> Wartelisten-Anmeldungen bekommen die <strong>Wartelisten-Bestätigungs-Mail</strong>. Sobald jemand absagt, rückt der älteste Wartelisten-Eintrag automatisch nach (<strong>First-In, First-Out</strong>) — bekommt eine <strong>Nachrück-Mail</strong> mit Outlook-Termin und der Status wechselt auf Angemeldet.<br /><br />
                             <strong>Auswirkung für Teilnehmer:</strong> sie sehen ihre Position auf der Warteliste auf der Anmelde-Seite und werden automatisch informiert, wenn ein Platz frei wird.<br /><br />
                             <strong>Aus:</strong> bei vollem Event ist der Anmelde-Button gesperrt — neue Interessenten müssen den Organizer direkt kontaktieren.
                           </>
@@ -4471,7 +4471,7 @@ export default function EventCreationPage(): React.ReactElement {
                           <>
                             <strong>What you set here:</strong> whether full events accept a <strong>waitlist</strong> or new registrations are blocked immediately.<br /><br />
                             <strong>Effect in the app:</strong> when waitlist is on, attendees can register past the capacity limit — they get status <strong>Waitlist</strong> with a position number. The admin center shows a dedicated <strong>waitlist tile</strong>.<br /><br />
-                            <strong>Effect in automation:</strong> waitlist sign-ups receive the <strong>waitlist confirmation mail</strong>. As soon as someone cancels, the oldest entry is auto-promoted (FIFO) — they receive a <strong>promotion mail</strong> with Outlook event and their status flips to Registered. This logic runs in Power Automate (<em>DEX_IDReorder_TeilnehmerIDs</em>), not in the app.<br /><br />
+                            <strong>Effect in automation:</strong> waitlist sign-ups receive the <strong>waitlist confirmation mail</strong>. As soon as someone cancels, the oldest entry is auto-promoted (<strong>first-in, first-out</strong>) — they receive a <strong>promotion mail</strong> with Outlook event and their status flips to Registered.<br /><br />
                             <strong>Effect for attendees:</strong> they see their waitlist position on the registration page and are notified automatically when a spot frees up.<br /><br />
                             <strong>Off:</strong> when capacity is full, the register button is locked — new interested people have to contact the organizer directly.
                           </>

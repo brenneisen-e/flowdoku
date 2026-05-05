@@ -230,6 +230,8 @@ InfoTooltips erklären jedem Admin/Organizer **ausführlich und in Klartext**:
 
 Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe und Zustände gesetzt, sodass das Auge beim Überfliegen die Kerninfo sofort findet. Tooltips dürfen lang sein — die Komponente ist bereits auf max. 480px Breite ausgelegt und scrollt nicht.
 
+**Kein Tech-Jargon in Tooltips:** keine Erwähnungen von „Power Automate", „Flow", „DEX_IDReorder_TeilnehmerIDs", „SharePoint-List", „REST-API" o.ä. — Organizer und Admins sind keine Engineers und müssen die Implementierung nicht kennen. Stattdessen den Effekt beschreiben („wird automatisch nachgerückt", „bekommt eine Bestätigungs-Mail"), nicht den Mechanismus. Begriffe wie „FIFO" entweder ausschreiben („first-in, first-out") oder ganz weglassen.
+
 Die `InfoTooltip`-Komponente nimmt ab v9.32 `text: React.ReactNode` an (vorher nur `string`) — bei JSX-Tooltips bilingual als `{isDe ? <>...</> : <>...</>}` rendern. Bei einfachen Texten ist weiterhin ein String erlaubt.
 
 ### German Text / Sonderzeichen
