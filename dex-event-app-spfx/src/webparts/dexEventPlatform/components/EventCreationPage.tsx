@@ -1715,14 +1715,17 @@ export default function EventCreationPage(): React.ReactElement {
           // Sub-Event dieselbe Updateevent-Logik nutzt wie ein Top-Level-Event.
         }
         setProgress(100);
-        setProgressLabel('Änderungen gespeichert — Seite wird neu geladen...');
-        // v9.44: Hard-Reload mit Deep-Link analog zum Create-Pfad — vermeidet
-        // den seltenen White-Screen, wenn nach Update Subsite-Reads in einen
-        // Render-Loop laufen.
-        setTimeout(() => {
-          const url = window.location.pathname + '?action=event-updated&event=' + encodeURIComponent(String(selectedEventId));
-          window.location.href = url;
-        }, 800);
+        setProgressLabel('Änderungen gespeichert!');
+        // v9.45: Soft-Refresh analog zum Create-Pfad. Wizard verlassen via
+        // CustomEvent, DexEventPlatform navigiert + zeigt Banner. Refresh wird
+        // beim Update sofort getriggert (loadEvents in updateEvent hat schon
+        // gefeuert) — kein delayed refresh nötig wie beim Create.
+        try {
+          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
+            detail: { title: title, eventId: String(selectedEventId), type: 'update' as const },
+          }));
+        } catch { /* */ }
+        setIsSubmitting(false);
       } else {
         setIsSubmitting(false);
         setProgress(0);
@@ -1930,21 +1933,33 @@ export default function EventCreationPage(): React.ReactElement {
             }
           }
         } catch { /* E-Mail-Fehler ignorieren */ }
-        // v9.44: Statt Success-Page zu rendern → DIREKT Hard-Reload mit Deep-Link.
-        // Grund: zwischen createEvent und der Success-Page-Render trat sporadisch
-        // React #300 (Maximum update depth exceeded) auf — verursacht durch Subsite-
-        // Reads (Teilnehmerliste, DEX_TeilnehmerCounter), die für die frisch
-        // angelegte Subsite mit 400/404 fehlschlugen und anscheinend irgendwo
-        // einen Render-Loop triggerten. Der Hard-Reload überspringt diesen Render-
-        // Pfad komplett. Beim Bootstrap nach dem Reload liest DexEventPlatform
-        // den Deep-Link-Parameter aus, navigiert zur Eventliste und zeigt einen
-        // grünen Erfolgs-Banner — kein weißer Screen, klare Erfolgs-Bestätigung.
-        setProgressLabel('Fertig — Seite wird neu geladen...');
+        // v9.45: Soft-Refresh statt Hard-Reload. Statt die Success-Page zu rendern
+        // (wo zwischen Wizard und SuccessPage ein React #300 auftrat) ODER die
+        // Page hart zu reloaden (was den User auf der Landing-Seite landete),
+        // gehen wir den Mittelweg:
+        //
+        // 1. Wizard sofort verlassen via dispatchEvent('dex-event-submit-success',
+        //    {title, eventId, type}) — DexEventPlatform hört darauf, navigiert zur
+        //    Event-Liste und zeigt den grünen Erfolgs-Banner.
+        // 2. setIsSubmitting(false) damit der Wizard unmounted (kein hängender
+        //    Submit-State).
+        // 3. Delayed refreshEvents (3 Sekunden später) lädt das frisch erstellte
+        //    Event nach — SP hatte dann genug Zeit zum Propagieren und der Read
+        //    auf die neue Subsite läuft sauber durch (gleicher Pfad wie der
+        //    Aktualisieren-Button im Header — der hat nie Probleme).
         setProgress(100);
+        setProgressLabel('Event erfolgreich erstellt!');
+        try {
+          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
+            detail: { title: title, eventId: String(eventId), type: 'create' as const },
+          }));
+        } catch { /* */ }
+        setIsSubmitting(false);
+        // Delayed Refresh — SP braucht typischerweise 2-5s bis frische Subsite-
+        // Listen API-konsistent abrufbar sind. 3000ms ist ein guter Kompromiss.
         setTimeout(() => {
-          const url = window.location.pathname + '?action=event-created&event=' + encodeURIComponent(String(eventId));
-          window.location.href = url;
-        }, 800);
+          refreshEvents().catch(err => console.warn('[DEX] post-create soft refresh fehlgeschlagen:', err));
+        }, 3000);
       } else {
         setIsSubmitting(false);
         setProgress(0);

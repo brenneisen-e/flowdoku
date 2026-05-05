@@ -100,6 +100,26 @@ function AppContent(): React.ReactElement {
     return () => clearTimeout(t);
   }, [successBanner]);
 
+  // v9.45: Soft-Refresh-Listener für Event-Submit-Erfolg. EventCreationPage
+  // dispatcht diesen Event direkt nach Submit (createEvent oder updateEvent),
+  // statt die App per window.location.href neu zu laden. Wir navigieren zur
+  // Event-Liste und zeigen den grünen Erfolgs-Banner an — der Wizard unmountet
+  // sauber, kein Page-Reload nötig.
+  React.useEffect(() => {
+    const onSubmitSuccess = (e: Event): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const detail = (e as any).detail as { title?: string; eventId?: string; type?: 'create' | 'update' } | undefined;
+      if (!detail) return;
+      setSuccessBanner({
+        title: detail.title || 'Event',
+        type: detail.type === 'update' ? 'update' : 'create',
+      });
+      navigate('register');
+    };
+    window.addEventListener('dex-event-submit-success', onSubmitSuccess);
+    return () => window.removeEventListener('dex-event-submit-success', onSubmitSuccess);
+  }, [navigate]);
+
   const didHandleDeepLink = React.useRef(false);
   React.useEffect(() => {
     if (didHandleDeepLink.current) return;
