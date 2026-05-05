@@ -12,7 +12,9 @@
 import * as React from 'react';
 
 export interface InfoTooltipProps {
-  text: string;
+  /** Text oder JSX — bei JSX (z.B. <>...<strong>x</strong>...</>) werden
+   *  fette Schlagwörter, Listen etc. korrekt gerendert. */
+  text: React.ReactNode;
   /** Optional: rechts/links/oben statt default unten */
   placement?: 'top' | 'bottom' | 'right' | 'left';
 }

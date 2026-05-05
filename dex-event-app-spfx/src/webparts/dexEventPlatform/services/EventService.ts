@@ -2944,6 +2944,50 @@ export class EventService {
   }
 
   /**
+   * v9.35: Berechtigungs-Sync für nachträglich hinzugefügte Organizer/Co-Organizer.
+   *
+   * Wird im Wizard im Edit-Modus nach updateEvent aufgerufen. Geht über die
+   * komma-/semikolon-separierte Liste aller Organizer-Mails und stellt sicher,
+   * dass jede Person Full Control auf der Subsite + auf der Teilnehmerliste hat.
+   *
+   * Idempotent: Personen, die bereits Full Control haben, werden von SharePoints
+   * `addroleassignment` einfach durchgereicht (kein Fehler, kein Doppel-Eintrag).
+   * Existierende Item-Level-Permissions auf der Liste bleiben unangetastet — wir
+   * brechen die Inheritance hier NICHT erneut, sondern fügen nur fehlende Principals
+   * obendrauf hinzu.
+   */
+  public async ensureOrganizerPermissions(subsiteUrl: string, organizerEmails: string): Promise<void> {
+    if (!subsiteUrl || !organizerEmails) return;
+    const emails = organizerEmails.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+    for (const em of emails) {
+      try {
+        const userResponse = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/siteusers/getbyemail('${encodeURIComponent(em)}')?$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (!userResponse.ok) continue;
+        const userData = await userResponse.json();
+        const userId = userData.d?.Id || userData.Id;
+        if (!userId) continue;
+        // Subsite Full Control (Web-Level)
+        try {
+          await this._post(
+            `${subsiteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+            {}
+          );
+        } catch { /* idempotent — Person hatte schon Rechte */ }
+        // Teilnehmerliste Full Control (List-Level)
+        try {
+          await this._post(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
+            {}
+          );
+        } catch { /* idempotent */ }
+      } catch { /* skip einzelne User-Fehler, mit nächstem weiter */ }
+    }
+  }
+
+  /**
    * Subsite-Berechtigungen: Owners Full Control, Members Read (damit User die Subsite betreten koennen).
    */
   private async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
