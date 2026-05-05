@@ -3772,21 +3772,43 @@ export default function EventCreationPage(): React.ReactElement {
                     <StepBadge n={15} />
                     {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                   </label>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.6 }}>
                     {isDe ? (
                       <>
-                        Bestimmt, wie Standortfilter und Mailverteiler / einzelne User kombiniert werden.<br />
-                        <em>Beispiel ODER: Standort = Köln, Verteiler = SAPALL → Jeder, der in Köln sitzt ODER in der SAP-Gruppe ist, sieht das Event.<br />
-                        Beispiel UND: Nur wer in Köln sitzt UND in der SAP-Gruppe ist, sieht das Event.</em>
+                        <p style={{ margin: '0 0 8px' }}>
+                          Bestimmt, wie der <strong>Standortfilter</strong> und der <strong>Mailverteiler / einzelne User</strong> miteinander kombiniert werden — also welche Bedingungen für eine Person erfüllt sein müssen, damit sie das Event in ihrer Liste sieht.
+                        </p>
+                        <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>
+                          <li style={{ marginBottom: 6 }}>
+                            <strong>ODER (Default):</strong> <em>einer der beiden Filter reicht.</em> Beispiel: <strong>Standort = Köln</strong>, <strong>Verteiler = SAPALL</strong> → jede Person, die <strong>in Köln</strong> sitzt <strong>ODER</strong> in <strong>SAPALL</strong> ist, sieht das Event. Praktisch wenn du bewusst einen <strong>breiten Empfängerkreis</strong> willst (z.B. Standort-Mitarbeiter <strong>plus</strong> Fachgruppe).
+                          </li>
+                          <li>
+                            <strong>UND:</strong> <em>beide Filter müssen zutreffen.</em> Beispiel: <strong>Standort = Köln</strong>, <strong>Verteiler = SAPALL</strong> → nur wer <strong>in Köln</strong> sitzt <strong>UND</strong> in <strong>SAPALL</strong> ist, sieht das Event. Praktisch wenn du den Empfängerkreis <strong>strikt eingrenzen</strong> willst (z.B. nur die SAP-Kollegen <strong>am Standort Köln</strong>).
+                          </li>
+                        </ul>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                          <strong>Hinweis:</strong> diese Auswahl erscheint nur, wenn <strong>beide</strong> Filter gesetzt sind — sonst gibt es nichts zu kombinieren.
+                        </p>
                       </>
                     ) : (
                       <>
-                        Defines how the location filter and the mailing list / individual user selection are combined.<br />
-                        <em>Example OR: Location = Cologne, list = SAPALL → Anyone in Cologne OR in the SAP group sees the event.<br />
-                        Example AND: Only people in Cologne AND in the SAP group see the event.</em>
+                        <p style={{ margin: '0 0 8px' }}>
+                          Defines how the <strong>location filter</strong> and the <strong>mailing lists / individual users</strong> are combined — i.e. which conditions must be true for a person before the event shows up in their list.
+                        </p>
+                        <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>
+                          <li style={{ marginBottom: 6 }}>
+                            <strong>OR (default):</strong> <em>either filter is enough.</em> Example: <strong>Location = Cologne</strong>, <strong>list = SAPALL</strong> → anyone <strong>in Cologne</strong> <strong>OR</strong> in <strong>SAPALL</strong> sees the event. Useful when you intentionally want a <strong>broad audience</strong> (e.g. location staff <strong>plus</strong> a domain group).
+                          </li>
+                          <li>
+                            <strong>AND:</strong> <em>both filters must match.</em> Example: <strong>Location = Cologne</strong>, <strong>list = SAPALL</strong> → only people <strong>in Cologne</strong> <strong>AND</strong> in <strong>SAPALL</strong> see the event. Useful when you want to <strong>strictly narrow</strong> the audience (e.g. only the SAP colleagues <strong>at the Cologne site</strong>).
+                          </li>
+                        </ul>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                          <strong>Note:</strong> this selector only appears when <strong>both</strong> filters are set — otherwise there is nothing to combine.
+                        </p>
                       </>
                     )}
-                  </p>
+                  </div>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                       <input type="radio" name="filterMode" value="OR" checked={filterMode === 'OR'} onChange={() => setFilterMode('OR')} />
