@@ -33,12 +33,18 @@ function photoUrl(email: string, size: 'S' | 'M' | 'L'): string {
 function OrganizerChip({ name, email, sizeClass }: { name: string; email: string; sizeClass: 'sm' | 'md' }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  // SP /_layouts/15/userphoto.aspx liefert sporadisch transient 404 — z.B. wenn die
+  // Mailbox gerade geprovisioned wird oder die Anfrage parallel zu vielen anderen
+  // läuft. Ein einmaliger Retry mit Cache-Bust-Suffix recovered das oft. Erst nach
+  // dem zweiten Fehlschlag fallen wir auf das Initialen-Avatar zurück.
+  const [retryAttempt, setRetryAttempt] = React.useState(0);
   const [coords, setCoords] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
   const popoverHeight = 180; // ungefaehre Popover-Hoehe fuer Flip-Entscheidung
   const initials = getInitials(name);
+  const cacheBust = retryAttempt > 0 ? `&_r=${retryAttempt}` : '';
 
   const openPopover = (): void => {
     const r = wrapperRef.current?.getBoundingClientRect();
@@ -69,9 +75,12 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
     >
       {!failed && email ? (
         <img
-          src={photoUrl(email, 'S')}
+          src={`${photoUrl(email, 'S')}${cacheBust}`}
           alt={name}
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (retryAttempt < 1) setRetryAttempt(retryAttempt + 1);
+            else setFailed(true);
+          }}
           style={{
             width: avatarSize, height: avatarSize, borderRadius: '50%',
             objectFit: 'cover', background: 'var(--dex-gray-200)',

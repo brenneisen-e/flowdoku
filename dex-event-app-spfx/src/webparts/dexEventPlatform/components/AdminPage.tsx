@@ -234,7 +234,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
@@ -310,6 +310,9 @@ export default function AdminPage(): React.ReactElement {
   const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
+  // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
+  const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
+  const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   const [emailSubject, setEmailSubject] = React.useState('');
@@ -1964,6 +1967,122 @@ export default function AdminPage(): React.ReactElement {
                     setFixColumnsResult('Fehler beim Fixen der Spalten');
                   }
                   setIsFixingColumns(false);
+                }}
+              />
+            )}
+
+            {/* 8b. Organizer-Mails reparieren (alle Events) — Admin only.
+                Findet Events mit Längen-Mismatch zwischen organizers (Names) und
+                organizerEmails — typisch nach Legacy-Korruption aus v10.0–v10.2-
+                Closure-Bug. Versucht via Graph-Search die fehlenden Emails per
+                Lastname-Match nachzufüllen. Persistiert das gefixte Pair-Mapping
+                via updateEvent. Bricht NICHT bei einzelnen Fehlern ab — ein Event
+                mit unauflösbarem Namen wird übersprungen, der Rest läuft weiter.
+                Operiert über ALLE adminEvents (nicht nur das gerade ausgewählte). */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                title={isRepairingOrganizers ? 'Reparatur läuft…' : 'Organizer-Mails reparieren (alle Events)'}
+                desc="Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen."
+                badge="admin"
+                busy={isRepairingOrganizers}
+                result={repairOrganizersResult}
+                resultIsError={!!repairOrganizersResult && repairOrganizersResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef) return;
+                  if (!confirm(`Organizer-Mails über ALLE ${adminEvents.length} Events reparieren? Dauert je nach Anzahl ca. 1–2 Minuten und schreibt direkt in DEX_Events zurück.`)) return;
+                  setIsRepairingOrganizers(true);
+                  setRepairOrganizersResult(null);
+                  let scanned = 0;
+                  let mismatched = 0;
+                  let eventsUpdated = 0;
+                  let orgsRecovered = 0;
+                  let orgsUnresolved = 0;
+                  const unresolvedNames: string[] = [];
+                  try {
+                    for (const ev of adminEvents) {
+                      scanned++;
+                      const names = (ev.organizers || []).slice();
+                      const emails = (ev.organizerEmails || []).slice();
+                      // Pad das kürzere Array auf max() — nichts geht verloren
+                      const max = Math.max(names.length, emails.length);
+                      while (names.length < max) names.push('');
+                      while (emails.length < max) emails.push('');
+                      // Mismatch erkannt? Mindestens ein Name ohne Email oder eine Email ohne Name
+                      const hasMismatch = names.some((n, i) => (n || '').trim() && !((emails[i] || '').trim()))
+                        || emails.some((e, i) => (e || '').trim() && !((names[i] || '').trim()));
+                      if (!hasMismatch) continue;
+                      mismatched++;
+                      // Für jeden Slot mit Name aber ohne Email: Graph-Search nach Lastname
+                      // pro Slot, EINS-zu-EINS-Match wenn Local-Part den Lastname enthält.
+                      let recoveredHere = 0;
+                      const fixedNames = names.slice();
+                      const fixedEmails = emails.slice();
+                      for (let i = 0; i < max; i++) {
+                        const name = (fixedNames[i] || '').trim();
+                        const email = (fixedEmails[i] || '').trim();
+                        if (!name || email) continue;
+                        // Lastname extrahieren — egal ob "Lastname, Firstname" oder
+                        // "Firstname Lastname", als Suchquery für Graph nehmen wir
+                        // den ganzen Namen (Graph ist tolerant).
+                        try {
+                          // Lastname als Suchterm — Graph-Search ist tolerant für
+                          // 'Lastname' als Query und liefert eindeutigere Ergebnisse
+                          // als die kombinierte Form 'Lastname, Firstname'.
+                          const queryRaw = name.indexOf(',') >= 0 ? name.split(',')[0].trim() : name;
+                          const hits = await searchUsers(queryRaw);
+                          // Lastname-Substring-Match: filtere die Hits auf Personen,
+                          // deren Email-Local-Part den Lastname enthält. Damit greifen
+                          // wir den richtigen Eintrag auch bei Häufigkeitsnamen.
+                          const lastname = queryRaw.toLowerCase().split(/\s+/).filter(t => t.length >= 3).pop() || '';
+                          const matched = lastname
+                            ? hits.filter(h => ((h.email || '').toLowerCase().split('@')[0]).indexOf(lastname) >= 0)
+                            : hits;
+                          if (matched.length === 1 && matched[0].email) {
+                            fixedEmails[i] = matched[0].email;
+                            recoveredHere++;
+                            orgsRecovered++;
+                          } else if (matched.length === 0 && hits.length === 1 && hits[0].email) {
+                            // Kein Lastname-Match aber genau 1 Treffer überhaupt — übernehmen
+                            fixedEmails[i] = hits[0].email;
+                            recoveredHere++;
+                            orgsRecovered++;
+                          } else {
+                            // Mehrdeutig oder nichts gefunden — leer lassen
+                            unresolvedNames.push(`${name} (Event ${ev.eventNumber})`);
+                            orgsUnresolved++;
+                          }
+                        } catch {
+                          unresolvedNames.push(`${name} (Event ${ev.eventNumber})`);
+                          orgsUnresolved++;
+                        }
+                      }
+                      // Nichts wiederhergestellt? Skip Update — Storage ist eh schon
+                      // im aktuellen Zustand, Pad allein bringt keinen Mehrwert
+                      // (bei Save aus Wizard heilt sich das ohnehin).
+                      if (recoveredHere === 0) continue;
+                      // Alle vollständig leeren Slots aussortieren bevor wir schreiben
+                      const finalPairs = fixedNames.map((n, i) => ({ n: (n || '').trim(), e: (fixedEmails[i] || '').trim() }))
+                        .filter(p => p.n || p.e);
+                      const finalNames = finalPairs.map(p => p.n).join('; ');
+                      const finalEmails = finalPairs.map(p => p.e).join(';');
+                      try {
+                        const ok = await updateEvent(ev.id, { 'Organizer': finalNames, 'OrganizerEmail': finalEmails });
+                        if (ok) eventsUpdated++;
+                      } catch {
+                        // Update fehlgeschlagen — counts trotzdem belassen, einfach
+                        // skip dieses Event.
+                      }
+                    }
+                    const lines = [`Gescannt: ${scanned}`, `Mit Mismatch: ${mismatched}`, `Aktualisiert: ${eventsUpdated}`, `Emails wiederhergestellt: ${orgsRecovered}`];
+                    if (orgsUnresolved > 0) {
+                      lines.push(`Manuell nachziehen (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`);
+                    }
+                    setRepairOrganizersResult(lines.join(' · '));
+                  } catch (err) {
+                    setRepairOrganizersResult(`Fehler: ${err instanceof Error ? err.message : String(err)}`);
+                  }
+                  setIsRepairingOrganizers(false);
                 }}
               />
             )}

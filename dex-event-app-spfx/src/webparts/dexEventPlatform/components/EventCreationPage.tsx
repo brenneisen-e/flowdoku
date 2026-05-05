@@ -473,16 +473,23 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const [title, setTitle] = React.useState(editEvent ? editEvent.title : '');
-  // Mehrere Organizer werden mit '; ' getrennt gespeichert (innerhalb eines Namens kann ',' vorkommen, z.B. 'Maerzluft, Petra')
-  // Auto-Heal: bei Längen-Mismatch zwischen organizers und organizerEmails (Legacy-Daten
-  // aus v10.0–v10.2-Closure-Bug) wird auch die Names-Liste auf das Minimum gekürzt.
-  // Siehe Kommentar bei organizerEmails-State weiter unten.
+  // Mehrere Organizer werden mit '; ' getrennt gespeichert (innerhalb eines Namens
+  // kann ',' vorkommen, z.B. 'Maerzluft, Petra').
+  //
+  // Auto-Heal bei Längen-Mismatch (Legacy-Korruption aus v10.0–v10.2-Closure-Bug):
+  // pad auf max(names.length, emails.length) statt truncate auf min. Dadurch
+  // verliert der User keine Organizer-Einträge beim Edit-Load — fehlende Emails
+  // bleiben als leere Strings erhalten und können vom User einzeln per Picker
+  // nachgepflegt werden. Die Warning-Box (siehe weiter unten in der UI) macht das
+  // Mismatch sichtbar.
   const [organizer, setOrganizer] = React.useState(() => {
     if (!editEvent) return `${currentUser.firstName} ${currentUser.surname}`;
     const names = editEvent.organizers || [];
     const emails = editEvent.organizerEmails || [];
-    const min = Math.min(names.length, emails.length || names.length);
-    return names.slice(0, names.length === emails.length ? names.length : min).join('; ');
+    const max = Math.max(names.length, emails.length);
+    const padded: string[] = [];
+    for (let i = 0; i < max; i++) padded.push(names[i] || '');
+    return padded.join('; ');
   });
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [organizerSearch, setOrganizerSearch] = React.useState('');
@@ -500,19 +507,24 @@ export default function EventCreationPage(): React.ReactElement {
   // der Liste sind, weil ihre Email noch im Array liegt.
   const [organizerEmails, setOrganizerEmails] = React.useState<string[]>(() => {
     if (!editEvent || !editEvent.organizerEmails || editEvent.organizerEmails.length === 0) {
-      return [currentUser.email];
+      return editEvent && editEvent.organizers && editEvent.organizers.length > 0
+        ? editEvent.organizers.map(() => '')
+        : [currentUser.email];
     }
     const names = editEvent.organizers || [];
     const emails = editEvent.organizerEmails;
     if (names.length === emails.length) return emails.slice();
-    const min = Math.min(names.length, emails.length);
     if (names.length !== emails.length) {
       console.warn(
         `[DEX] EventCreationPage: organizers/organizerEmails Längen-Mismatch (${names.length} vs ${emails.length}) — `
-        + `kürze auf ${min}. Ursache: Legacy-Daten aus v10.0–v10.2-Closure-Bug. Manueller Re-Save heilt.`
+        + `padding auf max=${Math.max(names.length, emails.length)} mit leeren Slots. `
+        + `Ursache: Legacy-Daten aus v10.0–v10.2-Closure-Bug. User muss fehlende Emails per Picker nachfüllen, dann Save heilt.`
       );
     }
-    return emails.slice(0, min);
+    const max = Math.max(names.length, emails.length);
+    const padded: string[] = [];
+    for (let i = 0; i < max; i++) padded.push(emails[i] || '');
+    return padded;
   });
   // isSearchingOrganizer entfaellt seit v4.8.0 — Filter laeuft sync gegen den
   // bereits geladenen DEX_Roles-State, kein Async-Spinner mehr noetig.
@@ -2937,6 +2949,33 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </button>
                 </label>
+                {/* Mismatch-Warning: bei Legacy-Korruption aus v10.0–v10.2-Closure-Bug
+                    haben Events mehr Namen als Emails (oder umgekehrt). Auto-Heal padded
+                    inzwischen statt zu truncaten — die Chips zeigen alle Namen, aber bei
+                    welchen die Email fehlt, kann der User es hier nachpflegen. */}
+                {(() => {
+                  const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                  const missingEmailCount = orgList.reduce((acc, _, i) => {
+                    return acc + ((organizerEmails[i] || '').trim() === '' ? 1 : 0);
+                  }, 0);
+                  if (missingEmailCount === 0) return null;
+                  return (
+                    <div
+                      style={{
+                        background: '#fff8e1',
+                        border: '1px solid #f0c419',
+                        borderRadius: 'var(--dex-radius)',
+                        padding: '10px 12px',
+                        marginBottom: 10,
+                        fontSize: '0.82rem',
+                        lineHeight: 1.5,
+                        color: 'var(--dex-gray-800)',
+                      }}
+                    >
+                      <strong>⚠️ {missingEmailCount} Organizer ohne hinterlegte Email-Adresse.</strong> Bei diesen Personen fehlen die Mails fürs <strong>BCC</strong> der Anmelde-/Abmelde-Mails, die <strong>Outlook-Einladung</strong> und die <strong>Decline-/Forward-Notifications</strong>. Bitte entferne die betroffenen Chips (X) und füge sie über den Picker oder Massenimport neu ein. <em>(Ursache: Legacy-Daten aus einer früheren App-Version — wird beim nächsten Save geheilt.)</em>
+                    </div>
+                  );
+                })()}
                 {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
                 {(() => {
                   const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
