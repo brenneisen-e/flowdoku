@@ -1587,7 +1587,8 @@ Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt 
 #### 5. `Filter_Declined_Attendees` (Data Operation — Filter array)
 
 - **+ Add an action** → **Data Operation — Filter array**.
-- **From (fx):** `coalesce(outputs('Get_Outlook_Event')?['body/attendees'], createArray())`
+- **From (fx):** `coalesce(first(body('Get_Outlook_Event')?['value'])?['attendees'], json('[]'))`
+  *(`first(body('...')?['value'])` weil `Get events (V4)` ein Array zurückliefert — wir picken das erste/einzige Match. `json('[]')` als Fallback statt `createArray()`, weil `createArray()` ohne Args einen `Unable to process template language expressions`-Fehler wirft.)*
   *(coalesce: Events ohne Attendees → leeres Array, kein Null-Pointer.)*
 - **Edit in advanced mode** und Filter-Expression:
   ```
@@ -1877,7 +1878,7 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
       "Filter_Declined_Attendees": {
         "type": "Query",
         "inputs": {
-          "from": "@coalesce(outputs('Get_Outlook_Event')?['body/attendees'], createArray())",
+          "from": "@coalesce(first(body('Get_Outlook_Event')?['value'])?['attendees'], json('[]'))",
           "where": "@equals(toLower(coalesce(item()?['status']?['response'], '')), 'declined')"
         },
         "runAfter": { "Set_variable": [ "Succeeded" ] }
@@ -1991,6 +1992,9 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
 - **`Get_Outlook_Event` table = Default-Calendar-ID des Postfachs `no_reply.events@deloitte.de`.** Aktuell hardcoded als die lange Base64-ID. Bei Tenant-Migration muss der Wert über die Office-365-Outlook-Connector-Dropdowns (Calendar Id) neu picked werden — die Connector-UI tauscht ihn dann automatisch im Code-View.
 - **`Get_Outlook_Event` id = `outputs('Get_Outlook_EventId')`** = `iCalUId` aus `DEX_Events.CalendarLink`. `V3CalendarGetItem` akzeptiert die iCalUId als Lookup-Schlüssel und sucht damit über alle Mailbox-Kalender hinweg — anders als die kalenderspezifische `EntryId`, die mailbox-gebunden wäre.
 - **Get_Decliner_Status table = `Teilnehmer`** (nicht leer lassen — leerer table-Wert führte in einer Vorab-Version zu HTTP 400 auf der Subsite-Liste).
+- **Outlook-Event-Lookup nutzt `Get events (V4)` (Plural) mit `$filter=iCalUId eq '<id>'`, NICHT `Get event (V4)` (Singular).** Die Singular-Action (`V3CalendarGetItem`) erwartet eine **EntryId** — wenn man ihr eine **iCalUId** (aus `DEX_Events.CalendarLink`) übergibt, antwortet der Connector mit `ErrorInvalidIdMalformed`. Mit Plural + Filter umgeht man das, weil iCalUId eine Standard-Property der Event-Resource in Microsoft Graph ist und filterbar.
+- **`Filter_Declined_Attendees.from = json('[]')` als Fallback, NICHT `createArray()`.** PA-`createArray()` braucht mindestens 1 Parameter; ohne Args wirft es einen Compile-Error („createArray expects a comma separated list of parameters"). `json('[]')` parst den String als JSON und liefert ein leeres Array — das saubere PA-Idiom für „leeres Array, falls null".
+- **Plural-Result-Access:** seit der Umstellung auf `Get events (V4)` ist `body('Get_Outlook_Event')?['value']` ein Array. Zugriff auf den einzelnen Treffer immer mit `first(body('Get_Outlook_Event')?['value'])?['attendees']` — NICHT mehr mit `outputs('Get_Outlook_Event')?['body/attendees']`.
 - **`Apply_To_Each_Decliner.runtimeConfiguration.concurrency.repetitions = 1`** ist Pflicht. Power Automate führt `Foreach` per Default mit bis zu **20 parallelen Iterationen** aus. Innerhalb der Loop wird an `DeclineRowsHtml` (string) appended und `StillRegisteredCount` (int) incrementiert — beides shared Variables. Bei paralleler Ausführung gehen Schreibvorgänge verloren (lost update) und die Digest-Tabelle hat verstümmelte Zeilen / falschen Counter. Sequentiell (`repetitions: 1`) löst das — Performance-Verlust ist minimal, weil pro Decliner nur ein SP-Read und zwei Variable-Writes laufen.
 - **`Get_Outlook_Event.retryPolicy = exponential, count: 4, interval: PT5S`** fängt transiente Outlook-Connector-Fehler (`429 Too Many Requests`, `503`, kurzfristige Timeouts) ab. Ohne Retry würde der ganze Flow-Run kippen und der Digest für diese eine Decline-Mail wäre verloren — der Reminder ist ja bereits gequeued, also stünde der Decliner danach im nächsten Digest mit einer Run-Zeit Verspätung. Mit Retry ist beides resilient.
 
