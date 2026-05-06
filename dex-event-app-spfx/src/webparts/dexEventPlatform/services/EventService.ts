@@ -297,6 +297,10 @@ export interface CustomField {
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
+  /** v10.24: Bei Split-Capacity-Events kann ein Feld auf eine der zwei
+   *  Gruppen eingeschränkt werden ('A' = Durchstarter, 'B' = Funstarter).
+   *  'all'/undefined = für beide Gruppen sichtbar. */
+  onlyForGroup?: 'all' | 'A' | 'B';
   /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
    * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
   externalLinks?: Array<{ label: string; url: string }>;

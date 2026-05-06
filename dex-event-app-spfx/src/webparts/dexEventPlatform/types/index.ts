@@ -198,6 +198,13 @@ export interface EventSpecificField {
    *  Quell-Antworten in `values` enthalten ist. Bei Checkbox-Quelle ist
    *  values = ['true'] oder ['false']. */
   showIf?: { fieldId: string; values: string[] };
+  /** v10.24: Bei aktiver Split-Capacity (DurchstarterCapacity > 0 AND
+   *  FunstarterCapacity > 0) kann der Organizer ein Feld auf eine der zwei
+   *  Gruppen einschränken. 'A' = nur Gruppe A (intern: Durchstarter), 'B' =
+   *  nur Gruppe B (intern: Funstarter). Nicht gesetzt oder 'all' = beide
+   *  Gruppen. Beispiel: Pflicht-Checkbox „Leistungsnachweis vorhanden" nur
+   *  für Gruppe A einblenden. Bei Events ohne Split-Capacity wirkungslos. */
+  onlyForGroup?: 'all' | 'A' | 'B';
 }
 
 export interface Registration {
