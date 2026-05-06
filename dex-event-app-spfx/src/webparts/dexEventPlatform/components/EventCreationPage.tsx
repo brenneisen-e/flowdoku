@@ -1455,15 +1455,30 @@ export default function EventCreationPage(): React.ReactElement {
     // eine Pflicht-Checkbox die NUR für Teilnehmergruppe 1 sichtbar ist
     // (onlyForGroup='A') — zeigt den neuen Pro-Gruppe-Field-Mechanismus
     // direkt am Demo-Event.
+    // v11.3: deterministic IDs damit das roommate-Feld eine showIf-Referenz
+    // auf das zimmerart-Feld bauen kann (showIf-Filter-Vergleich nutzt
+    // exakte fieldId-Strings, daher muss die ID stabil sein).
+    const tDemo = Date.now();
+    const idTshirt = `cf-${tDemo}`;
+    const idAllergien = `cf-${tDemo + 1}`;
+    const idDiet = `cf-${tDemo + 2}`;
+    const idHotel = `cf-${tDemo + 3}`;
+    const idZimmerart = `cf-${tDemo + 4}`;
+    const idRoommate = `cf-${tDemo + 5}`;
+    const idGroup1 = `cf-${tDemo + 6}`;
     setCustomFields([
-      { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-      { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
-      { id: `cf-${Date.now() + 2}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
-      { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
-      { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
-      { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true },
+      { id: idTshirt, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
+      { id: idAllergien, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
+      { id: idDiet, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
+      { id: idHotel, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
+      { id: idZimmerart, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
+      // v11.3: Roommate-Feld nur sichtbar wenn Zimmerart='Doppelzimmer' —
+      // verhindert dass Einzelzimmer-Bucher versehentlich einen Roommate
+      // angeben. Demonstriert direkt den showIf-Mechanismus aus v7.21.
+      { id: idRoommate, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true,
+        showIf: { fieldId: idZimmerart, values: ['Doppelzimmer'] } },
       // Pflicht-Checkbox nur für Gruppe 1 (Demo für onlyForGroup='A')
-      { id: `cf-${Date.now() + 6}`, label: 'Zustimmung Sonderkonditionen Gruppe 1', type: 'checkbox', required: true, options: [], visible: true, onlyForGroup: 'A' },
+      { id: idGroup1, label: 'Zustimmung Sonderkonditionen Gruppe 1', type: 'checkbox', required: true, options: [], visible: true, onlyForGroup: 'A' },
     ]);
     // v10.26: Zwei Sub-Events anlegen — Subevent 1 mit Dropdown-Frage,
     // Subevent 2 mit Freitext-Frage. Damit sieht der Organizer beim

@@ -1177,10 +1177,25 @@ export default function RegistrationPage(): React.ReactElement {
                               }}
                               title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
                             >
-                              <strong>{u.displayName}</strong>
-                              <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
-                              {u.jobTitle && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8, fontSize: '0.78rem', fontStyle: 'italic' }}>{u.jobTitle}</span>}
-                              {u.location && <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8, fontSize: '0.8rem' }}>({u.location})</span>}
+                              {/* v11.3: People-Picker-Reihe mit Foto — analog
+                                  zum Wizard-Organizer-Picker. SP-userphoto.aspx
+                                  liefert das Profilbild zum E-Mail-Account. */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <img
+                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                                  alt={u.displayName}
+                                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                                  <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {u.email}
+                                    {u.jobTitle ? ` · ${u.jobTitle}` : ''}
+                                    {u.location ? ` · ${u.location}` : ''}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
