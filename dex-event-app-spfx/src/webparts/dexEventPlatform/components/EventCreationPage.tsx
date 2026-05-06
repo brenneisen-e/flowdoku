@@ -1424,9 +1424,27 @@ export default function EventCreationPage(): React.ReactElement {
     setEndDate(toDatetime(eventEnd));
     setRegistrationDeadline(toDate(deadline));
     setLastDeregisterDate(toDate(lastDereg));
+    // v10.26: Demo-Event aktiviert geteilte Kapazität als Vorlage. Zwei
+    // Gruppen á 25 Plätze, gemeinsame Warteliste deaktiviert (= getrennt,
+    // damit der typ-bewusste Promote-Pfad als Demo durchläuft).
     setMaxParticipants('50');
+    setUseSplitCapacities(true);
+    setSplitLabelA('Teilnehmergruppe 1');
+    setSplitLabelB('Teilnehmergruppe 2');
+    setDurchstarterCapacity('25');
+    setFunstarterCapacity('25');
+    setSplitSharedWaitlist(false);
     setWaitlistEnabled(true);
     setEventImageUrl('');
+    // v10.26: Ansprechpartner als Demo befüllt — der Organizer sieht
+    // direkt wie das Feld auf der Anmelde-Seite gerendert wird.
+    setContactName('Eike Brenneisen');
+    setContactEmail('ebrenneisen@deloitte.de');
+    setContactInfo('Bei Rückfragen zu Anmeldung oder Ablauf direkt melden.');
+    // v10.26: Custom-Fields. Zusätzlich zu den Standard-Beispielen kommt
+    // eine Pflicht-Checkbox die NUR für Teilnehmergruppe 1 sichtbar ist
+    // (onlyForGroup='A') — zeigt den neuen Pro-Gruppe-Field-Mechanismus
+    // direkt am Demo-Event.
     setCustomFields([
       { id: `cf-${Date.now()}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
       { id: `cf-${Date.now() + 1}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
@@ -1434,6 +1452,88 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${Date.now() + 3}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
       { id: `cf-${Date.now() + 4}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
       { id: `cf-${Date.now() + 5}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true },
+      // Pflicht-Checkbox nur für Gruppe 1 (Demo für onlyForGroup='A')
+      { id: `cf-${Date.now() + 6}`, label: 'Zustimmung Sonderkonditionen Gruppe 1', type: 'checkbox', required: true, options: [], visible: true, onlyForGroup: 'A' },
+    ]);
+    // v10.26: Zwei Sub-Events anlegen — Subevent 1 mit Dropdown-Frage,
+    // Subevent 2 mit Freitext-Frage. Damit sieht der Organizer beim
+    // Demo-Klick sofort, wie die Sub-Event-Struktur + Sub-Event-spezifische
+    // Custom-Fields zusammenspielen.
+    const subStart1 = new Date(eventStart);
+    subStart1.setHours(10, 0, 0, 0);
+    const subEnd1 = new Date(eventStart);
+    subEnd1.setHours(12, 0, 0, 0);
+    const subStart2 = new Date(eventStart);
+    subStart2.setDate(eventStart.getDate() + 1);
+    subStart2.setHours(13, 0, 0, 0);
+    const subEnd2 = new Date(eventStart);
+    subEnd2.setDate(eventStart.getDate() + 1);
+    subEnd2.setHours(15, 0, 0, 0);
+    // v10.26: Demo-Agenda mit drei Programmpunkten am ersten Tag
+    const dateIso = toDate(eventStart);
+    setAgenda([
+      { id: `ag-${Date.now()}`, date: dateIso, time: '09:00', endTime: '10:00', icon: 'Hello', title: 'Begrüßung & Kennenlernen', description: 'Kurzer Auftakt mit Vorstellung der Tagesziele.' },
+      { id: `ag-${Date.now() + 1}`, date: dateIso, time: '10:15', endTime: '12:00', icon: 'Lightbulb', title: 'Workshop-Block', description: 'Interaktive Sessions in Kleingruppen.' },
+      { id: `ag-${Date.now() + 2}`, date: dateIso, time: '12:00', endTime: '13:30', icon: 'EatDrink', title: 'Mittagessen', description: 'Stärkung und Networking.' },
+    ]);
+    // v10.26: Demo-Transferzeiten — Bus von Frankfurt zum Veranstaltungsort
+    setTransferTimes([
+      {
+        id: `tt-${Date.now()}`,
+        location: 'Frankfurt am Main',
+        meetingPoint: 'Hauptbahnhof, Gleis 1',
+        address: 'Im Hauptbahnhof, 60329 Frankfurt am Main',
+        date: dateIso,
+        departureTime: '07:30',
+        arrivalTime: '08:45',
+        description: 'Reisebus-Transfer zum Veranstaltungsort.',
+      },
+    ]);
+    setSubEvents([
+      {
+        id: `se-${Date.now()}`,
+        title: 'Subevent 1',
+        startDate: toDatetime(subStart1),
+        endDate: toDatetime(subEnd1),
+        registrationDeadline: '',
+        location: 'Köln, Testort — Raum A',
+        description: 'Subevent 1 mit Auswahlfrage zum Format.',
+        maxParticipants: 30,
+        disableEmails: false,
+        disableOutlook: false,
+        customFields: [
+          {
+            id: `sef-${Date.now()}`,
+            label: 'Welches Format passt für dich?',
+            type: 'select',
+            required: false,
+            options: ['Workshop (interaktiv)', 'Vortrag (Frontal)', 'Roundtable'],
+            visible: true,
+          },
+        ],
+      },
+      {
+        id: `se-${Date.now() + 1}`,
+        title: 'Subevent 2',
+        startDate: toDatetime(subStart2),
+        endDate: toDatetime(subEnd2),
+        registrationDeadline: '',
+        location: 'Köln, Testort — Raum B',
+        description: 'Subevent 2 mit Freitext-Frage.',
+        maxParticipants: 30,
+        disableEmails: false,
+        disableOutlook: false,
+        customFields: [
+          {
+            id: `sef-${Date.now() + 1}`,
+            label: 'Welches Thema möchtest du gerne vertieft besprechen?',
+            type: 'text',
+            required: false,
+            options: [],
+            visible: true,
+          },
+        ],
+      },
     ]);
   };
 

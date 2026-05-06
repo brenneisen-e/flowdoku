@@ -1049,17 +1049,46 @@ export default function MyEventsPage(): React.ReactElement {
                         />
                       </div>
                     )}
+                    {/* v10.26: Optionaler Ansprechpartner — frei eingegebene Person
+                        außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
+                        wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
+                        oder Email gepflegt sind. Spiegelt das Verhalten der
+                        Registration-Page in My Events wider. */}
+                    {(event.contactName || event.contactEmail || event.contactInfo) && (
+                      <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 6, border: '1px solid var(--dex-gray-200)' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                          {(event.emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Ansprechpartner' : 'Contact'}
+                        </div>
+                        {event.contactName && (
+                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                        )}
+                        {event.contactEmail && (
+                          <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
+                            <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'none' }}>{event.contactEmail}</a>
+                          </div>
+                        )}
+                        {event.contactInfo && (
+                          <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Custom Fields als kompakte Tags */}
+                {/* v10.26: Custom-Field-Antworten als rechteckige
+                    pastellgrüne Tags — visuell eindeutig von den
+                    abgerundeten grauen Organizer-Chips getrennt, damit der
+                    User sofort sieht: das ist „was ich angegeben habe", nicht
+                    „wer organisiert das". */}
                 {!editingId || editingId !== event.id ? (
                   displayData.length > 0 && (
                     <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {displayData.map(({ label, value }) => (
                         <span key={label} style={{
-                          fontSize: '0.78rem', padding: '3px 10px', borderRadius: 12,
-                          background: 'var(--dex-gray-100)', color: 'var(--dex-gray-700)',
+                          fontSize: '0.78rem', padding: '4px 10px', borderRadius: 4,
+                          background: 'rgba(134,188,37,0.14)',
+                          color: 'var(--dex-green-dark, #4a7c1f)',
+                          border: '1px solid rgba(134,188,37,0.30)',
                         }}>
                           {label}: <strong>{value}</strong>
                         </span>
