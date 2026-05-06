@@ -143,6 +143,19 @@ export default function RegistrationPage(): React.ReactElement {
   const [registerForParent, setRegisterForParent] = React.useState(true);
   const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
   const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
+  // v10.12+: pro Sub-Event eigene Custom-Field-Werte. Wird beim Check eines
+  // Sub-Events in dem Pop-Up-Modal abgefragt (siehe pendingSubEventModal weiter
+  // unten) und beim Submit pro Sub-Event-Registrierung an registerForEvent
+  // weitergereicht.
+  const [sessionFieldValues, setSessionFieldValues] = React.useState<Record<string, Record<string, string>>>({});
+  // Modal-State: wenn ein Sub-Event angecheckt wird das Custom-Fields hat,
+  // wird hier die ID gemerkt + ein Draft der Field-Werte. Beim „Bestätigen"
+  // wandern die Werte in sessionFieldValues + die Session in selectedSessions.
+  // Beim „Abbrechen" wird der Modal geschlossen und die Session NICHT angecheckt.
+  const [pendingSubEventModal, setPendingSubEventModal] = React.useState<{
+    subEventId: string;
+    draftValues: Record<string, string>;
+  } | null>(null);
   const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number; wasRegistered: boolean }>>({});
   const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
@@ -512,7 +525,10 @@ export default function RegistrationPage(): React.ReactElement {
           const isSel = selectedSessions.has(ce.id);
           if (isSel && !wasReg) {
             const sType = (isB2runSplit && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
-            const ok = await registerForEvent(ce.id, {}, firstTrim, surnameTrim, participantEmail, sType);
+            // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
+            // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
+            const seFieldValues = sessionFieldValues[ce.id] || {};
+            const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
             if (ok) anySuccess = true;
           } else if (!isSel && wasReg) {
             await cancelRegistration(ce.id);
@@ -838,9 +854,36 @@ export default function RegistrationPage(): React.ReactElement {
                             checked={isSel}
                             disabled={disabled}
                             onChange={e => {
-                              const next = new Set(selectedSessions);
-                              if (e.target.checked) next.add(ce.id); else next.delete(ce.id);
-                              setSelectedSessions(next);
+                              if (e.target.checked) {
+                                // Wenn das Sub-Event eigene Custom-Fields hat:
+                                // erst das Modal öffnen, der User muss die Antworten
+                                // bestätigen. Bei „Bestätigen" landet die Session in
+                                // selectedSessions + die Werte in sessionFieldValues.
+                                // Sub-Events ohne Custom-Fields: direkt selektieren.
+                                const hasCustomFields = (ce.eventSpecificFields || []).length > 0;
+                                if (hasCustomFields) {
+                                  setPendingSubEventModal({
+                                    subEventId: ce.id,
+                                    draftValues: { ...(sessionFieldValues[ce.id] || {}) },
+                                  });
+                                } else {
+                                  const next = new Set(selectedSessions);
+                                  next.add(ce.id);
+                                  setSelectedSessions(next);
+                                }
+                              } else {
+                                // Uncheck: Session entfernen + gespeicherte Field-Werte
+                                // wegräumen damit beim erneuten Checken ein frisches
+                                // Modal kommt (kein Stale-State).
+                                const next = new Set(selectedSessions);
+                                next.delete(ce.id);
+                                setSelectedSessions(next);
+                                setSessionFieldValues(prev => {
+                                  const copy = { ...prev };
+                                  delete copy[ce.id];
+                                  return copy;
+                                });
+                              }
                             }}
                             style={{ marginTop: 2 }}
                           />
@@ -1552,6 +1595,157 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v10.12: Sub-Event Custom-Fields Modal — wird geöffnet wenn ein
+          Sub-Event mit eigenen Custom-Fields angecheckt wird. Der User muss die
+          Antworten ausfüllen + bestätigen, dann wandert die Session in
+          selectedSessions und die Werte in sessionFieldValues. Beim „Abbrechen"
+          wird die Session NICHT angecheckt. */}
+      {pendingSubEventModal && (() => {
+        const ce = childEvents.find(c => c.id === pendingSubEventModal.subEventId);
+        if (!ce) return null;
+        const fields = (ce.eventSpecificFields || []).filter(f => f && f.label);
+        const draft = pendingSubEventModal.draftValues;
+        const setDraft = (next: Record<string, string>): void => {
+          setPendingSubEventModal(prev => prev ? { ...prev, draftValues: next } : prev);
+        };
+        const updateFieldValue = (fieldId: string, value: string): void => {
+          setDraft({ ...draft, [fieldId]: value });
+        };
+        const requiredMissing = fields.filter(f => f.required && !((draft[f.id] || '').trim())).map(f => f.label);
+        const canSubmit = requiredMissing.length === 0;
+        const onConfirm = (): void => {
+          if (!canSubmit) return;
+          setSessionFieldValues(prev => ({ ...prev, [ce.id]: { ...draft } }));
+          setSelectedSessions(prev => {
+            const next = new Set(prev);
+            next.add(ce.id);
+            return next;
+          });
+          setPendingSubEventModal(null);
+        };
+        const onCancel = (): void => setPendingSubEventModal(null);
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={onCancel}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="card"
+              style={{
+                width: '100%', maxWidth: 520, maxHeight: '85vh', overflow: 'auto',
+                padding: 24, borderRadius: 'var(--dex-radius, 8px)', background: '#fff',
+              }}
+            >
+              <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
+                {ce.title || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
+              </h3>
+              <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {locale === 'de'
+                  ? 'Bitte beantworte die Fragen für dieses Sub-Event:'
+                  : 'Please answer the questions for this sub-event:'}
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+                {fields.map(f => {
+                  const val = draft[f.id] || '';
+                  return (
+                    <div key={f.id}>
+                      <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
+                        {f.label}
+                        {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
+                      </label>
+                      {f.helpText && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>{f.helpText}</div>
+                      )}
+                      {f.type === 'select' && f.multi ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {(f.options || []).map(opt => {
+                            const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
+                            const checked = current.indexOf(opt) >= 0;
+                            return (
+                              <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = e.target.checked
+                                      ? [...current, opt]
+                                      : current.filter(x => x !== opt);
+                                    updateFieldValue(f.id, next.join(' | '));
+                                  }}
+                                />
+                                {opt}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : f.type === 'select' ? (
+                        <select
+                          className="form-input"
+                          value={val}
+                          onChange={e => updateFieldValue(f.id, e.target.value)}
+                          style={{ width: '100%', fontSize: '0.9rem' }}
+                        >
+                          <option value="">{locale === 'de' ? '— bitte wählen —' : '— please select —'}</option>
+                          {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      ) : f.type === 'checkbox' ? (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={val === 'true'}
+                            onChange={e => updateFieldValue(f.id, e.target.checked ? 'true' : 'false')}
+                          />
+                          {locale === 'de' ? 'Ja' : 'Yes'}
+                        </label>
+                      ) : f.type === 'number' ? (
+                        <input
+                          type="number"
+                          className="form-input"
+                          value={val}
+                          onChange={e => updateFieldValue(f.id, e.target.value)}
+                          style={{ width: '100%', fontSize: '0.9rem' }}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={val}
+                          onChange={e => updateFieldValue(f.id, e.target.value)}
+                          style={{ width: '100%', fontSize: '0.9rem' }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!canSubmit && requiredMissing.length > 0 && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-red, #c00)', marginBottom: 12 }}>
+                  {locale === 'de' ? 'Pflichtfelder fehlen: ' : 'Required fields missing: '}{requiredMissing.join(', ')}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={onCancel}>
+                  {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={!canSubmit}>
+                  {locale === 'de' ? 'Bestätigen' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

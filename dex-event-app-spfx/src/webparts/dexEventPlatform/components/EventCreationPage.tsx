@@ -788,6 +788,13 @@ export default function EventCreationPage(): React.ReactElement {
     registrationDeadline?: string;
     disableEmails?: boolean;
     disableOutlook?: boolean;
+    /** Per-Sub-Event Custom-Fields (v10.11+). Ersetzt die hardcoded Funstarter/
+     *  Durchstarter-Frage bei B2Run — wer eine zusätzliche Auswahl-Frage pro
+     *  Sub-Event will, definiert sie hier individuell. Default: leeres Array
+     *  (= Sub-Event ohne zusätzliche Frage, Teilnehmer wählen nur den Termin).
+     *  Wird unabhängig vom Hauptevent-customFields gespeichert; mit dem Button
+     *  „Vom Hauptevent kopieren" kann der Organizer die Felder duplizieren. */
+    customFields?: CustomFieldInput[];
   }
   const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
     if (!editEvent) return [];
@@ -804,6 +811,21 @@ export default function EventCreationPage(): React.ReactElement {
       registrationDeadline: k.registrationDeadline,
       disableEmails: k.disableEmails,
       disableOutlook: k.disableOutlook,
+      customFields: (k.eventSpecificFields || []).map(f => ({
+        id: f.id,
+        label: f.label,
+        type: f.type as CustomFieldInput['type'],
+        required: !!f.required,
+        options: f.options || [],
+        // EventSpecificField hat kein 'visible'-Feld — default auf true.
+        // Sichtbarkeit ist im Storage immer „shown" (default), nur im Wizard
+        // kann der User Felder ausblenden.
+        visible: true,
+        externalLinks: f.externalLinks,
+        multi: f.multi,
+        helpText: f.helpText,
+        showIf: f.showIf,
+      })),
     }));
   });
   // Snapshot der beim Edit-Start vorhandenen Sub-Event-DB-IDs, um beim Save
@@ -1002,6 +1024,55 @@ export default function EventCreationPage(): React.ReactElement {
 
   const updateCustomField = (id: string, updates: Partial<CustomFieldInput>): void => {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
+  };
+
+  // === Sub-Event Custom-Field Helpers (v10.11+) =============================
+  // Per-Sub-Event Custom-Fields ersetzen die hardcoded Funstarter/Durchstarter-
+  // Frage. Pattern parallel zu den Hauptevent-Helpers — operieren aber auf dem
+  // `customFields[]` eines spezifischen SubEventDraft (nach Client-`id`
+  // identifiziert). Funktional minimaler als die Hauptevent-Variante (kein
+  // Suggested-Modal, kein showIf für v1), reicht aber für „Auswahlfrage pro
+  // Sub-Event mit individuellem Label + Optionen".
+  const addSubEventCustomField = (subEventId: string): void => {
+    setSubEvents(prev => prev.map(se => se.id !== subEventId ? se : ({
+      ...se,
+      customFields: [...(se.customFields || []), {
+        id: `cf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        label: '',
+        type: 'select',
+        required: false,
+        options: ['', ''],
+        visible: true,
+      }],
+    })));
+  };
+  const removeSubEventCustomField = (subEventId: string, fieldId: string): void => {
+    setSubEvents(prev => prev.map(se => se.id !== subEventId ? se : ({
+      ...se,
+      customFields: (se.customFields || []).filter(f => f.id !== fieldId),
+    })));
+  };
+  const updateSubEventCustomField = (subEventId: string, fieldId: string, updates: Partial<CustomFieldInput>): void => {
+    setSubEvents(prev => prev.map(se => se.id !== subEventId ? se : ({
+      ...se,
+      customFields: (se.customFields || []).map(f => f.id === fieldId ? { ...f, ...updates } : f),
+    })));
+  };
+  const copyParentFieldsToSubEvent = (subEventId: string): void => {
+    // Dupliziert die Hauptevent-Felder ins Sub-Event mit frischen IDs (sonst
+    // kollidieren Field-IDs zwischen Parent und Children, was bei Validierungs-
+    // Logik und showIf-Refs zu Konflikten führen würde).
+    const cloned: CustomFieldInput[] = customFields.map(f => ({
+      ...f,
+      id: `cf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      options: f.options.slice(),
+      externalLinks: f.externalLinks ? f.externalLinks.map(x => ({ ...x })) : undefined,
+      showIf: undefined,  // showIf-Refs würden auf Parent-Field-IDs zeigen, droppen
+    }));
+    setSubEvents(prev => prev.map(se => se.id !== subEventId ? se : ({
+      ...se,
+      customFields: cloned,
+    })));
   };
 
   /**
@@ -1277,12 +1348,28 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails: !!draft.disableEmails,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
-        customFields: [],
+        customFields: draft.customFields || [],
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
         keptDbIds.add(draft.dbId);
-        // Update bestehender Sub-Event: nur geänderte Felder patchen.
+        // Update bestehender Sub-Event: nur geänderte Felder patchen. CustomFields
+        // werden als JSON-String serialisiert (gleiche Form wie bei regulären
+        // Events; siehe handleSubmit-Edit-Pfad).
+        const cfJson = JSON.stringify((draft.customFields || [])
+          .filter(f => f.label && f.label.trim().length > 0)
+          .map(f => ({
+            id: f.id,
+            label: f.label.trim(),
+            type: f.type,
+            required: f.required,
+            visible: f.visible,
+            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
+              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
+              : {}),
+            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
+          })));
         await updateEvent(draft.dbId, {
           'Title': childPayload.title,
           'Description': childPayload.description,
@@ -1293,6 +1380,7 @@ export default function EventCreationPage(): React.ReactElement {
           'MaxParticipants': childPayload.maxParticipants,
           'DisableEmails': childPayload.disableEmails,
           'DisableOutlook': childPayload.disableOutlook,
+          'CustomFields': cfJson,
         });
       } else {
         await createEvent(childPayload);
@@ -5221,6 +5309,16 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* Dynamische Felder */}
               <div>
+                {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
+                    Sub-Event-Block weiter unten (v10.11+). */}
+                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
+                  {isDe ? 'Felder für das Hauptevent' : 'Fields for the main event'}
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  {isDe
+                    ? 'Diese Felder werden bei jeder Anmeldung abgefragt — egal ob das Event Sub-Events hat oder nicht. Für Sub-Event-spezifische Fragen siehe Bereich „Felder pro Sub-Event" weiter unten.'
+                    : 'These fields are asked at every registration — regardless of whether the event has sub-events. For sub-event-specific questions see „Fields per sub-event" below.'}
+                </p>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <StepBadge n={19} />
                   {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
@@ -5703,6 +5801,198 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 ))}
               </div>
+
+              {/* === Bereich 2: Felder pro Sub-Event (v10.11+) ============
+                  Jedes Sub-Event hat eine eigene Custom-Fields-Liste, die bei
+                  der Anmeldung auf einem Sub-Event zusätzlich zu den Hauptevent-
+                  Feldern gerendert wird. Ersetzt die hardcoded Fun-/Durchstarter-
+                  Frage durch frei konfigurierbare Auswahl-Fragen. */}
+              <div style={{ marginTop: 32, paddingTop: 24, borderTop: '2px solid var(--dex-gray-200)' }}>
+                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
+                  {isDe ? 'Felder pro Sub-Event' : 'Fields per sub-event'}
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                  {isDe
+                    ? 'Optional: pro Sub-Event eine eigene Auswahl-Frage (z.B. „Welche Strecke läufst du?" mit Optionen 5/10/Halbmarathon). Diese Felder erscheinen NUR wenn der Teilnehmer das jeweilige Sub-Event wählt — zusätzlich zu den Feldern des Hauptevents oben.'
+                    : 'Optional: a per-sub-event question (e.g. „Which distance?" with options 5/10/Halfmarathon). These fields appear ONLY when an attendee picks that sub-event — in addition to the main-event fields above.'}
+                </p>
+
+                {subEvents.length === 0 ? (
+                  <div style={{
+                    padding: '16px 18px',
+                    background: 'rgba(237,139,0,0.08)',
+                    border: '1px dashed var(--dex-orange, #ed8b00)',
+                    borderRadius: 8,
+                    fontSize: '0.85rem',
+                    color: 'var(--dex-gray-700)',
+                  }}>
+                    {isDe
+                      ? 'Noch keine Sub-Events angelegt. Sub-Events legst du in Schritt 1 (Grundlagen, ganz unten „Sub-Events") an, hier kannst du dann pro Sub-Event eigene Anmelde-Felder definieren.'
+                      : 'No sub-events yet. Add sub-events in Step 1 (Basics, at the bottom „Sub-events"), then come back here to define per-sub-event registration fields.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {subEvents.map(se => {
+                      const seFields = se.customFields || [];
+                      return (
+                        <div
+                          key={se.id}
+                          style={{
+                            border: '1px solid var(--dex-gray-200)',
+                            borderRadius: 8,
+                            padding: '14px 16px',
+                            background: '#fafafa',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                            <strong style={{ fontSize: '0.95rem' }}>
+                              {se.title || (isDe ? '(unbenanntes Sub-Event)' : '(unnamed sub-event)')}
+                            </strong>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                                onClick={() => addSubEventCustomField(se.id)}
+                              >
+                                <Plus size={12} /> {isDe ? 'Feld hinzufügen' : 'Add field'}
+                              </button>
+                              {customFields.length > 0 && seFields.length === 0 && (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline"
+                                  style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                                  onClick={() => copyParentFieldsToSubEvent(se.id)}
+                                  title={isDe ? `Dupliziert die ${customFields.length} Felder vom Hauptevent als Startpunkt` : 'Duplicates the main-event fields as a starting point'}
+                                >
+                                  {isDe ? `Vom Hauptevent kopieren (${customFields.length})` : `Copy from main event (${customFields.length})`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {seFields.length === 0 ? (
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontStyle: 'italic' }}>
+                              {isDe
+                                ? 'Keine zusätzlichen Felder — Teilnehmer wählen nur das Sub-Event ohne weitere Frage.'
+                                : 'No additional fields — attendees just pick this sub-event with no further question.'}
+                            </p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {seFields.map(field => (
+                                <div
+                                  key={field.id}
+                                  style={{
+                                    border: '1px solid var(--dex-gray-200)',
+                                    borderRadius: 6,
+                                    padding: '10px 12px',
+                                    background: '#fff',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                                    <select
+                                      className="form-input"
+                                      value={field.type}
+                                      onChange={e => updateSubEventCustomField(se.id, field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                                      style={{ flex: '0 0 130px', fontSize: '0.82rem', padding: '4px 8px' }}
+                                    >
+                                      <option value="text">{isDe ? 'Text' : 'Text'}</option>
+                                      <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
+                                      <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
+                                      <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                    </select>
+                                    <input
+                                      className="form-input"
+                                      placeholder={isDe ? 'Frage / Feld-Label (z.B. „Welche Strecke?")' : 'Question / field label (e.g. „Which distance?")'}
+                                      value={field.label}
+                                      onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
+                                      style={{ flex: 2, fontSize: '0.85rem', padding: '4px 8px' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSubEventCustomField(se.id, field.id)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}
+                                      title={isDe ? 'Feld entfernen' : 'Remove field'}
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+
+                                  {/* Required-Toggle + Mehrfachauswahl */}
+                                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: field.type === 'select' ? 10 : 0 }}>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={field.required}
+                                        onChange={e => updateSubEventCustomField(se.id, field.id, { required: e.target.checked })}
+                                      />
+                                      {isDe ? 'Pflichtfeld' : 'Required'}
+                                    </label>
+                                    {field.type === 'select' && (
+                                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={!!field.multi}
+                                          onChange={e => updateSubEventCustomField(se.id, field.id, { multi: e.target.checked })}
+                                        />
+                                        {isDe ? 'Mehrfachauswahl' : 'Multi-select'}
+                                      </label>
+                                    )}
+                                  </div>
+
+                                  {/* Optionen-Editor für Dropdown-Felder */}
+                                  {field.type === 'select' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 12 }}>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>
+                                        {isDe ? 'Antwort-Optionen:' : 'Answer options:'}
+                                      </span>
+                                      {field.options.map((opt, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                          <input
+                                            className="form-input"
+                                            placeholder={isDe ? `Option ${idx + 1}` : `Option ${idx + 1}`}
+                                            value={opt}
+                                            onChange={e => {
+                                              const next = field.options.slice();
+                                              next[idx] = e.target.value;
+                                              updateSubEventCustomField(se.id, field.id, { options: next });
+                                            }}
+                                            style={{ flex: 1, fontSize: '0.82rem', padding: '4px 8px' }}
+                                          />
+                                          {field.options.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const next = field.options.filter((_, i) => i !== idx);
+                                                updateSubEventCustomField(se.id, field.id, { options: next });
+                                              }}
+                                              style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', padding: 2, cursor: 'pointer' }}
+                                            >
+                                              <X size={14} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                      <button
+                                        type="button"
+                                        onClick={() => updateSubEventCustomField(se.id, field.id, { options: [...field.options, ''] })}
+                                        style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--dex-gray-300)', padding: '3px 10px', fontSize: '0.75rem', borderRadius: 4, cursor: 'pointer', color: 'var(--dex-gray-700)' }}
+                                      >
+                                        <Plus size={11} /> {isDe ? 'Option hinzufügen' : 'Add option'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               </div>{/* close Step 3 */}
 
               {/* ===== Step 4: Kommunikation ===== */}

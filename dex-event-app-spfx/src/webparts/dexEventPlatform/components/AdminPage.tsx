@@ -1492,7 +1492,7 @@ export default function AdminPage(): React.ReactElement {
               background: getStatusColor(selectedEvent.status) + '22',
               color: getStatusColor(selectedEvent.status),
             }}>
-              {selectedEvent.status}
+              {selectedEvent.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status)}
             </span>
           </div>
           {/* Foto immer als Kreis links, Detail-Rows rechts. Layout

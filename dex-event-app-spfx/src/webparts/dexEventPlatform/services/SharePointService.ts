@@ -767,59 +767,100 @@ export class SharePointService {
   }>> {
     if (!query || query.length < 2) return [];
 
-    try {
-      const body = {
-        'queryParams': {
-          '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
-          'AllowEmailAddresses': true,
-          'AllowMultipleEntities': false,
-          'MaximumEntitySuggestions': 10,
-          'QueryString': query,
-          'PrincipalType': 1, // Users only
-          'PrincipalSource': 15,
-          'SharePointGroupID': 0,
-        },
-      };
-
-      const response = await this._post(
-        `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
-        body
-      );
-
-      if (!response.ok) return [];
-
-      const data = await response.json();
-      const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
-      const results = JSON.parse(resultsStr);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped: Array<{ email: string; displayName: string; location: string; jobTitle: string }> = results
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((r: any) => r.EntityData?.Email)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => ({
-          email: r.EntityData.Email || '',
-          displayName: r.DisplayText || r.EntityData.Title || '',
-          location: '', // Wird per User Profile nachgeladen
-          jobTitle: r.EntityData.Title || '', // EntityData.Title ist bei SharePoint manchmal schon JobTitle;
-                                               // Wird unten durch UserProfile-Lookup ueberschrieben.
-        }));
-
-      // Location + JobTitle per User Profile nachladen
-      for (const user of mapped) {
-        try {
-          const profile = await this.searchUserByEmail(user.email);
-          if (profile) {
-            if (profile.location) user.location = profile.location;
-            if (profile.jobTitle) user.jobTitle = profile.jobTitle;
-          }
-        } catch { /* ignore */ }
+    /**
+     * SharePoint ClientPeoplePicker tokenisiert auf Whitespace. „Lastname, Firstname"
+     * wird intern oft nur teilweise gematched, weil das Komma als Wort-Boundary zählt
+     * aber nicht abgestrippt wird → der Suchbegriff „Mustermann," bringt weniger
+     * Treffer als „Mustermann". Außerdem bevorzugt SP-Picker die Reihenfolge
+     * `Firstname Lastname`-Convention; bei „Lastname Firstname" (ohne Komma, falsche
+     * Reihenfolge) findet er trotzdem oft zu wenig.
+     *
+     * Lösung: bei jedem Such-Request wird die Query in mehrere Varianten zerlegt und
+     * parallel durchsucht; Resultate werden per Email dedupliziert. Damit findet der
+     * Picker:
+     *   - „Mustermann, Max"      (mit Komma — SP-Standard für Tenants mit DE-Locale)
+     *   - „Max Mustermann"       (Firstname Lastname, ohne Komma)
+     *   - „Mustermann Max"       (Lastname Firstname, ohne Komma)
+     *   - „Mustermann"           (nur Lastname)
+     *   - „Mu"                   (Anfang, wird durch Picker-Built-in abgefangen)
+     */
+    const cleanQuery = query.trim();
+    const variants = new Set<string>();
+    variants.add(cleanQuery);
+    if (cleanQuery.indexOf(',') >= 0) {
+      // „Lastname, Firstname" → drei zusätzliche Varianten
+      const parts = cleanQuery.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const lastname = parts[0];
+        const firstname = parts.slice(1).join(' ').trim();
+        variants.add(`${firstname} ${lastname}`); // Firstname Lastname
+        variants.add(`${lastname} ${firstname}`); // Lastname Firstname (ohne Komma)
+        if (lastname.length >= 2) variants.add(lastname); // nur Lastname
+      } else if (parts.length === 1 && parts[0].length >= 2) {
+        variants.add(parts[0]);
       }
-
-      return mapped;
-    } catch {
-      return [];
     }
+
+    const seen = new Set<string>();
+    const all: Array<{ email: string; displayName: string; location: string; jobTitle: string }> = [];
+
+    for (const variant of Array.from(variants)) {
+      try {
+        const body = {
+          'queryParams': {
+            '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
+            'AllowEmailAddresses': true,
+            'AllowMultipleEntities': false,
+            'MaximumEntitySuggestions': 10,
+            'QueryString': variant,
+            'PrincipalType': 1, // Users only
+            'PrincipalSource': 15,
+            'SharePointGroupID': 0,
+          },
+        };
+
+        const response = await this._post(
+          `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
+          body
+        );
+
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
+        const results = JSON.parse(resultsStr);
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of results.filter((x: any) => x.EntityData?.Email)) {
+          const email = (r.EntityData.Email || '').toLowerCase();
+          if (!email || seen.has(email)) continue;
+          seen.add(email);
+          all.push({
+            email: r.EntityData.Email || '',
+            displayName: r.DisplayText || r.EntityData.Title || '',
+            location: '',
+            jobTitle: r.EntityData.Title || '',
+          });
+          if (all.length >= 10) break;
+        }
+        if (all.length >= 10) break;
+      } catch {
+        // Variant failed — continue with next variant
+      }
+    }
+
+    // Location + JobTitle per User Profile nachladen
+    for (const user of all) {
+      try {
+        const profile = await this.searchUserByEmail(user.email);
+        if (profile) {
+          if (profile.location) user.location = profile.location;
+          if (profile.jobTitle) user.jobTitle = profile.jobTitle;
+        }
+      } catch { /* ignore */ }
+    }
+
+    return all;
   }
 
   /**
