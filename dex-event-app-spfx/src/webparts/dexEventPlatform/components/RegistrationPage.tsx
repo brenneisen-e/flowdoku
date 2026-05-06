@@ -618,6 +618,155 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
+  // v11.5: Custom-Field-Renderer extrahiert — wird zweimal verwendet:
+  // einmal direkt in der Gruppen-Auswahl-Box für Felder mit
+  // onlyForGroup-Constraint, einmal im Eventspez-2-Spalten-Grid für
+  // alle anderen Felder. Die Filter-Logik dazu unten in den
+  // groupSpecificFields- bzw. generalFields-Konstanten.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderRegField = (fRaw: any): React.ReactElement => {
+    // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
+    // Mobilnummer Pflicht.
+    let field = fRaw;
+    // Mobilnummer bei aktiviertem Infoservice dynamisch zur Pflicht
+    if (fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true') {
+      field = { ...field, required: true };
+    }
+    // Fallback: b2run_datenschutz ohne gespeicherte externalLinks ->
+    // AGB + Datenschutz-Links zur Laufzeit injizieren, damit aeltere
+    // Events ohne 'Felder reparieren' trotzdem die Links zeigen.
+    if (fRaw.id === 'b2run_datenschutz' && (!fRaw.externalLinks || fRaw.externalLinks.length === 0)) {
+      field = {
+        ...field,
+        externalLinks: [
+          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+        ],
+      };
+    }
+    // Laufshirt/T-Shirt-Feld bei B2Run ist Pflicht (falls in alten Events
+    // noch nicht so markiert)
+    if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
+      field = { ...field, required: true };
+    }
+    return (
+  <div className="form-group" key={field.id}>
+    {field.type !== 'checkbox' && (
+      <label className="form-label">
+        {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
+        {field.label}
+        {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
+            gibt schoenes Hover-Popover mit der vom Organizer
+            beim Event-Anlegen hinterlegten Beschreibung. */}
+        {field.helpText && <InfoTooltip text={field.helpText} />}
+      </label>
+    )}
+    {field.type === 'select' && field.multi ? (
+      // v7.11: Mehrfachauswahl als Checkbox-Liste. Werte werden
+      // " | "-getrennt im selben Feld eventSpecific[field.id]
+      // gespeichert (kompatibel mit Record<string,string>).
+      (() => {
+        const sep = ' | ';
+        const raw = (eventSpecific[field.id] || '').trim();
+        const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
+        const toggle = (opt: string): void => {
+          const next = selected.indexOf(opt) >= 0
+            ? selected.filter(s => s !== opt)
+            : [...selected, opt];
+          setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) });
+        };
+        const isErr = showErrors && field.required && selected.length === 0;
+        return (
+          <div
+            style={{
+              display: 'flex', flexDirection: 'column', gap: 6,
+              padding: 10, borderRadius: 8,
+              border: isErr ? '1px solid var(--dex-red)' : '1px solid var(--dex-gray-200)',
+              background: '#fff',
+            }}
+          >
+            {(field.options || []).map(opt => (
+              <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
+                <input
+                  type="checkbox"
+                  checked={selected.indexOf(opt) >= 0}
+                  onChange={() => toggle(opt)}
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
+            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>
+              {t('reg.multiselect.hint') || 'Mehrere Auswahl möglich'}
+            </div>
+          </div>
+        );
+      })()
+    ) : field.type === 'select' ? (
+      <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
+        <option value="">{t('reg.pleaseselect')}</option>
+        {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    ) : field.type === 'user' || field.type === 'roommate' ? (
+      // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
+      // einzige Unterschied ist dass 'roommate' beim Anmelden
+      // automatisch eine Zimmerpartner-Mail an die ausgewaehlte
+      // Person triggert (siehe EventContext). 'user' ist der
+      // generische Personen-Picker ohne Mail-Versand.
+      <UserFieldPicker
+        value={eventSpecific[field.id] || ''}
+        onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
+        searchUsers={searchUsers}
+        placeholder={t('reg.userfield.placeholder')}
+        errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
+        hint={field.type === 'roommate' ? t('reg.userfield.notifyhint') : undefined}
+      />
+    ) : field.type === 'checkbox' ? (
+      <label
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)',
+          padding: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '6px 8px' : 0,
+          border: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '1px solid var(--dex-red)' : 'none',
+          borderRadius: showErrors && field.required && eventSpecific[field.id] !== 'true' ? 6 : 0,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={eventSpecific[field.id] === 'true'}
+          onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
+          style={{ marginTop: 3, flexShrink: 0 }}
+        />
+        <span>
+          {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
+          {field.label}
+          {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+          {field.externalLinks && field.externalLinks.length > 0 && (
+            <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
+              {field.externalLinks.map((l, i) => (
+                <span key={l.url}>
+                  {i > 0 && <span style={{ color: 'var(--dex-gray-300)', margin: '0 6px' }}>|</span>}
+                  <a
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}
+                  >
+                    {l.label}
+                  </a>
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+      </label>
+    ) : (
+      <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
+    )}
+  </div>
+    );
+  };
+
   return (
     <div className="page-container">
       {showLocationBanner && (
@@ -1268,7 +1417,13 @@ export default function RegistrationPage(): React.ReactElement {
                 anmelden" bleibt der alte Flow (nur Parent), weil die
                 Session-Zuordnung ueber getMyRegistration nur fuer den
                 eingeloggten User funktioniert. */}
-            {childEvents.length > 0 && (
+            {/* v11.5: Bei „Für andere registrieren" wird der Selection-Block
+                mit Hauptevent-Checkbox + Sub-Events ausgeblendet — die
+                Drittperson-Anmeldung läuft fix nur über den Parent
+                (siehe v6.14-Code-Kommentar oben), und der „Du bist
+                bereits angemeldet"-Hinweis ist dort verwirrend, weil er
+                den eingeloggten User meint, nicht die Drittperson. */}
+            {childEvents.length > 0 && !registerForOther && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
@@ -1383,10 +1538,52 @@ export default function RegistrationPage(): React.ReactElement {
                         )}
                       </div>
                     )}
+                    {/* v11.5: Custom-Fields mit onlyForGroup-Constraint
+                        direkt INNERHALB der Gruppen-Auswahl-Box rendern.
+                        Klappt erst auf, wenn der User eine Gruppe gewählt
+                        hat und das Feld der gewählten Gruppe entspricht. */}
+                    {preferredStarterType && (() => {
+                      const groupSpec = event.eventSpecificFields
+                        .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+                        .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+                        .filter(f => {
+                          if (!f.showIf || !f.showIf.fieldId) return true;
+                          const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+                          if (!raw) return false;
+                          const answers = raw.indexOf(' | ') >= 0
+                            ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+                            : [raw];
+                          return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+                        })
+                        .filter(f => {
+                          const grp = f.onlyForGroup;
+                          if (!grp || grp === 'all') return false;
+                          if (grp === 'A') return preferredStarterType === 'Durchstarter';
+                          if (grp === 'B') return preferredStarterType === 'Funstarter';
+                          return false;
+                        });
+                      if (groupSpec.length === 0) return null;
+                      const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+                      const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+                      const grpLabel = preferredStarterType === 'Durchstarter' ? labelA : labelB;
+                      return (
+                        <div style={{
+                          marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--dex-gray-300)',
+                          display: 'flex', flexDirection: 'column', gap: 12,
+                        }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
+                            {locale === 'de'
+                              ? `Zusätzliche Angaben für die Gruppe „${grpLabel}"`
+                              : `Additional details for the „${grpLabel}" group`}
+                          </div>
+                          {groupSpec.map(renderRegField)}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
-                {/* Sessions */}
+                {/* Sub-Events */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
@@ -1518,21 +1715,14 @@ export default function RegistrationPage(): React.ReactElement {
             {event.eventSpecificFields.length === 0 && !isSplitGroup ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
-              /* v11.2: Custom-Fields in 2-Spalten-Grid rendern, damit die
-                 Eventspezifische-Infos-Karte unten den volle Breite des
-                 Layouts gleichmäßig nutzt. Felder fließen left-to-right,
-                 top-to-bottom — bei ungerader Anzahl bleibt rechts unten
-                 ein leerer Slot, bei einem einzigen Feld nimmt es eine
-                 Spalte. */
+              // v11.2 / v11.5: Custom-Fields ohne Pro-Gruppe-Constraint im
+              // 2-Spalten-Grid. Group-spezifische Felder werden bereits
+              // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
+              // ausgefiltert.
               <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               {event.eventSpecificFields
-                // B2Run-Sonderregel: Mobilnummer nur zeigen wenn Infoservice aktiviert
                 .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
-                // v6.15: Startblock ausblenden, wenn er automatisch aus dem Starter-Typ abgeleitet wird
                 .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
-                // v7.21: Sichtbarkeitsbedingung — nur anzeigen wenn das Quell-Feld
-                // einen der konfigurierten Werte als Antwort hat. Multi-Select-Quelle:
-                // " | "-getrennt; reicht wenn EIN Wert in values vorkommt.
                 .filter(f => {
                   if (!f.showIf || !f.showIf.fieldId) return true;
                   const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
@@ -1542,165 +1732,16 @@ export default function RegistrationPage(): React.ReactElement {
                     : [raw];
                   return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
                 })
-                // v10.24: Pro-Gruppe-Sichtbarkeit. Wenn der Organizer das
-                // Feld auf 'A' (Gruppe A / Durchstarter) oder 'B' (Gruppe B /
-                // Funstarter) eingeschränkt hat, blenden wir es aus, sobald
-                // der User die jeweils andere Gruppe gewählt hat. 'all' /
-                // undefined / Events ohne Split-Capacity zeigen das Feld
-                // immer. Solange der User noch keine Gruppe gewählt hat
-                // (preferredStarterType leer), bleibt das Feld bei 'A'/'B'-
-                // Constraint vorerst ausgeblendet — sobald er klickt, taucht
-                // es auf.
+                // v11.5: Group-Spec NICHT hier rendern — die kommen oben
+                // in der Gruppen-Auswahl-Box. Hier nur 'all' / undefined
+                // (oder Events ohne Split-Capacity).
                 .filter(f => {
                   const grp = f.onlyForGroup;
                   if (!grp || grp === 'all') return true;
                   if (!isSplitGroup) return true;
-                  if (grp === 'A') return preferredStarterType === 'Durchstarter';
-                  if (grp === 'B') return preferredStarterType === 'Funstarter';
-                  return true;
+                  return false;
                 })
-                .map(fRaw => {
-                  // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
-                  // Mobilnummer Pflicht.
-                  let field = fRaw;
-                  // Mobilnummer bei aktiviertem Infoservice dynamisch zur Pflicht
-                  if (fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true') {
-                    field = { ...field, required: true };
-                  }
-                  // Fallback: b2run_datenschutz ohne gespeicherte externalLinks ->
-                  // AGB + Datenschutz-Links zur Laufzeit injizieren, damit aeltere
-                  // Events ohne 'Felder reparieren' trotzdem die Links zeigen.
-                  if (fRaw.id === 'b2run_datenschutz' && (!fRaw.externalLinks || fRaw.externalLinks.length === 0)) {
-                    field = {
-                      ...field,
-                      externalLinks: [
-                        { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-                        { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-                      ],
-                    };
-                  }
-                  // Laufshirt/T-Shirt-Feld bei B2Run ist Pflicht (falls in alten Events
-                  // noch nicht so markiert)
-                  if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
-                    field = { ...field, required: true };
-                  }
-                  return (
-                <div className="form-group" key={field.id}>
-                  {field.type !== 'checkbox' && (
-                    <label className="form-label">
-                      {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
-                      {field.label}
-                      {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
-                          gibt schoenes Hover-Popover mit der vom Organizer
-                          beim Event-Anlegen hinterlegten Beschreibung. */}
-                      {field.helpText && <InfoTooltip text={field.helpText} />}
-                    </label>
-                  )}
-                  {field.type === 'select' && field.multi ? (
-                    // v7.11: Mehrfachauswahl als Checkbox-Liste. Werte werden
-                    // " | "-getrennt im selben Feld eventSpecific[field.id]
-                    // gespeichert (kompatibel mit Record<string,string>).
-                    (() => {
-                      const sep = ' | ';
-                      const raw = (eventSpecific[field.id] || '').trim();
-                      const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
-                      const toggle = (opt: string): void => {
-                        const next = selected.indexOf(opt) >= 0
-                          ? selected.filter(s => s !== opt)
-                          : [...selected, opt];
-                        setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) });
-                      };
-                      const isErr = showErrors && field.required && selected.length === 0;
-                      return (
-                        <div
-                          style={{
-                            display: 'flex', flexDirection: 'column', gap: 6,
-                            padding: 10, borderRadius: 8,
-                            border: isErr ? '1px solid var(--dex-red)' : '1px solid var(--dex-gray-200)',
-                            background: '#fff',
-                          }}
-                        >
-                          {(field.options || []).map(opt => (
-                            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
-                              <input
-                                type="checkbox"
-                                checked={selected.indexOf(opt) >= 0}
-                                onChange={() => toggle(opt)}
-                              />
-                              <span>{opt}</span>
-                            </label>
-                          ))}
-                          <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>
-                            {t('reg.multiselect.hint') || 'Mehrere Auswahl möglich'}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : field.type === 'select' ? (
-                    <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
-                      <option value="">{t('reg.pleaseselect')}</option>
-                      {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  ) : field.type === 'user' || field.type === 'roommate' ? (
-                    // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
-                    // einzige Unterschied ist dass 'roommate' beim Anmelden
-                    // automatisch eine Zimmerpartner-Mail an die ausgewaehlte
-                    // Person triggert (siehe EventContext). 'user' ist der
-                    // generische Personen-Picker ohne Mail-Versand.
-                    <UserFieldPicker
-                      value={eventSpecific[field.id] || ''}
-                      onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
-                      searchUsers={searchUsers}
-                      placeholder={t('reg.userfield.placeholder')}
-                      errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
-                      hint={field.type === 'roommate' ? t('reg.userfield.notifyhint') : undefined}
-                    />
-                  ) : field.type === 'checkbox' ? (
-                    <label
-                      style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 8,
-                        cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)',
-                        padding: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '6px 8px' : 0,
-                        border: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '1px solid var(--dex-red)' : 'none',
-                        borderRadius: showErrors && field.required && eventSpecific[field.id] !== 'true' ? 6 : 0,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={eventSpecific[field.id] === 'true'}
-                        onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
-                        style={{ marginTop: 3, flexShrink: 0 }}
-                      />
-                      <span>
-                        {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
-                        {field.label}
-                        {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
-                        {field.externalLinks && field.externalLinks.length > 0 && (
-                          <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
-                            {field.externalLinks.map((l, i) => (
-                              <span key={l.url}>
-                                {i > 0 && <span style={{ color: 'var(--dex-gray-300)', margin: '0 6px' }}>|</span>}
-                                <a
-                                  href={l.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}
-                                >
-                                  {l.label}
-                                </a>
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  ) : (
-                    <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
-                  )}
-                </div>
-                  );
-                })
+                .map(renderRegField)
               }
               </div>
             )}
