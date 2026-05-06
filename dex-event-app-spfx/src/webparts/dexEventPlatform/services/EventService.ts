@@ -268,8 +268,11 @@ export interface SPEvent {
   NotifyOrgCancelMode?: string; // 'Never' | 'Always' | 'AfterDeadline'
   ExcludedUsers?: string; // v8.6: semikolon-separierte User-Mails die das Event NICHT sehen sollen
   IsFictive?: boolean; // true = Test-Event (nur Admin + eigene Organizer sichtbar)
-  DurchstarterCapacity?: number; // B2Run: getrennte Kapazitaet
-  FunstarterCapacity?: number;   // B2Run: getrennte Kapazitaet
+  DurchstarterCapacity?: number; // Split-Capacity Gruppe A (historisch B2Run-Durchstarter)
+  FunstarterCapacity?: number;   // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
+  SplitLabelA?: string; // v10.20: frei waehlbare Bezeichnung Gruppe A
+  SplitLabelB?: string; // v10.20: frei waehlbare Bezeichnung Gruppe B
+  SplitSharedWaitlist?: boolean; // v10.20: true = gemeinsame Warteliste, false = getrennt (Default)
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -2065,8 +2068,11 @@ export class EventService {
       { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
       { title: 'ExcludedUsers', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v8.6: explizit ausgeschlossene User
       { title: 'IsFictive', type: 8, metaType: 'SP.Field' }, // Boolean - Test-Event (nur Admin + eigene Organizer sichtbar)
-      { title: 'DurchstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Durchstarter (Number)
-      { title: 'FunstarterCapacity', type: 9 }, // B2Run: Kapazitaet fuer Funstarter (Number)
+      { title: 'DurchstarterCapacity', type: 9 }, // Split-Capacity Gruppe A (historisch B2Run-Durchstarter)
+      { title: 'FunstarterCapacity', type: 9 }, // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
+      { title: 'SplitLabelA', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe A (Single line text)
+      { title: 'SplitLabelB', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe B (Single line text)
+      { title: 'SplitSharedWaitlist', type: 8, metaType: 'SP.Field' }, // v10.20: Boolean - true = gemeinsame Warteliste
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2442,7 +2448,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2592,6 +2598,9 @@ export class EventService {
     isFictive?: boolean;
     durchstarterCapacity?: number;
     funstarterCapacity?: number;
+    splitLabelA?: string;
+    splitLabelB?: string;
+    splitSharedWaitlist?: boolean;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -2698,6 +2707,9 @@ export class EventService {
         'IsFictive': !!event.isFictive,
         'DurchstarterCapacity': typeof event.durchstarterCapacity === 'number' ? event.durchstarterCapacity : null,
         'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,
+        'SplitLabelA': event.splitLabelA || '',
+        'SplitLabelB': event.splitLabelB || '',
+        'SplitSharedWaitlist': !!event.splitSharedWaitlist,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',

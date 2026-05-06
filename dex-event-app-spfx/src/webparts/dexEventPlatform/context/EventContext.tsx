@@ -191,6 +191,9 @@ export interface CreateEventInput {
   isFictive?: boolean;
   durchstarterCapacity?: number;
   funstarterCapacity?: number;
+  splitLabelA?: string;
+  splitLabelB?: string;
+  splitSharedWaitlist?: boolean;
   customFields: CustomField[];
 }
 
@@ -393,6 +396,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       isFictive: !!e.IsFictive,
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
+      splitLabelA: e.SplitLabelA || undefined,
+      splitLabelB: e.SplitLabelB || undefined,
+      splitSharedWaitlist: !!e.SplitSharedWaitlist,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).

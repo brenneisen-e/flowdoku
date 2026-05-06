@@ -1292,6 +1292,64 @@ export default function AdminPage(): React.ReactElement {
                     }}>
                       {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
                     </span>
+                    {/* v10.20: Migrations-Button fuer Legacy-B2Run-Events.
+                        Macht das Event auf 'Other' Type und persistiert die
+                        bisherigen Hardcoded-Labels 'Durchstarter'/'Funstarter'
+                        explizit in den Custom-Label-Spalten. Damit sieht das
+                        Event nicht mehr B2Run-spezifisch aus, behaelt aber
+                        seine Anmeldedaten / Wartelisten. Nur sichtbar fuer
+                        Admins und nur bei Events mit type === 'B2Run'. */}
+                    {isAdmin && event.type === 'B2Run' && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-green-dark, #4a7c1f)' }}
+                        title={isDe
+                          ? 'Auf neues Standard-Event-Schema migrieren (Type entfernen, Labels Durchstarter/Funstarter explizit speichern). Bestehende Anmeldungen bleiben unveraendert.'
+                          : 'Migrate to the new standard event schema (drop type, persist Durchstarter/Funstarter labels). Existing registrations remain unchanged.'}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!eventServiceRef) return;
+                          const msg = isDe
+                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• B2Run-spezifische Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei aendern).\n• Anmeldungen, Wartelisten und Sub-Events bleiben unveraendert.`
+                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• B2Run-specific custom fields (starter type, start block, mobile-info service, privacy, performance proof) are removed from the field config.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• Registrations, waitlists and sub-events stay unchanged.`;
+                          if (!window.confirm(msg)) return;
+                          try {
+                            // v10.20: Migration entfernt b2run_*-Custom-Fields
+                            // aus der eventSpecificFields-JSON, persistiert
+                            // explizite Split-Labels und versucht die alte
+                            // EventType-Spalte (vor v5.2) auf 'Other' zu
+                            // setzen. Wenn EventType-Spalte nicht mehr
+                            // existiert, schluckt der zweite Update-Versuch
+                            // den Fehler — die Migration ist trotzdem
+                            // erfolgreich, weil der Type-Derive-Logic ohne
+                            // b2run_startblock-Feld 'Other' liefert.
+                            const cleanedFields = (event.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
+                            const baseUpdates: Record<string, unknown> = {
+                              'CustomFields': JSON.stringify(cleanedFields),
+                              'SplitLabelA': 'Durchstarter',
+                              'SplitLabelB': 'Funstarter',
+                            };
+                            const ok = await updateEvent(event.id, baseUpdates);
+                            // Best-effort: zusaetzlich EventType setzen falls
+                            // die Spalte noch existiert (Pre-v5.2-Events).
+                            try {
+                              await updateEvent(event.id, { 'EventType': 'Other' });
+                            } catch { /* Spalte existiert nicht mehr — ignoriert */ }
+                            if (ok) {
+                              await refreshEvents();
+                              window.alert(isDe ? `Event "${event.title}" wurde auf das Standard-Schema migriert.` : `Event "${event.title}" has been migrated to the standard schema.`);
+                            } else {
+                              window.alert(isDe ? 'Migration fehlgeschlagen.' : 'Migration failed.');
+                            }
+                          } catch (err) {
+                            console.warn('[DEX] migrate B2Run event failed:', err);
+                            window.alert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
+                          }
+                        }}
+                      >
+                        {isDe ? 'B2Run migrieren' : 'Migrate B2Run'}
+                      </button>
+                    )}
                     <button
                       className="btn btn-secondary"
                       style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-red, #c00)' }}
@@ -3037,18 +3095,23 @@ export default function AdminPage(): React.ReactElement {
                           // den Nachrücker promoten — so sieht der Admin/Organizer sofort
                           // wer nachgerückt ist. Der Flow später sieht Count_Active =
                           // MaxParticipants und überspringt seinen eigenen Promote-Zweig.
-                          // Typ-bewusst: bei B2Run-Split (DurchstarterCapacity > 0 UND
-                          // FunstarterCapacity > 0) wird nur ein Warteliste-Teilnehmer
-                          // mit passendem PreferredStarterType nachgerückt.
+                          // Typ-bewusst: bei aktiver Split-Capacity (DurchstarterCapacity > 0
+                          // UND FunstarterCapacity > 0) wird per Default nur ein
+                          // Warteliste-Teilnehmer mit passendem PreferredStarterType
+                          // nachgerueckt — es sei denn, das Event ist auf
+                          // splitSharedWaitlist=true gesetzt (v10.20). Dann faellt der
+                          // Filter weg und der aelteste Wartelistler rueckt nach,
+                          // unabhaengig vom Typ.
                           const isB2RunSplit = typeof selectedEvent.durchstarterCapacity === 'number'
                             && typeof selectedEvent.funstarterCapacity === 'number'
                             && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+                          const useTypeFilter = isB2RunSplit && !selectedEvent.splitSharedWaitlist;
                           try {
                             const promoted = await eventServiceRef.promoteFirstWaitlistItem(
                               selectedEvent.subsiteUrl,
                               cancelledStarterType || undefined,
                               selectedEvent.maxParticipants,
-                              (isB2RunSplit && cancelledStarterType) ? cancelledStarterType : undefined
+                              (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined
                             );
                             if (promoted && promoted.success && promoted.email) {
                               // Erfolgs-Toast anzeigen

@@ -875,6 +875,22 @@ export default function EventCreationPage(): React.ReactElement {
   const [funstarterCapacity, setFunstarterCapacity] = React.useState<string>(
     editEvent && typeof editEvent.funstarterCapacity === 'number' ? String(editEvent.funstarterCapacity) : ''
   );
+  // v10.20: frei waehlbare Bezeichnungen fuer die zwei Kapazitaets-Gruppen.
+  // Default leer; wenn der User die Split-Capacity einschaltet ohne Label
+  // zu setzen, fallen Wizard und RegistrationPage auf 'Durchstarter' /
+  // 'Funstarter' zurueck (Backward-Compat fuer B2Run-Events vor v10.20).
+  const [splitLabelA, setSplitLabelA] = React.useState<string>(
+    (editEvent && editEvent.splitLabelA) || ''
+  );
+  const [splitLabelB, setSplitLabelB] = React.useState<string>(
+    (editEvent && editEvent.splitLabelB) || ''
+  );
+  // v10.20: Warteliste-Modus bei aktiver Split-Capacity. Default false =
+  // getrennte Wartelisten pro Gruppe (alter B2Run-Stil). true = eine
+  // gemeinsame Warteliste, FIFO ueber beide Gruppen hinweg.
+  const [splitSharedWaitlist, setSplitSharedWaitlist] = React.useState<boolean>(
+    !!editEvent?.splitSharedWaitlist
+  );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
     editEvent?.durchstarterStartblock || ''
@@ -1588,11 +1604,19 @@ export default function EventCreationPage(): React.ReactElement {
       if (useSplitCapacities) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
         updates['FunstarterCapacity'] = parseInt(funstarterCapacity, 10) || 0;
+        // v10.20: frei waehlbare Bezeichnungen mitschreiben — leer = Default-
+        // Fallback in der Registration-UI ('Durchstarter' / 'Funstarter').
+        updates['SplitLabelA'] = (splitLabelA || '').trim();
+        updates['SplitLabelB'] = (splitLabelB || '').trim();
+        updates['SplitSharedWaitlist'] = !!splitSharedWaitlist;
       } else {
-        // Split deaktiviert: Kapazitäten nullen, damit die registerForEvent-Logik
-        // nicht irrtümlich den B2Run-Split-Pfad nimmt.
+        // Split deaktiviert: Kapazitäten nullen + Labels leer setzen, damit
+        // die Registration-Logik nicht irrtümlich den Split-Pfad nimmt.
         updates['DurchstarterCapacity'] = null;
         updates['FunstarterCapacity'] = null;
+        updates['SplitLabelA'] = '';
+        updates['SplitLabelB'] = '';
+        updates['SplitSharedWaitlist'] = false;
       }
 
       setProgress(50);
@@ -1876,6 +1900,9 @@ export default function EventCreationPage(): React.ReactElement {
         isFictive,
         durchstarterCapacity: useSplitCapacities ? (parseInt(durchstarterCapacity, 10) || 0) : undefined,
         funstarterCapacity: useSplitCapacities ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
+        splitLabelA: useSplitCapacities ? (splitLabelA || '').trim() : undefined,
+        splitLabelB: useSplitCapacities ? (splitLabelB || '').trim() : undefined,
+        splitSharedWaitlist: useSplitCapacities ? !!splitSharedWaitlist : undefined,
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -4944,35 +4971,72 @@ export default function EventCreationPage(): React.ReactElement {
                   <StepBadge n={17} />
                   {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
                 </label>
-              {/* B2Run: Split-Kapazitäten für Durchstarter + Funstarter */}
+              {/* v10.20: Geteilte Kapazität — generisch fuer beliebige Events.
+                  Labels werden vom Organizer frei gewaehlt (z.B. "Vormittag /
+                  Nachmittag", "VIP / Standard", "Lauf / Walk"). Default-Fallback
+                  ist 'Durchstarter' / 'Funstarter' fuer Backward-Compat mit
+                  B2Run-Events vor v10.20. */}
               {useSplitCapacities ? (
                 <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
-                    {t('create.b2runcap')}
+                    {isDe ? 'Geteilte Kapazität' : 'Split capacity'}
                     <InfoTooltip text={isDe ? (
                     <>
-                      <strong>Was du hier einstellst:</strong> getrennte Kapazitäten für <strong>Durchstarter</strong> (sportliche Läufer) und <strong>Funstarter</strong> (Spaß-Läufer / Walker) bei B2Run-Events. Pro Typ ein eigener Slot mit eigener Warteliste.<br /><br />
-                      <strong>Anzeige in der App:</strong> Teilnehmer wählen bei der Anmeldung den Starter-Typ und werden dem entsprechenden Slot zugeordnet. Im Admin Center werden die Kapazitäten <strong>pro Starter-Typ</strong> angezeigt.<br /><br />
-                      <strong>Automatismen:</strong> wenn der Durchstarter-Slot voll ist, kommen Durchstarter-Anmeldungen auf die <strong>Durchstarter-Warteliste</strong> (nicht auf die allgemeine). Beim Nachrücken wird <strong>typ-bewusst</strong> nachgezogen — ein Funstarter rückt nicht in einen Durchstarter-Platz.<br /><br />
-                      <strong>Empfehlung:</strong> nur verwenden, wenn ihr B2Run-Plätze beim Veranstalter wirklich getrennt eingekauft habt.
+                      <strong>Was du hier einstellst:</strong> zwei getrennte Kapazitäten innerhalb des Events. Beispiele: <strong>Vormittag / Nachmittag</strong>, <strong>VIP / Standard</strong>, <strong>Lauf 5 km / Lauf 10 km</strong>. Du legst die <strong>Bezeichnungen frei fest</strong> und vergibst pro Gruppe eine eigene Platzzahl mit eigener Warteliste.<br /><br />
+                      <strong>Anzeige in der App:</strong> Teilnehmer sehen auf der Anmelde-Seite <strong>zwei nebeneinanderstehende Boxen</strong> mit deinen Bezeichnungen, jeweils mit &bdquo;X / Y Plätze frei&ldquo;. Die Wahl ist <strong>verpflichtend</strong>, bevor man auf Anmelden klickt.<br /><br />
+                      <strong>Automatismen:</strong> ist eine der zwei Gruppen voll, kommen weitere Anmeldungen <strong>nur in die Warteliste dieser Gruppe</strong> — nicht in die andere. Beim Nachrücken bleibt der Typ <strong>erhalten</strong> (eine VIP-Wartelisten-Person rückt nicht in einen Standard-Platz).<br /><br />
+                      <strong>Empfehlung:</strong> nur verwenden, wenn die zwei Gruppen <strong>wirklich getrennt</strong> behandelt werden sollen (eigenes Catering, eigener Bus, eigener Slot beim Veranstalter). Bei einer einfachen Gesamtkapazität reicht die Standard-Teilnehmerzahl unten.
                     </>
                   ) : (
                     <>
-                      <strong>What you set here:</strong> separate capacities for <strong>Durchstarter</strong> (sporty runners) and <strong>Funstarter</strong> (fun runners / walkers) for B2Run events. Each type has its own slot and its own waitlist.<br /><br />
-                      <strong>Shown in the app:</strong> attendees pick a starter type at registration and land in the matching slot. The admin center shows capacities <strong>per starter type</strong>.<br /><br />
-                      <strong>Automation:</strong> when the Durchstarter slot is full, Durchstarter sign-ups go on the <strong>Durchstarter waitlist</strong> (not the general one). Promotion is <strong>type-aware</strong> — a Funstarter is never auto-promoted into a Durchstarter slot.<br /><br />
-                      <strong>Tip:</strong> only use this if you have actually bought B2Run slots separately from the organiser.
+                      <strong>What you set here:</strong> two separate capacities within the event. Examples: <strong>morning / afternoon</strong>, <strong>VIP / standard</strong>, <strong>5 km run / 10 km run</strong>. You <strong>name the two groups freely</strong> and give each its own seat count and waitlist.<br /><br />
+                      <strong>Shown in the app:</strong> attendees see <strong>two side-by-side boxes</strong> on the registration page, each labelled with your text and showing &ldquo;X / Y seats free&rdquo;. Picking one is <strong>required</strong> before submitting.<br /><br />
+                      <strong>Automation:</strong> when one group is full, further sign-ups land <strong>only on that group&apos;s waitlist</strong> — not the other. When promoting from waitlist, the <strong>group is preserved</strong> (a waitlisted VIP is not auto-promoted into a standard slot).<br /><br />
+                      <strong>Tip:</strong> only use this when the two groups really need to be <strong>handled separately</strong> (own catering, own bus, separate slot with the supplier). For a single overall capacity the standard attendee count below is enough.
                     </>
                   )} />
                   </label>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                    {t('create.b2runcap.desc')}
+                    {isDe
+                      ? 'Vergib pro Gruppe eine eigene Bezeichnung und Platzzahl. Die Bezeichnungen erscheinen auf der Anmeldeseite als zwei Auswahl-Boxen.'
+                      : 'Give each group its own name and seat count. The names appear on the registration page as two selectable boxes.'}
                   </p>
+                  {/* v10.20: zwei Text-Inputs fuer die frei waehlbaren Bezeichnungen.
+                      Wenn der Organizer nichts eintraegt, faellt die Registration-
+                      Seite auf 'Durchstarter' / 'Funstarter' zurueck. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        {isDe ? 'Bezeichnung Gruppe A' : 'Group A label'}
+                      </label>
+                      <input
+                        className="form-input"
+                        type="text"
+                        value={splitLabelA}
+                        onChange={e => setSplitLabelA(e.target.value)}
+                        placeholder={isDe ? 'z.B. Vormittag, VIP, Durchstarter' : 'e.g. morning, VIP, starter'}
+                        maxLength={40}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        {isDe ? 'Bezeichnung Gruppe B' : 'Group B label'}
+                      </label>
+                      <input
+                        className="form-input"
+                        type="text"
+                        value={splitLabelB}
+                        onChange={e => setSplitLabelB(e.target.value)}
+                        placeholder={isDe ? 'z.B. Nachmittag, Standard, Funstarter' : 'e.g. afternoon, standard, fun'}
+                        maxLength={40}
+                      />
+                    </div>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                        <Icon iconName="Running" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-green-dark, #6b9a1e)' }} />
-                        {t('create.b2runcap.durchstarter')}
+                        <Icon iconName="People" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-green-dark, #6b9a1e)' }} />
+                        {isDe ? 'Plätze' : 'Seats'} {splitLabelA.trim() || (isDe ? 'Gruppe A' : 'Group A')}
                       </label>
                       <input
                         className="form-input"
@@ -4985,8 +5049,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                        <Icon iconName="Running" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-orange, #ff8c00)' }} />
-                        {t('create.b2runcap.funstarter')}
+                        <Icon iconName="People" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-orange, #ff8c00)' }} />
+                        {isDe ? 'Plätze' : 'Seats'} {splitLabelB.trim() || (isDe ? 'Gruppe B' : 'Group B')}
                       </label>
                       <input
                         className="form-input"
@@ -5001,6 +5065,58 @@ export default function EventCreationPage(): React.ReactElement {
                   <div style={{ marginTop: 12, padding: '8px 12px', background: '#fff', borderRadius: 8, fontSize: '0.85rem' }}>
                     <strong>{t('create.b2runcap.total')}:</strong> {((parseInt(durchstarterCapacity, 10) || 0) + (parseInt(funstarterCapacity, 10) || 0))} {t('create.b2runcap.seats')}
                   </div>
+
+                  {/* v10.20: Waitlist-Modus bei Split-Capacity. Default
+                      'separate' (zwei Wartelisten) — entspricht dem alten
+                      B2Run-Verhalten und ist die typ-bewusste Variante.
+                      Alternative 'shared' = eine gemeinsame Warteliste, FIFO
+                      ueber beide Gruppen. Sinnvoll wenn die Gruppen
+                      organisatorisch fluide sind (z.B. Vormittag/Nachmittag
+                      bei einem Workshop, wo der naechste freie Slot egal ist
+                      welche Gruppe). Nur sichtbar wenn Warteliste aktiviert
+                      ist (Toggle weiter unten). */}
+                  {waitlistEnabled && (
+                    <div style={{ marginTop: 12, padding: '12px 14px', background: '#fff', borderRadius: 8 }}>
+                      <label className="form-label" style={{ marginBottom: 6 }}>
+                        {isDe ? 'Warteliste-Verhalten' : 'Waitlist behaviour'}
+                        <InfoTooltip text={isDe ? (
+                          <>
+                            <strong>Was du hier einstellst:</strong> ob bei einer Anmeldung über die jeweilige Kapazität hinaus eine <strong>gemeinsame</strong> oder zwei <strong>getrennte</strong> Wartelisten greifen.<br /><br />
+                            <strong>Getrennt (Default):</strong> jede Gruppe hat ihre eigene Warteliste. Wer auf der {splitLabelA.trim() || 'Gruppe A'}-Warteliste landet, rückt nur in einen frei werdenden {splitLabelA.trim() || 'Gruppe A'}-Platz nach. Saubere Trennung — sinnvoll wenn die zwei Gruppen wirklich unterschiedliche Slots beim Veranstalter, eigenes Catering oder eigenen Bus haben.<br /><br />
+                            <strong>Gemeinsam:</strong> alle Wartelistler stehen in einer einzigen Schlange. Wer am längsten wartet, rückt zuerst nach — egal in welche Gruppe der frei werdende Platz gehört. Sinnvoll wenn die Gruppen-Wahl nur eine UI-Komfort-Sache ist (z.B. Vormittag/Nachmittag-Slot bei einem Workshop) und der Organizer sich nicht um Typen kümmern will.<br /><br />
+                            <strong>Auswirkung für Teilnehmer:</strong> bei <strong>getrennt</strong> kann es passieren, dass jemand in der einen Schlange weiter hinten steht, obwohl die andere Gruppe leer ist — dann muss man <strong>aktiv umsteigen</strong> (über den Fallback-Dialog beim nächsten Versuch). Bei <strong>gemeinsam</strong> rutscht jeder hoch sobald irgendwo ein Platz frei wird.
+                          </>
+                        ) : (
+                          <>
+                            <strong>What you set here:</strong> whether sign-ups beyond the per-group capacity land on <strong>one shared</strong> or <strong>two separate</strong> waitlists.<br /><br />
+                            <strong>Separate (default):</strong> each group has its own waitlist. Someone on the {splitLabelA.trim() || 'group A'} waitlist only moves up into a freed {splitLabelA.trim() || 'group A'} seat. Clean separation — useful when the two groups have genuinely different supplier slots, own catering, own bus.<br /><br />
+                            <strong>Shared:</strong> all waitlisters stand in one queue. Whoever has waited longest moves up first — regardless of which group the freed seat belongs to. Useful when the group split is just a UI convenience (e.g. morning / afternoon slot at a workshop) and the organizer does not want to manage types.<br /><br />
+                            <strong>Effect for attendees:</strong> with <strong>separate</strong> someone may be further back in their queue while the other group is empty — they then have to <strong>actively switch</strong> (via the fallback dialog at next attempt). With <strong>shared</strong> everyone moves up as soon as a seat opens anywhere.
+                          </>
+                        )} />
+                      </label>
+                      <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="radio"
+                            name="splitWaitlistMode"
+                            checked={!splitSharedWaitlist}
+                            onChange={() => setSplitSharedWaitlist(false)}
+                          />
+                          {isDe ? 'Getrennte Wartelisten pro Gruppe' : 'Separate waitlist per group'}
+                        </label>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="radio"
+                            name="splitWaitlistMode"
+                            checked={!!splitSharedWaitlist}
+                            onChange={() => setSplitSharedWaitlist(true)}
+                          />
+                          {isDe ? 'Eine gemeinsame Warteliste' : 'One shared waitlist'}
+                        </label>
+                      </div>
+                    </div>
+                  )}
 
                   {/* v6.15: Starter-Typ → Startblock-Zuordnung (optional).
                       Nur sinnvoll wenn Startblocks definiert sind (Reiter "Event-spezifische Felder").
