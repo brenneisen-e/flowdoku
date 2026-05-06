@@ -1177,10 +1177,25 @@ export default function RegistrationPage(): React.ReactElement {
                               }}
                               title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
                             >
-                              <strong>{u.displayName}</strong>
-                              <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8 }}>{u.email}</span>
-                              {u.jobTitle && <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8, fontSize: '0.78rem', fontStyle: 'italic' }}>{u.jobTitle}</span>}
-                              {u.location && <span style={{ color: 'var(--dex-gray-400)', marginLeft: 8, fontSize: '0.8rem' }}>({u.location})</span>}
+                              {/* v11.3: People-Picker-Reihe mit Foto — analog
+                                  zum Wizard-Organizer-Picker. SP-userphoto.aspx
+                                  liefert das Profilbild zum E-Mail-Account. */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <img
+                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                                  alt={u.displayName}
+                                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                                  <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {u.email}
+                                    {u.jobTitle ? ` · ${u.jobTitle}` : ''}
+                                    {u.location ? ` · ${u.location}` : ''}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
@@ -1284,6 +1299,92 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </div>
                 </label>
+
+                {isB2runSplit && (
+                  <div className="form-group" style={{ marginBottom: 20 }}>
+                    <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
+                      <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
+                    </label>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
+                      {locale === 'de'
+                        ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
+                        : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {/* v10.20: dynamische Labels (event.splitLabelA / B mit
+                          Fallback auf 'Durchstarter' / 'Funstarter' fuer alte
+                          B2Run-Events). Die internen IDs ('Durchstarter',
+                          'Funstarter') bleiben fuer SP-Persistenz unveraendert.
+                          Beschreibungs-Texte zeigen wir nur, wenn die Default-
+                          Labels aktiv sind — bei frei waehlbaren Labels macht der
+                          B2Run-spezifische Lauf-Hinweis keinen Sinn. */}
+                      {([
+                        { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
+                        { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
+                      ]).map(opt => {
+                        const free = opt.cap - opt.count;
+                        const isFull = free <= 0;
+                        const isActive = preferredStarterType === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setPreferredStarterType(opt.id)}
+                            style={{
+                              padding: 14, textAlign: 'left',
+                              borderRadius: 'var(--dex-radius, 12px)',
+                              border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                              background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                              cursor: 'pointer', transition: 'all 0.15s',
+                              position: 'relative',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
+                              {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
+                            <div style={{ fontSize: '0.78rem' }}>
+                              {isFull ? (
+                                <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
+                              ) : (
+                                <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* v6.15: Leistungsnachweis-Pflicht bei Durchstarter. Admin hat
+                        die Option pro Event aktiviert — User muss dann beim Wählen
+                        von Durchstarter bestätigen, dass ein Leistungsnachweis
+                        vorliegt. Ohne Bestätigung wird die Anmeldung blockiert. */}
+                    {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
+                      <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
+                            onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
+                            style={{ marginTop: 3 }}
+                          />
+                          <span>
+                            <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
+                            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                              {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
+                            </span>
+                          </span>
+                        </label>
+                        {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
+                          <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
+                            {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Sessions */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1414,93 +1515,17 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
             )}
-            {isB2runSplit && (
-              <div className="form-group" style={{ marginBottom: 20 }}>
-                <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                  <span className="required">*</span> {t('reg.starter.title')}
-                </label>
-                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
-                  {t('reg.starter.hint')}
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  {/* v10.20: dynamische Labels (event.splitLabelA / B mit
-                      Fallback auf 'Durchstarter' / 'Funstarter' fuer alte
-                      B2Run-Events). Die internen IDs ('Durchstarter',
-                      'Funstarter') bleiben fuer SP-Persistenz unveraendert.
-                      Beschreibungs-Texte zeigen wir nur, wenn die Default-
-                      Labels aktiv sind — bei frei waehlbaren Labels macht der
-                      B2Run-spezifische Lauf-Hinweis keinen Sinn. */}
-                  {([
-                    { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
-                    { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
-                  ]).map(opt => {
-                    const free = opt.cap - opt.count;
-                    const isFull = free <= 0;
-                    const isActive = preferredStarterType === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setPreferredStarterType(opt.id)}
-                        style={{
-                          padding: 14, textAlign: 'left',
-                          borderRadius: 'var(--dex-radius, 12px)',
-                          border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
-                          background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
-                          cursor: 'pointer', transition: 'all 0.15s',
-                          position: 'relative',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
-                          {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
-                        <div style={{ fontSize: '0.78rem' }}>
-                          {isFull ? (
-                            <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
-                          ) : (
-                            <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* v6.15: Leistungsnachweis-Pflicht bei Durchstarter. Admin hat
-                    die Option pro Event aktiviert — User muss dann beim Wählen
-                    von Durchstarter bestätigen, dass ein Leistungsnachweis
-                    vorliegt. Ohne Bestätigung wird die Anmeldung blockiert. */}
-                {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
-                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
-                        onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
-                        style={{ marginTop: 3 }}
-                      />
-                      <span>
-                        <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                          {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
-                        </span>
-                      </span>
-                    </label>
-                    {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
-                      <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
-                        {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
             {event.eventSpecificFields.length === 0 && !isB2runSplit ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
-              event.eventSpecificFields
+              /* v11.2: Custom-Fields in 2-Spalten-Grid rendern, damit die
+                 Eventspezifische-Infos-Karte unten den volle Breite des
+                 Layouts gleichmäßig nutzt. Felder fließen left-to-right,
+                 top-to-bottom — bei ungerader Anzahl bleibt rechts unten
+                 ein leerer Slot, bei einem einzigen Feld nimmt es eine
+                 Spalte. */
+              <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {event.eventSpecificFields
                 // B2Run-Sonderregel: Mobilnummer nur zeigen wenn Infoservice aktiviert
                 .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
                 // v6.15: Startblock ausblenden, wenn er automatisch aus dem Starter-Typ abgeleitet wird
@@ -1676,6 +1701,8 @@ export default function RegistrationPage(): React.ReactElement {
                 </div>
                   );
                 })
+              }
+              </div>
             )}
           </div>
         </div>

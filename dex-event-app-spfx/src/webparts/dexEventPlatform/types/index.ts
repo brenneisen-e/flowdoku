@@ -117,6 +117,21 @@ export interface DeloitteEvent {
    *    Gruppen nur ein UI-Konstrukt sind aber organisatorisch fluide
    *    behandelt werden. */
   splitSharedWaitlist?: boolean;
+  /** v11.0: Wenn true, koennen sich Teilnehmer ueber „Meine Events" eine
+   *  PDF-Datei pro Anmeldung hochladen (z.B. Reisekostenbeleg, Foto-
+   *  Einverstaendnis, Zertifikat). Die Datei wird als Item-Attachment an
+   *  die Teilnehmerlisten-Zeile in der Subsite gehaengt und ist im Admin-
+   *  Center sichtbar / herunterladbar. Default: false. */
+  allowAttendeeUpload?: boolean;
+  /** v11.0: Optionaler Hinweistext, der dem Teilnehmer im Upload-Bereich
+   *  ueber dem File-Input angezeigt wird — z.B. „Bitte lade hier deinen
+   *  unterschriebenen Datenschutzbogen hoch". Wenn leer, erscheint nur
+   *  ein generischer Default-Text. */
+  attendeeUploadHint?: string;
+  /** v11.0: Anzeige-Name des Upload-Feldes in „Meine Events" — z.B.
+   *  „Reisekostenbeleg" oder „Datenschutz-Erklärung". Default-Fallback
+   *  wenn leer: „Dokumenten-Upload" / „Document upload". */
+  attendeeUploadLabel?: string;
   /** Seit v6.15: optionale Verknüpfung Starter-Typ → Startblock. Wenn gesetzt,
    *  wird bei der Registrierung automatisch das passende Startblock-Custom-Field
    *  gesetzt (keine Einzel-Auswahl durch den User nötig). */

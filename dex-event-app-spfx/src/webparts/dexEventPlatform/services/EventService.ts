@@ -273,6 +273,9 @@ export interface SPEvent {
   SplitLabelA?: string; // v10.20: frei waehlbare Bezeichnung Gruppe A
   SplitLabelB?: string; // v10.20: frei waehlbare Bezeichnung Gruppe B
   SplitSharedWaitlist?: boolean; // v10.20: true = gemeinsame Warteliste, false = getrennt (Default)
+  AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
+  AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
+  AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -2077,6 +2080,9 @@ export class EventService {
       { title: 'SplitLabelA', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe A (Single line text)
       { title: 'SplitLabelB', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe B (Single line text)
       { title: 'SplitSharedWaitlist', type: 8, metaType: 'SP.Field' }, // v10.20: Boolean - true = gemeinsame Warteliste
+      { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
+      { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
+      { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2452,7 +2458,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2605,6 +2611,9 @@ export class EventService {
     splitLabelA?: string;
     splitLabelB?: string;
     splitSharedWaitlist?: boolean;
+    allowAttendeeUpload?: boolean;
+    attendeeUploadHint?: string;
+    attendeeUploadLabel?: string;
     customFields: CustomField[];
   }): Promise<number | null> {
     try {
@@ -2714,6 +2723,9 @@ export class EventService {
         'SplitLabelA': event.splitLabelA || '',
         'SplitLabelB': event.splitLabelB || '',
         'SplitSharedWaitlist': !!event.splitSharedWaitlist,
+        'AllowAttendeeUpload': !!event.allowAttendeeUpload,
+        'AttendeeUploadHint': event.attendeeUploadHint || '',
+        'AttendeeUploadLabel': event.attendeeUploadLabel || '',
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
@@ -4459,6 +4471,85 @@ export class EventService {
       return { success: true, email, name };
     } catch {
       return { success: false };
+    }
+  }
+
+  /**
+   * v11.0: Item-Attachments einer Teilnehmer-Registrierung listen.
+   * Liefert ein Array mit FileName + ServerRelativeUrl, sodass die App
+   * Download-Links rendern kann. Subsite-spezifisch (jede Teilnehmerliste
+   * lebt in der Event-Subsite).
+   */
+  public async listRegistrationAttachments(
+    subsiteUrl: string,
+    itemId: number,
+  ): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
+    try {
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+      });
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return items.map((a: any) => ({
+        fileName: a.FileName || '',
+        serverRelativeUrl: a.ServerRelativeUrl || '',
+      })).filter((x: { fileName: string }) => !!x.fileName);
+    } catch (err) {
+      console.warn('[DEX] listRegistrationAttachments failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * v11.0: PDF / Datei als Item-Attachment an eine Teilnehmer-Zeile
+   * hängen. SharePoint erlaubt mehrere Attachments pro Item; bei
+   * gleichem Namen wirft die API einen 409, daher prefixen wir den
+   * Dateinamen mit einem Timestamp wenn die App das aufruft.
+   */
+  public async addRegistrationAttachment(
+    subsiteUrl: string,
+    itemId: number,
+    file: File,
+  ): Promise<boolean> {
+    try {
+      const buf = await file.arrayBuffer();
+      // Dateiname säubern + Timestamp-prefix für Eindeutigkeit
+      const safeName = (file.name || 'upload.pdf').replace(/[^a-zA-Z0-9._-]+/g, '_');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
+      const finalName = `${ts}_${safeName}`;
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
+      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+        body: buf,
+      });
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] addRegistrationAttachment failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * v11.0: Item-Attachment loeschen. Wird sowohl vom User (eigener
+   * Upload zurueckziehen) als auch vom Admin (im Admin Center) genutzt.
+   */
+  public async deleteRegistrationAttachment(
+    subsiteUrl: string,
+    itemId: number,
+    fileName: string,
+  ): Promise<boolean> {
+    try {
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`;
+      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' },
+      });
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] deleteRegistrationAttachment failed:', err);
+      return false;
     }
   }
 

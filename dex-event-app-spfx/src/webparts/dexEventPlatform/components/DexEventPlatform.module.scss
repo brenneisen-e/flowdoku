@@ -303,8 +303,22 @@
     .event-card__deadline { font-size: 0.8rem; color: var(--dex-gray-400); }
     .event-card__register-btn { align-self: flex-end; padding: 6px 20px; font-size: 0.85rem; margin-top: 4px; }
 
-    /* ========== Registration Page ========== */
-    .registration-layout { display: grid; grid-template-columns: minmax(360px, 420px) 1fr 1fr; gap: 24px; align-items: start; }
+    /* ========== Registration Page ==========
+       v11.2: 2x2-Layout statt der alten 3-Spalten-Reihe.
+       - Obere Reihe: Event-Karte links, persönliche Daten rechts —
+         beide gleich hoch (stretch).
+       - Untere Reihe: event-spezifische Felder als 2-Spalten-Grid
+         direkt darunter, Volle Breite.
+       Container-Breite an my-events orientiert (max-width 1100px). */
+    .registration-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .registration-specific { grid-column: 1 / -1; }
     .registration-event, .registration-form, .registration-specific {
       background: var(--dex-white); border: 1px solid var(--dex-gray-200);
       border-radius: var(--dex-radius-lg); overflow: hidden;
@@ -390,6 +404,8 @@
       /* Registration */
       .registration-layout { grid-template-columns: 1fr; }
       .registration-actions { flex-direction: column; gap: 8px; }
+      /* v11.2: Custom-Field-Grid auf Mobile 1 Spalte. */
+      .dex-reg-fields-grid { grid-template-columns: 1fr !important; }
       .registration-actions .btn { width: 100%; justify-content: center; }
 
       /* My Events */
