@@ -675,7 +675,14 @@ export default function AdminPage(): React.ReactElement {
       { id: 'jobTitle', label: 'Job Title' },
       { id: 'location', label: 'Standort' },
     ];
-    if (isSplit) cols.push({ id: 'starterType', label: 'Starter-Typ' });
+    // v11.6: bei Split-Capacity die frei waehlbaren Gruppen-Labels nutzen
+    // (Fallback auf 'Starter-Typ' wenn keine Labels gesetzt sind).
+    if (isSplit) {
+      const lblA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || '';
+      const lblB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || '';
+      const colLabel = (lblA && lblB) ? `${lblA} / ${lblB}` : (isDe ? 'Gruppe' : 'Group');
+      cols.push({ id: 'starterType', label: colLabel });
+    }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
@@ -1667,6 +1674,42 @@ export default function AdminPage(): React.ReactElement {
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
+                {/* Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Wenn der selektierte
+                    Event Child-Events hat, zeigen wir einen Dropdown zum schnellen
+                    Umschalten in die Admin-Ansicht der Child-Events (oder zurück zum Parent). */}
+                {selectedEvent && (() => {
+                  const isChild = !!selectedEvent.parentEventId;
+                  const siblings = isChild
+                    ? childEventsOf(selectedEvent.parentEventId || '')
+                    : childEventsOf(selectedEvent.id);
+                  if (!isChild && siblings.length === 0) return null;
+                  const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
+                  return (
+                    <select
+                      className="form-input"
+                      value={selectedEvent.id}
+                      onChange={e => {
+                        const target = [parent, ...siblings].find(x => x && x.id === e.target.value);
+                        // Nicht nur setSelectedEvent — sonst bleibt die alte
+                        // Teilnehmerliste stehen (Parent-Teilnehmer tauchen dann in
+                        // der Session-Ansicht auf). handleSelectEvent lädt die
+                        // Registrations aus der richtigen Subsite neu.
+                        if (target) handleSelectEvent(target).catch(() => { /* fehler wird intern gesetzt */ });
+                      }}
+                      style={{ maxWidth: 340, padding: '6px 12px', fontSize: '0.85rem' }}
+                      aria-label="Event wechseln"
+                    >
+                      {parent && (
+                        <option value={parent.id}>Hauptevent: {parent.title}</option>
+                      )}
+                      {siblings.map(c => (
+                        <option key={c.id} value={c.id}>
+                          Session: {c.title || 'ohne Titel'}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()}
               {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
                   buendig). Das globale .settings-info SCSS macht stattdessen
                   space-between (also Wert rechts-buendig) — hier wollen wir
@@ -2481,11 +2524,16 @@ export default function AdminPage(): React.ReactElement {
         const funCap = selectedEvent?.funstarterCapacity || 0;
         const durchWait = waitlistDurch.length;
         const funWait = waitlistFun.length;
+        // v11.6: frei waehlbare Gruppen-Labels statt der hardcodeten
+        // 'Durchstarter'/'Funstarter'-Begriffe — fallback auf die alten
+        // Labels wenn der Organizer keine eigenen gesetzt hat.
+        const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
+        const labelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
             <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-green-dark, #6b9a1e)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ color: 'var(--dex-green-dark, #6b9a1e)' }}>Durchstarter</strong>
+                <strong style={{ color: 'var(--dex-green-dark, #6b9a1e)' }}>{labelA}</strong>
                 <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
                   {durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span>
                 </span>
@@ -2496,7 +2544,7 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-orange, #ff8c00)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ color: 'var(--dex-orange, #ff8c00)' }}>Funstarter</strong>
+                <strong style={{ color: 'var(--dex-orange, #ff8c00)' }}>{labelB}</strong>
                 <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
                   {funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span>
                 </span>
@@ -2781,42 +2829,6 @@ export default function AdminPage(): React.ReactElement {
             <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {/* Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Wenn der selektierte
-                Event Child-Events hat, zeigen wir einen Dropdown zum schnellen
-                Umschalten in die Admin-Ansicht der Child-Events (oder zurück zum Parent). */}
-            {selectedEvent && (() => {
-              const isChild = !!selectedEvent.parentEventId;
-              const siblings = isChild
-                ? childEventsOf(selectedEvent.parentEventId || '')
-                : childEventsOf(selectedEvent.id);
-              if (!isChild && siblings.length === 0) return null;
-              const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
-              return (
-                <select
-                  className="form-input"
-                  value={selectedEvent.id}
-                  onChange={e => {
-                    const target = [parent, ...siblings].find(x => x && x.id === e.target.value);
-                    // Nicht nur setSelectedEvent — sonst bleibt die alte
-                    // Teilnehmerliste stehen (Parent-Teilnehmer tauchen dann in
-                    // der Session-Ansicht auf). handleSelectEvent lädt die
-                    // Registrations aus der richtigen Subsite neu.
-                    if (target) handleSelectEvent(target).catch(() => { /* fehler wird intern gesetzt */ });
-                  }}
-                  style={{ maxWidth: 340, padding: '6px 12px', fontSize: '0.85rem' }}
-                  aria-label="Event wechseln"
-                >
-                  {parent && (
-                    <option value={parent.id}>Hauptevent: {parent.title}</option>
-                  )}
-                  {siblings.map(c => (
-                    <option key={c.id} value={c.id}>
-                      Session: {c.title || 'ohne Titel'}
-                    </option>
-                  ))}
-                </select>
-              );
-            })()}
             <input
               type="text"
               className="form-input"
@@ -3447,11 +3459,15 @@ export default function AdminPage(): React.ReactElement {
           };
 
           if (isSplitCapacity) {
+            // v11.6: Wartelisten-Tabellen mit den frei wählbaren Gruppen-
+            // Labels statt hartcodeten 'Durchstarter'/'Funstarter'.
+            const wlLabelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
+            const wlLabelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
             return (
               <>
-                {renderWaitlistTable('Warteliste Durchstarter', waitlistDurch, 'var(--dex-green-dark, #6b9a1e)')}
-                {renderWaitlistTable('Warteliste Funstarter', waitlistFun, 'var(--dex-orange, #ff8c00)')}
-                {renderWaitlistTable('Warteliste ohne Typ', waitlistUnassigned, 'var(--dex-gray-500)')}
+                {renderWaitlistTable(`Warteliste ${wlLabelA}`, waitlistDurch, 'var(--dex-green-dark, #6b9a1e)')}
+                {renderWaitlistTable(`Warteliste ${wlLabelB}`, waitlistFun, 'var(--dex-orange, #ff8c00)')}
+                {renderWaitlistTable('Warteliste ohne Gruppe', waitlistUnassigned, 'var(--dex-gray-500)')}
               </>
             );
           }

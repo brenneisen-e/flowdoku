@@ -1978,8 +1978,17 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
               }));
+            // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
+            // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
+            // sobald die generische Split-Capacity ohne B2Run-Template
+            // genutzt wird — dann hat das Event Split-Kapazitäten + StarterType-
+            // Werte in der Teilnehmerliste, aber `isB2runTemplate=false`. Der
+            // Fix-Lauf hat daraufhin StarterType + PreferredStarterType
+            // gelöscht und die Teilnehmer-Daten weggeworfen. Korrekter Check:
+            // entweder altes B2Run-Template ODER Split-Capacity aktiv.
+            const splitActive = useSplitCapacities && ((parseInt(durchstarterCapacity, 10) || 0) > 0 || (parseInt(funstarterCapacity, 10) || 0) > 0);
             const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
-              isB2Run: isB2runTemplate,
+              isB2Run: isB2runTemplate || splitActive,
               hasQuiz: quiz.length > 0,
               customFields: cfForFix,
             });
