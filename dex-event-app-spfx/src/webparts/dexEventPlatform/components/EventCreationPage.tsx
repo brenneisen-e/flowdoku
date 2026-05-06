@@ -953,40 +953,44 @@ export default function EventCreationPage(): React.ReactElement {
   // alten Template-Dropdown: User wählt fokussiert die Felder, die er
   // wirklich braucht, statt einen B2Run-Block auf einmal aufzuziehen.
   type SuggestedCategory = 'general' | 'b2run';
-  type SuggestedEntry = { key: string; label: string; description: string; category: SuggestedCategory; build: (_now: number) => CustomFieldInput };
+  // v10.23: jeder Suggested-Field-Eintrag hat ein Fluent-UI-Icon (visuelles
+  // Erkennungsmerkmal in der Auswahl-Liste) und einen ausfuehrlicheren
+  // Tooltip-Text — der erklaert dem Organizer, was das Feld in der App
+  // bewirkt, ohne dass er es erst hinzufuegen muss.
+  type SuggestedEntry = { key: string; label: string; description: string; category: SuggestedCategory; icon: string; tooltip?: string; build: (_now: number) => CustomFieldInput };
   const SUGGESTED_FIELDS_CATALOG: SuggestedEntry[] = isDe ? [
     {
-      key: 'tshirt', category: 'general',
+      key: 'tshirt', category: 'general', icon: 'Tag',
       label: 'T-Shirt Größe',
       description: 'Dropdown mit Kein T-Shirt / XS–XXL',
       build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'allergies', category: 'general',
+      key: 'allergies', category: 'general', icon: 'Warning',
       label: 'Allergien',
       description: 'Freitextfeld für Allergien/Unverträglichkeiten',
       build: (n) => ({ id: `cf-${n}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'diet', category: 'general',
+      key: 'diet', category: 'general', icon: 'EatDrink',
       label: 'Essenspräferenzen',
       description: 'Dropdown: Keine Präferenzen / Vegetarisch / Vegan / Pescetarisch',
       build: (n) => ({ id: `cf-${n}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true }),
     },
     {
-      key: 'hotel', category: 'general',
+      key: 'hotel', category: 'general', icon: 'Hotel',
       label: 'Hotel benötigt',
       description: 'Checkbox: Teilnehmer benötigt ein Hotel',
       build: (n) => ({ id: `cf-${n}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'roomtype', category: 'general',
+      key: 'roomtype', category: 'general', icon: 'Room',
       label: 'Zimmerart',
       description: 'Dropdown: Keine Präferenz / Einzelzimmer / Doppelzimmer',
       build: (n) => ({ id: `cf-${n}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true }),
     },
     {
-      key: 'roommate', category: 'general',
+      key: 'roommate', category: 'general', icon: 'People',
       label: 'Bevorzugter Zimmerpartner',
       description: 'Personen-Suche; Match-Erkennung im Admin Center',
       build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true }),
@@ -995,49 +999,49 @@ export default function EventCreationPage(): React.ReactElement {
     // standardmaessig eingeklappt, damit der Standard-Organizer sie nicht
     // versehentlich aktiviert.
     {
-      key: 'b2run_startblock', category: 'b2run',
+      key: 'b2run_startblock', category: 'b2run', icon: 'Running',
       label: 'Startblock',
       description: 'Dropdown der Startbloecke. Optionen werden nachtraeglich im Wizard gepflegt.',
       build: (_n) => ({ id: `b2run_startblock`, label: 'Startblock', type: 'select', required: true, options: [], visible: true }),
     },
     {
-      key: 'b2run_gruppe', category: 'b2run',
+      key: 'b2run_gruppe', category: 'b2run', icon: 'BulletedList',
       label: 'Gruppe',
       description: 'Dropdown: offene Klasse / Nordic Walker / Damen / Herren',
       build: (_n) => ({ id: `b2run_gruppe`, label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true }),
     },
     {
-      key: 'b2run_altersklasse', category: 'b2run',
+      key: 'b2run_altersklasse', category: 'b2run', icon: 'Calendar',
       label: 'Altersklasse',
       description: 'Dropdown: unter 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
       build: (_n) => ({ id: `b2run_altersklasse`, label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
     },
     {
-      key: 'b2run_infoservice', category: 'b2run',
+      key: 'b2run_infoservice', category: 'b2run', icon: 'CellPhone',
       label: 'Infoservice (SMS)',
       description: 'Checkbox: aktiviert die Mobilnummer-Pflicht fuer den B2Run-SMS-Service',
       build: (_n) => ({ id: `b2run_infoservice`, label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_mobilnummer', category: 'b2run',
+      key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
       label: 'Mobilnummer',
       description: 'Freitext, dynamisch Pflicht wenn Infoservice aktiv',
       build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_anonym', category: 'b2run',
+      key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
       label: 'Anonym teilnehmen',
       description: 'Checkbox: Teilnehmer in Ergebnislisten anonymisieren',
       build: (_n) => ({ id: `b2run_anonym`, label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_laufshirt', category: 'b2run',
+      key: 'b2run_laufshirt', category: 'b2run', icon: 'Sport',
       label: 'Deloitte-Laufshirt',
       description: 'Dropdown: vorhandenes Shirt / XS-XXL',
       build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'b2run_datenschutz', category: 'b2run',
+      key: 'b2run_datenschutz', category: 'b2run', icon: 'LockShield',
       label: 'AGB / Datenschutz',
       description: 'Pflicht-Checkbox mit Links zu B2Run-AGB und Datenschutzerklaerung',
       build: (_n) => ({
@@ -1052,85 +1056,85 @@ export default function EventCreationPage(): React.ReactElement {
     },
   ] : [
     {
-      key: 'tshirt', category: 'general',
+      key: 'tshirt', category: 'general', icon: 'Tag',
       label: 'T-Shirt size',
       description: 'Dropdown: No t-shirt needed / XS–XXL',
       build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'allergies', category: 'general',
+      key: 'allergies', category: 'general', icon: 'Warning',
       label: 'Allergies',
       description: 'Free-text field for allergies / intolerances',
       build: (n) => ({ id: `cf-${n}`, label: 'Allergies', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'diet', category: 'general',
+      key: 'diet', category: 'general', icon: 'EatDrink',
       label: 'Dietary preferences',
       description: 'Dropdown: No preference / Vegetarian / Vegan / Pescetarian',
       build: (n) => ({ id: `cf-${n}`, label: 'Dietary preferences', type: 'select', required: false, options: ['No preference', 'Vegetarian', 'Vegan', 'Pescetarian'], visible: true }),
     },
     {
-      key: 'hotel', category: 'general',
+      key: 'hotel', category: 'general', icon: 'Hotel',
       label: 'Hotel required',
       description: 'Checkbox: participant needs a hotel room',
       build: (n) => ({ id: `cf-${n}`, label: 'Hotel required', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'roomtype', category: 'general',
+      key: 'roomtype', category: 'general', icon: 'Room',
       label: 'Room type',
       description: 'Dropdown: No preference / Single room / Double room',
       build: (n) => ({ id: `cf-${n}`, label: 'Room type (if hotel needed)', type: 'select', required: false, options: ['No preference', 'Single room', 'Double room'], visible: true }),
     },
     {
-      key: 'roommate', category: 'general',
+      key: 'roommate', category: 'general', icon: 'People',
       label: 'Preferred roommate',
       description: 'People search; match detection in the admin center',
       build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'roommate', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_startblock', category: 'b2run',
+      key: 'b2run_startblock', category: 'b2run', icon: 'Running',
       label: 'Start block',
       description: 'Dropdown of start blocks. Options are added later in the wizard.',
       build: (_n) => ({ id: `b2run_startblock`, label: 'Start block', type: 'select', required: true, options: [], visible: true }),
     },
     {
-      key: 'b2run_gruppe', category: 'b2run',
+      key: 'b2run_gruppe', category: 'b2run', icon: 'BulletedList',
       label: 'Category',
       description: 'Dropdown: Open class / Nordic Walker / Women / Men',
       build: (_n) => ({ id: `b2run_gruppe`, label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true }),
     },
     {
-      key: 'b2run_altersklasse', category: 'b2run',
+      key: 'b2run_altersklasse', category: 'b2run', icon: 'Calendar',
       label: 'Age group',
       description: 'Dropdown: under 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
       build: (_n) => ({ id: `b2run_altersklasse`, label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
     },
     {
-      key: 'b2run_infoservice', category: 'b2run',
+      key: 'b2run_infoservice', category: 'b2run', icon: 'CellPhone',
       label: 'Info service (SMS)',
       description: 'Checkbox: enables the mandatory mobile-number for the B2Run SMS service',
       build: (_n) => ({ id: `b2run_infoservice`, label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_mobilnummer', category: 'b2run',
+      key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
       label: 'Mobile number',
       description: 'Free text, dynamically required when info service is active',
       build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobile number (only if info service is enabled)', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_anonym', category: 'b2run',
+      key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
       label: 'Anonymous participation',
       description: 'Checkbox: anonymise attendee in result lists',
       build: (_n) => ({ id: `b2run_anonym`, label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'b2run_laufshirt', category: 'b2run',
+      key: 'b2run_laufshirt', category: 'b2run', icon: 'Sport',
       label: 'Deloitte running shirt',
       description: 'Dropdown: existing shirt / XS-XXL',
       build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'b2run_datenschutz', category: 'b2run',
+      key: 'b2run_datenschutz', category: 'b2run', icon: 'LockShield',
       label: 'Terms / privacy',
       description: 'Required checkbox with links to B2Run terms and privacy policy',
       build: (_n) => ({
@@ -2465,6 +2469,19 @@ export default function EventCreationPage(): React.ReactElement {
   // Create-Event-Seite. Nach Akzeptieren wird die Maske weggeklappt; bei
   // Bearbeiten bestehender Events (isEditMode) wird sie nicht angezeigt.
   const showTermsModal = !isEditMode && !tcAccepted;
+
+  // v10.23: Zebra-Hintergrund fuer Schritt-3-Bloecke (Kapazitaet & Sichtbarkeit).
+  // Counter wird pro Render zurueckgesetzt; conditional Bloecke verschieben den
+  // Index nur wenn sie tatsaechlich rendern, sodass die Alternation auch dann
+  // sauber bleibt, wenn Filterverknuepfung oder Sichtbarkeit-pruefen-Buttons
+  // ausgeblendet sind. Wird bewusst NUR in Schritt 3 verwendet — andere Steps
+  // bekommen das in einer spaeteren Iteration nachgezogen.
+  let _zebraS3Idx = 0;
+  const zebraS3Bg = (): string => {
+    const c = _zebraS3Idx % 2 === 0 ? 'var(--dex-gray-50, #fafafa)' : '#ffffff';
+    _zebraS3Idx++;
+    return c;
+  };
 
   return (
     <div className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
@@ -4266,7 +4283,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               </div>
 
-                {/* ===== Sub-Events (Trainingssessions etc.) ===== */}
+                {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
                 <div className="form-group" style={{ marginTop: 32 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={13} />
@@ -4366,8 +4383,13 @@ export default function EventCreationPage(): React.ReactElement {
                           </button>
                         </div>
 
-                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 10, marginBottom: 10 }}>
+                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max.
+                            v10.23: 4. Spalte von 120 auf 170 erweitert — der
+                            DE-Label "Max. Teilnehmer (0 = unbegrenzt)" ist
+                            sonst zu lang und der Hinweis "0 = unbegrenzt"
+                            wird ueber dem Eingabefeld in eine zweite Zeile
+                            umgebrochen. */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 170px', gap: 10, marginBottom: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
                             <DatePicker
@@ -4603,7 +4625,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </p>
               </div>
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={13} />
                   {isDe ? 'Standortfilter' : 'Location filter'}
@@ -4639,7 +4661,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="form-group" style={{ position: 'relative', padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={14} />
                   {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
@@ -4825,7 +4847,7 @@ export default function EventCreationPage(): React.ReactElement {
                   (Standortfilter + Mailverteiler) Werte haben — sonst gibt
                   es nichts zu kombinieren. */}
               {locationFilter && audience && (
-                <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', paddingLeft: 30 }}>
+                <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={15} />
                     {isDe ? 'Filterverknüpfung' : 'Filter combination'}
@@ -4892,7 +4914,7 @@ export default function EventCreationPage(): React.ReactElement {
                   erst alles befuellt, bevor er die kombinierte Sichtbarkeit
                   in einer Vorschau gegen-prueft. */}
               {(locationFilter || audience) && (
-                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)', flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-outline"
                     style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
@@ -5011,9 +5033,9 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={16} />
+                  <StepBadge n={(locationFilter && audience) ? 16 : 15} />
                   {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                   <InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. ohne Rückfrage abmelden? Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
@@ -5102,9 +5124,9 @@ export default function EventCreationPage(): React.ReactElement {
                   angezeigt. Die Mehrheit der Events nutzt nur eine
                   Gesamtkapazitaet; der B2Run-Sonderfall ist Opt-in. */}
 
-              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+              <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={17} />
+                  <StepBadge n={(locationFilter && audience) ? 17 : 16} />
                   {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
                 </label>
               {/* v10.20: Geteilte Kapazität — generisch fuer beliebige Events.
@@ -5465,8 +5487,8 @@ export default function EventCreationPage(): React.ReactElement {
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
-                  ? 'Hier definierst du, welche Daten du von den Teilnehmern bei der Anmeldung abfragen willst — vom Standardfeld bis zu eigenen Fragen.'
-                  : 'Here you define which data to ask from attendees at registration — from standard fields to your own questions.'}
+                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Anrede, Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 4 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
+                  : <><strong>Optional</strong> — the standard attendee data (<strong>salutation, first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 4 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. If your event needs no extra questions, you can simply leave this step empty.</>}
               </p>
 
               {renderStepIntro(
@@ -8250,6 +8272,17 @@ export default function EventCreationPage(): React.ReactElement {
                     onChange={e => setSuggestedSelection({ ...suggestedSelection, [s.key]: e.target.checked })}
                     style={{ marginTop: 3, flexShrink: 0 }}
                   />
+                  {/* v10.23: passendes Fluent-UI-Icon links neben dem Label,
+                      damit die Auswahl auf einen Blick visuell wiedererkennbar
+                      ist. Farbe analog zur Kategorie (gruen=Allgemein,
+                      orange=B2Run). */}
+                  <Icon
+                    iconName={s.icon}
+                    style={{
+                      fontSize: 20, flexShrink: 0, marginTop: 2,
+                      color: s.category === 'b2run' ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)',
+                    }}
+                  />
                   <span style={{ flex: 1 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{s.label}</strong>
@@ -8261,6 +8294,18 @@ export default function EventCreationPage(): React.ReactElement {
                         color: s.category === 'b2run' ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)',
                       }}>
                         {s.category === 'b2run' ? 'B2Run' : (isDe ? 'Allgemein' : 'General')}
+                      </span>
+                      {/* v10.23: i-Tooltip mit ausfuehrlichem Hinweis was das
+                          Feld in der App tut — verhindert Klick-und-Probier-
+                          Modus, weil der Organizer schon vor Auswahl sieht
+                          welche Frage-Form (Dropdown / Freitext / Pflicht-
+                          Checkbox) und welcher Effekt (Anzeige im Admin-Center,
+                          Excel-Export, etc.) entsteht. Klick auf das Label
+                          (das `<label>`-Wrapping) wuerde die Checkbox togglen
+                          — das `onClick`-stopPropagation des InfoTooltip
+                          verhindert das. */}
+                      <span onClick={e => e.preventDefault()} style={{ display: 'inline-flex' }}>
+                        <InfoTooltip text={s.tooltip || s.description} />
                       </span>
                     </span>
                     <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{s.description}</div>
