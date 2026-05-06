@@ -734,6 +734,28 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 );
               })()}
+              {/* v10.16: Optionaler Ansprechpartner — frei eingegebene Person
+                  außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
+                  wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
+                  oder Email gepflegt sind. */}
+              {(event.contactName || event.contactEmail || event.contactInfo) && (
+                <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                    {locale === 'de' ? 'Ansprechpartner' : 'Contact'}
+                  </div>
+                  {event.contactName && (
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                  )}
+                  {event.contactEmail && (
+                    <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
+                      <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'none' }}>{event.contactEmail}</a>
+                    </div>
+                  )}
+                  {event.contactInfo && (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
+                  )}
+                </div>
+              )}
               {/* Verfuegbare Plaetze anzeigen — nur wenn es eine Obergrenze gibt.
                   Gilt sowohl fuer normale Deloitte-Events als auch fuer B2Run
                   (dort ist maxParticipants = durchCap + funCap). */}

@@ -139,6 +139,23 @@ function AppContent(): React.ReactElement {
             navigate('my-events');
           }
         }
+      } else if ((action === 'admin' || action === 'checkin') && eventParam) {
+        // v10.18+: Deep-Link für Organizer/Admin direkt ins jeweilige Event
+        // springen — z.B. ?action=admin&event=42 öffnet das Admin Center mit
+        // Event #42 vorselektiert (Teilnehmerliste, Edit, Mails, Spalten fixen).
+        // ?action=checkin&event=42 springt direkt ins Check-In-Tool für Event 42.
+        // Nützlich um Co-Organizern oder Helfern einen einklick-Link zu schicken
+        // statt sie durch die Event-Auswahl zu navigieren.
+        didHandleDeepLink.current = true;
+        const eventNumber = parseInt(eventParam, 10);
+        if (!isNaN(eventNumber)) {
+          const evt = events.find(e => e.eventNumber === eventNumber);
+          if (evt) {
+            navigate(action === 'checkin' ? 'check-in' : 'admin', evt.id);
+          } else {
+            navigate(action === 'checkin' ? 'check-in' : 'admin');
+          }
+        }
       } else if (action === 'event-created' || action === 'event-updated') {
         // v9.43: Deep-Link nach Event-Erstellung/-Update. Wird vom EventCreationPage-
         // Success-Button aufgerufen mit window.location.href = '...?action=event-

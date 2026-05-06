@@ -42,14 +42,14 @@ export default function StartPage(): React.ReactElement {
             <Calendar size={64} strokeWidth={1} />
           </div>
           <h2>{t('start.register')}</h2>
-          <p>{t('start.register.desc')}</p>
+          <p style={{ whiteSpace: 'nowrap' }}>{t('start.register.desc')}</p>
         </div>
         <div className="card card-clickable start-card" onClick={() => navigate('my-events')}>
           <div className="start-card__icon">
             <Pin size={64} strokeWidth={1} />
           </div>
           <h2>{t('start.myevents')}</h2>
-          <p>{t('start.myevents.desc')}</p>
+          <p style={{ whiteSpace: 'nowrap' }}>{t('start.myevents.desc')}</p>
         </div>
         {canCreateEvents && (
           <div className="card card-clickable start-card start-card--admin" onClick={() => navigate('admin')}>
@@ -57,7 +57,7 @@ export default function StartPage(): React.ReactElement {
               <Settings size={64} strokeWidth={1} />
             </div>
             <h2>{t('start.admin')}</h2>
-            <p>{t('start.admin.desc')}</p>
+            <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
           </div>
         )}
       </div>

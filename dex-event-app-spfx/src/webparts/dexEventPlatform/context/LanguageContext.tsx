@@ -35,10 +35,10 @@ const translations: Record<Locale, Record<string, string>> = {
     // Start Page
     'start.title': 'Event Experience Platform',
     'start.register': 'Registrierung',
-    'start.register.desc': 'Melde dich für ein Event an',
+    'start.register.desc': 'Für ein Event anmelden',
     'start.myevents': 'Meine Events',
-    'start.myevents.desc': 'Deine Anmeldungen verwalten',
-    'start.admin': 'Admin',
+    'start.myevents.desc': 'Anmeldungen verwalten',
+    'start.admin': 'Organizer',
     'start.admin.desc': 'Events verwalten',
 
     // Header
@@ -460,8 +460,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'start.register': 'Registration',
     'start.register.desc': 'Register for an event',
     'start.myevents': 'My Events',
-    'start.myevents.desc': 'Manage your registrations',
-    'start.admin': 'Admin',
+    'start.myevents.desc': 'Manage registrations',
+    'start.admin': 'Organizer',
     'start.admin.desc': 'Manage events',
 
     // Header
