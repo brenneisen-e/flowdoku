@@ -1241,6 +1241,9 @@ export default function EventCreationPage(): React.ReactElement {
    */
   const persistSubEventsForParent = async (parentEventId: string): Promise<void> => {
     const keptDbIds = new Set<string>();
+    // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
+    // statt pro Iteration, identisch für alle Children.
+    const sanitizedOrgPair = sanitizeOrganizerPairs();
     for (const draft of subEvents) {
       if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
       const childPayload = {
@@ -1260,8 +1263,8 @@ export default function EventCreationPage(): React.ReactElement {
         maxParticipants: draft.maxParticipants || 0,
         waitlistEnabled: true,
         eventImageUrl: '',
-        organizer: organizer,
-        organizerEmail: organizerEmails.join(';'),
+        organizer: sanitizedOrgPair.orgString,
+        organizerEmail: sanitizedOrgPair.orgEmailString,
         outlookEventId: '',
         outlookBody: '',
         agenda: '[]',
@@ -1304,6 +1307,37 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
+  /**
+   * Save-Side-Sanity: Organizer-Names und -Emails 1:1 paaren bevor sie nach SP
+   * geschrieben werden. Pairs ohne BEIDE (Name + Email) fallen raus — verhindert
+   * dass eine Mismatch-State (z.B. „Spiegel, Mirjam" gepaart mit
+   * „egenctuerk@deloitte.de") in DEX_Events landet. Bisher wurden organizer und
+   * organizerEmails unabhängig serialisiert, dadurch konnten Drift-States aus
+   * Closure-Bugs / Edit-Pfaden / Move-Bugs in die Persistenz durchschlagen.
+   *
+   * Returnt sauber serialisierte Strings (`Organizer` mit '; '-Trenner,
+   * `OrganizerEmail` mit ';'-Trenner) — exakt das Format das DEX_Events erwartet
+   * und der OutlookEventCreate-Flow + DEX_SEND_MAIL als Recipient-Liste lesen.
+   */
+  const sanitizeOrganizerPairs = React.useCallback((): { orgString: string; orgEmailString: string; droppedCount: number } => {
+    const names = (organizer || '').split(';').map(s => s.trim());
+    const emails = (organizerEmails || []).map(e => (e || '').trim());
+    const max = Math.max(names.length, emails.length);
+    const pairs: Array<{ n: string; e: string }> = [];
+    let dropped = 0;
+    for (let i = 0; i < max; i++) {
+      const n = (names[i] || '').trim();
+      const e = (emails[i] || '').trim();
+      if (n && e) pairs.push({ n, e });
+      else if (n || e) dropped++;
+    }
+    return {
+      orgString: pairs.map(p => p.n).join('; '),
+      orgEmailString: pairs.map(p => p.e).join(';'),
+      droppedCount: dropped,
+    };
+  }, [organizer, organizerEmails]);
+
   const handleSubmit = async (): Promise<void> => {
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
@@ -1320,6 +1354,9 @@ export default function EventCreationPage(): React.ReactElement {
 
     if (isEditMode && selectedEventId) {
       setProgressLabel('Event wird aktualisiert...');
+      // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
+      // Pairs — verhindert Mismatch-State in DEX_Events.
+      const sanitizedOrgPairEdit = sanitizeOrganizerPairs();
       // Event aktualisieren - nur bekannte Felder senden
       const updates: Record<string, unknown> = {
         'Title': title,
@@ -1336,7 +1373,8 @@ export default function EventCreationPage(): React.ReactElement {
         'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
         'MaxParticipants': unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         'EventImageUrl': imageUrl,
-        'Organizer': organizer,
+        'Organizer': sanitizedOrgPairEdit.orgString,
+        'OrganizerEmail': sanitizedOrgPairEdit.orgEmailString,
         'CustomFields': JSON.stringify(customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -1626,6 +1664,7 @@ export default function EventCreationPage(): React.ReactElement {
         }
       }, 2000);
 
+      const sanitizedOrgPairCreate = sanitizeOrganizerPairs();
       const eventId = await createEvent({
         title,
         type: eventType,
@@ -1645,8 +1684,11 @@ export default function EventCreationPage(): React.ReactElement {
         maxParticipants: unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         waitlistEnabled,
         eventImageUrl: imageUrl,
-        organizer,
-        organizerEmail: organizerEmails.join(';'),
+        // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
+        // Pairs (Name ohne Email oder umgekehrt) — verhindert Mismatch-State
+        // in DEX_Events durch Drift während Edit/Closure-Bugs.
+        organizer: sanitizedOrgPairCreate.orgString,
+        organizerEmail: sanitizedOrgPairCreate.orgEmailString,
         outlookEventId: '',
         outlookBody: (() => {
           // v7.4: Auch wenn der User keinen Outlook-Body geschrieben hat,

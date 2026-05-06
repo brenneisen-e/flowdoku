@@ -46,7 +46,7 @@ function getStatusColor(status: string): string {
 function localizeStatus(status: string): string {
   switch (status) {
     case 'Active': return 'Aktiv';
-    case 'Under Construction': return 'In Vorbereitung';
+    case 'Under Construction': return 'Entwurf';
     case 'Completed': return 'Abgeschlossen';
     case 'Cancelled': return 'Abgesagt';
     default: return status;
@@ -838,6 +838,19 @@ export default function AdminPage(): React.ReactElement {
       handleSelectEvent(match).catch(() => { /* Fehler wird intern gesetzt */ });
     }
   }, [selectedEventId, adminEvents, selectedEvent]);
+
+  // Soft-Refresh-Sync: wenn `events` durch refreshEvents() aktualisiert wurde
+  // (z.B. nach Event-deaktivieren, Event-aktivieren, Edit-save), den lokalen
+  // `selectedEvent`-State aus der frischen Liste neu derivieren. Sonst bleibt
+  // der Status-Badge (z.B. „Aktiv" vs „Entwurf") nach Toggle stale, weil
+  // `selectedEvent` ein eigener useState ist und nicht aus `events` derived.
+  React.useEffect(() => {
+    if (!selectedEvent) return;
+    const fresh = adminEvents.find(e => e.id === selectedEvent.id);
+    if (fresh && fresh !== selectedEvent) {
+      setSelectedEvent(fresh);
+    }
+  }, [adminEvents]);
 
   // Teilnehmerlisten-URL aus regListMap ableiten
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1652,7 +1665,7 @@ export default function AdminPage(): React.ReactElement {
                   icon={isActive ? <X size={18} /> : <Check size={18} />}
                   title={isActive ? 'Event deaktivieren' : 'Event aktivieren'}
                   desc={isActive
-                    ? 'Setzt das Event auf "Under Construction" zurueck — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
+                    ? 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
                     : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
                   badge="organizer"
                   // v9.19/v9.20: nur "Aktivieren" wird gruen highlighted —
@@ -1663,7 +1676,7 @@ export default function AdminPage(): React.ReactElement {
                     if (!eventServiceRef) return;
                     const newStatus = isActive ? 'Under Construction' : 'Active';
                     const confirmMsg = isActive
-                      ? 'Event auf "Under Construction" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
+                      ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
                       : 'Event auf "Active" schalten? Alle Berechtigten können sich danach anmelden.';
                     if (!window.confirm(confirmMsg)) return;
                     await updateEvent(selectedEvent.id, { 'EventStatus': newStatus });
