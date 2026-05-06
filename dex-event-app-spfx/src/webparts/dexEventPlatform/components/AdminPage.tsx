@@ -366,6 +366,12 @@ export default function AdminPage(): React.ReactElement {
       Location: r.Location || '',
       JobTitle: r.JobTitle || '',
       Status: r.Status || '',
+      // v10.13+: B2Run-Felder ins Edit-Form aufnehmen damit das B2Run-Modul
+      // im Edit-Modal die aktuellen Werte vorbefüllen kann. Strings (auch
+      // wenn leer) — bei Nicht-B2Run-Events werden die Felder im Modal
+      // sowieso nicht angezeigt.
+      StarterType: r.StarterType || '',
+      PreferredStarterType: r.PreferredStarterType || '',
     };
     // Custom-Field-Werte aus dem reg laden (sie sind als SP-Spalten gespeichert)
     if (selectedEvent?.eventSpecificFields) {
@@ -479,6 +485,30 @@ export default function AdminPage(): React.ReactElement {
           fieldLabelMap[sp] = f.label;
           oldValues[sp] = r[sp] !== undefined && r[sp] !== null ? String(r[sp]) : '';
           patch[sp] = editForm[sp] || '';
+        }
+      }
+
+      // v10.13+: B2Run-Felder explizit ins Patch aufnehmen, wenn sich was
+      // geändert hat. Sind keine regulären customFields, daher werden sie
+      // oben in der eventSpecificFields-Loop nicht abgeholt. Nur bei
+      // Split-Capacity-Events relevant.
+      const isB2RunEvent = !!selectedEvent
+        && (selectedEvent.durchstarterCapacity || 0) > 0
+        && (selectedEvent.funstarterCapacity || 0) > 0;
+      if (isB2RunEvent) {
+        const oldStarter = String(r.StarterType || '');
+        const newStarter = (editForm.StarterType || '').trim();
+        if (newStarter !== oldStarter) {
+          oldValues.StarterType = oldStarter;
+          patch.StarterType = newStarter;
+          fieldLabelMap.StarterType = isDe ? 'Starter-Typ' : 'Starter type';
+        }
+        const oldPref = String(r.PreferredStarterType || '');
+        const newPref = (editForm.PreferredStarterType || '').trim();
+        if (newPref !== oldPref) {
+          oldValues.PreferredStarterType = oldPref;
+          patch.PreferredStarterType = newPref;
+          fieldLabelMap.PreferredStarterType = isDe ? 'Wunsch-Starter-Typ' : 'Preferred starter type';
         }
       }
       if (Object.keys(patch).length === 0) {
@@ -3673,6 +3703,56 @@ export default function AdminPage(): React.ReactElement {
                       {renderReadOnly(f.label, editForm[f.key] || '')}
                     </div>
                   ))}
+
+                  {/* B2Run-spezifische Felder (StarterType + PreferredStarterType).
+                      Sind hardcoded SP-Spalten auf der Teilnehmerliste (kein
+                      regulärer Custom-Field-Eintrag), daher müssen sie hier
+                      explizit gerendert werden. Nur sichtbar wenn das Event
+                      B2Run-Split-Capacities aktiv hat. v10.13+ */}
+                  {selectedEvent.durchstarterCapacity !== undefined
+                    && selectedEvent.funstarterCapacity !== undefined
+                    && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0) && (
+                    <div style={{ gridColumn: '1 / -1', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <h4 style={{ margin: '0 0 4px', fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
+                        {isDe ? 'B2Run-Felder (editierbar)' : 'B2Run fields (editable)'}
+                      </h4>
+                      <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Aktueller Starter-Typ + ursprünglicher Wunsch-Typ. Wunsch-Typ wird beim Nachrücken aus der Warteliste verwendet.'
+                          : 'Current starter type + originally preferred type. Preferred type is used when promoting from waitlist.'}
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                            {isDe ? 'Starter-Typ (aktuell)' : 'Starter type (current)'}
+                          </label>
+                          <select
+                            value={editForm.StarterType || ''}
+                            onChange={e => setEditForm(prev => ({ ...prev, StarterType: e.target.value }))}
+                            className="form-input"
+                          >
+                            <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
+                            <option value="Durchstarter">Durchstarter</option>
+                            <option value="Funstarter">Funstarter</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                            {isDe ? 'Wunsch-Starter-Typ' : 'Preferred starter type'}
+                          </label>
+                          <select
+                            value={editForm.PreferredStarterType || ''}
+                            onChange={e => setEditForm(prev => ({ ...prev, PreferredStarterType: e.target.value }))}
+                            className="form-input"
+                          >
+                            <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
+                            <option value="Durchstarter">Durchstarter</option>
+                            <option value="Funstarter">Funstarter</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Custom Fields des Events — DAS ist der editierbare Teil.
                       Renderer abhaengig vom Field-Type (text/number/select/
