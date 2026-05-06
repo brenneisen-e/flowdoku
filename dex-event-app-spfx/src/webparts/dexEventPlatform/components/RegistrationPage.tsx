@@ -405,6 +405,13 @@ export default function RegistrationPage(): React.ReactElement {
             const conditionMet = answers.some(a => f.showIf!.values.indexOf(a) >= 0);
             if (!conditionMet) return false;
           }
+          // v10.24: Pro-Gruppe-Constraint — wenn das Feld auf eine andere
+          // Gruppe als die aktuell vom User gewählte beschränkt ist, ist
+          // es ausgeblendet und blockt die Validation nicht.
+          if (f.onlyForGroup && f.onlyForGroup !== 'all' && isB2runSplit) {
+            const want = f.onlyForGroup === 'A' ? 'Durchstarter' : 'Funstarter';
+            if (preferredStarterType !== want) return false;
+          }
           if (!f.required) return false;
           return f.type === 'checkbox'
             ? eventSpecific[f.id] !== 'true'
@@ -1493,6 +1500,23 @@ export default function RegistrationPage(): React.ReactElement {
                     ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
                     : [raw];
                   return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+                })
+                // v10.24: Pro-Gruppe-Sichtbarkeit. Wenn der Organizer das
+                // Feld auf 'A' (Gruppe A / Durchstarter) oder 'B' (Gruppe B /
+                // Funstarter) eingeschränkt hat, blenden wir es aus, sobald
+                // der User die jeweils andere Gruppe gewählt hat. 'all' /
+                // undefined / Events ohne Split-Capacity zeigen das Feld
+                // immer. Solange der User noch keine Gruppe gewählt hat
+                // (preferredStarterType leer), bleibt das Feld bei 'A'/'B'-
+                // Constraint vorerst ausgeblendet — sobald er klickt, taucht
+                // es auf.
+                .filter(f => {
+                  const grp = f.onlyForGroup;
+                  if (!grp || grp === 'all') return true;
+                  if (!isB2runSplit) return true;
+                  if (grp === 'A') return preferredStarterType === 'Durchstarter';
+                  if (grp === 'B') return preferredStarterType === 'Funstarter';
+                  return true;
                 })
                 .map(fRaw => {
                   // Dynamisch Required erzwingen: bei aktivem Infoservice ist die

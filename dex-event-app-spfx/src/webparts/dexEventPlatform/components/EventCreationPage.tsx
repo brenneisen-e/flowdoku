@@ -161,6 +161,10 @@ interface CustomFieldInput {
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
+  /** v10.24: Bei aktiver Split-Capacity Feld nur fuer eine der zwei
+   *  Gruppen sichtbar machen ('A' = Durchstarter / Gruppe A, 'B' =
+   *  Funstarter / Gruppe B). 'all' / undefined = beide Gruppen. */
+  onlyForGroup?: 'all' | 'A' | 'B';
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -656,6 +660,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.helpText ? { helpText: f.helpText } : {}),
       // v7.21: showIf-Bedingung aus dem persistierten Feld uebernehmen.
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
+      // v10.24: onlyForGroup-Constraint aus dem persistierten Feld uebernehmen.
+      ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -898,6 +904,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [funstarterStartblock, setFunstarterStartblock] = React.useState<string>(
     editEvent?.funstarterStartblock || ''
   );
+  // v10.24: setDurchstarterRequiresProof wird nicht mehr aufgerufen — der UI-
+  // Toggle in Schritt 3 ist entfallen, das Feature wird durch Pro-Gruppe-
+  // Custom-Fields in Schritt 4 ersetzt. State bleibt erhalten, damit
+  // bestehende Events mit gesetztem Wert nicht beim Save den Wert verlieren
+  // (durchstarterRequiresProof wird beim Persist mitgeschrieben falls
+  // editEvent das Flag schon hatte).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [durchstarterRequiresProof, setDurchstarterRequiresProof] = React.useState<boolean>(
     !!editEvent?.durchstarterRequiresProof
   );
@@ -1536,6 +1549,7 @@ export default function EventCreationPage(): React.ReactElement {
               ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
+            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
           })));
         await updateEvent(draft.dbId, {
           'Title': childPayload.title,
@@ -1643,6 +1657,7 @@ export default function EventCreationPage(): React.ReactElement {
               ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
+            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
           }))),
       };
 
@@ -1832,6 +1847,7 @@ export default function EventCreationPage(): React.ReactElement {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 spInternalName: (f as any).spInternalName || '',
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
+            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
               }));
             const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
               isB2Run: isB2runTemplate,
@@ -2052,6 +2068,7 @@ export default function EventCreationPage(): React.ReactElement {
               ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
+            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
           })),
       });
 
@@ -5328,24 +5345,29 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   )}
 
-                  {/* v6.15: Leistungsnachweis-Pflicht für Durchstarter.
-                      Wenn aktiv, muss der User beim Wählen von Durchstarter eine Checkbox
-                      bestätigen, dass ein entsprechender Leistungsnachweis vorliegt. */}
-                  <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff', borderRadius: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={durchstarterRequiresProof}
-                        onChange={e => setDurchstarterRequiresProof(e.target.checked)}
-                        style={{ marginTop: 3 }}
-                      />
-                      <span>
-                        <strong>{t('create.b2runcap.proof.title') || 'Leistungsnachweis für Durchstarter erforderlich'}</strong>
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          {t('create.b2runcap.proof.hint') || 'Wenn aktiv, muss der User beim Wählen von Durchstarter zusätzlich bestätigen, dass ein Leistungsnachweis vorhanden ist.'}
-                        </span>
-                      </span>
-                    </label>
+                  {/* v10.24: Leistungsnachweis-Pflicht-Toggle wurde entfernt.
+                      Stattdessen kann der Organizer in Schritt 4 (Felder) ein
+                      eigenes Pflichtfeld vom Typ Checkbox anlegen und es ueber
+                      'Sichtbar fuer Teilnehmergruppe → Nur Gruppe A' gezielt
+                      auf eine Split-Gruppe einschraenken. Das ersetzt den
+                      hartkodierten B2Run-Leistungsnachweis-Sonderfall durch
+                      ein generisches Pro-Gruppe-Feld-Konzept. Hinweis steht
+                      hier, damit der Organizer beim Migrieren weiss wo das
+                      Feature jetzt liegt. */}
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(21,101,192,0.06)', border: '1px solid rgba(21,101,192,0.4)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--dex-blue, #1565c0)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon iconName="Info" style={{ fontSize: 16 }} />
+                      {isDe ? 'Pflichtfelder pro Gruppe' : 'Required fields per group'}
+                    </div>
+                    {isDe ? (
+                      <>
+                        Du moechtest fuer eine der zwei Gruppen ein zusaetzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur fuer die Gruppe der schnellen Laeufer? Lege das Feld in <strong>Schritt 4 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar fuer Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
+                      </>
+                    ) : (
+                      <>
+                        Want to show an extra required field only for one of the two groups — e.g. a checkbox &ldquo;Performance proof available&rdquo; just for the fast-runner group? Add the field in <strong>step 4 (Fields)</strong> and set the <strong>&ldquo;Visible for attendee group&rdquo;</strong> selector there to <strong>&ldquo;{(splitLabelA || '').trim() || 'Group A'} only&rdquo;</strong> or <strong>&ldquo;{(splitLabelB || '').trim() || 'Group B'} only&rdquo;</strong>. The field will then be shown or hidden dynamically as the attendee picks one of the two boxes.
+                      </>
+                    )}
                   </div>
 
                   <div style={{ marginTop: 12 }}>
@@ -5845,6 +5867,78 @@ export default function EventCreationPage(): React.ReactElement {
                         />
                       </div>
                     </div>
+
+                    {/* v10.24: Pro-Gruppe-Sichtbarkeit — nur sichtbar wenn die
+                        Split-Capacity in Schritt 3 aktiv ist. Der Organizer
+                        kann ein Feld auf Gruppe A oder Gruppe B beschränken
+                        (Beispiel: Pflicht-Checkbox „Leistungsnachweis vorhanden"
+                        nur für Durchstarter / Gruppe A). 'all' = beide
+                        Gruppen sehen das Feld (Default). Bei Gruppe-A/B-only
+                        wird das Feld in der RegistrationPage entsprechend nur
+                        beim passenden Wunsch-Typ gerendert. */}
+                    {useSplitCapacities && (() => {
+                      const labelA = (splitLabelA || '').trim() || 'Durchstarter';
+                      const labelB = (splitLabelB || '').trim() || 'Funstarter';
+                      const current = field.onlyForGroup || 'all';
+                      const pillStyle = (active: boolean): React.CSSProperties => ({
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '6px 12px', borderRadius: 999,
+                        fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                        cursor: 'pointer', userSelect: 'none',
+                        border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                        background: active ? 'rgba(134,188,37,0.10)' : '#fff',
+                        color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                        transition: 'all 0.15s ease',
+                      });
+                      return (
+                        <div style={{
+                          marginTop: 10, padding: '12px 14px',
+                          background: '#fff',
+                          border: '1px solid var(--dex-gray-200)',
+                          borderRadius: 8,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                              {isDe ? 'Sichtbar für Teilnehmergruppe' : 'Visible for attendee group'}
+                            </label>
+                            <InfoTooltip text={isDe ? (
+                              <>
+                                <strong>Was du hier einstellst:</strong> ob dieses Feld bei der Anmeldung für <strong>alle Teilnehmer</strong> oder nur für eine der zwei Kapazitäts-Gruppen sichtbar ist.<br /><br />
+                                <strong>Beispiel:</strong> bei einem Lauf-Event ist die Pflicht-Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die <strong>Durchstarter-Gruppe</strong> sinnvoll, nicht für Funstarter / Walker. Stelle das Feld dann auf <strong>Nur {labelA}</strong> — Funstarter sehen es gar nicht erst.<br /><br />
+                                <strong>Auswirkung in der App:</strong> die Anmelde-Seite blendet das Feld dynamisch ein/aus, sobald der Teilnehmer eine der zwei Boxen wählt. Pflichtfeld-Validierung greift natürlich nur wenn das Feld auch sichtbar ist.<br /><br />
+                                <strong>Vorraussetzung:</strong> in Schritt 3 (Kapazität &amp; Sichtbarkeit) muss der Toggle &bdquo;Geteilte Kapazität&ldquo; aktiv sein. Sonst gibt&apos;s keine Gruppen — dieser Selector ist dann ausgeblendet.
+                              </>
+                            ) : (
+                              <>
+                                <strong>What you set here:</strong> whether this field is visible to <strong>all attendees</strong> or only to one of the two capacity groups during registration.<br /><br />
+                                <strong>Example:</strong> on a running event, a required checkbox &ldquo;Performance proof available&rdquo; only makes sense for the <strong>fast-runner group</strong>, not for fun-runners / walkers. Set the field to <strong>{labelA} only</strong> — fun-runners won&apos;t even see it.<br /><br />
+                                <strong>Effect in the app:</strong> the registration page dynamically shows / hides the field as the attendee picks one of the two boxes. Required-field validation only fires when the field is actually visible.<br /><br />
+                                <strong>Requirement:</strong> the &ldquo;Split capacity&rdquo; toggle in step 3 (Capacity &amp; Visibility) must be active. Otherwise there are no groups — this selector is then hidden.
+                              </>
+                            )} />
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {([
+                              { v: 'all', text: isDe ? 'Beide Gruppen' : 'Both groups' },
+                              { v: 'A', text: isDe ? `Nur ${labelA}` : `${labelA} only` },
+                              { v: 'B', text: isDe ? `Nur ${labelB}` : `${labelB} only` },
+                            ] as const).map(opt => (
+                              <label key={opt.v} style={pillStyle(current === opt.v)}>
+                                <input
+                                  type="radio"
+                                  name={`onlyForGroup-${field.id}`}
+                                  checked={current === opt.v}
+                                  onChange={() => updateCustomField(field.id, { onlyForGroup: opt.v as 'all' | 'A' | 'B' })}
+                                  style={{ display: 'none' }}
+                                />
+                                <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{current === opt.v ? '●' : '○'}</span>
+                                {opt.text}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* v7.20: Beschreibung pro Feld — landet im Registrierungs-
                         formular als "i"-Tooltip neben dem Label. */}

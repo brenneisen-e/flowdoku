@@ -139,6 +139,9 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   <li>{isDe
                     ? 'Seit v10.21 gibt es kein Template-Dropdown mehr — der Organizer pickt B2Run-Felder einzeln aus dem Suggested-Katalog statt ein hartes Template anzuwenden. Dadurch hat das Hinzufügen von B2Run-Feldern keinen versteckten Seiteneffekt mehr (z.B. Auto-Aktivierung von Split-Capacity).'
                     : 'Since v10.21 there is no template dropdown anymore — organizers pick B2Run fields individually from the suggested catalogue instead of applying a hard template. As a result, adding B2Run fields no longer has hidden side-effects (e.g. auto-activating split capacity).'}</li>
+                  <li>{isDe
+                    ? 'Seit v10.24: Bei aktiver „Geteilter Kapazität" (Schritt 3) erscheint pro Custom-Field ein Selector „Sichtbar für Teilnehmergruppe" mit den drei Optionen „Beide Gruppen", „Nur Gruppe A" und „Nur Gruppe B". So kannst du z.B. eine Pflicht-Checkbox „Leistungsnachweis vorhanden" nur den Schnellstartern zeigen, während Walker / Gruppe B das Feld gar nicht erst sehen. Anmelde- und Validierungslogik blendet das Feld dynamisch ein/aus, sobald der Teilnehmer eine Gruppe wählt.'
+                    : 'Since v10.24: with "Split capacity" enabled (step 3), each custom field shows an extra selector "Visible for attendee group" with three options: "Both groups", "Group A only", "Group B only". For example, a required checkbox "Performance proof available" can be shown only to the fast-runner group, while walkers / group B never see the field. Registration and validation logic dynamically show / hide the field as the attendee picks a group.'}</li>
                 </ul>
                 {isDe
                   ? 'Datenschutz-Hinweis oben: Erhebe nur Daten die zwingend für das Event nötig sind — bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'
