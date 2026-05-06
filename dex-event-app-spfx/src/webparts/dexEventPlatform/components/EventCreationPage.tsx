@@ -2590,14 +2590,24 @@ export default function EventCreationPage(): React.ReactElement {
     const errors: string[] = [];
     switch (currentStep) {
       case 0:
+        // v11.8 BUG-FIX: startDate / endDate / endBeforeStart-Check
+        // ist von case 1 nach case 0 gewandert, weil die Felder
+        // schon in Schritt 1 (Grundlagen) eingegeben werden — wenn
+        // die Validierung erst beim Verlassen von Schritt 2 (Ort &
+        // Programm) ausgewertet wurde, hatte der Weiter-Button keinen
+        // sichtbaren Effekt: die DatePicker-Felder sind in Step 2 gar
+        // nicht sichtbar, der User sah nicht warum's nicht weiterging.
         if (!title) errors.push('title');
         if (!organizer) errors.push('organizer');
-        // v9.14: description ist optional — kein Pflichtfeld mehr
-        break;
-      case 1:
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
         if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
+        // v9.14: description ist optional — kein Pflichtfeld mehr
+        break;
+      case 1:
+        // Schritt 2 (Ort & Programm) ist ohne Pflicht-Validierung —
+        // Adresse / Agenda / Transferzeiten / Sub-Events sind alle
+        // optional. Datum-Checks laufen jetzt in case 0.
         break;
       case 2:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
