@@ -4,7 +4,7 @@
 export type EventType = 'B2Run' | 'JPMorgan' | 'Other';
 export type EventStatus = 'Under Construction' | 'Active' | 'Completed' | 'Cancelled';
 export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'Abgemeldet';
-export type Salutation = 'Herr' | 'Frau' | 'Divers';
+export type Salutation = 'Herr' | 'Frau' | 'Divers' | 'Keine Angabe';
 
 export interface DeloitteEvent {
   id: string;

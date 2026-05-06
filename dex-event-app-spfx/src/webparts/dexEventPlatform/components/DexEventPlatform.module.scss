@@ -377,8 +377,11 @@
       .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); }
       .landing__text h1 { font-size: 1.3rem; }
       .landing__text p { font-size: 0.9rem; }
-      /* Sprechblase auf Mobile volle Breite (umgebrochen unter den Icons) */
-      .landing__actions .landing__bubble { flex: 1 1 100%; max-width: none; }
+      /* v10.25: Sprechblase „Möchtest du die DEX App auch für dein Event
+         nutzen?" auf Mobile ganz ausblenden — der Mail-Icon-Button
+         daneben übernimmt die gleiche Funktion und ist auf kleinem
+         Display kompakter. */
+      .landing__actions .landing__bubble { display: none; }
 
       /* Event Grid */
       .event-grid { grid-template-columns: 1fr; gap: 16px; }
@@ -416,6 +419,32 @@
       /* Admin Action Buttons */
       .admin-actions { flex-direction: column !important; }
       .admin-actions .btn { width: 100%; justify-content: center; }
+
+      /* v10.27: Mobile-Tauglichkeit Settings + Admin-Event-Detail.
+         Tabellen bekommen horizontale Scrollfähigkeit (statt
+         überbreitem Inhalt der die ganze Page sprengt). KPI- und
+         Action-Tile-Grids fallen auf eine bzw. zwei Spalten zurück
+         damit die einzelnen Kacheln gross genug bleiben für Tap-
+         Targets. */
+      .dex-table-wrapper, .admin-table-wrapper, .settings-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+      }
+      .dex-table-wrapper table, .admin-table-wrapper table, .settings-table-wrapper table {
+        min-width: 640px;
+      }
+      /* Admin Event-Info-Grid (Bild + Detail-Rows) auf eine Spalte */
+      .admin-event-info-grid { grid-template-columns: 1fr !important; }
+      /* Admin Action-Tiles auto-fit groesser, damit pro Tile zumindest
+         eine ganze Mobile-Zeile bleibt */
+      .admin-actions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+        gap: 10px !important;
+      }
+      /* Settings-Page Card-Padding kompakter, damit horizontaler
+         Scroll-Bereich nicht zu klein wird */
+      .settings-card { padding: 16px 12px !important; }
 
       /* Form 2-Column Grids */
       .form-grid-2col { grid-template-columns: 1fr !important; }
