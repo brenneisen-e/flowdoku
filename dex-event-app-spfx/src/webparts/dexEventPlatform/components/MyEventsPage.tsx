@@ -618,7 +618,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, registerForEvent, getAllRegistrations, refreshEvents } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, registerForEvent, getAllRegistrations, refreshEvents } = useEvents();
   const [isRefreshingEvents, setIsRefreshingEvents] = React.useState(false);
   const handleRefreshMyEvents = async (): Promise<void> => {
     if (isRefreshingEvents) return;
@@ -1317,6 +1317,7 @@ export default function MyEventsPage(): React.ReactElement {
                     cancelRegistration={cancelRegistration}
                     getMyRegistration={getMyRegistration}
                     getAllRegistrations={getAllRegistrations}
+                    updateMyRegistration={updateMyRegistration}
                     onMutated={loadMyRegistrations}
                   />
                 )}
@@ -1349,6 +1350,47 @@ export default function MyEventsPage(): React.ReactElement {
                       <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
                         {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
                       </button>
+                      {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
+                          Sichtbar nur wenn beide Kapazitäten > 0 sind und der
+                          User aktiv angemeldet (nicht abgemeldet) ist. Ein
+                          Klick öffnet einen window.confirm-Dialog mit klarem
+                          Hinweis, dass der Wechsel evtl. auf die Warteliste
+                          der Ziel-Gruppe führt, falls diese voll ist. */}
+                      {(() => {
+                        const dCap = event.durchstarterCapacity || 0;
+                        const fCap = event.funstarterCapacity || 0;
+                        if (dCap <= 0 || fCap <= 0) return null;
+                        const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+                        const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+                        const currentType = registration.StarterType || registration.PreferredStarterType || '';
+                        const currentLabel = currentType === 'Durchstarter' ? labelA : currentType === 'Funstarter' ? labelB : '?';
+                        const targetType: 'Durchstarter' | 'Funstarter' = currentType === 'Durchstarter' ? 'Funstarter' : 'Durchstarter';
+                        const targetLabel = targetType === 'Durchstarter' ? labelA : labelB;
+                        return (
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                            title={t('myevents.switchgroup.title') || `Aktuell in: ${currentLabel}`}
+                            onClick={async () => {
+                              const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}"?\n\n` +
+                                ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
+                              if (!window.confirm(msg)) return;
+                              const r = await switchSplitGroup(event.id, targetType);
+                              if (!r.ok) {
+                                window.alert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.');
+                                return;
+                              }
+                              const okMsg = r.full
+                                ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}".`
+                                : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}".`;
+                              window.alert(okMsg);
+                              await loadMyRegistrations();
+                            }}
+                          >
+                            {(t('myevents.switchgroup.btn') || 'Gruppe wechseln')} → {targetLabel}
+                          </button>
+                        );
+                      })()}
                       {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
                           sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
                           bleibt — der erste Klick faerbt rot und blendet den
@@ -1422,6 +1464,8 @@ export default function MyEventsPage(): React.ReactElement {
 // Seit v6.4: Sub-Events sind eigene DEX_Events-Items (childEventsOf(parentId)).
 // Anmeldung/Abmeldung läuft über den normalen registerForEvent/cancelRegistration-
 // Pfad — identisch zu einem Top-Level-Event. Eigene Teilnehmerliste pro Sub-Event.
+// v10.27: Plus Anzeige + Bearbeitung der Sub-Event-spezifischen Antworten
+// (eventSpecificData) — analog zum Edit-Modus auf der Hauptevent-Karte.
 function MyEventSubEvents(props: {
   parentEvent: DeloitteEvent;
   childEvents: DeloitteEvent[];
@@ -1429,23 +1473,44 @@ function MyEventSubEvents(props: {
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
+  updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   onMutated: () => Promise<void>;
 }): React.ReactElement | null {
   const isDe = (props.parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
+  // v10.27: pro Sub-Event die geparsten Custom-Field-Antworten aus
+  // myReg.CustomData. Wird nur fuer aktive Registrierungen befuellt.
+  const [seData, setSeData] = React.useState<Record<string, Record<string, string>>>({});
+  // v10.27: aktuell ge-editiertes Sub-Event + Draft der Werte. Beim Save
+  // gehen die Werte ueber updateMyRegistration in die Subsite zurueck.
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editDraft, setEditDraft] = React.useState<Record<string, string>>({});
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
   const refresh = React.useCallback(async (): Promise<void> => {
     try {
       const regs = await Promise.all(props.childEvents.map(async (ce) => {
         const reg = await props.getMyRegistration(ce.id);
         const isActive = !!reg && reg.Status !== 'Abgemeldet';
-        return { id: ce.id, isActive };
+        // v10.27: Custom-Field-Werte aus reg.CustomData (JSON) parsen.
+        let data: Record<string, string> = {};
+        if (isActive && reg && reg.CustomData) {
+          try { data = JSON.parse(reg.CustomData) as Record<string, string>; } catch { /* fall back to empty */ }
+        }
+        return { id: ce.id, isActive, data };
       }));
       const s = new Set<string>();
-      for (const r of regs) { if (r.isActive) s.add(r.id); }
+      const dataMap: Record<string, Record<string, string>> = {};
+      for (const r of regs) {
+        if (r.isActive) {
+          s.add(r.id);
+          dataMap[r.id] = r.data;
+        }
+      }
       setRegisteredSet(s);
+      setSeData(dataMap);
 
       const countPairs = await Promise.all(props.childEvents.map(async (ce) => {
         const all = await props.getAllRegistrations(ce.id);
@@ -1512,7 +1577,8 @@ function MyEventSubEvents(props: {
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
           const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
           return (
-            <div key={ce.id} style={{
+            <React.Fragment key={ce.id}>
+            <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
               padding: '8px 12px', borderRadius: 8,
               background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
@@ -1538,18 +1604,176 @@ function MyEventSubEvents(props: {
                   )}
                 </div>
               </div>
-              <button
-                className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
-                style={{ fontSize: '0.75rem', padding: '4px 12px', minWidth: 92 }}
-                disabled={disabled}
-                onClick={() => handleToggle(ce.id, isReg)}
-              >
-                {isBusy ? '...' : (isReg ? (isDe ? 'Abmelden' : 'Cancel') : (isDe ? 'Anmelden' : 'Register'))}
-              </button>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {isReg && (ce.eventSpecificFields || []).filter(f => f.label).length > 0 && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                    disabled={isBusy}
+                    onClick={() => {
+                      setEditingId(ce.id);
+                      setEditDraft({ ...(seData[ce.id] || {}) });
+                    }}
+                  >
+                    {isDe ? 'Bearbeiten' : 'Edit'}
+                  </button>
+                )}
+                <button
+                  className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
+                  style={{ fontSize: '0.75rem', padding: '4px 12px', minWidth: 92 }}
+                  disabled={disabled}
+                  onClick={() => handleToggle(ce.id, isReg)}
+                >
+                  {isBusy ? '...' : (isReg ? (isDe ? 'Abmelden' : 'Cancel') : (isDe ? 'Anmelden' : 'Register'))}
+                </button>
+              </div>
             </div>
+            {/* v10.27: Antworten anzeigen falls Custom-Fields ausgefuellt
+                wurden — analog zum Hauptevent als pastellgruene Tags. */}
+            {isReg && (() => {
+              const data = seData[ce.id] || {};
+              const filled = (ce.eventSpecificFields || [])
+                .filter(f => f.label && (data[f.id] || '').trim())
+                .map(f => ({ label: f.label, value: data[f.id] }));
+              if (filled.length === 0) return null;
+              return (
+                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {filled.map(({ label, value }) => (
+                    <span key={label} style={{
+                      fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
+                      background: 'rgba(134,188,37,0.14)',
+                      color: 'var(--dex-green-dark, #4a7c1f)',
+                      border: '1px solid rgba(134,188,37,0.30)',
+                    }}>
+                      {label}: <strong>{value}</strong>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
+            </React.Fragment>
           );
         })}
       </div>
+
+      {/* v10.27: Sub-Event-Edit-Modal — analog zum Hauptevent-Inline-Edit
+          (siehe weiter oben), aber als Modal damit es uebersichtlich
+          bleibt. Beim Speichern geht der Draft per
+          updateMyRegistration(subEventId, ...) in die Subsite zurueck. */}
+      {editingId && (() => {
+        const ce = props.childEvents.find(c => c.id === editingId);
+        if (!ce) return null;
+        const fields = (ce.eventSpecificFields || []).filter(f => f && f.label);
+        const closeModal = (): void => { setEditingId(null); setEditDraft({}); };
+        const saveEdit = async (): Promise<void> => {
+          setSavingEdit(true);
+          try {
+            await props.updateMyRegistration(editingId, editDraft);
+            await refresh();
+            await props.onMutated();
+            closeModal();
+          } finally {
+            setSavingEdit(false);
+          }
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => { if (!savingEdit) closeModal(); }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="card"
+              style={{
+                width: '100%', maxWidth: 520, maxHeight: '85vh', overflow: 'auto',
+                padding: 24, borderRadius: 'var(--dex-radius, 8px)', background: '#fff',
+              }}
+            >
+              <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
+                {ce.title || (isDe ? 'Sub-Event' : 'Sub-event')}
+              </h3>
+              <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Hier kannst du deine Antworten zu diesem Sub-Event aktualisieren.'
+                  : 'Update your answers for this sub-event here.'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+                {fields.map(f => {
+                  const val = editDraft[f.id] || '';
+                  const setVal = (v: string): void => setEditDraft(prev => ({ ...prev, [f.id]: v }));
+                  return (
+                    <div key={f.id}>
+                      <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
+                        {f.label}
+                        {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
+                      </label>
+                      {f.helpText && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>{f.helpText}</div>
+                      )}
+                      {f.type === 'select' ? (
+                        f.multi ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {(f.options || []).map(opt => {
+                              const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
+                              const checked = current.indexOf(opt) >= 0;
+                              return (
+                                <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={e => {
+                                      const next = e.target.checked
+                                        ? [...current, opt]
+                                        : current.filter(x => x !== opt);
+                                      setVal(next.join(' | '));
+                                    }}
+                                  />
+                                  {opt}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <select className="form-select" value={val} onChange={e => setVal(e.target.value)}>
+                            <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
+                            {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        )
+                      ) : f.type === 'checkbox' ? (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={val === 'true'}
+                            onChange={e => setVal(e.target.checked ? 'true' : 'false')}
+                          />
+                          {f.label}
+                        </label>
+                      ) : f.type === 'number' ? (
+                        <input className="form-input" type="number" value={val} onChange={e => setVal(e.target.value)} />
+                      ) : (
+                        <input className="form-input" type="text" value={val} onChange={e => setVal(e.target.value)} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-secondary" onClick={closeModal} disabled={savingEdit}>
+                  {isDe ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button className="btn btn-primary" onClick={saveEdit} disabled={savingEdit}>
+                  {savingEdit ? '…' : (isDe ? 'Speichern' : 'Save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

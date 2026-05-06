@@ -6508,6 +6508,22 @@ export default function EventCreationPage(): React.ReactElement {
                                     )}
                                   </div>
 
+                                  {/* v10.27: Optionale Beschreibung pro Sub-Event-Feld
+                                      — landet bei der Anmeldung als „i"-Tooltip
+                                      neben dem Feld (analog zu Hauptevent-Custom-
+                                      Fields). */}
+                                  <div style={{ marginBottom: field.type === 'select' ? 10 : 0 }}>
+                                    <input
+                                      className="form-input"
+                                      placeholder={isDe
+                                        ? 'Beschreibung (optional, erscheint als „i"-Tooltip neben dem Feld)'
+                                        : 'Description (optional, shown as „i"-tooltip next to the field)'}
+                                      value={field.helpText || ''}
+                                      onChange={e => updateSubEventCustomField(se.id, field.id, { helpText: e.target.value })}
+                                      style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
+                                    />
+                                  </div>
+
                                   {/* Optionen-Editor für Dropdown-Felder */}
                                   {field.type === 'select' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 12 }}>

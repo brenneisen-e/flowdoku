@@ -4463,6 +4463,66 @@ export class EventService {
   }
 
   /**
+   * v10.27: User wechselt seine Split-Capacity-Gruppe.
+   *
+   * Logik:
+   * - Lädt aktuelle aktive Registrierungen der Subsite und zählt die Anzahl
+   *   pro StarterType.
+   * - Wenn die Ziel-Gruppe noch unter ihrer Kapazität liegt: User wird mit
+   *   neuem StarterType direkt als 'Angemeldet' eingetragen.
+   * - Wenn die Ziel-Gruppe bereits voll ist: User wandert auf die Warteliste
+   *   mit PreferredStarterType=newType. StarterType bleibt leer (wie bei
+   *   Erst-Anmeldung auf Warteliste). Nachgerückt wird er erst, wenn ein
+   *   Platz in der Ziel-Gruppe frei wird (siehe Power-Automate-Flow).
+   *
+   * Liefert { ok, status, full } zurück — die App nutzt das, um die richtige
+   * Mail (Anmeldung vs. Warteliste) zu queuen und dem User Feedback zu geben.
+   */
+  public async switchSplitGroup(
+    subsiteUrl: string,
+    itemId: number,
+    newType: 'Durchstarter' | 'Funstarter',
+    durchstarterCapacity: number,
+    funstarterCapacity: number,
+  ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
+    try {
+      // Counts aktiv-Status pro StarterType ermitteln. Aktiv = Angemeldet,
+      // QR versendet oder Eingecheckt — Abgemeldete und Wartelisten zaehlen
+      // nicht gegen die Kapazitaet.
+      const allRegs = await this.getAllRegistrations(subsiteUrl);
+      const active = allRegs.filter(r => {
+        const s = r.Status || '';
+        return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
+      });
+      // Den eigenen Eintrag aus der Zaehlung rausnehmen — wenn er heute schon
+      // in der Ziel-Gruppe stuende, wuerden wir einen Slot frei zaehlen, der
+      // gar nicht entsteht. Wenn er in der Quell-Gruppe steht, gibt der
+      // Wechsel den Quell-Slot frei und der Zielslot ist relevant.
+      const targetCount = active
+        .filter(r => r.Id !== itemId)
+        .filter(r => r.StarterType === newType)
+        .length;
+      const targetCap = newType === 'Durchstarter' ? durchstarterCapacity : funstarterCapacity;
+      const targetFree = targetCap - targetCount;
+      const goWaitlist = targetCap > 0 && targetFree <= 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = goWaitlist
+        ? { 'Status': 'Warteliste', 'StarterType': '', 'PreferredStarterType': newType }
+        : { 'Status': 'Angemeldet', 'StarterType': newType, 'PreferredStarterType': newType };
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+      const resp = await this._merge(url, body);
+      if (!resp.ok) {
+        console.warn('[DEX] switchSplitGroup MERGE failed:', resp.status);
+        return { ok: false, status: 'Failed', full: goWaitlist };
+      }
+      return { ok: true, status: goWaitlist ? 'Warteliste' : 'Angemeldet', full: goWaitlist };
+    } catch (err) {
+      console.warn('[DEX] switchSplitGroup error:', err);
+      return { ok: false, status: 'Failed', full: false };
+    }
+  }
+
+  /**
    * Registrierung stornieren
    */
   public async cancelRegistration(

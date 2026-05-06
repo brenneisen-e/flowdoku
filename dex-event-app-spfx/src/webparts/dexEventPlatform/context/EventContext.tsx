@@ -132,6 +132,12 @@ interface EventContextType {
   deleteEvent: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
+   *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
+   *  liefert zurück, ob der Wechsel direkt in die Ziel-Gruppe gehen
+   *  konnte oder ob der User auf die Warteliste der Ziel-Gruppe gesetzt
+   *  wurde (full=true). */
+  switchSplitGroup: (eventId: string, newType: 'Durchstarter' | 'Funstarter') => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
@@ -983,6 +989,64 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await loadEvents();
   }
 
+  // v10.27: Split-Capacity-Gruppen-Wechsel — wrappt EventService.switchSplitGroup,
+  // ergänzt um Mail/Outlook-Sideeffects und Reload.
+  async function switchSplitGroup(eventId: string, newType: 'Durchstarter' | 'Funstarter'): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return { ok: false, status: 'Failed', full: false };
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { ok: false, status: 'Failed', full: false };
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return { ok: false, status: 'Failed', full: false };
+    const result = await eventService.switchSplitGroup(
+      subsiteUrl,
+      myReg.Id,
+      newType,
+      event.durchstarterCapacity || 0,
+      event.funstarterCapacity || 0,
+    );
+    if (result.ok) {
+      // Audit-Log + Mail/Outlook anstoßen — analog zu cancelRegistration.
+      eventService.writeChangeLog({
+        action: 'ParticipantSwitchedGroup',
+        targetType: 'Participant',
+        targetId: currentUserEmail,
+        targetName: currentUserName,
+        eventId, eventTitle: event.title,
+        details: { from: myReg.StarterType || myReg.PreferredStarterType || '', to: newType, finalStatus: result.status },
+      }).catch(() => { /* */ });
+      if (!event.disableEmails) {
+        try {
+          const lang = event.emailLanguage || 'EN';
+          const isDeMail = lang.toUpperCase() === 'DE';
+          const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+          const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+          const newLabel = newType === 'Durchstarter' ? labelA : labelB;
+          const subj = isDeMail
+            ? (result.status === 'Warteliste'
+              ? `Gruppen-Wechsel — auf Warteliste: ${event.title}`
+              : `Gruppen-Wechsel bestätigt: ${event.title}`)
+            : (result.status === 'Warteliste'
+              ? `Group switch — added to waitlist: ${event.title}`
+              : `Group switch confirmed: ${event.title}`);
+          const innerBody = isDeMail
+            ? (result.status === 'Warteliste'
+              ? `<p>Du hast den Wechsel in die Gruppe <strong>${newLabel}</strong> für <strong>${event.title}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe ${newLabel}</strong>. Sobald jemand absagt, rückst du automatisch nach.</p>`
+              : `<p>Dein Gruppen-Wechsel zu <strong>${newLabel}</strong> für <strong>${event.title}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>`)
+            : (result.status === 'Warteliste'
+              ? `<p>You requested to switch to the <strong>${newLabel}</strong> group for <strong>${event.title}</strong>. The group is currently full, so your registration is on the <strong>${newLabel} waitlist</strong>. You will be promoted automatically as soon as a spot frees up.</p>`
+              : `<p>Your group switch to <strong>${newLabel}</strong> for <strong>${event.title}</strong> is confirmed. You are now regularly registered in this group.</p>`);
+          const heading = isDeMail ? 'Gruppen-Wechsel' : 'Group switch';
+          const body = wrapTemplate('#86bc25', heading, event.title, innerBody);
+          await eventService.queueEmail(subj, currentUserEmail, currentUserName, body, 'Info', event.title, eventId)
+            .catch(err => console.warn('[DEX] switchSplitGroup mail failed:', err));
+        } catch { /* */ }
+      }
+      await loadEvents();
+    }
+    return result;
+  }
+
   /**
    * Admin-Cleanup: Events mit Status='Active' + EndDate < jetzt auf 'Completed' setzen.
    * Anschliessend wird die Event-Liste neu geladen, damit die UI die neuen Status sieht.
@@ -1082,7 +1146,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, topLevelEvents, childEventsOf, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
       },
