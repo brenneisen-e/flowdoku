@@ -30,6 +30,14 @@ export interface DeloitteEvent {
    *  als Organizer hinterlegen. Felder bleiben fuer Backward-Compat. */
   coOrganizerNames?: string[];
   coOrganizerEmails?: string[];
+  /** v10.16: Optionaler Ansprechpartner pro Event — z.B. die Person vor Ort
+   *  für Nachfragen, die NICHT die App-Organizer-Rechte haben muss. Anzeige
+   *  auf der Registration-Page als zusätzlicher Kontakt unter den Organizern,
+   *  in den Bestätigungs-Mails optional. Reines Anzeige-Feld (kein App-Login,
+   *  keine SP-Berechtigungen), daher als Freitext. */
+  contactName?: string;
+  contactEmail?: string;
+  contactInfo?: string;
   /** v9.21: Test-Team pro Event — Personen die diesen Event bereits im Entwurfs-
    *  Modus sehen + sich anmelden duerfen. Sie testen das Event durch, bevor der
    *  Organizer das "Entwurf"-Haekchen wegnimmt. Persistenz:

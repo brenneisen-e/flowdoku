@@ -531,6 +531,14 @@ export default function EventCreationPage(): React.ReactElement {
   const isSearchingOrganizer = false;
   const organizerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // v10.16: Optionaler Ansprechpartner pro Event. Reines Anzeige-Feld
+  // (kein App-Login, keine Permissions) — z.B. die Person vor Ort die
+  // Teilnehmer bei Fragen anrufen sollen. Erscheint auf Registration- +
+  // MyEvents-Seite zusätzlich zu den Organizern.
+  const [contactName, setContactName] = React.useState<string>(editEvent ? (editEvent.contactName || '') : '');
+  const [contactEmail, setContactEmail] = React.useState<string>(editEvent ? (editEvent.contactEmail || '') : '');
+  const [contactInfo, setContactInfo] = React.useState<string>(editEvent ? (editEvent.contactInfo || '') : '');
+
   // v6.19: QR-Code-Scanner pro Event (beliebiger Deloitte-User, kein Admin/Organizer nötig).
   // Getrennte State-Arrays für Namen + Emails (index-synchron). Sucht via Graph-API.
   const [qrScannerNames, setQrScannerNames] = React.useState<string[]>(
@@ -1463,6 +1471,10 @@ export default function EventCreationPage(): React.ReactElement {
         'EventImageUrl': imageUrl,
         'Organizer': sanitizedOrgPairEdit.orgString,
         'OrganizerEmail': sanitizedOrgPairEdit.orgEmailString,
+        // v10.16: optionaler Ansprechpartner (Anzeige-Feld, kein Login)
+        'ContactName': contactName.trim(),
+        'ContactEmail': contactEmail.trim(),
+        'ContactInfo': contactInfo.trim(),
         'CustomFields': JSON.stringify(customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -1777,6 +1789,9 @@ export default function EventCreationPage(): React.ReactElement {
         // in DEX_Events durch Drift während Edit/Closure-Bugs.
         organizer: sanitizedOrgPairCreate.orgString,
         organizerEmail: sanitizedOrgPairCreate.orgEmailString,
+        contactName: contactName.trim(),
+        contactEmail: contactEmail.trim(),
+        contactInfo: contactInfo.trim(),
         outlookEventId: '',
         outlookBody: (() => {
           // v7.4: Auch wenn der User keinen Outlook-Body geschrieben hat,
@@ -3266,6 +3281,68 @@ export default function EventCreationPage(): React.ReactElement {
                     })}
                   </div>
                 )}
+              </div>
+
+              {/* v10.16: Optionaler Ansprechpartner. Reines Anzeige-Feld
+                  (kein Login, keine SP-Permissions) — z.B. die Person vor Ort
+                  oder eine Hotline-Mail die Teilnehmer bei Fragen anschreiben
+                  sollen. Wird auf Register-/MyEvents-Page zusätzlich zu den
+                  Organizern gezeigt. Alles drei optional, Freitext. */}
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 22, height: 22, borderRadius: '50%',
+                    background: 'var(--dex-gray-300)', color: '#fff',
+                    fontSize: '0.75rem', fontWeight: 700,
+                  }}>+</span>
+                  {isDe ? 'Ansprechpartner (optional)' : 'Contact person (optional)'}
+                </label>
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Zusätzliche Kontaktperson für Rückfragen — z.B. Person vor Ort, externe Agentur, Hotline-Mailbox. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
+                    : 'Additional contact for questions — e.g. on-site contact, external agency, hotline mailbox. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                      {isDe ? 'Name' : 'Name'}
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={contactName}
+                      onChange={e => setContactName(e.target.value)}
+                      placeholder={isDe ? 'z.B. Anna Schmitt' : 'e.g. Anna Schmitt'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                      {isDe ? 'E-Mail' : 'Email'}
+                    </label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={contactEmail}
+                      onChange={e => setContactEmail(e.target.value)}
+                      placeholder={isDe ? 'z.B. event-helpdesk@example.de' : 'e.g. event-helpdesk@example.com'}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                    {isDe ? 'Zusatz-Info / Erreichbarkeit (Freitext)' : 'Additional info / availability (free text)'}
+                  </label>
+                  <textarea
+                    className="form-input"
+                    value={contactInfo}
+                    onChange={e => setContactInfo(e.target.value)}
+                    rows={3}
+                    placeholder={isDe
+                      ? 'z.B. „Vor Ort am Eventtag ab 7:30 Uhr, mobil unter +49 151 123 456" oder „Bei Fragen vor dem Event direkt per Mail."'
+                      : 'e.g. „On-site from 7:30 am on event day, mobile +49 151 123 456" or „For questions before the event, email directly."'}
+                  />
+                </div>
               </div>
 
               {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus

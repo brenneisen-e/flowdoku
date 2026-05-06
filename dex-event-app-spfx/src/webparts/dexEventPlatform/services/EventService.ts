@@ -249,6 +249,10 @@ export interface SPEvent {
   EmailImageBase64: string; // Base64 Event-Bild fuer E-Mails/Outlook
   Organizer: string;
   OrganizerEmail: string;
+  /** v10.16: optionaler Ansprechpartner (Anzeige-Feld). */
+  ContactName?: string;
+  ContactEmail?: string;
+  ContactInfo?: string;
   OutlookEventId: string;
   CalendarLink: string;
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
@@ -2042,6 +2046,10 @@ export class EventService {
       // alten Text-Spalten ohne Datenverlust.
       { title: 'Organizer', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
       { title: 'OrganizerEmail', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
+      // v10.16: Optionaler Ansprechpartner pro Event (Anzeige-Feld, kein App-Login).
+      { title: 'ContactName', type: 2 },
+      { title: 'ContactEmail', type: 2 },
+      { title: 'ContactInfo', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
       { title: 'EventNumber', type: 9 },
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
@@ -2434,7 +2442,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2560,6 +2568,10 @@ export class EventService {
     eventImageUrl: string;
     organizer: string;
     organizerEmail: string;
+    /** v10.16: optionaler Ansprechpartner (Anzeige-Feld). */
+    contactName?: string;
+    contactEmail?: string;
+    contactInfo?: string;
     outlookEventId: string;
     outlookBody: string;
     agenda?: string; // JSON-Array mit Agenda-Eintraegen
@@ -2660,6 +2672,11 @@ export class EventService {
         })(),
         'Organizer': event.organizer,
         'OrganizerEmail': event.organizerEmail,
+        // v10.16: optionaler Ansprechpartner (Anzeige-Feld). Strings können
+        // leer sein — leer = kein Ansprechpartner gepflegt.
+        'ContactName': event.contactName || '',
+        'ContactEmail': event.contactEmail || '',
+        'ContactInfo': event.contactInfo || '',
         'OutlookEventId': event.outlookEventId,
         // outlookBody kommt bereits vollstaendig gewickelt + mit aufgeloesten Variablen
         // aus EventCreationPage — hier nur durchreichen.

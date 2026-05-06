@@ -167,6 +167,10 @@ export interface CreateEventInput {
   eventImageUrl: string;
   organizer: string;
   organizerEmail: string;
+  /** v10.16: optionaler Ansprechpartner (Anzeige-Feld). */
+  contactName?: string;
+  contactEmail?: string;
+  contactInfo?: string;
   outlookEventId: string;
   outlookBody: string;
   agenda?: string; // JSON-Array mit Agenda-Eintraegen
@@ -338,6 +342,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
       organizers: (stripSpNoteWrapper(e.Organizer) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       organizerEmails: (stripSpNoteWrapper(e.OrganizerEmail) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
+      // v10.16: Optionaler Ansprechpartner. ContactInfo ist Note-Feld, daher
+      // strippen — Name/Email sind Single-Line, kein Wrapper.
+      contactName: e.ContactName || '',
+      contactEmail: e.ContactEmail || '',
+      contactInfo: stripSpNoteWrapper(e.ContactInfo),
       location: e.Location || '',
       locationAddress: (() => {
         try {
