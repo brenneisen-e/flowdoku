@@ -220,7 +220,7 @@ export default function RegistrationPage(): React.ReactElement {
   // anzeigen und den einzig verfuegbaren Typ automatisch setzen (siehe useEffect unten).
   const durchCap = (event && typeof event.durchstarterCapacity === 'number') ? event.durchstarterCapacity : 0;
   const funCap = (event && typeof event.funstarterCapacity === 'number') ? event.funstarterCapacity : 0;
-  const isB2runSplit = !!event && durchCap > 0 && funCap > 0;
+  const isSplitGroup = !!event && durchCap > 0 && funCap > 0;
   // v10.20: frei waehlbare Bezeichnungen aus dem Event laden, mit Fallback auf
   // die historischen B2Run-Defaults 'Durchstarter' / 'Funstarter'. Die internen
   // Werte fuer SP-Persistenz (StarterType-Spalte) bleiben unveraendert — das
@@ -257,7 +257,7 @@ export default function RegistrationPage(): React.ReactElement {
     setEventSpecific(prev => ({ ...prev, b2run_startblock: mappedBlock }));
   }, [preferredStarterType, durchstarterBlock, funstarterBlock, hasStarterBlockMapping]);
   React.useEffect(() => {
-    if (!isB2runSplit || !event?.subsiteUrl) return;
+    if (!isSplitGroup || !event?.subsiteUrl) return;
     (async () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -273,7 +273,7 @@ export default function RegistrationPage(): React.ReactElement {
         });
       } catch { /* ignore */ }
     })();
-  }, [isB2runSplit, event?.subsiteUrl]);
+  }, [isSplitGroup, event?.subsiteUrl]);
   // Deloitte-Mitarbeitersuche
   const [userSearch, setUserSearch] = React.useState('');
   const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>([]);
@@ -408,7 +408,7 @@ export default function RegistrationPage(): React.ReactElement {
           // v10.24: Pro-Gruppe-Constraint — wenn das Feld auf eine andere
           // Gruppe als die aktuell vom User gewählte beschränkt ist, ist
           // es ausgeblendet und blockt die Validation nicht.
-          if (f.onlyForGroup && f.onlyForGroup !== 'all' && isB2runSplit) {
+          if (f.onlyForGroup && f.onlyForGroup !== 'all' && isSplitGroup) {
             const want = f.onlyForGroup === 'A' ? 'Durchstarter' : 'Funstarter';
             if (preferredStarterType !== want) return false;
           }
@@ -423,7 +423,7 @@ export default function RegistrationPage(): React.ReactElement {
       }
 
       // B2Run: Starter-Typ Pflichtfeld
-      if (isB2runSplit && !preferredStarterType) {
+      if (isSplitGroup && !preferredStarterType) {
         setError(t('reg.starter.required'));
         return;
       }
@@ -439,7 +439,7 @@ export default function RegistrationPage(): React.ReactElement {
     // Ausnahme: wenn der User sich gleichzeitig fürs Haupt-Event anmeldet, erben
     // die Sessions automatisch den Haupt-Event-Starter-Typ — dann keine Extra-Abfrage.
     const sharedStarterTypeFromParent = (willRegisterParent || registerForOther) ? preferredStarterType : '';
-    if (isB2runSplit && !sharedStarterTypeFromParent && selectedSessions.size > 0) {
+    if (isSplitGroup && !sharedStarterTypeFromParent && selectedSessions.size > 0) {
       const missingStarter = Array.from(selectedSessions).some(sid => !sessionStarterType[sid]);
       if (missingStarter) {
         setError(t('reg.sessions.starter.required') || 'Bitte für jede ausgewählte Session den Starter-Typ wählen.');
@@ -477,7 +477,7 @@ export default function RegistrationPage(): React.ReactElement {
     //   (b) auf die Warteliste für den gewünschten Typ.
     // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
     // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
-    if ((willRegisterParent || registerForOther) && isB2runSplit && preferredStarterType) {
+    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType) {
       const durchFree = Math.max(0, durchCap - starterCounts.durch);
       const funFree = Math.max(0, funCap - starterCounts.fun);
       const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
@@ -543,7 +543,7 @@ export default function RegistrationPage(): React.ReactElement {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
         const isSel = selectedSessions.has(ce.id);
         if (isSel && !wasReg) {
-          const sType = (isB2runSplit && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
+          const sType = (isSplitGroup && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
           // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
           // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
           const seFieldValues = sessionFieldValues[ce.id] || {};
@@ -880,7 +880,7 @@ export default function RegistrationPage(): React.ReactElement {
                     const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
                     const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
                     // Erbt vom Haupt-Event wenn gleichzeitig angemeldet wird.
-                    const inheritsStarter = isB2runSplit && (willRegisterParent || registerForOther);
+                    const inheritsStarter = isSplitGroup && (willRegisterParent || registerForOther);
                     const sType = sessionStarterType[ce.id] || '';
 
                     return (
@@ -965,7 +965,7 @@ export default function RegistrationPage(): React.ReactElement {
                             )}
                             {/* v10.20: Gruppen-Auswahl pro Session — nur wenn NICHT vom Parent geerbt.
                                 Dynamische Labels splitLabelA / splitLabelB. */}
-                            {isSel && isB2runSplit && !inheritsStarter && (
+                            {isSel && isSplitGroup && !inheritsStarter && (
                               <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                                   <input
@@ -1300,7 +1300,7 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 </label>
 
-                {isB2runSplit && (
+                {isSplitGroup && (
                   <div className="form-group" style={{ marginBottom: 20 }}>
                     <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
                       <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
@@ -1396,7 +1396,7 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
                     const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
                     const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
-                    const inheritsStarter = isB2runSplit && (willRegisterParent || registerForOther);
+                    const inheritsStarter = isSplitGroup && (willRegisterParent || registerForOther);
                     const sType = sessionStarterType[ce.id] || '';
 
                     return (
@@ -1467,7 +1467,7 @@ export default function RegistrationPage(): React.ReactElement {
                                 {t('reg.subevents.sessionfull')}
                               </div>
                             )}
-                            {isSel && isB2runSplit && !inheritsStarter && (
+                            {isSel && isSplitGroup && !inheritsStarter && (
                               <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                                   <input
@@ -1515,7 +1515,7 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
             )}
-            {event.eventSpecificFields.length === 0 && !isB2runSplit ? (
+            {event.eventSpecificFields.length === 0 && !isSplitGroup ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
             ) : (
               /* v11.2: Custom-Fields in 2-Spalten-Grid rendern, damit die
@@ -1554,7 +1554,7 @@ export default function RegistrationPage(): React.ReactElement {
                 .filter(f => {
                   const grp = f.onlyForGroup;
                   if (!grp || grp === 'all') return true;
-                  if (!isB2runSplit) return true;
+                  if (!isSplitGroup) return true;
                   if (grp === 'A') return preferredStarterType === 'Durchstarter';
                   if (grp === 'B') return preferredStarterType === 'Funstarter';
                   return true;
@@ -1708,12 +1708,11 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* Datenschutz-Hinweis */}
-      <div className="footer-disclaimer mt-24" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
-        <p>
-          {t('reg.privacy').replace('{title}', event.title)}
-        </p>
-      </div>
+      {/* v11.4: Fehlermeldung + Action-Buttons stehen jetzt direkt unter
+          dem registration-layout (also unter der Eventspez-Karte) und
+          NICHT mehr unterhalb des Datenschutz-Hinweises. Der Hinweis ist
+          eine Fußnote und gehört ans Seitenende — die Aktions-Buttons
+          gehören thematisch zur Anmelde-Maske. */}
 
       {/* Fehlermeldung */}
       {error && (
@@ -1723,7 +1722,7 @@ export default function RegistrationPage(): React.ReactElement {
       )}
 
       {/* Buttons */}
-      <div className="registration-actions mt-24">
+      <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
         <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
           <Send size={16} /> {(() => {
@@ -1742,6 +1741,13 @@ export default function RegistrationPage(): React.ReactElement {
             return `${t('reg.register')} (${parts.join(' + ')})`;
           })()}
         </button>
+      </div>
+
+      {/* Datenschutz-Hinweis als Fußnote ganz unten */}
+      <div className="footer-disclaimer mt-24" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+        <p>
+          {t('reg.privacy').replace('{title}', event.title)}
+        </p>
       </div>
 
       {/* Fallback-Dialog (seit v6.5): Wunsch-Starter-Typ voll, aber Alternative frei.
