@@ -138,6 +138,14 @@ interface EventContextType {
    *  konnte oder ob der User auf die Warteliste der Ziel-Gruppe gesetzt
    *  wurde (full=true). */
   switchSplitGroup: (eventId: string, newType: 'Durchstarter' | 'Funstarter') => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }>;
+  /** v11.0: Item-Attachments einer Teilnehmer-Zeile listen / hochladen /
+   *  loeschen — der itemId ist in beiden Fällen die SharePoint-ID des
+   *  jeweiligen Teilnehmer-Items in der Subsite. Im User-Flow nutzt die
+   *  App fuer 'eigene Anmeldung' getMyRegistration, im Admin-Flow gibt
+   *  AdminPage die fremde Item-ID direkt mit. */
+  listMyEventAttachments: (eventId: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string }>>;
+  uploadMyEventAttachment: (eventId: string, file: File) => Promise<boolean>;
+  deleteMyEventAttachment: (eventId: string, fileName: string) => Promise<boolean>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
@@ -200,6 +208,9 @@ export interface CreateEventInput {
   splitLabelA?: string;
   splitLabelB?: string;
   splitSharedWaitlist?: boolean;
+  allowAttendeeUpload?: boolean;
+  attendeeUploadHint?: string;
+  attendeeUploadLabel?: string;
   customFields: CustomField[];
 }
 
@@ -405,6 +416,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       splitLabelA: e.SplitLabelA || undefined,
       splitLabelB: e.SplitLabelB || undefined,
       splitSharedWaitlist: !!e.SplitSharedWaitlist,
+      allowAttendeeUpload: !!e.AllowAttendeeUpload,
+      attendeeUploadHint: e.AttendeeUploadHint || undefined,
+      attendeeUploadLabel: e.AttendeeUploadLabel || undefined,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
@@ -989,6 +1003,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     await loadEvents();
   }
 
+  // v11.0: Item-Attachments — Wrapper für die eigene Registrierung.
+  async function listMyEventAttachments(eventId: string): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return [];
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return [];
+    return eventService.listRegistrationAttachments(subsiteUrl, myReg.Id);
+  }
+  async function uploadMyEventAttachment(eventId: string, file: File): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return false;
+    return eventService.addRegistrationAttachment(subsiteUrl, myReg.Id, file);
+  }
+  async function deleteMyEventAttachment(eventId: string, fileName: string): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+    const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (!myReg) return false;
+    return eventService.deleteRegistrationAttachment(subsiteUrl, myReg.Id, fileName);
+  }
+
   // v10.27: Split-Capacity-Gruppen-Wechsel — wrappt EventService.switchSplitGroup,
   // ergänzt um Mail/Outlook-Sideeffects und Reload.
   async function switchSplitGroup(eventId: string, newType: 'Durchstarter' | 'Funstarter'): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
@@ -1146,7 +1183,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, topLevelEvents, childEventsOf, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
       },

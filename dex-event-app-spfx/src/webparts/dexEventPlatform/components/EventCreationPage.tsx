@@ -897,6 +897,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [splitSharedWaitlist, setSplitSharedWaitlist] = React.useState<boolean>(
     !!editEvent?.splitSharedWaitlist
   );
+  // v11.0: Teilnehmer-Upload aktivieren + optionaler Hinweistext
+  const [allowAttendeeUpload, setAllowAttendeeUpload] = React.useState<boolean>(
+    !!editEvent?.allowAttendeeUpload
+  );
+  const [attendeeUploadHint, setAttendeeUploadHint] = React.useState<string>(
+    editEvent?.attendeeUploadHint || ''
+  );
+  const [attendeeUploadLabel, setAttendeeUploadLabel] = React.useState<string>(
+    editEvent?.attendeeUploadLabel || ''
+  );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
     editEvent?.durchstarterStartblock || ''
@@ -1873,6 +1883,10 @@ export default function EventCreationPage(): React.ReactElement {
         updates['SplitLabelB'] = '';
         updates['SplitSharedWaitlist'] = false;
       }
+      // v11.0: Teilnehmer-Upload-Setting
+      updates['AllowAttendeeUpload'] = !!allowAttendeeUpload;
+      updates['AttendeeUploadHint'] = (attendeeUploadHint || '').trim();
+      updates['AttendeeUploadLabel'] = (attendeeUploadLabel || '').trim();
 
       setProgress(50);
 
@@ -2159,6 +2173,9 @@ export default function EventCreationPage(): React.ReactElement {
         splitLabelA: useSplitCapacities ? (splitLabelA || '').trim() : undefined,
         splitLabelB: useSplitCapacities ? (splitLabelB || '').trim() : undefined,
         splitSharedWaitlist: useSplitCapacities ? !!splitSharedWaitlist : undefined,
+        allowAttendeeUpload: !!allowAttendeeUpload,
+        attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
+        attendeeUploadLabel: (attendeeUploadLabel || '').trim() || undefined,
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -7092,6 +7109,84 @@ export default function EventCreationPage(): React.ReactElement {
                     }}
                   />
                 </label>
+
+                {/* v11.0: Teilnehmer-Upload-Toggle. Default OFF — wird nur
+                    bei expliziter Aktivierung in „Meine Events" als Upload-
+                    Bereich für die Anmeldung sichtbar. Anzeigename und
+                    Hinweistext sind frei konfigurierbar. */}
+                <div style={{ marginTop: 32, paddingTop: 20, borderTop: '2px solid var(--dex-gray-100)' }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <StepBadge n={29} />
+                    {isDe ? 'Teilnehmer-Upload erlauben' : 'Allow attendee upload'}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> ob jeder Teilnehmer in &bdquo;Meine Events&ldquo; eine eigene Datei (z.B. PDF) zu seiner Anmeldung hochladen darf.<br /><br />
+                        <strong>Beispiele:</strong> Reisekostenbeleg, unterschriebener Datenschutzbogen, Foto-Einverständnis, Zertifikat als Voraussetzung für die Teilnahme.<br /><br />
+                        <strong>Ablauf:</strong> Teilnehmer sieht nach der Anmeldung in &bdquo;Meine Events&ldquo; einen Upload-Block mit deinem Anzeigenamen + Hinweistext. Hochgeladene Dateien werden direkt als <strong>Item-Attachment</strong> an die Teilnehmer-Zeile in der SharePoint-Subsite gehängt — nicht in einer Sammeldatei. Der Teilnehmer kann seine Datei jederzeit ersetzen oder löschen.<br /><br />
+                        <strong>Admin-Sicht:</strong> du siehst im Admin-Center pro Teilnehmer-Zeile alle hochgeladenen Dateien als Liste mit Download-Link. Du kannst auch fremde Uploads löschen.<br /><br />
+                        <strong>Default: aus.</strong> Nur einschalten, wenn du tatsächlich ein Dokument von Teilnehmern brauchst.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> whether every attendee can upload a file (e.g. PDF) to their registration via &ldquo;My Events&rdquo;.<br /><br />
+                        <strong>Examples:</strong> travel-expense receipt, signed privacy form, photo-consent, certificate as a prerequisite to attend.<br /><br />
+                        <strong>Flow:</strong> after registering, the attendee sees an upload block in &ldquo;My Events&rdquo; with the display name and hint text you configure. Uploaded files attach directly as <strong>item attachments</strong> on the attendee&apos;s row in the SharePoint subsite — not into a collection file. Attendees can replace or delete their own file any time.<br /><br />
+                        <strong>Admin view:</strong> you see every uploaded file per attendee in the admin center with a download link. You can also delete attendee uploads.<br /><br />
+                        <strong>Default: off.</strong> Enable only when you actually need a document from attendees.
+                      </>
+                    )} />
+                  </label>
+                  <label
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '8px 14px', borderRadius: 999,
+                      fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap',
+                      cursor: 'pointer', userSelect: 'none',
+                      border: `1px solid ${allowAttendeeUpload ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                      background: allowAttendeeUpload ? 'rgba(134,188,37,0.10)' : '#fff',
+                      color: allowAttendeeUpload ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allowAttendeeUpload}
+                      onChange={e => setAllowAttendeeUpload(e.target.checked)}
+                      style={{ display: 'none' }}
+                    />
+                    <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{allowAttendeeUpload ? '✓' : '○'}</span>
+                    {isDe ? 'Teilnehmer dürfen Datei hochladen' : 'Attendees may upload a file'}
+                  </label>
+
+                  {allowAttendeeUpload && (
+                    <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 4 }}>
+                          {isDe ? 'Anzeige-Name (z.B. „Reisekostenbeleg")' : 'Display name (e.g. „Travel-expense receipt")'}
+                        </label>
+                        <input
+                          className="form-input"
+                          value={attendeeUploadLabel}
+                          onChange={e => setAttendeeUploadLabel(e.target.value)}
+                          placeholder={isDe ? 'z.B. Reisekostenbeleg, Datenschutz-Erklärung' : 'e.g. Travel receipt, privacy form'}
+                          maxLength={80}
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 4 }}>
+                          {isDe ? 'Hinweistext für Teilnehmer (optional)' : 'Hint text for attendees (optional)'}
+                        </label>
+                        <input
+                          className="form-input"
+                          value={attendeeUploadHint}
+                          onChange={e => setAttendeeUploadHint(e.target.value)}
+                          placeholder={isDe ? 'z.B. Bitte unterschrieben hochladen' : 'e.g. Please upload signed'}
+                          maxLength={240}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>{/* close Step 5 */}
 
               {/* ===== Step 6: Fun-Zone ===== */}
