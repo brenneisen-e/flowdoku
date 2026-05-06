@@ -3009,6 +3009,12 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
+      // v10.13: B2Run-Leistungsnachweis-Bestätigung. Virtuelles Feld der
+      // RegistrationPage, das nur durchläuft wenn durchstarterRequiresProof
+      // aktiv ist — die SP-Spalte muss aber existieren sonst kippt die
+      // Anmeldung mit HTTP 400. Wird auf jeder neuen Teilnehmerliste angelegt
+      // damit B2Run-Events nicht später nochmal manuell repariert werden müssen.
+      { title: 'b2run_leistungsnachweis', type: 2 },
       { title: 'QuizScore', type: 9 }, // Number - Anzahl richtiger Antworten
       { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (fuer Statistik)
       { title: 'QuizCompletedAt', type: 4 }, // DateTime
@@ -4042,7 +4048,15 @@ export class EventService {
     if (eventContext?.isB2Run) {
       requiredFields.push(
         { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
-        { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }
+        { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' },
+        // v10.13: b2run_leistungsnachweis ist ein virtuelles Feld das die
+        // RegistrationPage hardcoded hinzufügt wenn durchstarterRequiresProof
+        // aktiv ist — es ist NICHT Teil der regulären customFields, daher
+        // muss die SP-Spalte hier explizit angelegt werden, sonst kippt die
+        // Anmeldung mit HTTP 400 'Field not found'. Wird auf jedem B2Run-Event
+        // angelegt (egal ob proof-flag aktuell aktiv ist) — die Spalte ist
+        // klein und stört nicht wenn ungenutzt.
+        { title: 'b2run_leistungsnachweis', type: 2 }
       );
     }
     if (eventContext?.hasQuiz) {
