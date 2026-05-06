@@ -45,6 +45,37 @@ export default function SettingsPage(): React.ReactElement {
     }
     return map;
   }, [roles, events]);
+
+  /**
+   * v10.16: Per-Event-Co-Organizers — Personen die im Wizard-Picker eines Events
+   * als Organizer eingetragen sind, aber KEINEN globalen Eintrag in DEX_Roles
+   * haben. Sie haben für DAS jeweilige Event vollen Zugriff (über die Event-
+   * Subsite-Permissions), tauchen aber nicht in der regulären roles-Tabelle auf.
+   * Damit der Admin sieht „wer hat per Event Zugriff ohne globalen Status",
+   * werden sie hier eingesammelt: pro Email die Liste der Events + ein
+   * Display-Name (aus dem ersten Event-Match abgeleitet).
+   */
+  const coOrganizersList = React.useMemo<Array<{ email: string; name: string; events: string[] }>>(() => {
+    const knownEmails = new Set(roles.map(r => (r.userEmail || '').toLowerCase()));
+    const accumulator: Record<string, { name: string; events: string[] }> = {};
+    for (const evt of events) {
+      const orgEmails = evt.organizerEmails || [];
+      const orgNames = evt.organizers || [];
+      for (let i = 0; i < orgEmails.length; i++) {
+        const emailLc = (orgEmails[i] || '').toLowerCase();
+        if (!emailLc) continue;
+        if (knownEmails.has(emailLc)) continue;  // schon in der Roles-Tabelle
+        const name = orgNames[i] || emailLc;
+        if (!accumulator[emailLc]) accumulator[emailLc] = { name, events: [] };
+        accumulator[emailLc].events.push(evt.title);
+      }
+    }
+    return Object.keys(accumulator).sort().map(emailLc => ({
+      email: emailLc,
+      name: accumulator[emailLc].name,
+      events: accumulator[emailLc].events,
+    }));
+  }, [roles, events]);
   // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
@@ -228,7 +259,7 @@ export default function SettingsPage(): React.ReactElement {
         {/* v9.21: Rollenmanagement collapsible — Admin kann die ganze Liste
             zusammenklappen wenn er sie gerade nicht braucht. Default: zu. */}
         {isAdmin && (
-          <details className="card" style={{ cursor: 'default' }}>
+          <details className="card" style={{ cursor: 'default' }} open>
             <summary style={{
               cursor: 'pointer', fontWeight: 600, fontSize: '1rem',
               padding: '4px 0', listStyle: 'revert',
@@ -366,6 +397,58 @@ export default function SettingsPage(): React.ReactElement {
                       })}
                   </tbody>
                 </table>
+
+                {/* v10.16: Per-Event-Co-Organizer — Personen mit Event-Zugriff
+                    aber ohne globalen Eintrag in DEX_Roles. Sie wurden vom
+                    Hauptorganizer per Wizard-Picker zu einem (oder mehreren)
+                    Events hinzugefügt und haben für DIESE Events Vollzugriff,
+                    ohne dafür „Organizer"-Rolle global haben zu müssen. */}
+                {coOrganizersList.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
+                      Per-Event-Co-Organizer ({coOrganizersList.length})
+                    </h4>
+                    <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                      Diese Personen sind im Wizard-Picker eines oder mehrerer Events als Organizer eingetragen, haben aber KEINEN globalen Eintrag in DEX_Roles. Sie können das jeweilige Event verwalten (Teilnehmer, Bearbeiten, Mails) — aber keine NEUEN Events anlegen. Wenn du jemandem permanent „Organizer"-Status geben willst, fügst du sie über das Formular oben mit Role „Organizer" hinzu.
+                    </p>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
+                          <th style={{ textAlign: 'left', padding: '8px 8px 8px 0', color: 'var(--dex-gray-500)' }}>Name</th>
+                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
+                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Status</th>
+                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coOrganizersList.map(co => (
+                          <tr key={co.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+                            <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>{co.name}</td>
+                            <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{co.email}</td>
+                            <td style={{ padding: 10 }}>
+                              <span style={{
+                                display: 'inline-block', padding: '3px 10px', borderRadius: 999,
+                                background: 'rgba(237,139,0,0.15)', color: 'var(--dex-orange-dark, #b35a00)',
+                                fontSize: '0.74rem', fontWeight: 600,
+                              }}>Per-Event</span>
+                            </td>
+                            <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {co.events.map((title, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
+                                    fontSize: '0.74rem', fontWeight: 600,
+                                  }}>{title}</span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
