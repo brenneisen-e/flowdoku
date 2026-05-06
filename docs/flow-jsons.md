@@ -1610,7 +1610,7 @@ Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt 
 - List Name: leer lassen oder `Teilnehmer` — die Connection nutzt das Filter-Query, der List-Name ist nur kosmetisch.
 - Filter Query (fx):
   ```
-  concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status eq ''Angemeldet''')
+  concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status ne ''Abgemeldet''')
   ```
 - Top Count: `1`
 
@@ -1696,7 +1696,7 @@ Alle weiteren Schritte (3–9) gehen in den **`If yes`-Branch**. `If no` bleibt 
 | User lehnt mit „Send response" ab | Reminder + Digest werden gequeued. Digest enthält den User in der Tabelle. |
 | User lehnt mit „Don't send response" ab | **Reminder feuert nicht** (kein Mail-Trigger), aber **beim nächsten Decline** im selben Event ist er im Digest enthalten — weil der Digest direkt aus `attendees[].status.response` liest. |
 | User lehnt ab und akzeptiert dann doch | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `status.response` zeigt jetzt `accepted`. |
-| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status eq 'Angemeldet'`. |
+| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status ne 'Abgemeldet'`, abgemeldete fallen damit raus. |
 | Event hat keinen Outlook-Termin (`CalendarLink` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
 | Event hat 0 noch-angemeldete Decliner | `Has_Decliners` ist false → kein Digest gequeued. |
 
@@ -1893,7 +1893,7 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
               "parameters": {
                 "dataset": "@concat('https://deudeloitte.sharepoint.com', replace(first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl'], 'https://deudeloitte.sharepoint.com', ''))",
                 "table": "Teilnehmer",
-                "$filter": "@concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status eq ''Angemeldet''')",
+                "$filter": "@concat('ParticipantEmail eq ''', items('Apply_To_Each_Decliner')?['emailAddress']?['address'], ''' and Status ne ''Abgemeldet''')",
                 "$top": 1
               },
               "host": {
@@ -1992,6 +1992,7 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
 - **`Get_Outlook_Event` table = Default-Calendar-ID des Postfachs `no_reply.events@deloitte.de`.** Aktuell hardcoded als die lange Base64-ID. Bei Tenant-Migration muss der Wert über die Office-365-Outlook-Connector-Dropdowns (Calendar Id) neu picked werden — die Connector-UI tauscht ihn dann automatisch im Code-View.
 - **`Get_Outlook_Event` id = `outputs('Get_Outlook_EventId')`** = `iCalUId` aus `DEX_Events.CalendarLink`. `V3CalendarGetItem` akzeptiert die iCalUId als Lookup-Schlüssel und sucht damit über alle Mailbox-Kalender hinweg — anders als die kalenderspezifische `EntryId`, die mailbox-gebunden wäre.
 - **Get_Decliner_Status table = `Teilnehmer`** (nicht leer lassen — leerer table-Wert führte in einer Vorab-Version zu HTTP 400 auf der Subsite-Liste).
+- **Get_Decliner_Status Status-Filter `ne 'Abgemeldet'`, NICHT `eq 'Angemeldet'`** (Bug-Fix 2026-05-05): die Teilnehmer-Liste hat drei aktive Status — `Angemeldet` (frisch registriert), `QR versendet` (QR-Code gesendet) und `Eingecheckt` (am Eventtag eingecheckt). Alle drei zählen als „noch in der Liste" und müssen vom Decline-Digest erfasst werden. Der ursprüngliche Filter `eq 'Angemeldet'` schloss QR-versendete und eingecheckte Teilnehmer fälschlich aus → Decliner mit bereits versandtem QR-Code landeten nicht im Digest und der Organizer kriegte trotz aktivem Decline keine FYI-Mail. Der negative Filter `ne 'Abgemeldet'` ist robuster — er schließt ausschließlich offiziell Abgemeldete aus, was genau die Decliner sind die KEIN Catering / Hotel mehr blockieren.
 - **Outlook-Event-Lookup nutzt `Get events (V4)` (Plural) mit `$filter=iCalUId eq '<id>'`, NICHT `Get event (V4)` (Singular).** Die Singular-Action (`V3CalendarGetItem`) erwartet eine **EntryId** — wenn man ihr eine **iCalUId** (aus `DEX_Events.CalendarLink`) übergibt, antwortet der Connector mit `ErrorInvalidIdMalformed`. Mit Plural + Filter umgeht man das, weil iCalUId eine Standard-Property der Event-Resource in Microsoft Graph ist und filterbar.
 - **`Filter_Declined_Attendees.from = json('[]')` als Fallback, NICHT `createArray()`.** PA-`createArray()` braucht mindestens 1 Parameter; ohne Args wirft es einen Compile-Error („createArray expects a comma separated list of parameters"). `json('[]')` parst den String als JSON und liefert ein leeres Array — das saubere PA-Idiom für „leeres Array, falls null".
 - **Plural-Result-Access:** seit der Umstellung auf `Get events (V4)` ist `body('Get_Outlook_Event')?['value']` ein Array. Zugriff auf den einzelnen Treffer immer mit `first(body('Get_Outlook_Event')?['value'])?['attendees']` — NICHT mehr mit `outputs('Get_Outlook_Event')?['body/attendees']`.
@@ -2005,7 +2006,7 @@ Alle folgenden Actions liegen im selben `No_Reminder_Yet`-If-yes-Branch wie `Cre
 | User lehnt mit „Send response" ab | Reminder + Digest werden gequeued. Digest enthält den User in der Tabelle. |
 | User lehnt mit „Don't send response" ab | **Reminder feuert nicht** (kein Mail-Trigger), aber **beim nächsten Decline** im selben Event ist er im Digest enthalten — weil der Digest direkt aus `attendees[].status.response` liest. |
 | User lehnt ab und akzeptiert dann doch | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `status.response` zeigt jetzt `accepted`. |
-| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status eq 'Angemeldet'`. |
+| User lehnt ab und meldet sich offiziell ab | Beim nächsten Decline im selben Event ist er **nicht mehr** im Digest — `Get_Decliner_Status` filtert auf `Status ne 'Abgemeldet'`, abgemeldete fallen damit raus. |
 | Event hat keinen Outlook-Termin (`CalendarLink` leer) | `Has_Outlook_Event` ist false → Digest-Branch wird übersprungen, nur Reminder wird gequeued. |
 | Event hat 0 noch-angemeldete Decliner | `Has_Decliners` ist false → kein Digest gequeued. |
 
