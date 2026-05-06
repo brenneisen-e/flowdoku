@@ -94,14 +94,18 @@ einzelnes Legacy-Event auf das neue Standard-Schema umgestellt werden — das
 entfernt die b2run_*-Custom-Fields und persistiert `'Durchstarter'` /
 `'Funstarter'` explizit in `SplitLabelA` / `SplitLabelB`.
 
-**Caveat Power-Automate-Flow `DEX_IDReorder_TeilnehmerIDs`:** der Flow
-promotet Wartelistler aktuell weiterhin typ-bewusst (StarterType-Filter),
-auch wenn `SplitSharedWaitlist=true` gesetzt ist. Für die Admin-Center-
-Abmeldung läuft die Promotion hingegen client-seitig und respektiert
-`splitSharedWaitlist` korrekt (siehe `AdminPage.tsx`,
-`useTypeFilter`-Logik). Wenn der gemeinsame Wartelisten-Modus auch beim
-User-Self-Cancel greifen soll, muss der PA-Flow entsprechend nachgezogen
-werden — die Anpassung steht für eine spätere Iteration aus.
+**Caveat Power-Automate-Flow `DEX_IDReorder_TeilnehmerIDs`:** ohne Flow-
+Anpassung promotet der Flow weiterhin typ-bewusst, auch wenn
+`SplitSharedWaitlist=true` gesetzt ist. Für die Admin-Center-Abmeldung
+läuft die Promotion clientseitig und respektiert `splitSharedWaitlist`
+korrekt (siehe `AdminPage.tsx`, `useTypeFilter`-Logik). Damit der
+gemeinsame Wartelisten-Modus **auch beim User-Self-Cancel** greift, muss
+in der `Is_B2RunSplit`-Bedingung des Flows eine dritte Zeile ergänzt
+werden — die UI-Schritt-für-Schritt-Anleitung steht in
+`docs/flow-jsons.md` unter "UI-Anleitung 2026-05-06 (v10.20) — Shared-
+Waitlist-Modus respektieren". Sobald die Änderung im Tenant
+durchgeklickt und gespeichert ist, bitte den neuen Flow-JSON in
+`docs/flow-jsons.md` einpflegen.
 
 ### SharePoint REST API — MERGE-Requests (WICHTIG)
 

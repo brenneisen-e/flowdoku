@@ -134,8 +134,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                     ? 'Reihenfolge per Drag-Handle oder ▲▼-Pfeile — Nummerierung passt sich automatisch an'
                     : 'Reordering via drag handle or ▲▼ arrows — numbering updates automatically'}</li>
                   <li>{isDe
-                    ? 'Vorlagen: „Vorgeschlagene Felder" (Katalog mit T-Shirt, Allergien, Hotel, Roommate, …) und das vollständige B2Run-Template mit Startblock, Gruppe, Altersklasse, Datenschutz-Checkbox + Links.'
-                    : 'Templates: "Suggested fields" (catalogue with t-shirt, allergies, hotel, roommate, …) and the full B2Run template with start block, group, age category, privacy checkbox + links.'}</li>
+                    ? '„Vorgeschlagene Felder" öffnet einen Katalog mit zwei Sektionen: Allgemein (T-Shirt, Allergien, Essen, Hotel, Zimmerart, Zimmerpartner) und B2Run (Startblock, Gruppe, Altersklasse, Mobilnummer-Infoservice, Anonym, Laufshirt, Datenschutz-Checkbox mit b2run.de-Links). Die B2Run-Sektion ist standardmäßig eingeklappt und mit einem orangenen B2Run-Badge gekennzeichnet — die meisten Events brauchen sie nicht.'
+                    : '"Suggested fields" opens a catalogue with two sections: General (t-shirt, allergies, food, hotel, room type, roommate) and B2Run (start block, category, age group, mobile-info service, anonymous, running shirt, privacy checkbox with b2run.de links). The B2Run section is collapsed by default and marked with an orange B2Run badge — most events do not need it.'}</li>
+                  <li>{isDe
+                    ? 'Seit v10.21 gibt es kein Template-Dropdown mehr — der Organizer pickt B2Run-Felder einzeln aus dem Suggested-Katalog statt ein hartes Template anzuwenden. Dadurch hat das Hinzufügen von B2Run-Feldern keinen versteckten Seiteneffekt mehr (z.B. Auto-Aktivierung von Split-Capacity).'
+                    : 'Since v10.21 there is no template dropdown anymore — organizers pick B2Run fields individually from the suggested catalogue instead of applying a hard template. As a result, adding B2Run fields no longer has hidden side-effects (e.g. auto-activating split capacity).'}</li>
                 </ul>
                 {isDe
                   ? 'Datenschutz-Hinweis oben: Erhebe nur Daten die zwingend für das Event nötig sind — bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'

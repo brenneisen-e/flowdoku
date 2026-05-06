@@ -948,84 +948,208 @@ export default function EventCreationPage(): React.ReactElement {
    */
   // Bilingual: Labels + Optionen der Felder werden in der Event-Sprache (DE/EN)
   // angelegt, passend zum Locale beim Klick auf 'Vorgeschlagene Felder'.
-  const SUGGESTED_FIELDS_CATALOG: Array<{ key: string; label: string; description: string; build: (_now: number) => CustomFieldInput }> = isDe ? [
+  // v10.21: Catalog mit Kategorien — 'general' (default ausgeklappt) und
+  // 'b2run' (default eingeklappt). Damit ersetzt das Suggested-Modal den
+  // alten Template-Dropdown: User wählt fokussiert die Felder, die er
+  // wirklich braucht, statt einen B2Run-Block auf einmal aufzuziehen.
+  type SuggestedCategory = 'general' | 'b2run';
+  type SuggestedEntry = { key: string; label: string; description: string; category: SuggestedCategory; build: (_now: number) => CustomFieldInput };
+  const SUGGESTED_FIELDS_CATALOG: SuggestedEntry[] = isDe ? [
     {
-      key: 'tshirt',
+      key: 'tshirt', category: 'general',
       label: 'T-Shirt Größe',
       description: 'Dropdown mit Kein T-Shirt / XS–XXL',
       build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'allergies',
+      key: 'allergies', category: 'general',
       label: 'Allergien',
       description: 'Freitextfeld für Allergien/Unverträglichkeiten',
       build: (n) => ({ id: `cf-${n}`, label: 'Allergien', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'diet',
+      key: 'diet', category: 'general',
       label: 'Essenspräferenzen',
       description: 'Dropdown: Keine Präferenzen / Vegetarisch / Vegan / Pescetarisch',
       build: (n) => ({ id: `cf-${n}`, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true }),
     },
     {
-      key: 'hotel',
+      key: 'hotel', category: 'general',
       label: 'Hotel benötigt',
       description: 'Checkbox: Teilnehmer benötigt ein Hotel',
       build: (n) => ({ id: `cf-${n}`, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'roomtype',
+      key: 'roomtype', category: 'general',
       label: 'Zimmerart',
       description: 'Dropdown: Keine Präferenz / Einzelzimmer / Doppelzimmer',
       build: (n) => ({ id: `cf-${n}`, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true }),
     },
     {
-      key: 'roommate',
+      key: 'roommate', category: 'general',
       label: 'Bevorzugter Zimmerpartner',
       description: 'Personen-Suche; Match-Erkennung im Admin Center',
       build: (n) => ({ id: `cf-${n}`, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true }),
     },
+    // B2Run-Pakete — nur fuer Lauf-Events relevant. Sektion ist im Modal
+    // standardmaessig eingeklappt, damit der Standard-Organizer sie nicht
+    // versehentlich aktiviert.
+    {
+      key: 'b2run_startblock', category: 'b2run',
+      label: 'Startblock',
+      description: 'Dropdown der Startbloecke. Optionen werden nachtraeglich im Wizard gepflegt.',
+      build: (_n) => ({ id: `b2run_startblock`, label: 'Startblock', type: 'select', required: true, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_gruppe', category: 'b2run',
+      label: 'Gruppe',
+      description: 'Dropdown: offene Klasse / Nordic Walker / Damen / Herren',
+      build: (_n) => ({ id: `b2run_gruppe`, label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true }),
+    },
+    {
+      key: 'b2run_altersklasse', category: 'b2run',
+      label: 'Altersklasse',
+      description: 'Dropdown: unter 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
+      build: (_n) => ({ id: `b2run_altersklasse`, label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
+    },
+    {
+      key: 'b2run_infoservice', category: 'b2run',
+      label: 'Infoservice (SMS)',
+      description: 'Checkbox: aktiviert die Mobilnummer-Pflicht fuer den B2Run-SMS-Service',
+      build: (_n) => ({ id: `b2run_infoservice`, label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_mobilnummer', category: 'b2run',
+      label: 'Mobilnummer',
+      description: 'Freitext, dynamisch Pflicht wenn Infoservice aktiv',
+      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_anonym', category: 'b2run',
+      label: 'Anonym teilnehmen',
+      description: 'Checkbox: Teilnehmer in Ergebnislisten anonymisieren',
+      build: (_n) => ({ id: `b2run_anonym`, label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_laufshirt', category: 'b2run',
+      label: 'Deloitte-Laufshirt',
+      description: 'Dropdown: vorhandenes Shirt / XS-XXL',
+      build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+    },
+    {
+      key: 'b2run_datenschutz', category: 'b2run',
+      label: 'AGB / Datenschutz',
+      description: 'Pflicht-Checkbox mit Links zu B2Run-AGB und Datenschutzerklaerung',
+      build: (_n) => ({
+        id: `b2run_datenschutz`,
+        label: 'Zustimmung AGB, Datenschutz & Bildaufnahmen',
+        type: 'checkbox', required: true, options: [], visible: true,
+        externalLinks: [
+          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+        ],
+      }),
+    },
   ] : [
     {
-      key: 'tshirt',
+      key: 'tshirt', category: 'general',
       label: 'T-Shirt size',
       description: 'Dropdown: No t-shirt needed / XS–XXL',
       build: (n) => ({ id: `cf-${n}`, label: 'T-Shirt size', type: 'select', required: false, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
     },
     {
-      key: 'allergies',
+      key: 'allergies', category: 'general',
       label: 'Allergies',
       description: 'Free-text field for allergies / intolerances',
       build: (n) => ({ id: `cf-${n}`, label: 'Allergies', type: 'text', required: false, options: [], visible: true }),
     },
     {
-      key: 'diet',
+      key: 'diet', category: 'general',
       label: 'Dietary preferences',
       description: 'Dropdown: No preference / Vegetarian / Vegan / Pescetarian',
       build: (n) => ({ id: `cf-${n}`, label: 'Dietary preferences', type: 'select', required: false, options: ['No preference', 'Vegetarian', 'Vegan', 'Pescetarian'], visible: true }),
     },
     {
-      key: 'hotel',
+      key: 'hotel', category: 'general',
       label: 'Hotel required',
       description: 'Checkbox: participant needs a hotel room',
       build: (n) => ({ id: `cf-${n}`, label: 'Hotel required', type: 'checkbox', required: false, options: [], visible: true }),
     },
     {
-      key: 'roomtype',
+      key: 'roomtype', category: 'general',
       label: 'Room type',
       description: 'Dropdown: No preference / Single room / Double room',
       build: (n) => ({ id: `cf-${n}`, label: 'Room type (if hotel needed)', type: 'select', required: false, options: ['No preference', 'Single room', 'Double room'], visible: true }),
     },
     {
-      key: 'roommate',
+      key: 'roommate', category: 'general',
       label: 'Preferred roommate',
       description: 'People search; match detection in the admin center',
       build: (n) => ({ id: `cf-${n}`, label: 'Preferred roommate (for double room)', type: 'roommate', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_startblock', category: 'b2run',
+      label: 'Start block',
+      description: 'Dropdown of start blocks. Options are added later in the wizard.',
+      build: (_n) => ({ id: `b2run_startblock`, label: 'Start block', type: 'select', required: true, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_gruppe', category: 'b2run',
+      label: 'Category',
+      description: 'Dropdown: Open class / Nordic Walker / Women / Men',
+      build: (_n) => ({ id: `b2run_gruppe`, label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true }),
+    },
+    {
+      key: 'b2run_altersklasse', category: 'b2run',
+      label: 'Age group',
+      description: 'Dropdown: under 18 / 18-29 / 30-39 / 40-49 / 50-59 / 60+',
+      build: (_n) => ({ id: `b2run_altersklasse`, label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true }),
+    },
+    {
+      key: 'b2run_infoservice', category: 'b2run',
+      label: 'Info service (SMS)',
+      description: 'Checkbox: enables the mandatory mobile-number for the B2Run SMS service',
+      build: (_n) => ({ id: `b2run_infoservice`, label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_mobilnummer', category: 'b2run',
+      label: 'Mobile number',
+      description: 'Free text, dynamically required when info service is active',
+      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobile number (only if info service is enabled)', type: 'text', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_anonym', category: 'b2run',
+      label: 'Anonymous participation',
+      description: 'Checkbox: anonymise attendee in result lists',
+      build: (_n) => ({ id: `b2run_anonym`, label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true }),
+    },
+    {
+      key: 'b2run_laufshirt', category: 'b2run',
+      label: 'Deloitte running shirt',
+      description: 'Dropdown: existing shirt / XS-XXL',
+      build: (_n) => ({ id: `b2run_laufshirt`, label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true }),
+    },
+    {
+      key: 'b2run_datenschutz', category: 'b2run',
+      label: 'Terms / privacy',
+      description: 'Required checkbox with links to B2Run terms and privacy policy',
+      build: (_n) => ({
+        id: `b2run_datenschutz`,
+        label: 'I agree to the terms, privacy policy and photo/video recordings',
+        type: 'checkbox', required: true, options: [], visible: true,
+        externalLinks: [
+          { label: 'Terms (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+          { label: 'Privacy (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+        ],
+      }),
     },
   ];
 
   const [showSuggestedModal, setShowSuggestedModal] = React.useState(false);
   const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
+  // v10.21: B2Run-Sektion im Suggested-Modal default eingeklappt — die meisten
+  // Organizer brauchen sie nicht; soll nicht visuell uebernehmen.
+  const [showB2runSuggested, setShowB2runSuggested] = React.useState(false);
 
   const openSuggestedModal = (): void => {
     // v9.17: Standard ist KEINS ausgewaehlt — User waehlt aktiv aus, was er
@@ -1040,8 +1164,14 @@ export default function EventCreationPage(): React.ReactElement {
     if (selected.length === 0) { setShowSuggestedModal(false); return; }
     const now = Date.now();
     const newFields: CustomFieldInput[] = selected.map((s, i) => s.build(now + i));
-    // Haengen ans Ende an (keine Duplikate entfernen; User kann selbst loeschen wenn noetig)
-    setCustomFields([...customFields, ...newFields]);
+    // v10.21: B2Run-Felder haben deterministische IDs (b2run_startblock etc.).
+    // Wenn ein Feld mit gleicher ID schon im customFields-Array steht, skippen
+    // wir es — sonst entstehen Duplikate, wenn der User das Modal mehrfach
+    // oeffnet. Allgemeine Felder (cf-<timestamp>) bekommen eindeutige IDs und
+    // werden immer angehaengt.
+    const existingIds = new Set(customFields.map(f => f.id));
+    const dedupedNewFields = newFields.filter(f => !existingIds.has(f.id));
+    setCustomFields([...customFields, ...dedupedNewFields]);
     setShowSuggestedModal(false);
   };
 
@@ -1106,7 +1236,13 @@ export default function EventCreationPage(): React.ReactElement {
    * Template-Auswahl: setzt EventType und Custom Fields automatisch.
    * B2Run: legt alle Pflichtfelder fuer die Anmeldung bei b2run.com an
    * (laut Excel "Deloitte_Teilnehmer_innen_B2Run_Koeln_2025_v4.xlsx").
+   *
+   * v10.21: Template-Dropdown im Wizard entfaellt; B2Run-Felder werden ueber
+   * das Suggested-Felder-Modal einzeln gewaehlt. Diese Funktion bleibt fuer
+   * eventuelle programmatische Aufrufer (Edit-Modus, Migrations-Skripte)
+   * erhalten — sie wird im aktuellen UI nicht mehr aufgerufen.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const applyTemplate = (template: 'blank' | 'b2run'): void => {
     setSelectedTemplate(template);
     if (template === 'blank') {
@@ -5382,51 +5518,19 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
-              {/* v7.20: Template-Auswahl als Dropdown statt Checkbox-Card.
-                  Default = "Deloitte Event" (= blank, keine Vorbefuellung).
-                  "B2Run" befuellt die B2Run-spezifischen Felder zusaetzlich.
-                  Beim Wechsel auf Deloitte Event werden NUR die b2run_*-
-                  Felder entfernt (siehe applyTemplate-Fix), nicht alle. */}
-              {!isEditMode && (
-                <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={18} />
-                    {t('create.template')}
-                    <InfoTooltip text={isDe ? (
-                      <>
-                        <strong>Was du hier einstellst:</strong> eine <strong>Vorlage</strong>, mit der die Felder für die Anmeldung vorausgefüllt werden — entweder <strong>Deloitte Event</strong> (leer, keine Sonderfelder) oder <strong>B2Run</strong> (mit Starter-Typ, Startblöcken, Leistungsnachweis-Option).<br /><br />
-                        <strong>Anzeige in der App:</strong> bei B2Run werden zusätzliche Felder angelegt: <strong>Starter-Typ</strong> (Durchstarter / Funstarter), <strong>Startblock</strong>, optional <strong>Leistungsnachweis-Pflicht</strong>. Diese Felder sind im B2Run-Kontext geschäftslogisch relevant — z.B. für Split-Kapazitäten und Startblock-Zuordnung.<br /><br />
-                        <strong>Automatismen:</strong> bei B2Run greift in Schritt 3 der <strong>Split-Kapazitäten-Modus</strong> (getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ). Bei Deloitte Event gibt es nur eine einzige Kapazität.<br /><br />
-                        <strong>Wechsel:</strong> beim Umschalten von B2Run zurück auf Deloitte Event werden <strong>nur die B2Run-spezifischen Felder</strong> entfernt — andere Custom-Fields, die du angelegt hast, bleiben erhalten.
-                      </>
-                    ) : (
-                      <>
-                        <strong>What you set here:</strong> a <strong>template</strong> that pre-fills the registration fields — either <strong>Deloitte event</strong> (empty, no special fields) or <strong>B2Run</strong> (with starter type, start blocks, performance proof option).<br /><br />
-                        <strong>Shown in the app:</strong> for B2Run, additional fields are added: <strong>starter type</strong> (Durchstarter / Funstarter), <strong>start block</strong>, optionally <strong>performance proof requirement</strong>. These are business-relevant in the B2Run context — e.g. for split capacities and start-block assignment.<br /><br />
-                        <strong>Automation:</strong> B2Run activates the <strong>split-capacity mode</strong> in step 3 (separate slots for Durchstarter and Funstarter, own waitlists per type). Deloitte event uses a single shared capacity.<br /><br />
-                        <strong>Switching back:</strong> when toggling B2Run back to Deloitte event, <strong>only the B2Run-specific fields</strong> are removed — other custom fields you created remain.
-                      </>
-                    )} />
-                  </label>
-                  <select
-                    className="form-select"
-                    value={selectedTemplate}
-                    onChange={e => applyTemplate(e.target.value as 'blank' | 'b2run')}
-                    style={{ width: '100%', maxWidth: 360, fontSize: '0.95rem' }}
-                  >
-                    <option value="blank">{isDe ? 'Deloitte Event' : 'Deloitte event'}</option>
-                    <option value="b2run">{t('create.template.b2run')}</option>
-                  </select>
-                  {selectedTemplate === 'b2run' && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 6, lineHeight: 1.5 }}>
-                      {t('create.template.b2run.desc')}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* v10.21: Template-Dropdown ist entfallen — der Organizer
+                  pickt B2Run-Felder einzeln per Suggested-Felder-Modal
+                  (eingeklappte Sektion "B2Run-spezifische Felder"). Damit
+                  fuehrt kein Weg mehr ueber ein hartes B2Run-Template, das
+                  zusaetzlich Logik (Auto-Split-Capacity etc.) ausloeste —
+                  saubere Trennung zwischen Feld-Konfiguration und
+                  Kapazitaets-Modell. */}
 
-              {/* B2Run Startbloecke - moderne Liste mit + Button */}
-              {(selectedTemplate === 'b2run' || (isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) && (
+              {/* B2Run Startbloecke - moderne Liste mit + Button. Wird
+                  unverändert angezeigt, sobald das b2run_startblock-Feld in
+                  customFields steht (ueber das Suggested-Felder-Modal
+                  ausgewaehlt oder beim Edit eines Legacy-Events vorhanden). */}
+              {customFields.some(f => f.id === 'b2run_startblock') && (
                 <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.startblocks')}
@@ -8124,8 +8228,13 @@ export default function EventCreationPage(): React.ReactElement {
                 ? 'Wähle aus dem Katalog, welche Felder dem Event hinzugefügt werden sollen. Du kannst die Felder danach weiter anpassen.'
                 : 'Pick the fields you want to add to the event. You can still tweak them afterwards.'}
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-              {SUGGESTED_FIELDS_CATALOG.map(s => (
+            {/* v10.21: Catalog gruppiert nach Kategorie. Allgemeine Felder
+                immer ausgeklappt, B2Run-Felder default eingeklappt mit
+                Toggle. Jeder Eintrag bekommt ein Badge mit der Kategorie. */}
+            {(() => {
+              const generalEntries = SUGGESTED_FIELDS_CATALOG.filter(s => s.category === 'general');
+              const b2runEntries = SUGGESTED_FIELDS_CATALOG.filter(s => s.category === 'b2run');
+              const renderEntry = (s: SuggestedEntry): React.ReactElement => (
                 <label
                   key={s.key}
                   style={{
@@ -8141,13 +8250,64 @@ export default function EventCreationPage(): React.ReactElement {
                     onChange={e => setSuggestedSelection({ ...suggestedSelection, [s.key]: e.target.checked })}
                     style={{ marginTop: 3, flexShrink: 0 }}
                   />
-                  <span>
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{s.label}</strong>
+                  <span style={{ flex: 1 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{s.label}</strong>
+                      <span style={{
+                        fontSize: '0.65rem', fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 999,
+                        textTransform: 'uppercase', letterSpacing: 0.5,
+                        background: s.category === 'b2run' ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
+                        color: s.category === 'b2run' ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)',
+                      }}>
+                        {s.category === 'b2run' ? 'B2Run' : (isDe ? 'Allgemein' : 'General')}
+                      </span>
+                    </span>
                     <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{s.description}</div>
                   </span>
                 </label>
-              ))}
-            </div>
+              );
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {generalEntries.map(renderEntry)}
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--dex-gray-200)', paddingTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowB2runSuggested(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        background: 'none', border: 'none', padding: 0,
+                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                        color: 'var(--dex-gray-700)',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', transform: showB2runSuggested ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>▶</span>
+                      {isDe ? 'B2Run-spezifische Felder' : 'B2Run-specific fields'}
+                      <span style={{
+                        fontSize: '0.65rem', fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 999,
+                        background: 'rgba(237,139,0,0.12)',
+                        color: 'var(--dex-orange-dark, #b35a00)',
+                      }}>
+                        B2Run · {b2runEntries.length}
+                      </span>
+                    </button>
+                    {showB2runSuggested && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
+                          {isDe
+                            ? 'Diese Felder sind speziell für B2Run-Lauf-Events vorgesehen (Startblock, Altersklasse, Datenschutz-Checkbox mit b2run.de-Links etc.). Bei normalen Events brauchst du sie nicht.'
+                            : 'These fields are intended for B2Run running events (start block, age group, B2Run-specific privacy checkbox etc.). Skip them for standard events.'}
+                        </p>
+                        {b2runEntries.map(renderEntry)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 6 }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
