@@ -122,6 +122,20 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
           },
+          {
+            number: 7,
+            title: isDe ? 'Deep-Link auf ein Event teilen' : 'Share a deep-link to an event',
+            description: (
+              <>
+                {isDe
+                  ? 'Im Admin Center eines Events gibt es bei den Aktionen-Kacheln den Button "Deep-Link kopieren". Ein Klick legt den direkten Link auf genau diese Detail-Ansicht (?action=admin&event=<ID>) in die Zwischenablage. Den Link kannst du per Mail oder Teams an Co-Organizer, Helfer oder Check-In-Team schicken — sie landen nach Login direkt auf der gleichen Admin-Seite, ohne sich erst durch die Event-Auswahl klicken zu müssen. Funktioniert für Organizer (eigene Events) und Admin (alle Events). Hat der Empfänger keine Berechtigung für das Event, sieht er stattdessen die normale Event-Liste.'
+                  : 'On every event\'s admin center the action tiles include a "Copy deep-link" button. One click puts the direct link to exactly this detail view (?action=admin&event=<ID>) into your clipboard. You can send the link by mail or Teams to co-organizers, helpers, or the check-in team — after login they land directly on the same admin page, without first navigating through the event picker. Available to organizers (own events) and admins (all events). If the recipient has no permission for the event, they see the regular event list instead.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Der Page-ID-Indikator im Header-Avatar-Popup zeigt "admin-event" wenn du auf der Detail-Seite bist und "admin-center" auf der Event-Auswahl — praktisch, wenn du in einem Bug-Report exakt sagen willst, wo du gerade warst.'
+              : 'The Page-ID indicator in the header avatar popup shows "admin-event" when you\'re on the detail view and "admin-center" on the event picker — handy when filing a bug report so you can name exactly where you were.',
+          },
         ],
       },
     ],
