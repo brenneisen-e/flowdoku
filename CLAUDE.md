@@ -286,15 +286,50 @@ Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe 
 
 Die `InfoTooltip`-Komponente nimmt ab v9.32 `text: React.ReactNode` an (vorher nur `string`) — bei JSX-Tooltips bilingual als `{isDe ? <>...</> : <>...</>}` rendern. Bei einfachen Texten ist weiterhin ein String erlaubt.
 
-### German Text / Sonderzeichen
+### German Text / Sonderzeichen — ALWAYS
 
-**IMPORTANT (strikt ab v6.3.0):** Alle deutschen Texte — sowohl in der sichtbaren UI als auch in Code-Kommentaren, Mail-Bodies, Outlook-Termin-Bodies, Alert-/Console-Texten, Commit-Messages, Handbuch-Einträgen (`src/webparts/dexEventPlatform/components/manual/sections/*`) und `docs/*.md` — MÜSSEN echte Sonderzeichen verwenden (ä, ö, ü, ß, Ä, Ö, Ü). **Keine ASCII-Substitutionen** (ae, oe, ue, ss). Alle Dateien sind UTF-8, Encoding-Probleme sind daher kein Argument.
+**IMPORTANT (strikt ab v6.3.0, verschärft v10.25):** Alle deutschen Texte —
+**ohne Ausnahme** — MÜSSEN echte Sonderzeichen verwenden (ä, ö, ü, ß, Ä, Ö,
+Ü, „doppelte Anführungszeichen" `„…"`). **Keine ASCII-Substitutionen** (ae,
+oe, ue, ss). Alle Dateien sind UTF-8, Encoding-Probleme sind daher kein
+Argument.
 
-Examples:
-- ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`, `für`, `Grüße`, `Bestätigung`, `zurückziehen`, `nächste`, `zusätzlich`, `Änderung`, `aufräumen`, `nötig`
-- ❌ `Loeschen`, `oeffnen`, `Uebersicht`, `ausfuellen`, `hinzufuegen`, `Zurueck`, `fuer`, `Gruesse`, `Bestaetigung`, `zurueckziehen`, `naechste`, `zusaetzlich`, `Aenderung`, `aufraeumen`, `noetig`
+Das gilt für **jeden Kontext**, in dem deutscher Text steht — diese Liste ist
+nicht erschöpfend, sondern Beispiele:
 
-Bei neuen Commits gilt das als Review-Kriterium. Bestehende ASCII-Substitutionen aus der Zeit vor v6.3.0 werden nicht flächendeckend refactored (Scope-Eingrenzung), aber jede berührte Datei wird im Rahmen der Änderung mit sauberem Deutsch versehen.
+- Sichtbare UI-Strings (JSX-Text, Buttons, Labels, Tooltips, **Hinweisboxen**,
+  Modals, Banner, Toasts).
+- Tooltip- und Hilfe-Texte in `<InfoTooltip text={…}>` — auch wenn sie als
+  React-Fragment `<>…</>` strukturiert sind.
+- Strings in Translation-Maps (`LanguageContext.tsx`).
+- HTML-Strings in Mail-Bodies, Outlook-Termin-Bodies (`EmailTemplates.ts`).
+- Alert-/Console-/Window-Confirm-Texten.
+- Sub-Event-Placeholder, Default-Optionen in Catalogs etc.
+- Code-Kommentare, JSDoc, Inline-`/* … */`-Kommentare.
+- Commit-Messages.
+- Handbuch-Einträge (`src/webparts/dexEventPlatform/components/manual/sections/*`).
+- Markdown-Dokumentation (`docs/*.md`, `CLAUDE.md`).
+- HTML-entitiy-escaped Anführungszeichen (`&bdquo;…&ldquo;`) sind OK, aber
+  Umlaute selber **nicht** als `&auml;`/`&ouml;` etc. — direkt `ä`/`ö`
+  schreiben.
+
+**Examples:**
+- ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`,
+  `für`, `Grüße`, `Bestätigung`, `zurückziehen`, `nächste`, `zusätzlich`,
+  `Änderung`, `aufräumen`, `nötig`, `möchtest`, `Läufer`
+- ❌ `Loeschen`, `oeffnen`, `Uebersicht`, `ausfuellen`, `hinzufuegen`,
+  `Zurueck`, `fuer`, `Gruesse`, `Bestaetigung`, `zurueckziehen`, `naechste`,
+  `zusaetzlich`, `Aenderung`, `aufraeumen`, `noetig`, `moechtest`, `Laeufer`
+
+**Selbst-Check vor jedem Save / Edit:** wenn du gerade einen deutschen Text
+geschrieben hast, suche im fertigen String nach `ae`, `oe`, `ue`, `ss` —
+prüfe jede Stelle, ob das Wort eigentlich Umlaute haben sollte. Ja? Dann
+direkt umstellen, **nicht** auf den Build warten.
+
+Bei neuen Commits gilt das als blockierendes Review-Kriterium. Bestehende
+ASCII-Substitutionen aus der Zeit vor v6.3.0 werden nicht flächendeckend
+refactored (Scope-Eingrenzung), aber **jede berührte Datei** wird im Rahmen
+der Änderung mit sauberem Deutsch versehen.
 
 ### Power Automate Flow Anleitungen
 

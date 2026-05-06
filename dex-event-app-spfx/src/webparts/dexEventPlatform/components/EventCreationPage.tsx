@@ -5361,7 +5361,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     {isDe ? (
                       <>
-                        Du moechtest fuer eine der zwei Gruppen ein zusaetzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur fuer die Gruppe der schnellen Laeufer? Lege das Feld in <strong>Schritt 4 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar fuer Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
+                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 4 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
                       </>
                     ) : (
                       <>
@@ -5756,11 +5756,12 @@ export default function EventCreationPage(): React.ReactElement {
                       border: '1px solid var(--dex-gray-200)',
                     }}
                   >
-                    {/* v10.23: Neuer Header — Nummer + "Feld" links, Pflicht-
-                        Toggle in der Mitte, Lösch-X rechts. Typ und Beschriftung
-                        wandern in die strukturierte Box darunter. Reorder-Pfeile
-                        nur wenn der "Reihenfolge ändern"-Modus aktiv ist. */}
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                    {/* v10.25: Konsolidierter Header — Label-Input prominent
+                        als Titel + Typ-Dropdown rechts daneben + Pflicht-Pill
+                        + Lösch-X. Reorder-Pfeile nur im Reorder-Modus. Die
+                        separate Art/Beschriftung-Box ist entfallen, weil Typ
+                        und Label hier direkt sichtbar / editierbar sind. */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
                       {reorderMode && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '0 4px' }}>
                           <button
@@ -5785,11 +5786,39 @@ export default function EventCreationPage(): React.ReactElement {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: '0.78rem',
                       }}>{idx + 1}</span>
-                      <strong style={{ fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
-                        {isDe ? 'Feld' : 'Field'}
-                      </strong>
-                      <span style={{ flex: 1 }} />
-                      {/* Pflicht-Toggle prominent im Header */}
+                      <input
+                        className="form-input"
+                        value={field.label}
+                        placeholder={isDe ? 'Feld-Name (z.B. T-Shirt Größe)' : 'Field name (e.g. T-shirt size)'}
+                        onChange={e => updateCustomField(field.id, { label: e.target.value })}
+                        style={{
+                          flex: '1 1 220px', minWidth: 180,
+                          fontSize: '1rem', fontWeight: 600,
+                          padding: '8px 12px',
+                          color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
+                        }}
+                      />
+                      <select
+                        className="form-select"
+                        value={field.type}
+                        onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                        title={isDe ? 'Art des Feldes' : 'Field type'}
+                        style={{
+                          flex: '0 0 auto',
+                          background: 'rgba(134,188,37,0.08)',
+                          border: '1px solid var(--dex-green, #86bc25)',
+                          color: 'var(--dex-green-dark, #4a7c1f)',
+                          fontWeight: 600,
+                          padding: '8px 10px',
+                        }}
+                      >
+                        <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
+                        <option value="select">{isDe ? 'Dropdown (Auswahlliste)' : 'Dropdown (option list)'}</option>
+                        <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
+                        <option value="checkbox">{isDe ? 'Checkbox (Ja / Nein)' : 'Checkbox (yes / no)'}</option>
+                        <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
+                        <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
+                      </select>
                       <label
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -5814,58 +5843,10 @@ export default function EventCreationPage(): React.ReactElement {
                       <button
                         onClick={() => removeCustomField(field.id)}
                         title={isDe ? 'Feld löschen' : 'Delete field'}
-                        style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}
+                        style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer', flexShrink: 0 }}
                       >
                         <X size={18} />
                       </button>
-                    </div>
-
-                    {/* v10.23: Strukturierte Box mit zwei klar gelabelten
-                        Spalten — "Art des Feldes" und "Beschriftung Feld" —
-                        statt der vorherigen Inline-Zeile ohne Labels. Ein
-                        Organizer beim ersten Anlegen sieht jetzt sofort, was
-                        in welches Feld gehört. */}
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16,
-                      padding: '12px 14px',
-                      background: '#fff',
-                      border: '1px solid var(--dex-gray-200)',
-                      borderRadius: 8,
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-                          {isDe ? 'Art des Feldes' : 'Field type'}
-                        </label>
-                        <select
-                          className="form-select"
-                          value={field.type}
-                          onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
-                          style={{
-                            background: 'rgba(134,188,37,0.08)',
-                            border: '1px solid var(--dex-green, #86bc25)',
-                            color: 'var(--dex-green-dark, #4a7c1f)',
-                            fontWeight: 600,
-                          }}
-                        >
-                          <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
-                          <option value="select">{isDe ? 'Dropdown (Auswahlliste)' : 'Dropdown (option list)'}</option>
-                          <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
-                          <option value="checkbox">{isDe ? 'Checkbox (Ja / Nein)' : 'Checkbox (yes / no)'}</option>
-                          <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
-                          <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
-                        </select>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-                          {isDe ? 'Beschriftung Feld' : 'Field label'}
-                        </label>
-                        <input
-                          className="form-input"
-                          placeholder={isDe ? 'z.B. T-Shirt Größe, Allergien' : 'e.g. T-shirt size, allergies'}
-                          value={field.label}
-                          onChange={e => updateCustomField(field.id, { label: e.target.value })}
-                        />
-                      </div>
                     </div>
 
                     {/* v10.24: Pro-Gruppe-Sichtbarkeit — nur sichtbar wenn die
@@ -5954,168 +5935,6 @@ export default function EventCreationPage(): React.ReactElement {
                       />
                     </div>
 
-                    {/* v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn
-                        eine andere Frage einen bestimmten Wert hat. Quelle
-                        kann nur ein Feld VOR diesem hier sein (idx < aktuell)
-                        und muss vom Typ select oder checkbox sein. */}
-                    {(() => {
-                      const candidateSources = customFields.slice(0, idx).filter(other =>
-                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
-                      );
-                      const sourceField = field.showIf
-                        ? customFields.find(o => o.id === field.showIf!.fieldId)
-                        : null;
-                      const removeShowIf = (): void => {
-                        // showIf gezielt loeschen: updateCustomField macht ein
-                        // shallow-merge, also setzen wir undefined und filtern
-                        // beim Save raus.
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        updateCustomField(field.id, { showIf: undefined as any });
-                      };
-                      return (
-                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
-                          {!field.showIf ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (candidateSources.length === 0) {
-                                    alert(isDe
-                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
-                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
-                                    return;
-                                  }
-                                  const first = candidateSources[0];
-                                  updateCustomField(field.id, {
-                                    showIf: {
-                                      fieldId: first.id,
-                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
-                                    },
-                                  });
-                                }}
-                                style={{
-                                  background: 'none', border: 'none', padding: 0,
-                                  color: 'var(--dex-green-dark, #4a7c1f)',
-                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                }}
-                              >
-                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
-                              </button>
-                              <InfoTooltip
-                                text={isDe
-                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
-                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
-                              />
-                            </span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
-                                <InfoTooltip
-                                  text={isDe
-                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
-                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <select
-                                  className="form-select"
-                                  value={field.showIf.fieldId}
-                                  onChange={e => {
-                                    const newSrc = customFields.find(o => o.id === e.target.value);
-                                    if (!newSrc) return;
-                                    updateCustomField(field.id, {
-                                      showIf: {
-                                        fieldId: newSrc.id,
-                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
-                                      },
-                                    });
-                                  }}
-                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
-                                >
-                                  {candidateSources.map(o => (
-                                    <option key={o.id} value={o.id}>
-                                      {customFields.findIndex(c => c.id === o.id) + 1}. {o.label}
-                                    </option>
-                                  ))}
-                                  {/* fallback wenn die ausgewaehlte Quelle hinter dem Feld gelandet
-                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
-                                      aber als ungueltig markiert lassen. */}
-                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
-                                    <option value={sourceField.id} disabled>
-                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
-                                    </option>
-                                  )}
-                                </select>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                                  {isDe ? '=' : '='}
-                                </span>
-                                {sourceField && sourceField.type === 'checkbox' ? (
-                                  <select
-                                    className="form-select"
-                                    value={field.showIf.values[0] || 'true'}
-                                    onChange={e => updateCustomField(field.id, {
-                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
-                                    })}
-                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
-                                  >
-                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
-                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
-                                  </select>
-                                ) : sourceField ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                    {(sourceField.options || []).filter(Boolean).map(opt => {
-                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
-                                      return (
-                                        <label
-                                          key={opt}
-                                          style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                            padding: '4px 10px', borderRadius: 999,
-                                            fontSize: '0.78rem', cursor: 'pointer',
-                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
-                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => {
-                                              const next = checked
-                                                ? field.showIf!.values.filter(v => v !== opt)
-                                                : [...field.showIf!.values, opt];
-                                              updateCustomField(field.id, {
-                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
-                                              });
-                                            }}
-                                            style={{ display: 'none' }}
-                                          />
-                                          {checked ? '✓' : '○'} {opt}
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={removeShowIf}
-                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
-                                  style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
-                                    padding: '4px 6px', marginLeft: 'auto',
-                                  }}
-                                >
-                                  ✕ {isDe ? 'entfernen' : 'remove'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
 
                     {/* v10.23: Dropdown-Optionen als gelisteter Editor mit
                         eigener Box. Pro Option eine Zeile mit Nummer +
@@ -6281,6 +6100,168 @@ export default function EventCreationPage(): React.ReactElement {
                                 </p>
                               )}
                             </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn
+                        eine andere Frage einen bestimmten Wert hat. Quelle
+                        kann nur ein Feld VOR diesem hier sein (idx < aktuell)
+                        und muss vom Typ select oder checkbox sein. */}
+                    {(() => {
+                      const candidateSources = customFields.slice(0, idx).filter(other =>
+                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
+                      );
+                      const sourceField = field.showIf
+                        ? customFields.find(o => o.id === field.showIf!.fieldId)
+                        : null;
+                      const removeShowIf = (): void => {
+                        // showIf gezielt loeschen: updateCustomField macht ein
+                        // shallow-merge, also setzen wir undefined und filtern
+                        // beim Save raus.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        updateCustomField(field.id, { showIf: undefined as any });
+                      };
+                      return (
+                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
+                          {!field.showIf ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (candidateSources.length === 0) {
+                                    alert(isDe
+                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
+                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
+                                    return;
+                                  }
+                                  const first = candidateSources[0];
+                                  updateCustomField(field.id, {
+                                    showIf: {
+                                      fieldId: first.id,
+                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
+                                    },
+                                  });
+                                }}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0,
+                                  color: 'var(--dex-green-dark, #4a7c1f)',
+                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
+                              </button>
+                              <InfoTooltip
+                                text={isDe
+                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
+                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
+                              />
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
+                                <InfoTooltip
+                                  text={isDe
+                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
+                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <select
+                                  className="form-select"
+                                  value={field.showIf.fieldId}
+                                  onChange={e => {
+                                    const newSrc = customFields.find(o => o.id === e.target.value);
+                                    if (!newSrc) return;
+                                    updateCustomField(field.id, {
+                                      showIf: {
+                                        fieldId: newSrc.id,
+                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
+                                      },
+                                    });
+                                  }}
+                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
+                                >
+                                  {candidateSources.map(o => (
+                                    <option key={o.id} value={o.id}>
+                                      {customFields.findIndex(c => c.id === o.id) + 1}. {o.label}
+                                    </option>
+                                  ))}
+                                  {/* fallback wenn die ausgewaehlte Quelle hinter dem Feld gelandet
+                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
+                                      aber als ungueltig markiert lassen. */}
+                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
+                                    <option value={sourceField.id} disabled>
+                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
+                                    </option>
+                                  )}
+                                </select>
+                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                                  {isDe ? '=' : '='}
+                                </span>
+                                {sourceField && sourceField.type === 'checkbox' ? (
+                                  <select
+                                    className="form-select"
+                                    value={field.showIf.values[0] || 'true'}
+                                    onChange={e => updateCustomField(field.id, {
+                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
+                                    })}
+                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
+                                  >
+                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
+                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
+                                  </select>
+                                ) : sourceField ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {(sourceField.options || []).filter(Boolean).map(opt => {
+                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
+                                      return (
+                                        <label
+                                          key={opt}
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '4px 10px', borderRadius: 999,
+                                            fontSize: '0.78rem', cursor: 'pointer',
+                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
+                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => {
+                                              const next = checked
+                                                ? field.showIf!.values.filter(v => v !== opt)
+                                                : [...field.showIf!.values, opt];
+                                              updateCustomField(field.id, {
+                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
+                                              });
+                                            }}
+                                            style={{ display: 'none' }}
+                                          />
+                                          {checked ? '✓' : '○'} {opt}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={removeShowIf}
+                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
+                                  style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
+                                    padding: '4px 6px', marginLeft: 'auto',
+                                  }}
+                                >
+                                  ✕ {isDe ? 'entfernen' : 'remove'}
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
                       );

@@ -1463,7 +1463,7 @@ function MyEventSubEvents(props: {
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-        {isDe ? 'Zusätzliche Sessions' : 'Additional sessions'}
+        {isDe ? 'Sub-Events' : 'Sub-events'}
       </div>
       {/* v10.22: kurzer Hinweis dass Sessions jederzeit nachträglich
           an/abgemeldet werden können — Mail + Kalendereintrag laufen

@@ -669,7 +669,10 @@ export default function RegistrationPage(): React.ReactElement {
       <div className="registration-layout">
         {/* Event-Info links */}
         <div className="registration-event">
-          <div className="section-header section-header--red">{t('reg.selectedevent')}</div>
+          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon iconName="Calendar" style={{ fontSize: 16 }} />
+            {t('reg.selectedevent')}
+          </div>
           <div
             className="registration-event__card"
             style={{
@@ -984,11 +987,14 @@ export default function RegistrationPage(): React.ReactElement {
                                 </label>
                               </div>
                             )}
-                            {isSel && isB2runSplit && inheritsStarter && preferredStarterType && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
-                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType === 'Durchstarter' ? splitLabelA : splitLabelB)}
-                              </div>
-                            )}
+                            {/* v10.25: B2Run-spezifischer Vererbungs-Hinweis
+                                entfernt — bei generischer Split-Capacity
+                                (z.B. "Vormittag/Nachmittag") wirkt der
+                                Hinweis "Starter-Typ wird vom Haupt-Event
+                                übernommen" verwirrend. Die Logik bleibt
+                                (Sub-Event übernimmt die Gruppen-Wahl des
+                                Parents), nur die explizite UI-Zeile ist
+                                weg. */}
                           </div>
                         </label>
                       </div>
@@ -1012,7 +1018,10 @@ export default function RegistrationPage(): React.ReactElement {
 
         {/* Persoenliche Daten */}
         <div className="registration-form">
-          <div className="section-header">{t('reg.personalinfo')}</div>
+          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon iconName="ContactInfo" style={{ fontSize: 16 }} />
+            {t('reg.personalinfo')}
+          </div>
           <div style={{ padding: '24px 20px' }}>
             <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
               <span className="required">*</span> = {t('reg.requiredfield')}
@@ -1204,9 +1213,10 @@ export default function RegistrationPage(): React.ReactElement {
               <label className="form-label"><span className="required">*</span> {t('reg.salutation')}</label>
               <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)} style={showErrors && !salutation ? errorBorder : {}}>
                 <option value="">{t('reg.pleaseselect')}</option>
-                <option value="Herr">Herr</option>
-                <option value="Frau">Frau</option>
-                <option value="Divers">Divers</option>
+                <option value="Herr">{locale === 'de' ? 'Herr' : 'Mr'}</option>
+                <option value="Frau">{locale === 'de' ? 'Frau' : 'Mrs'}</option>
+                <option value="Divers">{locale === 'de' ? 'Divers' : 'Diverse'}</option>
+                <option value="Keine Angabe">{locale === 'de' ? 'Keine Angabe' : 'Prefer not to say'}</option>
               </select>
             </div>
 
@@ -1233,7 +1243,10 @@ export default function RegistrationPage(): React.ReactElement {
             Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
             Event-Karte). */}
         <div className="registration-specific">
-          <div className="section-header">{t('reg.eventinfo')}</div>
+          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon iconName="EditNote" style={{ fontSize: 16 }} />
+            {t('reg.eventinfo')}
+          </div>
           <div style={{ padding: '24px 20px' }}>
             {/* v10.20: Hauptevent + Sessions-Auswahl. Wird nur bei Events mit
                 Sub-Events ueberhaupt gerendert. Bei "fuer andere Person
@@ -1375,11 +1388,14 @@ export default function RegistrationPage(): React.ReactElement {
                                 </label>
                               </div>
                             )}
-                            {isSel && isB2runSplit && inheritsStarter && preferredStarterType && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
-                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType === 'Durchstarter' ? splitLabelA : splitLabelB)}
-                              </div>
-                            )}
+                            {/* v10.25: B2Run-spezifischer Vererbungs-Hinweis
+                                entfernt — bei generischer Split-Capacity
+                                (z.B. "Vormittag/Nachmittag") wirkt der
+                                Hinweis "Starter-Typ wird vom Haupt-Event
+                                übernommen" verwirrend. Die Logik bleibt
+                                (Sub-Event übernimmt die Gruppen-Wahl des
+                                Parents), nur die explizite UI-Zeile ist
+                                weg. */}
                           </div>
                         </label>
                       </div>
