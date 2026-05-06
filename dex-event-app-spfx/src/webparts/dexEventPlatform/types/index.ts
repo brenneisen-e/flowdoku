@@ -95,8 +95,28 @@ export interface DeloitteEvent {
    *  100er-Verteiler 5 Personen gezielt rausgenommen werden sollen. */
   excludedUsers?: string[];
   isFictive?: boolean;       // Wenn true: Event nur fuer Admins + eigene Organizer sichtbar (Test-Event)
-  durchstarterCapacity?: number; // B2Run: getrennte Kapazitaet fuer Durchstarter
-  funstarterCapacity?: number;   // B2Run: getrennte Kapazitaet fuer Funstarter
+  /** Geteilte Kapazitäten — bis v10.19 nur fuer B2Run gedacht (Durchstarter /
+   *  Funstarter), seit v10.20 generisch fuer beliebige Events nutzbar. Wenn
+   *  beide > 0 zeigt die Registration-Seite zwei nebeneinanderstehende Boxen
+   *  zur Auswahl. Die Beschriftungen kommen aus splitLabelA/splitLabelB; ist
+   *  dort nichts hinterlegt, wird der historische Default
+   *  "Durchstarter"/"Funstarter" verwendet (Backward-Compat fuer B2Run-Events
+   *  vor v10.20). */
+  durchstarterCapacity?: number;
+  funstarterCapacity?: number;
+  /** v10.20: frei wählbare Beschriftungen fuer die zwei Kapazitäts-Gruppen.
+   *  Beispiel: "Vormittag" / "Nachmittag", "Lauf 5 km" / "Lauf 10 km",
+   *  "VIP" / "Standard". Bei B2Run-Legacy-Events leer = Default. */
+  splitLabelA?: string;
+  splitLabelB?: string;
+  /** v10.20: Warteliste-Verhalten bei aktiver Split-Capacity.
+   *  - false / undefined (Default): zwei getrennte Wartelisten — eine pro
+   *    Gruppe, Nachrueck-Logik bleibt typ-bewusst (alter B2Run-Stil).
+   *  - true: eine gemeinsame Warteliste — wer zuerst auf der Warteliste war,
+   *    rueckt nach, unabhaengig von der Gruppe. Sinnvoll z.B. wenn die zwei
+   *    Gruppen nur ein UI-Konstrukt sind aber organisatorisch fluide
+   *    behandelt werden. */
+  splitSharedWaitlist?: boolean;
   /** Seit v6.15: optionale Verknüpfung Starter-Typ → Startblock. Wenn gesetzt,
    *  wird bei der Registrierung automatisch das passende Startblock-Custom-Field
    *  gesetzt (keine Einzel-Auswahl durch den User nötig). */

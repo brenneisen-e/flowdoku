@@ -16,8 +16,51 @@ Wird aktualisiert wenn Flows geändert werden.
 ## 1. DEX_IDReorder_TeilnehmerIDs
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
-**Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten)
-**Letztes Update:** 2026-04-22 (v6.7)
+**Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
+**Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
+
+### UI-Anleitung 2026-05-06 (v10.20) — Shared-Waitlist-Modus respektieren
+
+**Hintergrund:** seit App-Version v10.20 kann der Organizer pro Event entscheiden, ob bei aktiver Split-Capacity (DurchstarterCapacity > 0 AND FunstarterCapacity > 0) **eine gemeinsame Warteliste** (FIFO über beide Gruppen) oder **zwei getrennte Wartelisten** (typ-bewusst, alter B2Run-Stil) gelten sollen. Die Information steckt im neuen Boolean-Feld `SplitSharedWaitlist` in `DEX_Events`. Aktuell ignoriert der Flow das Feld — er promotet immer typ-bewusst, sobald beide Kapazitäten > 0 sind. Damit der Shared-Modus auch beim User-Self-Cancel greift, muss der Flow um eine zusätzliche Bedingungs-Zeile erweitert werden.
+
+**Was sich ändert:** in der Bedingungs-Action `Is_B2RunSplit` kommt eine dritte Bedingungs-Zeile hinzu, die prüft ob `SplitSharedWaitlist` **nicht** auf `true` steht. Nur wenn alle drei Bedingungen JA sind (DurchCap > 0 UND FunCap > 0 UND SharedWaitlist = false), läuft der typ-bewusste Zweig. Sobald der Organizer für ein Event die gemeinsame Warteliste aktiviert, fällt der Flow in den NEIN-Zweig (`Check_Nachrücken`) und nimmt den ältesten Wartelistler ohne Typ-Filter — exakt der gewünschte FIFO-Modus.
+
+**UI-Schritte (Power Automate Maker, Cloud-Flow-Editor):**
+
+1. Öffne <https://make.powerautomate.com> → links **Meine Flows** → Flow **DEX_IDReorder_TeilnehmerIDs** anklicken → oben rechts **Bearbeiten** klicken.
+2. Im Editor scrollst du zur Scope-Action **Process_Batch_Scope**. Innerhalb des Scope findest du die Bedingungs-Action **Is_B2RunSplit** (sie steht direkt nach **Get_EventDetails** und vor den Promote-Zweigen). Klick einmal auf die Header-Leiste der Bedingung, damit sie aufgeklappt ist.
+3. In der Bedingung siehst du aktuell zwei Zeilen, mit `And` verknüpft:
+   - Zeile 1: `DurchstarterCapacity` `is greater than` `0`
+   - Zeile 2: `FunstarterCapacity` `is greater than` `0`
+
+   Klick rechts neben Zeile 2 auf die drei Punkte (`⋮`) → **Add → Add row** (deutsch: **Hinzufügen → Zeile hinzufügen**). Eine dritte leere Zeile erscheint. Stelle sicher, dass die Verknüpfung oben weiterhin `And` ist (nicht `Or`).
+4. **Linkes Feld** der neuen Zeile: klick rein → es öffnet sich der Picker mit zwei Tabs **Dynamic content** und **Expression**. Wechsle auf den **Expression**-Tab (oder das `fx`-Symbol). In das Eingabefeld tippst du folgende Expression — zeichengenau, eine einzige Zeile:
+
+   ```
+   coalesce(first(outputs('Get_EventDetails')?['body/value'])?['SplitSharedWaitlist'], false)
+   ```
+
+   Klicke **OK** / **Add**. Das `coalesce` sorgt dafür, dass alte Events ohne die `SplitSharedWaitlist`-Spalte (Wert ist `null`) wie `false` behandelt werden — sonst würde die Bedingung bei Legacy-Events brechen.
+5. **Operator** (mittleres Dropdown der Zeile): wähle **is equal to** (deutsch: **ist gleich**).
+6. **Rechtes Feld** der neuen Zeile: klick rein → Tab **Expression** (`fx`) → tippe genau:
+
+   ```
+   false
+   ```
+
+   Klicke **OK** / **Add**. Wichtig: das muss die Expression `false` sein (Boolean-Literal), nicht der String `"false"`. Wenn du nur `false` ohne Anführungszeichen einträgst und auf OK klickst, ist es korrekt.
+7. Oben rechts klick auf **Save** (deutsch: **Speichern**). Der Save-Dialog kann ein paar Sekunden brauchen, weil PA den Flow gegen den SP-Connector validiert.
+
+**Verifikation:**
+
+- Lege im Tenant ein Test-Event mit Split-Capacity an, setze in Schritt 3 (Kapazität & Sichtbarkeit) den Toggle **Eine gemeinsame Warteliste**, gib z.B. 1 Platz Gruppe A + 1 Platz Gruppe B + Warteliste aktiv. Melde dich + zwei Test-Personen an, sodass jede Gruppe voll ist und mindestens einer auf der Warteliste steht. Melde dann den Angemeldeten der "falschen" Gruppe ab. Erwartet: **die Person auf der Warteliste rückt nach, egal welche Gruppe sie ursprünglich gewählt hatte** (also auch wenn der freie Platz in einer anderen Gruppe entsteht).
+- Bei einem Event ohne den Toggle (oder bei einem Legacy-B2Run-Event ohne `SplitSharedWaitlist`-Spalte) bleibt das Verhalten unverändert: typ-bewusste Promotion, Funstarter rücken nicht in Durchstarter-Plätze und umgekehrt.
+
+**Was passiert mit dem `StarterType` des Nachrückers?** Im NEIN-Zweig (Check_Nachrücken → Promote_Waitlist) setzt der Flow nur `Status = Angemeldet`, der `StarterType` bleibt unverändert. Das heißt: die nachrückende Person behält ihren `PreferredStarterType` als `StarterType`. Praktisch heißt das für den Organizer: bei aktiver gemeinsamer Warteliste kann es passieren, dass ein Funstarter-Slot leer bleibt, während ein Durchstarter aus der Warteliste nachrückt — die zwei Capacity-Werte sind dann nur noch Sum-Indikator. Genau das ist Sinn der Option.
+
+**Caveat:** wenn du den Flow nicht anpasst, funktioniert der Shared-Waitlist-Modus nur beim **Admin-Cancel** (Organizer/Admin meldet jemanden im Admin Center ab) — die App-Logik in `AdminPage.tsx` respektiert `splitSharedWaitlist` clientseitig. Beim **User-Self-Cancel** läuft der PA-Flow, der ohne diese Anpassung weiter typ-bewusst promotet.
+
+Sobald die Änderung im Tenant gespeichert ist: bitte den exportierten Flow-JSON (Maker → drei Punkte rechts oben am Flow → **Export → Code view** oder per `Get-AdminFlow` PowerShell) zurückspielen, dann aktualisieren wir den `Is_B2RunSplit`-Block weiter unten in dieser Datei.
 
 ### Änderungen 2026-04-22 (v6.7) — Typ-bewusster Promote für B2Run-Split
 

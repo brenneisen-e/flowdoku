@@ -83,6 +83,20 @@ export function myEventsSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
           },
+          {
+            number: 5,
+            title: isDe ? 'Sessions / Sub-Events nachträglich an- und abmelden' : 'Sub-events: register or cancel later',
+            description: (
+              <>
+                {isDe
+                  ? 'Bei Events mit Sub-Events (z.B. Trainingssessions, optionale Workshops) findest du auf der Event-Karte unter „Zusätzliche Sessions" eine Liste aller verfügbaren Sub-Events. Pro Sub-Event gibt es einen eigenen Anmelden- oder Abmelden-Button. Du kannst dich also jederzeit nachträglich für eine Session anmelden, auch wenn du dich bei der initialen Anmeldung nur für das Hauptevent entschieden hast — und genauso umgekehrt einzelne Sessions wieder abmelden, ohne dass deine Hauptevent-Anmeldung berührt wird. Bei jeder dieser Aktionen verschickt die App automatisch eine Bestätigungs-Mail (Anmelde- bzw. Abmelde-Mail im Deloitte-Layout) und legt den Outlook-Termin der Session in deinem Kalender an oder zieht ihn zurück.'
+                  : 'For events with sub-events (e.g. training sessions or optional workshops), the event card shows an "Additional sessions" block listing every available sub-event. Each sub-event has its own register / cancel button. You can therefore register for a session at any later point — even if you only signed up for the main event initially — and also cancel individual sessions later without touching your main-event registration. Every such action triggers a confirmation mail (register / cancel mail in the Deloitte layout) and creates or removes the Outlook calendar entry for the session.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Du kannst dich auch nur fürs Hauptevent abmelden und für die Sessions weiter angemeldet bleiben. In dem Fall taucht das Event in „Meine Events" mit dem Badge „Nur Sessions" auf — die Session-Liste bleibt sichtbar und du kannst sie weiterhin verwalten.'
+              : 'You can also cancel just the main event and stay registered for the sessions. The event then appears in "My Events" with a "Sessions only" badge — the session list stays visible and editable.',
+          },
         ],
       },
     ],

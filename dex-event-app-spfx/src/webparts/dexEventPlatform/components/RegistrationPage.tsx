@@ -221,6 +221,12 @@ export default function RegistrationPage(): React.ReactElement {
   const durchCap = (event && typeof event.durchstarterCapacity === 'number') ? event.durchstarterCapacity : 0;
   const funCap = (event && typeof event.funstarterCapacity === 'number') ? event.funstarterCapacity : 0;
   const isB2runSplit = !!event && durchCap > 0 && funCap > 0;
+  // v10.20: frei waehlbare Bezeichnungen aus dem Event laden, mit Fallback auf
+  // die historischen B2Run-Defaults 'Durchstarter' / 'Funstarter'. Die internen
+  // Werte fuer SP-Persistenz (StarterType-Spalte) bleiben unveraendert — das
+  // Label ist reines UI.
+  const splitLabelA = (event?.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+  const splitLabelB = (event?.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
   const singleStarterType: string = (!event || (durchCap <= 0 && funCap <= 0))
     ? '' // kein B2Run-Event ueberhaupt
     : (durchCap > 0 && funCap <= 0) ? 'Durchstarter'
@@ -812,21 +818,15 @@ export default function RegistrationPage(): React.ReactElement {
                   : (locale === 'en' ? 'people' : 'Personen'))}
             </p>
           )}
-          {/* v6.14: Integrierte Event-Auswahl — Parent + Sessions auf einer Seite.
-              Bei "für andere Person anmelden" bleibt der alte Flow (nur Parent, keine
-              Session-Auswahl), weil die Session-Zuordnung über getMyRegistration
-              nur für den eingeloggten User funktioniert.
-              Checkbox "Hauptevent anmelden" erscheint immer, ist bei bereits
-              Angemeldeten automatisch aus + disabled. Sessions erscheinen mit
-              eigener Checkbox; bei B2Run-Parents nur dann mit Durchstarter-/
-              Funstarter-Auswahl, wenn der User sich NICHT gleichzeitig fürs
-              Haupt-Event anmeldet (sonst wird der Haupt-Event-Starter-Typ
-              automatisch auf die Session-Anmeldung übernommen). */}
-          {/* v7.3: Selection-Block nur rendern, wenn es tatsächlich Sub-Events
-              gibt. Bei einem Event ohne Sessions ist die Checkbox "Haupt-Event"
-              redundant (es gibt nichts alternatives zum Abwählen), also
-              komplett weglassen. */}
-          {childEvents.length > 0 && (
+          {/* v10.20: Sessions-/Hauptevent-Auswahl ist nun in die rechte Spalte
+              ('registration-specific') eingebettet — siehe weiter unten unter
+              dem section-header "reg.eventinfo". Vorher stand der Block hier
+              in der linken Event-Karten-Spalte; das Layout war optisch
+              ungleich (links wuchs unbegrenzt, rechts gar nichts) und der
+              User musste zwischen Spalten hin- und her-springen. Jetzt sind
+              alle Anmelde-Inputs (Sessions, Starter-Typ, Custom-Fields) in
+              einer Spalte gebuendelt. */}
+          {false && (
             <div style={{ marginTop: 16, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
               <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
@@ -953,7 +953,8 @@ export default function RegistrationPage(): React.ReactElement {
                                 {t('reg.subevents.sessionfull')}
                               </div>
                             )}
-                            {/* B2Run Starter-Typ pro Session — nur wenn NICHT vom Parent geerbt */}
+                            {/* v10.20: Gruppen-Auswahl pro Session — nur wenn NICHT vom Parent geerbt.
+                                Dynamische Labels splitLabelA / splitLabelB. */}
                             {isSel && isB2runSplit && !inheritsStarter && (
                               <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
@@ -963,7 +964,7 @@ export default function RegistrationPage(): React.ReactElement {
                                     checked={sType === 'Durchstarter'}
                                     onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Durchstarter' })}
                                   />
-                                  Durchstarter
+                                  {splitLabelA}
                                 </label>
                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                                   <input
@@ -972,13 +973,13 @@ export default function RegistrationPage(): React.ReactElement {
                                     checked={sType === 'Funstarter'}
                                     onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Funstarter' })}
                                   />
-                                  Funstarter
+                                  {splitLabelB}
                                 </label>
                               </div>
                             )}
                             {isSel && isB2runSplit && inheritsStarter && preferredStarterType && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
-                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType)}
+                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType === 'Durchstarter' ? splitLabelA : splitLabelB)}
                               </div>
                             )}
                           </div>
@@ -1219,12 +1220,177 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Eventspezifische Felder (inkl. B2Run Starter-Typ-Auswahl wenn beide
-            Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser automatisch
-            gesetzt und gar nicht angezeigt). */}
+        {/* Eventspezifische Felder (inkl. Split-Capacity Starter-Typ-Auswahl wenn
+            beide Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser
+            automatisch gesetzt und gar nicht angezeigt). v10.20: Sessions-/
+            Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
+            Event-Karte). */}
         <div className="registration-specific">
           <div className="section-header">{t('reg.eventinfo')}</div>
           <div style={{ padding: '24px 20px' }}>
+            {/* v10.20: Hauptevent + Sessions-Auswahl. Wird nur bei Events mit
+                Sub-Events ueberhaupt gerendert. Bei "fuer andere Person
+                anmelden" bleibt der alte Flow (nur Parent), weil die
+                Session-Zuordnung ueber getMyRegistration nur fuer den
+                eingeloggten User funktioniert. */}
+            {childEvents.length > 0 && (
+              <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+                <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
+                  {t('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
+                </p>
+
+                {/* Haupt-Event-Checkbox */}
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${registerForParent && !parentAlreadyRegistered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                  background: registerForParent && !parentAlreadyRegistered ? 'rgba(134,188,37,0.06)' : '#fff',
+                  cursor: parentAlreadyRegistered ? 'default' : 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={parentAlreadyRegistered ? true : registerForParent}
+                    disabled={parentAlreadyRegistered}
+                    onChange={e => setRegisterForParent(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700 }}>{t('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
+                    {parentAlreadyRegistered && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        {t('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                {/* Sessions */}
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
+                  {childEvents.map(ce => {
+                    const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                    const isSel = selectedSessions.has(ce.id);
+                    const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+                    const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                    const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                    const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
+                    const inheritsStarter = isB2runSplit && (willRegisterParent || registerForOther);
+                    const sType = sessionStarterType[ce.id] || '';
+
+                    return (
+                      <div key={ce.id} style={{
+                        padding: 10, borderRadius: 8,
+                        border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                        background: isSel ? 'rgba(134,188,37,0.06)' : '#fff',
+                      }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            disabled={disabled}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                const hasCustomFields = (ce.eventSpecificFields || []).length > 0;
+                                if (hasCustomFields) {
+                                  setPendingSubEventModal({
+                                    subEventId: ce.id,
+                                    draftValues: { ...(sessionFieldValues[ce.id] || {}) },
+                                  });
+                                } else {
+                                  const next = new Set(selectedSessions);
+                                  next.add(ce.id);
+                                  setSelectedSessions(next);
+                                }
+                              } else {
+                                const next = new Set(selectedSessions);
+                                next.delete(ce.id);
+                                setSelectedSessions(next);
+                                setSessionFieldValues(prev => {
+                                  const copy = { ...prev };
+                                  delete copy[ce.id];
+                                  return copy;
+                                });
+                              }
+                            }}
+                            style={{ marginTop: 2 }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700 }}>{ce.title || t('reg.subevents.untitled')}</div>
+                            {ce.description && (
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                            )}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {ce.startDate && <>{formatDate(ce.startDate)}</>}
+                              {ce.location && <> · {ce.location}</>}
+                              {hasCap && (() => {
+                                const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
+                                return (
+                                  <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
+                                    {meta.count}/{ce.maxParticipants} {t('reg.subevents.taken')}
+                                  </span>
+                                  {!isSessionFull && (
+                                    <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {t('reg.free')}</span>
+                                  )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                            {deadlinePassed && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
+                                {t('reg.subevents.deadlinepassed')}
+                              </div>
+                            )}
+                            {isSessionFull && !isSel && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-red)', marginTop: 2 }}>
+                                {t('reg.subevents.sessionfull')}
+                              </div>
+                            )}
+                            {isSel && isB2runSplit && !inheritsStarter && (
+                              <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`starter-${ce.id}`}
+                                    checked={sType === 'Durchstarter'}
+                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Durchstarter' })}
+                                  />
+                                  {splitLabelA}
+                                </label>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`starter-${ce.id}`}
+                                    checked={sType === 'Funstarter'}
+                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Funstarter' })}
+                                  />
+                                  {splitLabelB}
+                                </label>
+                              </div>
+                            )}
+                            {isSel && isB2runSplit && inheritsStarter && preferredStarterType && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4, fontStyle: 'italic' }}>
+                                {(t('reg.selection.starterinherited') || 'Starter-Typ wird vom Haupt-Event übernommen').replace('{type}', preferredStarterType === 'Durchstarter' ? splitLabelA : splitLabelB)}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {isSessionsOnlyMode && selectedSessions.size > 0 && (
+                  <div style={{
+                    marginTop: 12, padding: '8px 10px', borderRadius: 6,
+                    background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
+                    color: 'var(--dex-orange)', fontSize: '0.78rem',
+                  }}>
+                    {t('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
+                  </div>
+                )}
+              </div>
+            )}
             {isB2runSplit && (
               <div className="form-group" style={{ marginBottom: 20 }}>
                 <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
@@ -1234,9 +1400,16 @@ export default function RegistrationPage(): React.ReactElement {
                   {t('reg.starter.hint')}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {/* v10.20: dynamische Labels (event.splitLabelA / B mit
+                      Fallback auf 'Durchstarter' / 'Funstarter' fuer alte
+                      B2Run-Events). Die internen IDs ('Durchstarter',
+                      'Funstarter') bleiben fuer SP-Persistenz unveraendert.
+                      Beschreibungs-Texte zeigen wir nur, wenn die Default-
+                      Labels aktiv sind — bei frei waehlbaren Labels macht der
+                      B2Run-spezifische Lauf-Hinweis keinen Sinn. */}
                   {([
-                    { id: 'Durchstarter', label: t('reg.starter.durch'), desc: t('reg.starter.durch.desc'), cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
-                    { id: 'Funstarter', label: t('reg.starter.fun'), desc: t('reg.starter.fun.desc'), cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
+                    { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
+                    { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
                   ]).map(opt => {
                     const free = opt.cap - opt.count;
                     const isFull = free <= 0;
@@ -1526,44 +1699,55 @@ export default function RegistrationPage(): React.ReactElement {
               boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
             }}
           >
-            <h3 style={{ margin: 0, marginBottom: 10 }}>
-              {fallbackDialog.wunsch}-Plätze sind voll
-            </h3>
-            <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 8 }}>
-              Für <strong>{fallbackDialog.wunsch}</strong> gibt es aktuell keine freien Plätze mehr.
-            </p>
-            <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 20 }}>
-              Es sind allerdings noch <strong>{fallbackDialog.altFree}</strong> Plätze als <strong>{fallbackDialog.alt}</strong> frei.
-              Möchtest du stattdessen als <strong>{fallbackDialog.alt}</strong> starten?
-            </p>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: '0.9rem' }}
-                onClick={async () => {
-                  const wunsch = fallbackDialog.wunsch;
-                  setFallbackDialog(null);
-                  // Wunsch beibehalten → landet auf Warteliste für den Wunsch-Typ.
-                  await performRegistration(wunsch);
-                }}
-              >
-                Auf {fallbackDialog.wunsch}-Warteliste
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ fontSize: '0.9rem' }}
-                onClick={async () => {
-                  const alt = fallbackDialog.alt;
-                  setFallbackDialog(null);
-                  // Preferred auf den Alt-Typ setzen, damit sowohl Anzeige
-                  // als auch das Register-Payload den neuen Wunsch nutzen.
-                  setPreferredStarterType(alt);
-                  await performRegistration(alt);
-                }}
-              >
-                Als {fallbackDialog.alt} starten
-              </button>
-            </div>
+            {(() => {
+              // v10.20: Label-Mapping fuer die freie Bezeichnung — wunsch/alt
+              // sind interne IDs ('Durchstarter' / 'Funstarter'); die Anzeige
+              // nimmt splitLabelA / splitLabelB.
+              const wunschLabel = fallbackDialog.wunsch === 'Durchstarter' ? splitLabelA : splitLabelB;
+              const altLabel = fallbackDialog.alt === 'Durchstarter' ? splitLabelA : splitLabelB;
+              return (
+                <>
+                  <h3 style={{ margin: 0, marginBottom: 10 }}>
+                    {wunschLabel}-Plätze sind voll
+                  </h3>
+                  <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 8 }}>
+                    Für <strong>{wunschLabel}</strong> gibt es aktuell keine freien Plätze mehr.
+                  </p>
+                  <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 20 }}>
+                    Es sind allerdings noch <strong>{fallbackDialog.altFree}</strong> Plätze als <strong>{altLabel}</strong> frei.
+                    Möchtest du stattdessen als <strong>{altLabel}</strong> starten?
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.9rem' }}
+                      onClick={async () => {
+                        const wunsch = fallbackDialog.wunsch;
+                        setFallbackDialog(null);
+                        // Wunsch beibehalten → landet auf Warteliste für den Wunsch-Typ.
+                        await performRegistration(wunsch);
+                      }}
+                    >
+                      Auf {wunschLabel}-Warteliste
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.9rem' }}
+                      onClick={async () => {
+                        const alt = fallbackDialog.alt;
+                        setFallbackDialog(null);
+                        // Preferred auf den Alt-Typ setzen, damit sowohl Anzeige
+                        // als auch das Register-Payload den neuen Wunsch nutzen.
+                        setPreferredStarterType(alt);
+                        await performRegistration(alt);
+                      }}
+                    >
+                      Als {altLabel} starten
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

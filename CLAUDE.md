@@ -69,6 +69,44 @@ Fall ist — im Zweifel immer Minor-Bump).
 - Per-Event: Subsite with "Teilnehmer" registration list
 - Shared Mailbox: `no_reply.events@deloitte.de`
 
+### Event-Schema (Stand v10.20): kein Type-Unterschied mehr
+
+Seit **v10.20** gibt es kein hartes B2Run-vs-Deloitte-Schema mehr. Alle Events
+laufen auf demselben Eventschema. Die Funktion **"Geteilte Kapazität"** (zwei
+Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste) ist
+generisch nutzbar — der Organizer vergibt die Bezeichnungen frei.
+
+Neue SP-Spalten in `DEX_Events`:
+
+- `SplitLabelA` (Single line text) — Bezeichnung Gruppe A (z.B. "Vormittag",
+  "VIP", "Lauf 5 km"). Leer = Default-Fallback `'Durchstarter'`.
+- `SplitLabelB` (Single line text) — Bezeichnung Gruppe B. Leer =
+  Default-Fallback `'Funstarter'`.
+- `SplitSharedWaitlist` (Boolean) — `true` = eine gemeinsame Warteliste über
+  beide Gruppen (FIFO), `false`/leer = getrennte Wartelisten pro Gruppe
+  (alter B2Run-Stil mit typ-bewusstem Nachrücken).
+
+Die SP-Spalte `EventType` ist **seit v5.2 deprecated** und wird **mit v10.20
+auch in der UI nicht mehr abgefragt**. Der Type wird beim Laden aus
+`CustomFields` abgeleitet (Presence von `b2run_startblock` ⇒ `'B2Run'`,
+sonst `'Other'`). Per Admin-Center-Button **"B2Run migrieren"** kann ein
+einzelnes Legacy-Event auf das neue Standard-Schema umgestellt werden — das
+entfernt die b2run_*-Custom-Fields und persistiert `'Durchstarter'` /
+`'Funstarter'` explizit in `SplitLabelA` / `SplitLabelB`.
+
+**Caveat Power-Automate-Flow `DEX_IDReorder_TeilnehmerIDs`:** ohne Flow-
+Anpassung promotet der Flow weiterhin typ-bewusst, auch wenn
+`SplitSharedWaitlist=true` gesetzt ist. Für die Admin-Center-Abmeldung
+läuft die Promotion clientseitig und respektiert `splitSharedWaitlist`
+korrekt (siehe `AdminPage.tsx`, `useTypeFilter`-Logik). Damit der
+gemeinsame Wartelisten-Modus **auch beim User-Self-Cancel** greift, muss
+in der `Is_B2RunSplit`-Bedingung des Flows eine dritte Zeile ergänzt
+werden — die UI-Schritt-für-Schritt-Anleitung steht in
+`docs/flow-jsons.md` unter "UI-Anleitung 2026-05-06 (v10.20) — Shared-
+Waitlist-Modus respektieren". Sobald die Änderung im Tenant
+durchgeklickt und gespeichert ist, bitte den neuen Flow-JSON in
+`docs/flow-jsons.md` einpflegen.
+
 ### SharePoint REST API — MERGE-Requests (WICHTIG)
 
 Bei allen SharePoint-List-Item-Updates per `this._merge(url, body)`:
