@@ -1978,8 +1978,17 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
               }));
+            // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
+            // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
+            // sobald die generische Split-Capacity ohne B2Run-Template
+            // genutzt wird — dann hat das Event Split-Kapazitäten + StarterType-
+            // Werte in der Teilnehmerliste, aber `isB2runTemplate=false`. Der
+            // Fix-Lauf hat daraufhin StarterType + PreferredStarterType
+            // gelöscht und die Teilnehmer-Daten weggeworfen. Korrekter Check:
+            // entweder altes B2Run-Template ODER Split-Capacity aktiv.
+            const splitActive = useSplitCapacities && ((parseInt(durchstarterCapacity, 10) || 0) > 0 || (parseInt(funstarterCapacity, 10) || 0) > 0);
             const fixResult = await svc.fixRegistrationListColumns(editEvent.subsiteUrl, {
-              isB2Run: isB2runTemplate,
+              isB2Run: isB2runTemplate || splitActive,
               hasQuiz: quiz.length > 0,
               customFields: cfForFix,
             });
@@ -2206,11 +2215,16 @@ export default function EventCreationPage(): React.ReactElement {
 
       clearInterval(progressTimer);
       if (eventId) {
-        setProgress(100);
-        setProgressLabel('Event erfolgreich erstellt!');
-        // Sub-Events als eigene DEX_Events-Items mit parentEventId=eventId anlegen.
+        // v11.4: nicht direkt auf 100% — der ganze Block darunter
+        // (Sub-Events, Dokumente, Event-Bild, Organizer-Mails) läuft noch.
+        // Progress wird Schritt für Schritt erhöht und bei 2288 final auf
+        // 100% gesetzt.
+        setProgress(92);
+        setProgressLabel(isDe ? 'Sub-Events werden angelegt...' : 'Creating sub-events...');
         try { await persistSubEventsForParent(String(eventId)); }
         catch (err) { console.warn('[DEX] Sub-Events beim Create persistieren fehlgeschlagen:', err); }
+        setProgress(95);
+        setProgressLabel(isDe ? 'Dokumente und Bild werden hochgeladen...' : 'Uploading documents and image...');
         // E-Mail an Organisator senden
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -5926,7 +5940,13 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
                         title={isDe ? 'Art des Feldes' : 'Field type'}
                         style={{
-                          flex: '0 0 auto',
+                          /* v11.4: feste Breite, damit Label-Input + Typ-
+                             Selector + Pflicht-Pill + X immer in einer Zeile
+                             passen. Vorher: flex 0 0 auto = intrinsic Width
+                             — bei langen Options wie 'Roommate (Doppelzimmer)'
+                             wurde der Selector breiter und drückte das X in
+                             eine zweite Zeile. */
+                          flex: '0 0 200px', maxWidth: 200,
                           background: 'rgba(134,188,37,0.08)',
                           border: '1px solid var(--dex-green, #86bc25)',
                           color: 'var(--dex-green-dark, #4a7c1f)',
@@ -5935,11 +5955,11 @@ export default function EventCreationPage(): React.ReactElement {
                         }}
                       >
                         <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
-                        <option value="select">{isDe ? 'Dropdown (Auswahlliste)' : 'Dropdown (option list)'}</option>
+                        <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                         <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
-                        <option value="checkbox">{isDe ? 'Checkbox (Ja / Nein)' : 'Checkbox (yes / no)'}</option>
-                        <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
-                        <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
+                        <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                        <option value="user">{isDe ? 'Person' : 'Person'}</option>
+                        <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
                       </select>
                       <label
                         style={{

@@ -567,9 +567,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Die Entscheidung "möchte ich auf den anderen Typ umsteigen" trifft der User
     // explizit im UI (RegistrationPage Pre-Check-Dialog), bevor er hier reinkommt —
     // dann hat preferredStarterType bereits den neuen Wunsch.
-    const isB2runSplit = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+    const isSplitGroup = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
-    if (event && isB2runSplit && preferredStarterType) {
+    if (event && isSplitGroup && preferredStarterType) {
       try {
         const allRegs = await eventService.getAllRegistrations(subsiteUrl);
         const activeRegs = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
