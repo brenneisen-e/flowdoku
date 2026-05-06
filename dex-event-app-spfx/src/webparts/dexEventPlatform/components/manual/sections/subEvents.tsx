@@ -12,7 +12,7 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
   return {
     id: 'sub-events',
-    title: isDe ? 'Sub-Events (Trainingssessions)' : 'Sub-events (training sessions)',
+    title: isDe ? 'Sub-Events (Sessions, Workshops, Side-Events)' : 'Sub-events (sessions, workshops, side-events)',
     category: 'organizer',
     description: isDe
       ? 'Innerhalb eines Hauptevents mehrere Sessions anlegen — jede mit eigenem Termin, Ort, Kapazität, eigener An-/Abmelde-Mail und eigenem Outlook-Kalendereintrag. Seit v6.4 sind Sub-Events eigenständige DEX_Events-Items mit parentEventId — dadurch funktionieren Teilnehmerlisten, Warteliste, Outlook-Termine, Custom-Fields und Mail-Templates identisch zu Top-Level-Events (ohne Sonderlogik).'
@@ -28,8 +28,8 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Beispiel B2Run: Das Hauptevent ist der eigentliche Lauf. Dazu gibt es mehrere optionale Trainingssessions, fuer die sich Teilnehmer zusaetzlich anmelden koennen. Jede Session bekommt einen eigenen Outlook-Termin und eine eigene Bestaetigungsmail. Teilnehmer muessen sich zuerst zum Hauptevent anmelden und buchen danach beliebige Sessions einzeln dazu.'
-                  : 'Example B2Run: The main event is the actual run. In addition there are several optional training sessions attendees can sign up for. Each session gets its own Outlook invite and a dedicated confirmation email. Attendees register for the main event first and then opt in to any sessions individually.'}
+                  ? 'Sub-Events sind eigenstaendige Sessions innerhalb eines Hauptevents — z.B. ein mehrtaegiges Offsite mit Tagesblocks, ein Workshop-Track mit mehreren Themen-Sessions, ein Networking-Dinner als optionaler Add-on-Termin oder eine Kick-off-Session vor dem eigentlichen Event. Jedes Sub-Event hat einen eigenen Termin, Ort, Kapazitaet, eigene An-/Abmelde-Mail und einen eigenen Outlook-Kalendereintrag. Teilnehmer koennen sich zum Hauptevent anmelden und beliebige Sessions einzeln dazubuchen — entweder gleich bei der initialen Anmeldung oder spaeter ueber „Meine Events".'
+                  : 'Sub-events are standalone sessions inside a main event — e.g. a multi-day offsite with daily blocks, a workshop track with several theme sessions, a networking dinner as an optional add-on, or a kick-off session ahead of the main event. Each sub-event has its own date, location, capacity, own registration/cancellation email and dedicated Outlook calendar entry. Attendees register for the main event and then opt in to any sessions individually — either right at initial registration or later via "My Events".'}
               </>
             ),
           },
