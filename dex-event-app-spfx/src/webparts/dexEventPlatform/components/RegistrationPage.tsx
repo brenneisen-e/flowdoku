@@ -519,21 +519,30 @@ export default function RegistrationPage(): React.ReactElement {
       //      (shared) — sonst die pro-Session-Auswahl. So steht in der TN-Liste jeder
       //      Session korrekt, ob der Teilnehmer Durchstarter oder Funstarter ist.
       const inheritedStarterType = (willRegisterParent || registerForOther) ? (starterTypeToUse || preferredStarterType) : '';
-      if (!registerForOther) {
-        for (const ce of childEvents) {
-          const wasReg = sessionMeta[ce.id]?.wasRegistered;
-          const isSel = selectedSessions.has(ce.id);
-          if (isSel && !wasReg) {
-            const sType = (isB2runSplit && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
-            // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
-            // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
-            const seFieldValues = sessionFieldValues[ce.id] || {};
-            const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
-            if (ok) anySuccess = true;
-          } else if (!isSel && wasReg) {
-            await cancelRegistration(ce.id);
-            anySuccess = true;
-          }
+      // v10.15+: Sub-Event-Anmeldungen laufen auch beim Stellvertreter-Modus
+      // (registerForOther) durch. registerForEvent akzeptiert ja participantFirstName/
+      // -LastName/-Email als Argumente, daher kann der Assistent jede beliebige
+      // Person sowohl auf das Hauptevent als auch auf alle gewählten Sub-Events
+      // anmelden. Vorher war der Sub-Event-Loop hinter !registerForOther
+      // versteckt — Beobachtung des Users: 'beim register for someone else kann
+      // man nur fürs Main Event anmelden, nicht für die Sub-Events'. Fix.
+      for (const ce of childEvents) {
+        const wasReg = sessionMeta[ce.id]?.wasRegistered;
+        const isSel = selectedSessions.has(ce.id);
+        if (isSel && !wasReg) {
+          const sType = (isB2runSplit && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
+          // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
+          // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
+          const seFieldValues = sessionFieldValues[ce.id] || {};
+          const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
+          if (ok) anySuccess = true;
+        } else if (!isSel && wasReg && !registerForOther) {
+          // Cancel-Pfad bleibt aufs Selbst-Anmelden begrenzt: ein Stellvertreter
+          // soll nicht aus Versehen einen Sub-Event-Slot des Anderen freigeben
+          // weil er den Haken nicht gesetzt hat. Wer einen TN abmelden will,
+          // macht das aktiv im Admin Center.
+          await cancelRegistration(ce.id);
+          anySuccess = true;
         }
       }
 
@@ -795,7 +804,7 @@ export default function RegistrationPage(): React.ReactElement {
               gibt. Bei einem Event ohne Sessions ist die Checkbox "Haupt-Event"
               redundant (es gibt nichts alternatives zum Abwählen), also
               komplett weglassen. */}
-          {!registerForOther && childEvents.length > 0 && (
+          {childEvents.length > 0 && (
             <div style={{ marginTop: 16, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
               <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>

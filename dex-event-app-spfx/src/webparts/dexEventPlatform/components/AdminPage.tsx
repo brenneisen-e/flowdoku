@@ -476,15 +476,21 @@ export default function AdminPage(): React.ReactElement {
         }
       }
 
-      // Custom-Felder des Events
+      // Custom-Felder des Events. v10.15+: nur Felder ins Patch aufnehmen die
+      // sich tatsächlich geändert haben — sonst sendet ein unverändertes
+      // Choice-Feld ohne ausgewählten Wert einen leeren String an SP, der
+      // mit HTTP 400 'Invalid choice' kippt und das ganze Update abbricht.
       if (selectedEvent?.eventSpecificFields) {
         for (const f of selectedEvent.eventSpecificFields) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sp = (f as any).spInternalName || '';
           if (!sp) continue;
+          const oldVal = r[sp] !== undefined && r[sp] !== null ? String(r[sp]) : '';
+          const newVal = editForm[sp] || '';
+          if (newVal === oldVal) continue;  // unverändert → skip
           fieldLabelMap[sp] = f.label;
-          oldValues[sp] = r[sp] !== undefined && r[sp] !== null ? String(r[sp]) : '';
-          patch[sp] = editForm[sp] || '';
+          oldValues[sp] = oldVal;
+          patch[sp] = newVal;
         }
       }
 
@@ -524,9 +530,13 @@ export default function AdminPage(): React.ReactElement {
         selectedEvent.subsiteUrl, editingReg.Id, patch, actor, oldValues, fieldLabelMap
       );
       if (!ok) {
+        // Häufigste 400-Ursache: eine SP-Spalte aus dem Patch existiert nicht
+        // auf dieser Teilnehmerliste (z.B. StarterType auf einem v9-Event ohne
+        // B2Run-Schema, oder ein neu hinzugefügtes Custom-Field ohne 'Spalten
+        // fixen'-Run). Hilfreicher Hinweis auf den Repair-Button.
         setEditError(isDe
-          ? 'Speichern fehlgeschlagen. Bitte erneut versuchen.'
-          : 'Save failed. Please try again.');
+          ? 'Speichern fehlgeschlagen — vermutlich fehlt eine SP-Spalte in der Teilnehmerliste. Klicke einmal „Spalten fixen" im Toolbox-Bereich des Events, dann erneut versuchen.'
+          : 'Save failed — likely a missing SP column on the participant list. Click „Fix columns" in the event toolbox once, then retry.');
         return;
       }
       // v9.0: Audit-Log mit Diff der geaenderten Felder
@@ -3704,53 +3714,37 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   ))}
 
-                  {/* B2Run-spezifische Felder (StarterType + PreferredStarterType).
-                      Sind hardcoded SP-Spalten auf der Teilnehmerliste (kein
-                      regulärer Custom-Field-Eintrag), daher müssen sie hier
-                      explizit gerendert werden. Nur sichtbar wenn das Event
-                      B2Run-Split-Capacities aktiv hat. v10.13+ */}
+                  {/* B2Run-Starter-Typ (Funstarter / Durchstarter). Hardcoded
+                      SP-Spalte auf der Teilnehmerliste (kein regulärer
+                      Custom-Field-Eintrag), daher explizit hier gerendert.
+                      Updates BEIDE intern getrackten Felder zugleich
+                      (StarterType + PreferredStarterType) — die getrennte
+                      Speicherung von „aktuell vs. Wunsch" ist Implementierungs-
+                      Detail für die Warteliste-Nachrück-Logik und braucht im
+                      Edit-Modal keine UI-Komplexität. v10.15+ */}
                   {selectedEvent.durchstarterCapacity !== undefined
                     && selectedEvent.funstarterCapacity !== undefined
                     && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0) && (
                     <div style={{ gridColumn: '1 / -1', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
-                      <h4 style={{ margin: '0 0 4px', fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
-                        {isDe ? 'B2Run-Felder (editierbar)' : 'B2Run fields (editable)'}
-                      </h4>
-                      <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? 'Aktueller Starter-Typ + ursprünglicher Wunsch-Typ. Wunsch-Typ wird beim Nachrücken aus der Warteliste verwendet.'
-                          : 'Current starter type + originally preferred type. Preferred type is used when promoting from waitlist.'}
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
-                            {isDe ? 'Starter-Typ (aktuell)' : 'Starter type (current)'}
-                          </label>
-                          <select
-                            value={editForm.StarterType || ''}
-                            onChange={e => setEditForm(prev => ({ ...prev, StarterType: e.target.value }))}
-                            className="form-input"
-                          >
-                            <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
-                            <option value="Durchstarter">Durchstarter</option>
-                            <option value="Funstarter">Funstarter</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
-                            {isDe ? 'Wunsch-Starter-Typ' : 'Preferred starter type'}
-                          </label>
-                          <select
-                            value={editForm.PreferredStarterType || ''}
-                            onChange={e => setEditForm(prev => ({ ...prev, PreferredStarterType: e.target.value }))}
-                            className="form-input"
-                          >
-                            <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
-                            <option value="Durchstarter">Durchstarter</option>
-                            <option value="Funstarter">Funstarter</option>
-                          </select>
-                        </div>
-                      </div>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                        {isDe ? 'B2Run-Starter-Typ' : 'B2Run starter type'}
+                      </label>
+                      <select
+                        value={editForm.StarterType || ''}
+                        onChange={e => {
+                          const v = e.target.value;
+                          // Beide Felder synchron halten — der Aktuelle wechselt
+                          // mit, der Wunsch ebenfalls (User-Erwartung: „ich ändere
+                          // den Starter-Typ" = beides ändert sich).
+                          setEditForm(prev => ({ ...prev, StarterType: v, PreferredStarterType: v }));
+                        }}
+                        className="form-input"
+                        style={{ maxWidth: 320 }}
+                      >
+                        <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
+                        <option value="Durchstarter">Durchstarter</option>
+                        <option value="Funstarter">Funstarter</option>
+                      </select>
                     </div>
                   )}
 
