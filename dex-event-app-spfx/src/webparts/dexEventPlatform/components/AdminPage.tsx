@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2 } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
@@ -284,6 +284,7 @@ export default function AdminPage(): React.ReactElement {
   };
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [copiedEmails, setCopiedEmails] = React.useState(false);
+  const [copiedDeepLink, setCopiedDeepLink] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
   // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf + Auto-Send-Toggle
@@ -853,6 +854,14 @@ export default function AdminPage(): React.ReactElement {
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
     setSelectedEvent(event);
+    // v10.19: NavigationContext.selectedEventId mitziehen, damit Header die
+    // Page-ID granular ableiten kann (admin-center vs. admin-event) und der
+    // Deep-Link-Kopier-Button immer die echte Item-ID des aktuell offenen
+    // Events kennt. Skip falls bereits synchron — sonst doppelter History-
+    // Eintrag beim Auto-Select via Deep-Link.
+    if (selectedEventId !== event.id) {
+      navigate('admin', event.id);
+    }
     setIsLoadingRegs(true);
     setRegLoadError('');
     try {
@@ -1742,6 +1751,33 @@ export default function AdminPage(): React.ReactElement {
               desc="Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View)."
               badge="organizer"
               href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
+            />
+
+            {/* v10.19: Deep-Link kopieren — Organizer/Admin können den Link
+                des aktuell offenen Events in die Zwischenablage legen und z.B.
+                an Co-Organizer / Helfer weitergeben. Zielseite ist exakt
+                dieses Admin-Center-Detail (?action=admin&event=<SP-ID>). Beim
+                Aufruf landet der Empfänger nach Login direkt auf der gleichen
+                Detail-Ansicht statt in der Event-Auswahl-Liste. */}
+            <ActionTile
+              icon={<Link2 size={18} />}
+              title={copiedDeepLink ? (t('admin.copied') || 'Kopiert') : 'Deep-Link kopieren'}
+              desc="Legt den direkten Link auf dieses Event-Admin in die Zwischenablage. Per Mail / Teams an Co-Organizer schicken — sie landen nach Login direkt hier, ohne sich erst durch die Event-Liste klicken zu müssen."
+              badge="organizer"
+              onClick={() => {
+                const base = (typeof window !== 'undefined' && window.location)
+                  ? `${window.location.origin}${window.location.pathname}`
+                  : `${siteUrl}/SitePages/DEX.aspx`;
+                const url = `${base}?env=WebView&action=admin&event=${selectedEvent.id}`;
+                if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                  navigator.clipboard.writeText(url).then(() => {
+                    setCopiedDeepLink(true);
+                    setTimeout(() => setCopiedDeepLink(false), 2000);
+                  }).catch(() => { window.prompt('Deep-Link kopieren:', url); });
+                } else {
+                  window.prompt('Deep-Link kopieren:', url);
+                }
+              }}
             />
 
             {/* 3. E-Mail-Adressen kopieren */}

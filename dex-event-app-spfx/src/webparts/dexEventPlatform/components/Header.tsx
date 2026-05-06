@@ -15,7 +15,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, QrCode, RefreshCw } from './Icons';
 
 export default function Header(): React.ReactElement {
-  const { currentPage, navigate } = useNavigation();
+  const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, isAdmin, isOrganizer } = useRoles();
   const { events } = useEvents();
@@ -55,7 +55,13 @@ export default function Header(): React.ReactElement {
     'check-in': 'check-in',
     'manual': 'manual',
   };
-  const pageIdLabel = pageIdMap[currentPage] || currentPage;
+  // v10.19: Admin-Center hat zwei Sub-Views — die Übersichtsliste aller Events
+  // ('admin-center') und die Detail-Ansicht eines konkreten Events
+  // ('admin-event'). Vorher hatten beide dieselbe Page-ID, was Bug-Reports
+  // ungenau gemacht hat. Detail-Modus erkennen wir an `selectedEventId`.
+  const pageIdLabel = currentPage === 'admin'
+    ? (selectedEventId ? 'admin-event' : 'admin-center')
+    : (pageIdMap[currentPage] || currentPage);
 
   // v6.26: Mobile-Detection fuer die "Jetzt einchecken"-Sprechblase neben dem
   // QR-Icon. Wird nur auf Mobilgeraeten angezeigt (Viewport <= 768px), auf
