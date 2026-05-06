@@ -5734,11 +5734,11 @@ export default function EventCreationPage(): React.ReactElement {
                       border: '1px solid var(--dex-gray-200)',
                     }}
                   >
-                    {/* Feld-Header: Name + Typ + Pflicht + Löschen.
-                        v9.28: Drag-Symbol und Hoch/Runter-Pfeile standardmäßig
-                        ausgeblendet — Reorder-Pfeile erscheinen nur wenn der
-                        "Reihenfolge ändern"-Modus aktiv ist. */}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: field.type === 'select' ? 12 : 0 }}>
+                    {/* v10.23: Neuer Header — Nummer + "Feld" links, Pflicht-
+                        Toggle in der Mitte, Lösch-X rechts. Typ und Beschriftung
+                        wandern in die strukturierte Box darunter. Reorder-Pfeile
+                        nur wenn der "Reihenfolge ändern"-Modus aktiv ist. */}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
                       {reorderMode && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '0 4px' }}>
                           <button
@@ -5757,53 +5757,17 @@ export default function EventCreationPage(): React.ReactElement {
                           >▼</button>
                         </div>
                       )}
-                      {/* v7.20: Frage-Nummer (1, 2, 3, ...) — folgt der Reihenfolge,
-                          beim Verschieben aendert sich automatisch der Wert. */}
                       <span style={{
                         flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
                         background: 'var(--dex-green, #86bc25)', color: '#fff',
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: '0.78rem',
                       }}>{idx + 1}</span>
-                      {/* v7.17: Typ-Dropdown nach links (vor das Label) und
-                          breiter, damit "Person (Suche)" und "Roommate (Doppelzimmer)"
-                          nicht abgeschnitten werden. Roommate ist seit v7.17 ein
-                          eigener Feldtyp — nur bei dem geht beim Anmelden eine
-                          Roommate-Mail an die ausgewaehlte Person raus. */}
-                      <select
-                        className="form-select"
-                        value={field.type}
-                        onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
-                        style={{
-                          flex: '0 0 250px', minWidth: 250,
-                          // v7.17: gruene Faerbung damit der Typ-Selector im
-                          // Editor visuell hervorsticht (Hauptmerkmal des Felds).
-                          // v7.21: 250px statt 220, damit "Roommate (double room)"
-                          // und "Roommate (Doppelzimmer)" nicht abgeschnitten werden.
-                          background: 'rgba(134,188,37,0.08)',
-                          border: '1px solid var(--dex-green, #86bc25)',
-                          color: 'var(--dex-green-dark, #4a7c1f)',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="text">{isDe ? 'Text' : 'Text'}</option>
-                        <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
-                        <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
-                        <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
-                        <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
-                        <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
-                      </select>
-                      <input className="form-input" placeholder={t('create.fieldname')} value={field.label} onChange={e => updateCustomField(field.id, { label: e.target.value })} style={{ flex: 2 }} />
-                      <button onClick={() => removeCustomField(field.id)} style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}>
-                        <X size={18} />
-                      </button>
-                    </div>
-
-                    {/* v7.20: Required + Mehrfachauswahl als Pill-Toggle (Style
-                        wie die "Mark as test event"-Card-Toggle) — gefuellt
-                        gruen wenn aktiv, ausgegraut wenn nicht. Liegen unter
-                        dem Typ-Selector, links aligned. */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 32, marginTop: 10, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
+                        {isDe ? 'Feld' : 'Field'}
+                      </strong>
+                      <span style={{ flex: 1 }} />
+                      {/* Pflicht-Toggle prominent im Header */}
                       <label
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -5825,32 +5789,61 @@ export default function EventCreationPage(): React.ReactElement {
                         <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{field.required ? '✓' : '○'}</span>
                         {t('create.required')}
                       </label>
-                      {field.type === 'select' && (
-                        <label
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                            padding: '6px 12px', borderRadius: 999,
-                            fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
-                            cursor: 'pointer', userSelect: 'none',
-                            border: `1px solid ${field.multi ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                            background: field.multi ? 'rgba(134,188,37,0.10)' : '#fff',
-                            color: field.multi ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                            transition: 'all 0.15s ease',
-                          }}
-                          title={isDe
-                            ? 'Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien).'
-                            : 'When enabled, attendees can select multiple options at the same time (e.g. multiple allergies).'}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={!!field.multi}
-                            onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
-                            style={{ display: 'none' }}
-                          />
-                          <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{field.multi ? '✓' : '○'}</span>
-                          {isDe ? 'Mehrfachauswahl erlauben' : 'Allow multiple selection'}
+                      <button
+                        onClick={() => removeCustomField(field.id)}
+                        title={isDe ? 'Feld löschen' : 'Delete field'}
+                        style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    {/* v10.23: Strukturierte Box mit zwei klar gelabelten
+                        Spalten — "Art des Feldes" und "Beschriftung Feld" —
+                        statt der vorherigen Inline-Zeile ohne Labels. Ein
+                        Organizer beim ersten Anlegen sieht jetzt sofort, was
+                        in welches Feld gehört. */}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16,
+                      padding: '12px 14px',
+                      background: '#fff',
+                      border: '1px solid var(--dex-gray-200)',
+                      borderRadius: 8,
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                          {isDe ? 'Art des Feldes' : 'Field type'}
                         </label>
-                      )}
+                        <select
+                          className="form-select"
+                          value={field.type}
+                          onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                          style={{
+                            background: 'rgba(134,188,37,0.08)',
+                            border: '1px solid var(--dex-green, #86bc25)',
+                            color: 'var(--dex-green-dark, #4a7c1f)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
+                          <option value="select">{isDe ? 'Dropdown (Auswahlliste)' : 'Dropdown (option list)'}</option>
+                          <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
+                          <option value="checkbox">{isDe ? 'Checkbox (Ja / Nein)' : 'Checkbox (yes / no)'}</option>
+                          <option value="user">{isDe ? 'Person (Suche)' : 'Person (search)'}</option>
+                          <option value="roommate">{isDe ? 'Roommate (Doppelzimmer)' : 'Roommate (double room)'}</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                          {isDe ? 'Beschriftung Feld' : 'Field label'}
+                        </label>
+                        <input
+                          className="form-input"
+                          placeholder={isDe ? 'z.B. T-Shirt Größe, Allergien' : 'e.g. T-shirt size, allergies'}
+                          value={field.label}
+                          onChange={e => updateCustomField(field.id, { label: e.target.value })}
+                        />
+                      </div>
                     </div>
 
                     {/* v7.20: Beschreibung pro Feld — landet im Registrierungs-
@@ -6030,70 +6023,110 @@ export default function EventCreationPage(): React.ReactElement {
                       );
                     })()}
 
-                    {/* Dropdown-Optionen als Tag-Liste */}
+                    {/* v10.23: Dropdown-Optionen als gelisteter Editor mit
+                        eigener Box. Pro Option eine Zeile mit Nummer +
+                        Eingabefeld + Minus-Button. Plus-Button ans Ende
+                        zum Hinzufügen. Mehrfachauswahl-Toggle direkt in
+                        diesem Block (Kontext: betrifft nur die Optionsliste).
+                        Nur sichtbar wenn type === 'select'. */}
                     {field.type === 'select' && (
-                      <div style={{ marginLeft: 32, paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--dex-gray-200)' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', fontWeight: 600, marginBottom: 8 }}>
-                          {isDe ? 'Dropdown-Optionen:' : 'Dropdown options:'}
+                      <div style={{
+                        marginTop: 10, padding: '12px 14px',
+                        background: '#fff',
+                        border: '1px solid var(--dex-gray-200)',
+                        borderRadius: 8,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', fontWeight: 600 }}>
+                            {isDe ? 'Optionen' : 'Options'}
+                          </div>
+                          <label
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '4px 10px', borderRadius: 999,
+                              fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                              cursor: 'pointer', userSelect: 'none',
+                              border: `1px solid ${field.multi ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                              background: field.multi ? 'rgba(134,188,37,0.10)' : '#fff',
+                              color: field.multi ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                              transition: 'all 0.15s ease',
+                            }}
+                            title={isDe
+                              ? 'Wenn aktiv, kann der Teilnehmer mehrere Optionen gleichzeitig auswählen (z.B. mehrere Allergien).'
+                              : 'When enabled, attendees can select multiple options at the same time (e.g. multiple allergies).'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!field.multi}
+                              onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
+                              style={{ display: 'none' }}
+                            />
+                            <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{field.multi ? '✓' : '○'}</span>
+                            {isDe ? 'Mehrfachauswahl möglich' : 'Allow multiple selection'}
+                          </label>
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                          {/* Alle Optionen aus dem Array rendern (auch leere Slots) */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(field.options || []).map((opt, optIdx) => (
-                            <div key={optIdx} style={{
-                              display: 'flex', alignItems: 'center', gap: 4,
-                              background: '#fff', border: '1px solid var(--dex-gray-300)',
-                              borderRadius: 20, padding: '4px 8px 4px 12px', fontSize: '0.85rem',
-                            }}>
+                            <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 600, width: 24, textAlign: 'right' }}>
+                                {optIdx + 1}.
+                              </span>
                               <input
+                                className="form-input"
                                 value={opt}
-                                placeholder={`Option ${optIdx + 1}`}
+                                placeholder={isDe ? `Option ${optIdx + 1}` : `Option ${optIdx + 1}`}
                                 onChange={e => {
                                   const opts = [...(field.options || [])];
                                   opts[optIdx] = e.target.value;
                                   updateCustomField(field.id, { options: opts });
                                 }}
-                                style={{
-                                  border: 'none', background: 'transparent', outline: 'none',
-                                  width: Math.max(60, (opt.length + 2) * 8), fontSize: '0.85rem',
-                                }}
+                                style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
                               />
                               <button
+                                type="button"
                                 onClick={() => {
                                   const opts = [...(field.options || [])];
                                   opts.splice(optIdx, 1);
                                   updateCustomField(field.id, { options: opts });
                                 }}
-                                style={{ background: 'none', border: 'none', color: 'var(--dex-gray-400)', padding: 0, cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1 }}
-                              >
-                                ×
-                              </button>
+                                title={isDe ? 'Option entfernen' : 'Remove option'}
+                                style={{
+                                  flexShrink: 0, width: 28, height: 28, borderRadius: 6,
+                                  background: '#fff', border: '1px solid var(--dex-gray-300)',
+                                  color: 'var(--dex-red, #c00)', cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '1rem', lineHeight: 1, fontWeight: 700,
+                                }}
+                              >−</button>
                             </div>
                           ))}
                           <button
-                            onClick={() => {
-                              // Genau EINEN leeren Slot anhaengen
-                              updateCustomField(field.id, { options: [...(field.options || []), ''] });
-                            }}
+                            type="button"
+                            onClick={() => updateCustomField(field.id, { options: [...(field.options || []), ''] })}
                             style={{
-                              display: 'flex', alignItems: 'center', gap: 4,
-                              background: 'none', border: '2px dashed var(--dex-gray-300)',
-                              borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem',
-                              color: 'var(--dex-gray-500)', cursor: 'pointer',
+                              alignSelf: 'flex-start', marginTop: 4,
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              background: 'rgba(134,188,37,0.08)',
+                              border: '1px dashed var(--dex-green, #86bc25)',
+                              color: 'var(--dex-green-dark, #4a7c1f)',
+                              borderRadius: 6, padding: '6px 12px',
+                              fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
                             }}
                           >
-                            + Option
+                            <span style={{ fontSize: '1rem', lineHeight: 1, fontWeight: 700 }}>+</span>
+                            {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
                         </div>
                       </div>
                     )}
-                    {/* v7.18: Roommate-Hinweis — wenn der Organizer einen
-                        Roommate-Picker anlegt, sollte er den Teilnehmer auch
-                        fragen ob ueberhaupt ein Doppelzimmer gewuenscht ist
-                        (Einzel/Doppel-Auswahl). Heuristik: andere Custom-Fields
-                        nach Optionen / Label durchsuchen, die "Einzelzimmer",
-                        "Doppelzimmer", "single room" oder "double room"
-                        enthalten — gibt es so ein Feld, ist der Hinweis nicht
-                        noetig. */}
+                    {/* v10.23: Roommate-Erklärungs-Box — wird IMMER bei
+                        type=roommate angezeigt (nicht mehr nur konditional bei
+                        fehlendem Zimmerart-Feld). Erklärt dem Organizer, was
+                        das Feld bei der Anmeldung tatsächlich tut: Personen-
+                        Picker mit Mailbenachrichtigung an den ausgewählten
+                        Roommate, Match-Erkennung im Admin Center wenn beide
+                        sich gegenseitig wählen. Plus: Tipp wenn noch kein
+                        Zimmerart-Feld da ist. */}
                     {field.type === 'roommate' && (() => {
                       const roomKeywords = ['einzelzimmer', 'doppelzimmer', 'single room', 'double room', 'zimmerart', 'room type'];
                       const hasRoomTypeField = customFields.some(other => {
@@ -6102,21 +6135,59 @@ export default function EventCreationPage(): React.ReactElement {
                         const opts = (other.options || []).join(' ').toLowerCase();
                         return roomKeywords.some(k => lbl.indexOf(k) >= 0 || opts.indexOf(k) >= 0);
                       });
-                      if (hasRoomTypeField) return null;
                       return (
                         <div style={{
-                          marginLeft: 32, marginTop: 10, padding: '10px 12px',
-                          background: 'rgba(237,139,0,0.08)',
-                          border: '1px solid var(--dex-orange, #ed8b00)',
-                          borderRadius: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)',
-                          lineHeight: 1.45,
+                          marginTop: 10, padding: '12px 14px',
+                          background: 'rgba(21,101,192,0.06)',
+                          border: '1px solid rgba(21,101,192,0.4)',
+                          borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+                          lineHeight: 1.5,
                         }}>
-                          <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
-                            {isDe ? 'Tipp:' : 'Tip:'}
-                          </strong>{' '}
-                          {isDe
-                            ? 'Du fragst nach einem Zimmerpartner — bisher gibt es aber kein Feld, das fragt OB der Teilnehmer ein Doppelzimmer möchte oder lieber ein Einzelzimmer. Lege ein zusätzliches Dropdown-Feld an (z.B. „Zimmerart" mit Optionen „Einzelzimmer / Doppelzimmer"), sonst können Teilnehmer ohne Doppelzimmer-Wunsch trotzdem einen Roommate angeben.'
-                            : 'You\'re asking for a roommate — but there is no field yet that asks WHETHER the attendee actually wants a double room (vs. a single room). Add an additional dropdown field (e.g. "Room type" with options "Single / Double"), otherwise attendees who don\'t want a double room can still pick a roommate.'}
+                          <div style={{ fontWeight: 700, color: 'var(--dex-blue, #1565c0)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Icon iconName="Info" style={{ fontSize: 16 }} />
+                            {isDe ? 'So funktioniert das Roommate-Feld' : 'How the roommate field works'}
+                          </div>
+                          {isDe ? (
+                            <>
+                              <p style={{ margin: '0 0 6px' }}>
+                                Bei der Anmeldung sieht der Teilnehmer einen <strong>Personen-Suchfeld</strong> (Live-Suche im Deloitte-Tenant). Er tippt einen Namen ein, wählt die gewünschte Person als Zimmerpartner und schließt die Anmeldung ab.
+                              </p>
+                              <p style={{ margin: '0 0 6px' }}>
+                                <strong>Was direkt passiert:</strong> die ausgewählte Person bekommt automatisch eine <strong>Roommate-Anfrage-Mail</strong> im Deloitte-Layout — mit Hinweis, dass <em>X den Wunsch geäußert hat, mit ihr/ihm das Zimmer zu teilen</em> und dem Link zur Event-Anmeldung. Der Empfänger kann sich dann selbst anmelden und seinerseits den Anfragenden als Wunsch-Roommate eintragen.
+                              </p>
+                              <p style={{ margin: '0 0 6px' }}>
+                                <strong>Match-Erkennung im Admin Center:</strong> wenn zwei Teilnehmer sich <em>gegenseitig</em> als Wunsch-Roommate eingetragen haben, markiert das Admin Center das Paar als bestätigtes Match (grünes Häkchen). Einseitige Wünsche werden grau angezeigt — der Organizer kann dann selbst entscheiden, ob er die Person trotzdem zuteilt.
+                              </p>
+                              <p style={{ margin: 0 }}>
+                                Sinnvoll <strong>kombiniert mit einem zweiten Feld vom Typ Dropdown</strong> namens &bdquo;Zimmerart&ldquo; mit Optionen &bdquo;Einzelzimmer / Doppelzimmer&ldquo;. Über die <strong>Sichtbarkeitsbedingung</strong> kannst du das Roommate-Feld dann ausblenden, wenn jemand &bdquo;Einzelzimmer&ldquo; wählt — sonst geben auch Einzelzimmer-Bucher einen Roommate an.
+                              </p>
+                              {!hasRoomTypeField && (
+                                <p style={{ margin: '8px 0 0', padding: '8px 10px', background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 6, color: 'var(--dex-gray-700)' }}>
+                                  <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Tipp:</strong> aktuell hast du noch kein Zimmerart-Feld angelegt. Ein Dropdown &bdquo;Zimmerart&ldquo; mit &bdquo;Einzelzimmer / Doppelzimmer&ldquo; wäre eine sinnvolle Ergänzung — sonst können auch Teilnehmer ohne Doppelzimmer-Wunsch einen Roommate angeben.
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p style={{ margin: '0 0 6px' }}>
+                                On the registration page the attendee sees a <strong>person picker</strong> (live search of the Deloitte tenant). They type a name, pick their preferred roommate and submit the registration.
+                              </p>
+                              <p style={{ margin: '0 0 6px' }}>
+                                <strong>What happens immediately:</strong> the selected person automatically receives a <strong>roommate-request email</strong> in the Deloitte layout — letting them know that <em>X requested to share a room with them</em> and including a link to the event registration. The recipient can then register and pick the requester back as their preferred roommate.
+                              </p>
+                              <p style={{ margin: '0 0 6px' }}>
+                                <strong>Match detection in the admin center:</strong> when two attendees pick <em>each other</em> as preferred roommate, the admin center marks the pair as a confirmed match (green check). One-sided wishes are shown in grey — the organizer can still assign them manually if desired.
+                              </p>
+                              <p style={{ margin: 0 }}>
+                                Best <strong>combined with a separate Dropdown field</strong> called &ldquo;Room type&rdquo; with options &ldquo;Single / Double&rdquo;. Use the <strong>visibility condition</strong> to hide the roommate field when someone picks &ldquo;Single&rdquo; — otherwise even single-room bookers will be asked to name a roommate.
+                              </p>
+                              {!hasRoomTypeField && (
+                                <p style={{ margin: '8px 0 0', padding: '8px 10px', background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 6, color: 'var(--dex-gray-700)' }}>
+                                  <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>Tip:</strong> you don&apos;t have a room-type field yet. A dropdown &ldquo;Room type&rdquo; with &ldquo;Single / Double&rdquo; would be a useful addition — otherwise attendees without a double-room wish can still pick a roommate.
+                                </p>
+                              )}
+                            </>
+                          )}
                         </div>
                       );
                     })()}
