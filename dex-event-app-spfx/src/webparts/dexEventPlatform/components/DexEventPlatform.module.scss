@@ -436,16 +436,20 @@
       .admin-actions { flex-direction: column !important; }
       .admin-actions .btn { width: 100%; justify-content: center; }
 
-      /* v10.27: Mobile-Tauglichkeit Settings + Admin-Event-Detail.
-         Tabellen bekommen horizontale Scrollfähigkeit (statt
-         überbreitem Inhalt der die ganze Page sprengt). KPI- und
-         Action-Tile-Grids fallen auf eine bzw. zwei Spalten zurück
-         damit die einzelnen Kacheln gross genug bleiben für Tap-
-         Targets. */
+      /* v11.7: Mobile-Tauglichkeit Settings + Admin-Event-Detail.
+         Pragma: jede Card bekommt overflow-x:auto, damit überbreite
+         Tabellen die Page nicht sprengen — User scrollt seitlich
+         innerhalb der Card. Plus die spezifischen Wrapper-Klassen
+         für gezielten Scroll wenn die Card zusätzlichen Inhalt
+         enthält. KPI- und Action-Tile-Grids fallen auf eine bzw.
+         zwei Spalten zurück damit Tap-Targets gross genug bleiben. */
+      .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .card > table,
       .dex-table-wrapper, .admin-table-wrapper, .settings-table-wrapper {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         max-width: 100%;
+        display: block;
       }
       .dex-table-wrapper table, .admin-table-wrapper table, .settings-table-wrapper table {
         min-width: 640px;

@@ -2492,8 +2492,8 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
       'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
-      'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
-      'Optional: Leistungsnachweis-Pflicht für Durchstarter (Checkbox bei der Anmeldung)',
+      'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
+      'Pflichtfelder pro Gruppe in Schritt 4 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
     ],
     [
       'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
@@ -2541,8 +2541,8 @@ export default function EventCreationPage(): React.ReactElement {
     [
       'Set the maximum number of attendees (or Unlimited)',
       'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
-      'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
-      'Optional: require proof of performance for fast-runners (checkbox during registration)',
+      'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
+      'Required fields per group in step 4 (e.g. proof of performance only for one group)',
     ],
     [
       'Pick a field type: text, number, dropdown, checkbox, people search or roommate (double room)',
@@ -4742,14 +4742,14 @@ export default function EventCreationPage(): React.ReactElement {
                   'Anmelde-Deadline + letzte Abmeldemöglichkeit (vorbefüllt anhand des Event-Datums, jederzeit überschreibbar)',
                   'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
                   'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
-                  'B2Run / Split-Kapazität: getrennte Slots für Durchstarter und Funstarter, eigene Wartelisten pro Typ',
+                  'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
                 ],
                 [
                   'Visibility: configure location filter + mailing lists/individual users — who sees the event in the list',
                   'Registration deadline + last cancellation date (pre-filled from the event date, always overridable)',
                   'Set the maximum number of attendees (or Unlimited)',
                   'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
-                  'B2Run / split capacity: separate slots for fast-runners and fun-runners, own waitlists per type',
+                  'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
                 ]
               )}
 

@@ -534,10 +534,10 @@ export default function AdminPage(): React.ReactElement {
       // geändert hat. Sind keine regulären customFields, daher werden sie
       // oben in der eventSpecificFields-Loop nicht abgeholt. Nur bei
       // Split-Capacity-Events relevant.
-      const isB2RunEvent = !!selectedEvent
+      const isSplitEvent = !!selectedEvent
         && (selectedEvent.durchstarterCapacity || 0) > 0
         && (selectedEvent.funstarterCapacity || 0) > 0;
-      if (isB2RunEvent) {
+      if (isSplitEvent) {
         const oldStarter = String(r.StarterType || '');
         const newStarter = (editForm.StarterType || '').trim();
         if (newStarter !== oldStarter) {
@@ -1632,7 +1632,7 @@ export default function AdminPage(): React.ReactElement {
           Bei Hochformat-Bildern: Bild links neben den Detail-Rows.
           Bei Querformat-Bildern (oder solange die Orientierung noch
           unbekannt ist): Bild als Banner ueber den Detail-Rows. */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+      <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
         <div className="card" style={{ padding: 24 }}>
           {/* Header: Event-Titel + Status-Badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1807,7 +1807,7 @@ export default function AdminPage(): React.ReactElement {
         {!isQRScannerOnlyForSelected && (
         <div className="card" style={{ padding: 24 }}>
           <h3 className="mb-16">Aktionen</h3>
-          <div style={{
+          <div className="admin-actions-grid" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
@@ -3164,10 +3164,10 @@ export default function AdminPage(): React.ReactElement {
                           // splitSharedWaitlist=true gesetzt (v10.20). Dann faellt der
                           // Filter weg und der aelteste Wartelistler rueckt nach,
                           // unabhaengig vom Typ.
-                          const isB2RunSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+                          const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
                             && typeof selectedEvent.funstarterCapacity === 'number'
                             && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
-                          const useTypeFilter = isB2RunSplit && !selectedEvent.splitSharedWaitlist;
+                          const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
                           try {
                             const promoted = await eventServiceRef.promoteFirstWaitlistItem(
                               selectedEvent.subsiteUrl,

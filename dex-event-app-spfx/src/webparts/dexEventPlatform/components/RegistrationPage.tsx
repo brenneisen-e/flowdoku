@@ -424,7 +424,15 @@ export default function RegistrationPage(): React.ReactElement {
 
       // B2Run: Starter-Typ Pflichtfeld
       if (isSplitGroup && !preferredStarterType) {
-        setError(t('reg.starter.required'));
+        // v11.7: generische Fehlermeldung — vorher hatte der Translation-Key
+        // 'B2Run Starter-Typ' als Fallback. Bei generischen Split-Capacity-
+        // Events mit eigenen Labels (z.B. 'Vormittag' / 'Nachmittag') passt
+        // das nicht. Inline-Text mit den frei wählbaren Labels.
+        const lblA = (event?.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+        const lblB = (event?.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+        setError(locale === 'de'
+          ? `Bitte wähle eine der zwei Gruppen aus (${lblA} oder ${lblB}).`
+          : `Please pick one of the two groups (${lblA} or ${lblB}).`);
         return;
       }
 
@@ -442,7 +450,11 @@ export default function RegistrationPage(): React.ReactElement {
     if (isSplitGroup && !sharedStarterTypeFromParent && selectedSessions.size > 0) {
       const missingStarter = Array.from(selectedSessions).some(sid => !sessionStarterType[sid]);
       if (missingStarter) {
-        setError(t('reg.sessions.starter.required') || 'Bitte für jede ausgewählte Session den Starter-Typ wählen.');
+        // v11.7: Sub-Event-Gruppen-Auswahl — generische Meldung
+        // statt B2Run-spezifischem 'Starter-Typ'.
+        setError(locale === 'de'
+          ? 'Bitte wähle für jedes ausgewählte Sub-Event eine Gruppe.'
+          : 'Please pick a group for each selected sub-event.');
         return;
       }
     }
