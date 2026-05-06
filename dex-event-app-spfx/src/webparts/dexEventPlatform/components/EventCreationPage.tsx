@@ -1448,8 +1448,8 @@ export default function EventCreationPage(): React.ReactElement {
     setEventImageUrl('');
     // v10.26: Ansprechpartner als Demo befüllt — der Organizer sieht
     // direkt wie das Feld auf der Anmelde-Seite gerendert wird.
-    setContactName('Eike Brenneisen');
-    setContactEmail('ebrenneisen@deloitte.de');
+    setContactName('Heike Musterfrau');
+    setContactEmail('Musterfirma@online.de');
     setContactInfo('Bei Rückfragen zu Anmeldung oder Ablauf direkt melden.');
     // v10.26: Custom-Fields. Zusätzlich zu den Standard-Beispielen kommt
     // eine Pflicht-Checkbox die NUR für Teilnehmergruppe 1 sichtbar ist
@@ -5819,28 +5819,12 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v7.20: Spalten-Header oberhalb der Feld-Karten — erklaert
                     auf einen Blick welche Spalte was bedeutet. Nur sichtbar
                     wenn es mindestens 1 Feld gibt, sonst overhead. */}
-                {customFields.length > 0 && (
-                  <div style={{
-                    display: 'flex', gap: 8, alignItems: 'center',
-                    padding: '0 16px', marginBottom: 6,
-                    fontSize: '0.72rem', fontWeight: 600,
-                    color: 'var(--dex-gray-500)', textTransform: 'uppercase',
-                    letterSpacing: 0.4,
-                  }}>
-                    {/* Drag-Handle-Spalte */}
-                    <span style={{ width: 24, flexShrink: 0 }} aria-hidden="true" />
-                    {/* Nr-Spalte (26px Badge + 8px gap) */}
-                    <span style={{ width: 26, flexShrink: 0, textAlign: 'center' }}>
-                      {isDe ? 'Nr.' : 'No.'}
-                    </span>
-                    <span style={{ flex: '0 0 250px', minWidth: 250 }}>
-                      {isDe ? 'Typ' : 'Type'}
-                    </span>
-                    <span style={{ flex: 2 }}>
-                      {isDe ? 'Frage / Abfragefeld (wird den Teilnehmern angezeigt)' : 'Question / field label (shown to attendees)'}
-                    </span>
-                  </div>
-                )}
+                {/* v11.1: alter Tabellen-Header (Nr / Typ / Frage) entfernt —
+                    seit der Card-Restrukturierung in v10.25 sind die Spalten
+                    in jeder Card selbsterklärend (Nummern-Bubble + Label-
+                    Input mit Placeholder + grüner Typ-Selector + Pflicht-
+                    Pill + Lösch-X). Der Header passte mit den alten Spalten-
+                    Breiten nicht mehr und stiftete optisch Verwirrung. */}
                 {customFields.map((field, idx) => (
                   <div
                     key={field.id}
@@ -5909,7 +5893,13 @@ export default function EventCreationPage(): React.ReactElement {
                         placeholder={isDe ? 'Feld-Name (z.B. T-Shirt Größe)' : 'Field name (e.g. T-shirt size)'}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
                         style={{
-                          flex: '1 1 220px', minWidth: 180,
+                          /* v11.1: max-width begrenzen, damit Typ + Pflicht
+                             + X immer in einer Zeile bleiben (vorher: flex
+                             1 1 220px hat den Input bei breiten Cards bis
+                             zur halben Card-Breite gestreckt). 320px reicht
+                             für lange Feld-Namen, lässt aber genug Raum
+                             für die rechten Aktions-Elemente. */
+                          flex: '0 1 320px', minWidth: 180, maxWidth: 320,
                           fontSize: '1rem', fontWeight: 600,
                           padding: '8px 12px',
                           color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',

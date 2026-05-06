@@ -1417,10 +1417,12 @@ export default function RegistrationPage(): React.ReactElement {
             {isB2runSplit && (
               <div className="form-group" style={{ marginBottom: 20 }}>
                 <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                  <span className="required">*</span> {t('reg.starter.title')}
+                  <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
                 </label>
                 <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
-                  {t('reg.starter.hint')}
+                  {locale === 'de'
+                    ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
+                    : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {/* v10.20: dynamische Labels (event.splitLabelA / B mit
