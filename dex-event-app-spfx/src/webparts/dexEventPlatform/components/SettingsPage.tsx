@@ -409,7 +409,7 @@ export default function SettingsPage(): React.ReactElement {
                       Per-Event-Co-Organizer ({coOrganizersList.length})
                     </h4>
                     <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                      Diese Personen sind im Wizard-Picker eines oder mehrerer Events als Organizer eingetragen, haben aber KEINEN globalen Eintrag in DEX_Roles. Sie können das jeweilige Event verwalten (Teilnehmer, Bearbeiten, Mails) — aber keine NEUEN Events anlegen. Wenn du jemandem permanent „Organizer"-Status geben willst, fügst du sie über das Formular oben mit Role „Organizer" hinzu.
+                      Diese Personen sind im Wizard-Picker eines oder mehrerer Events als Organizer eingetragen, haben aber KEINEN globalen Eintrag in DEX_Roles. Sie können das jeweilige Event verwalten (Teilnehmer, Bearbeiten, Mails) — aber keine NEUEN Events anlegen. Wenn du jemandem permanent &bdquo;Organizer&ldquo;-Status geben willst, fügst du sie über das Formular oben mit Role &bdquo;Organizer&ldquo; hinzu.
                     </p>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                       <thead>

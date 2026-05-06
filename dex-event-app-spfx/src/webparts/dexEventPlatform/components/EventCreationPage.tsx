@@ -695,7 +695,10 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? (editEvent.notifyOrgRegisterFromDate || '') : ''
   );
   const [notifyOrgCancelMode, setNotifyOrgCancelMode] = React.useState<'never' | 'always' | 'afterDeadline'>(
-    editEvent ? (editEvent.notifyOrgCancelMode || 'never') : 'never'
+    // v10.17+: Default für neue Events ist 'afterDeadline' (Erst nach der
+    // letzten Abmeldemöglichkeit) — sonst flutet jede Stornierung den
+    // Organizer-Posteingang. User-Wunsch.
+    editEvent ? (editEvent.notifyOrgCancelMode || 'never') : 'afterDeadline'
   );
   // v8.6: Exclude-Liste — explizit ausgeschlossene User (ueberschreiben den
   // Sichtbarkeits-Filter). UI: Modal "Sichtbare Personen anzeigen".
