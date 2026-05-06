@@ -6127,8 +6127,8 @@ export default function EventCreationPage(): React.ReactElement {
                     color: 'var(--dex-gray-700)',
                   }}>
                     {isDe
-                      ? 'Noch keine Sub-Events angelegt. Sub-Events legst du in Schritt 1 (Grundlagen, ganz unten „Sub-Events") an, hier kannst du dann pro Sub-Event eigene Anmelde-Felder definieren.'
-                      : 'No sub-events yet. Add sub-events in Step 1 (Basics, at the bottom „Sub-events"), then come back here to define per-sub-event registration fields.'}
+                      ? 'Noch keine Sub-Events angelegt. Sub-Events legst du in Schritt 2 (Ort & Programm, ganz unten im Bereich „Sub-Events") an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
+                      : 'No sub-events yet. Add sub-events in Step 2 (Location & Programme, at the bottom in the „Sub-events" block) — then come back here to define per-sub-event registration fields.'}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

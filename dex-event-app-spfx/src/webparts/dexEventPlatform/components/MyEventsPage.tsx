@@ -665,7 +665,24 @@ export default function MyEventsPage(): React.ReactElement {
         try {
           const reg = await getMyRegistration(event.id);
           if (reg) {
-            entries.push({ event, registration: reg });
+            // v10.22: Sonderfall — Parent-Reg ist 'Abgemeldet', aber der User
+            // hat noch aktive Sub-Event-Registrierungen (Hauptevent abgemeldet,
+            // Sub-Events behalten). Dann zeigen wir das Parent als
+            // sessionsOnly-Container damit die Sub-Event-Liste sichtbar
+            // bleibt und der User weitere Sub-Events nachbuchen oder einzeln
+            // abmelden kann. Wenn alles abgemeldet ist, normales Cancelled-
+            // Verhalten.
+            if (reg.Status === 'Abgemeldet') {
+              const kids = childEventsOf(event.id);
+              const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+              if (hasActiveChild) {
+                entries.push({ event, registration: { ...reg, Status: 'Angemeldet' }, sessionsOnly: true });
+              } else {
+                entries.push({ event, registration: reg });
+              }
+            } else {
+              entries.push({ event, registration: reg });
+            }
           }
         } catch { /* */ }
       }
@@ -701,12 +718,27 @@ export default function MyEventsPage(): React.ReactElement {
       // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
       // entfernt. Ohne diese Schleife waeren alte Abmeldungen im "My Events"-Tab
       // unsichtbar, sobald der User noch fuer mind. ein Event angemeldet ist.
+      // v10.22: Skip-Check fuer Events, die wir oben bereits als sessionsOnly-
+      // Container eingetragen haben (sonst Doppel-Eintrag mit Status 'Angemeldet'
+      // UND 'Abgemeldet' fuer dasselbe Parent-Event).
+      const handledParentIds = new Set(entries.map(e => e.event.id));
       const remainingEvents = topLevelEvents.filter(e => !e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0);
       for (const event of remainingEvents) {
+        if (handledParentIds.has(event.id)) continue;
         try {
           const reg = await getMyRegistration(event.id);
           if (reg && reg.Status === 'Abgemeldet') {
-            entries.push({ event, registration: reg });
+            // v10.22: Auch hier den hasActiveChild-Sonderfall pruefen — falls
+            // DEX_Participants die Parent-EventNumber noch nicht entfernt hat
+            // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
+            // Eintrag fuer das Parent existiert.
+            const kids = childEventsOf(event.id);
+            const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+            if (hasActiveChild) {
+              entries.push({ event, registration: { ...reg, Status: 'Angemeldet' }, sessionsOnly: true });
+            } else {
+              entries.push({ event, registration: reg });
+            }
           }
         } catch { /* */ }
       }
@@ -1430,8 +1462,16 @@ function MyEventSubEvents(props: {
 
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
-      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
         {isDe ? 'Zusätzliche Sessions' : 'Additional sessions'}
+      </div>
+      {/* v10.22: kurzer Hinweis dass Sessions jederzeit nachträglich
+          an/abgemeldet werden können — Mail + Kalendereintrag laufen
+          automatisch. */}
+      <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 10, lineHeight: 1.45 }}>
+        {isDe
+          ? 'Sessions kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.'
+          : 'You can register or cancel sessions at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {props.childEvents.map(ce => {
