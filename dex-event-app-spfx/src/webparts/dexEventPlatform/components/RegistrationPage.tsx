@@ -166,9 +166,19 @@ export default function RegistrationPage(): React.ReactElement {
     if (!event || registerForOther) return;
     (async () => {
       try {
-        const r = await getMyRegistration(event.id);
+        const r = await getMyRegistration(event.id) as { Status?: string; StarterType?: string; PreferredStarterType?: string } | null;
         setMyParentReg(r);
-        if (r && r.Status !== 'Abgemeldet') setRegisterForParent(false);
+        if (r && r.Status !== 'Abgemeldet') {
+          setRegisterForParent(false);
+          // v11.10: Bei bereits angemeldetem Parent den existierenden
+          // Starter-Typ in die Group-Selection vorladen, damit auch im
+          // Sessions-Only-Modus eine Gruppe sichtbar gewählt ist und
+          // Sub-Events sauber davon erben.
+          const existing = r.StarterType || r.PreferredStarterType;
+          if (existing && (existing === 'Durchstarter' || existing === 'Funstarter')) {
+            setPreferredStarterType(existing);
+          }
+        }
       } catch { /* */ }
     })();
     if (childEvents.length > 0) {
@@ -443,20 +453,15 @@ export default function RegistrationPage(): React.ReactElement {
       }
     }
 
-    // B2Run-Parent: jede AUSGEWÄHLTE Session muss auch einen Starter-Typ gewählt haben.
-    // Ausnahme: wenn der User sich gleichzeitig fürs Haupt-Event anmeldet, erben
-    // die Sessions automatisch den Haupt-Event-Starter-Typ — dann keine Extra-Abfrage.
-    const sharedStarterTypeFromParent = (willRegisterParent || registerForOther) ? preferredStarterType : '';
-    if (isSplitGroup && !sharedStarterTypeFromParent && selectedSessions.size > 0) {
-      const missingStarter = Array.from(selectedSessions).some(sid => !sessionStarterType[sid]);
-      if (missingStarter) {
-        // v11.7: Sub-Event-Gruppen-Auswahl — generische Meldung
-        // statt B2Run-spezifischem 'Starter-Typ'.
-        setError(locale === 'de'
-          ? 'Bitte wähle für jedes ausgewählte Sub-Event eine Gruppe.'
-          : 'Please pick a group for each selected sub-event.');
-        return;
-      }
+    // v11.10: Sub-Events erben preferredStarterType vom oberen
+    // Group-Selection-Block. Wenn das Event Split-Capacity hat und Sessions
+    // ausgewählt sind, muss eine Gruppe gewählt sein — egal ob Parent dabei
+    // ist oder nur Sessions registriert werden.
+    if (isSplitGroup && selectedSessions.size > 0 && !preferredStarterType) {
+      setError(locale === 'de'
+        ? 'Bitte wähle eine Gruppe.'
+        : 'Please pick a group.');
+      return;
     }
 
     // Assistant-Ausnahme: defense-in-depth check beim Submit — Target muss
@@ -543,7 +548,11 @@ export default function RegistrationPage(): React.ReactElement {
       //      wird dessen Starter-Typ auch auf die Session-Teilnehmerliste geschrieben
       //      (shared) — sonst die pro-Session-Auswahl. So steht in der TN-Liste jeder
       //      Session korrekt, ob der Teilnehmer Durchstarter oder Funstarter ist.
-      const inheritedStarterType = (willRegisterParent || registerForOther) ? (starterTypeToUse || preferredStarterType) : '';
+      // v11.10: Sub-Events erben grundsätzlich preferredStarterType
+      // (bzw. starterTypeToUse vom Fallback-Dialog). Vorher hingen sie
+      // an sessionStarterType pro-Session, was zu redundanten UI-Radios
+      // pro Sub-Event geführt hat.
+      const inheritedStarterType = starterTypeToUse || preferredStarterType || '';
       // v10.15+: Sub-Event-Anmeldungen laufen auch beim Stellvertreter-Modus
       // (registerForOther) durch. registerForEvent akzeptiert ja participantFirstName/
       // -LastName/-Email als Argumente, daher kann der Assistent jede beliebige
@@ -555,7 +564,7 @@ export default function RegistrationPage(): React.ReactElement {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
         const isSel = selectedSessions.has(ce.id);
         if (isSel && !wasReg) {
-          const sType = (isSplitGroup && inheritedStarterType) ? inheritedStarterType : (sessionStarterType[ce.id] || undefined);
+          const sType = isSplitGroup ? (inheritedStarterType || undefined) : undefined;
           // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
           // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
           const seFieldValues = sessionFieldValues[ce.id] || {};
@@ -1424,17 +1433,139 @@ export default function RegistrationPage(): React.ReactElement {
             {t('reg.eventinfo')}
           </div>
           <div style={{ padding: '24px 20px' }}>
-            {/* v10.20: Hauptevent + Sessions-Auswahl. Wird nur bei Events mit
-                Sub-Events ueberhaupt gerendert. Bei "fuer andere Person
-                anmelden" bleibt der alte Flow (nur Parent), weil die
-                Session-Zuordnung ueber getMyRegistration nur fuer den
-                eingeloggten User funktioniert. */}
-            {/* v11.5: Bei „Für andere registrieren" wird der Selection-Block
-                mit Hauptevent-Checkbox + Sub-Events ausgeblendet — die
-                Drittperson-Anmeldung läuft fix nur über den Parent
-                (siehe v6.14-Code-Kommentar oben), und der „Du bist
-                bereits angemeldet"-Hinweis ist dort verwirrend, weil er
-                den eingeloggten User meint, nicht die Drittperson. */}
+            {/* v11.10: Group-Selection ist ein eigener, IMMER sichtbarer
+                Block (sofern das Event Split-Capacity hat). Vorher war er
+                inkorrekt INNERHALB der Sub-Events-Auswahl genistet, sodass
+                Events ohne Sub-Events keine Gruppen-Buttons hatten und
+                Drittpersonen-Registrierungen die Gruppen-Wahl gar nicht
+                anzeigten. Sub-Events erben jetzt einfach
+                preferredStarterType — keine Pro-Sub-Event-Radios mehr. */}
+            {isSplitGroup && (
+              <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
+                  <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
+                </label>
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
+                  {locale === 'de'
+                    ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
+                    : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {([
+                    { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
+                    { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
+                  ]).map(opt => {
+                    const free = opt.cap - opt.count;
+                    const isFull = free <= 0;
+                    const isActive = preferredStarterType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setPreferredStarterType(opt.id)}
+                        style={{
+                          padding: 14, textAlign: 'left',
+                          borderRadius: 'var(--dex-radius, 12px)',
+                          border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                          background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          position: 'relative',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
+                          {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
+                        <div style={{ fontSize: '0.78rem' }}>
+                          {isFull ? (
+                            <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
+                          ) : (
+                            <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
+                        onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
+                        </span>
+                      </span>
+                    </label>
+                    {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
+                      <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
+                        {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* v11.5: Custom-Fields mit onlyForGroup-Constraint
+                    direkt INNERHALB der Gruppen-Auswahl-Box rendern.
+                    Klappt erst auf, wenn der User eine Gruppe gewählt
+                    hat und das Feld der gewählten Gruppe entspricht. */}
+                {preferredStarterType && (() => {
+                  const groupSpec = event.eventSpecificFields
+                    .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+                    .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+                    .filter(f => {
+                      if (!f.showIf || !f.showIf.fieldId) return true;
+                      const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+                      if (!raw) return false;
+                      const answers = raw.indexOf(' | ') >= 0
+                        ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+                        : [raw];
+                      return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+                    })
+                    .filter(f => {
+                      const grp = f.onlyForGroup;
+                      if (!grp || grp === 'all') return false;
+                      if (grp === 'A') return preferredStarterType === 'Durchstarter';
+                      if (grp === 'B') return preferredStarterType === 'Funstarter';
+                      return false;
+                    });
+                  if (groupSpec.length === 0) return null;
+                  const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
+                  const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
+                  const grpLabel = preferredStarterType === 'Durchstarter' ? labelA : labelB;
+                  return (
+                    <div style={{
+                      marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--dex-gray-300)',
+                      display: 'flex', flexDirection: 'column', gap: 12,
+                    }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
+                        {locale === 'de'
+                          ? `Zusätzliche Angaben für die Gruppe „${grpLabel}"`
+                          : `Additional details for the „${grpLabel}" group`}
+                      </div>
+                      {groupSpec.map(renderRegField)}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* v11.10: Sub-Events-Auswahl als eigener Block — nur bei
+                Self-Registration mit Sub-Events. Bei „Für andere
+                registrieren" bleibt der alte Flow (nur Parent), weil die
+                Session-Zuordnung über getMyRegistration nur für den
+                eingeloggten User funktioniert. Der Parent-Event-Checkbox
+                ist hier weiterhin enthalten — er steuert, ob das Haupt-
+                Event registriert werden soll. Hardcoded Pro-Sub-Event-
+                Gruppen-Radios sind weg, Sub-Events erben grundsätzlich
+                preferredStarterType vom Group-Selection-Block oben. */}
             {childEvents.length > 0 && !registerForOther && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
@@ -1467,135 +1598,7 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 </label>
 
-                {isSplitGroup && (
-                  <div className="form-group" style={{ marginBottom: 20 }}>
-                    <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                      <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
-                    </label>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
-                      {locale === 'de'
-                        ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
-                        : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {/* v10.20: dynamische Labels (event.splitLabelA / B mit
-                          Fallback auf 'Durchstarter' / 'Funstarter' fuer alte
-                          B2Run-Events). Die internen IDs ('Durchstarter',
-                          'Funstarter') bleiben fuer SP-Persistenz unveraendert.
-                          Beschreibungs-Texte zeigen wir nur, wenn die Default-
-                          Labels aktiv sind — bei frei waehlbaren Labels macht der
-                          B2Run-spezifische Lauf-Hinweis keinen Sinn. */}
-                      {([
-                        { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
-                        { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
-                      ]).map(opt => {
-                        const free = opt.cap - opt.count;
-                        const isFull = free <= 0;
-                        const isActive = preferredStarterType === opt.id;
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setPreferredStarterType(opt.id)}
-                            style={{
-                              padding: 14, textAlign: 'left',
-                              borderRadius: 'var(--dex-radius, 12px)',
-                              border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
-                              background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
-                              cursor: 'pointer', transition: 'all 0.15s',
-                              position: 'relative',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
-                              {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
-                            <div style={{ fontSize: '0.78rem' }}>
-                              {isFull ? (
-                                <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
-                              ) : (
-                                <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* v6.15: Leistungsnachweis-Pflicht bei Durchstarter. Admin hat
-                        die Option pro Event aktiviert — User muss dann beim Wählen
-                        von Durchstarter bestätigen, dass ein Leistungsnachweis
-                        vorliegt. Ohne Bestätigung wird die Anmeldung blockiert. */}
-                    {event.durchstarterRequiresProof && preferredStarterType === 'Durchstarter' && (
-                      <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange)', borderRadius: 8 }}>
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={eventSpecific['b2run_leistungsnachweis'] === 'true'}
-                            onChange={e => setEventSpecific({ ...eventSpecific, b2run_leistungsnachweis: e.target.checked ? 'true' : 'false' })}
-                            style={{ marginTop: 3 }}
-                          />
-                          <span>
-                            <strong>{t('reg.starter.proof') || 'Leistungsnachweis vorhanden'} <span className="required">*</span></strong>
-                            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                              {t('reg.starter.proof.hint') || 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.'}
-                            </span>
-                          </span>
-                        </label>
-                        {showErrors && eventSpecific['b2run_leistungsnachweis'] !== 'true' && (
-                          <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--dex-red)' }}>
-                            {t('reg.starter.proof.required') || 'Bitte Leistungsnachweis bestätigen.'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* v11.5: Custom-Fields mit onlyForGroup-Constraint
-                        direkt INNERHALB der Gruppen-Auswahl-Box rendern.
-                        Klappt erst auf, wenn der User eine Gruppe gewählt
-                        hat und das Feld der gewählten Gruppe entspricht. */}
-                    {preferredStarterType && (() => {
-                      const groupSpec = event.eventSpecificFields
-                        .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
-                        .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
-                        .filter(f => {
-                          if (!f.showIf || !f.showIf.fieldId) return true;
-                          const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
-                          if (!raw) return false;
-                          const answers = raw.indexOf(' | ') >= 0
-                            ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
-                            : [raw];
-                          return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
-                        })
-                        .filter(f => {
-                          const grp = f.onlyForGroup;
-                          if (!grp || grp === 'all') return false;
-                          if (grp === 'A') return preferredStarterType === 'Durchstarter';
-                          if (grp === 'B') return preferredStarterType === 'Funstarter';
-                          return false;
-                        });
-                      if (groupSpec.length === 0) return null;
-                      const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
-                      const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
-                      const grpLabel = preferredStarterType === 'Durchstarter' ? labelA : labelB;
-                      return (
-                        <div style={{
-                          marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--dex-gray-300)',
-                          display: 'flex', flexDirection: 'column', gap: 12,
-                        }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
-                            {locale === 'de'
-                              ? `Zusätzliche Angaben für die Gruppe „${grpLabel}"`
-                              : `Additional details for the „${grpLabel}" group`}
-                          </div>
-                          {groupSpec.map(renderRegField)}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* Sub-Events */}
+                {/* Sessions */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
@@ -1605,8 +1608,6 @@ export default function RegistrationPage(): React.ReactElement {
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
                     const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
                     const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
-                    const inheritsStarter = isSplitGroup && (willRegisterParent || registerForOther);
-                    const sType = sessionStarterType[ce.id] || '';
 
                     return (
                       <div key={ce.id} style={{
@@ -1676,36 +1677,13 @@ export default function RegistrationPage(): React.ReactElement {
                                 {t('reg.subevents.sessionfull')}
                               </div>
                             )}
-                            {isSel && isSplitGroup && !inheritsStarter && (
-                              <div style={{ marginTop: 8, display: 'flex', gap: 10, fontSize: '0.8rem' }}>
-                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                                  <input
-                                    type="radio"
-                                    name={`starter-${ce.id}`}
-                                    checked={sType === 'Durchstarter'}
-                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Durchstarter' })}
-                                  />
-                                  {splitLabelA}
-                                </label>
-                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                                  <input
-                                    type="radio"
-                                    name={`starter-${ce.id}`}
-                                    checked={sType === 'Funstarter'}
-                                    onChange={() => setSessionStarterType({ ...sessionStarterType, [ce.id]: 'Funstarter' })}
-                                  />
-                                  {splitLabelB}
-                                </label>
-                              </div>
-                            )}
-                            {/* v10.25: B2Run-spezifischer Vererbungs-Hinweis
-                                entfernt — bei generischer Split-Capacity
-                                (z.B. "Vormittag/Nachmittag") wirkt der
-                                Hinweis "Starter-Typ wird vom Haupt-Event
-                                übernommen" verwirrend. Die Logik bleibt
-                                (Sub-Event übernimmt die Gruppen-Wahl des
-                                Parents), nur die explizite UI-Zeile ist
-                                weg. */}
+                            {/* v11.10: Hardcoded Sub-Event-Gruppen-Radios entfernt.
+                                Sub-Events erben jetzt grundsätzlich
+                                preferredStarterType vom Group-Selection-Block
+                                oben. Pro-Sub-Event-Gruppe ist konzeptionell
+                                Quatsch — die Gruppe gehört zum Teilnehmer
+                                (z.B. „Vormittag/Nachmittag"), nicht zur
+                                Session. */}
                           </div>
                         </label>
                       </div>
