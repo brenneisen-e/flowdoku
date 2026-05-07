@@ -1334,14 +1334,19 @@ export default function AdminPage(): React.ReactElement {
                     }}>
                       {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
                     </span>
-                    {/* v10.20: Migrations-Button fuer Legacy-B2Run-Events.
-                        Macht das Event auf 'Other' Type und persistiert die
-                        bisherigen Hardcoded-Labels 'Durchstarter'/'Funstarter'
-                        explizit in den Custom-Label-Spalten. Damit sieht das
-                        Event nicht mehr B2Run-spezifisch aus, behaelt aber
-                        seine Anmeldedaten / Wartelisten. Nur sichtbar fuer
-                        Admins und nur bei Events mit type === 'B2Run'. */}
-                    {isAdmin && event.type === 'B2Run' && (
+                    {/* v10.20 / v11.9: Migrations-Button fuer Legacy-B2Run-Events.
+                        Erkennt das Event als 'altes B2Run' wenn entweder
+                        type === 'B2Run' (alte EventType-Spalte) ODER mind.
+                        ein b2run_*-Custom-Field in den eventSpecificFields
+                        steht. Damit erscheint der Knopf auch wenn die alte
+                        EventType-Spalte aus DEX_Events bereits geloescht
+                        wurde — entscheidend ist die b2run_*-Spur in der
+                        Felder-Konfiguration. Klick: entfernt b2run_*-Fields
+                        aus customFields, persistiert 'Durchstarter' /
+                        'Funstarter' als Gruppen-Labels, setzt EventType
+                        best-effort auf 'Other'. Bestehende Anmeldungen,
+                        Wartelisten und Sub-Events bleiben unveraendert. */}
+                    {isAdmin && (event.type === 'B2Run' || (event.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-green-dark, #4a7c1f)' }}
@@ -1351,37 +1356,100 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (!eventServiceRef) return;
+                          // v11.9: Migration nimmt jetzt auch Legacy-B2Run-
+                          // Sub-Events mit. Wir scannen alle Child-Events
+                          // (childEventsOf) und migrieren die mit, die
+                          // entweder type='B2Run' oder mind. ein b2run_*-
+                          // Custom-Field haben.
+                          const kids = childEventsOf(event.id);
+                          const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
+                          const kidsHint = kidsToMigrate.length > 0
+                            ? (isDe
+                                ? `\n\nEs werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
+                                : `\n\nAdditionally ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '"' + (k.title || '?') + '"').join(', ')}.`)
+                            : '';
                           const msg = isDe
-                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• B2Run-spezifische Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei aendern).\n• Anmeldungen, Wartelisten und Sub-Events bleiben unveraendert.`
-                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• B2Run-specific custom fields (starter type, start block, mobile-info service, privacy, performance proof) are removed from the field config.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• Registrations, waitlists and sub-events stay unchanged.`;
+                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• B2Run-spezifische Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei aendern).\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unveraendert.${kidsHint}`
+                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• B2Run-specific custom fields (starter type, start block, mobile-info service, privacy, performance proof) are removed from the field config.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
                           if (!window.confirm(msg)) return;
-                          try {
-                            // v10.20: Migration entfernt b2run_*-Custom-Fields
-                            // aus der eventSpecificFields-JSON, persistiert
-                            // explizite Split-Labels und versucht die alte
-                            // EventType-Spalte (vor v5.2) auf 'Other' zu
-                            // setzen. Wenn EventType-Spalte nicht mehr
-                            // existiert, schluckt der zweite Update-Versuch
-                            // den Fehler — die Migration ist trotzdem
-                            // erfolgreich, weil der Type-Derive-Logic ohne
-                            // b2run_startblock-Feld 'Other' liefert.
-                            const cleanedFields = (event.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
-                            const baseUpdates: Record<string, unknown> = {
-                              'CustomFields': JSON.stringify(cleanedFields),
-                              'SplitLabelA': 'Durchstarter',
-                              'SplitLabelB': 'Funstarter',
-                            };
-                            const ok = await updateEvent(event.id, baseUpdates);
-                            // Best-effort: zusaetzlich EventType setzen falls
-                            // die Spalte noch existiert (Pre-v5.2-Events).
+                          const errors: string[] = [];
+                          const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                             try {
-                              await updateEvent(event.id, { 'EventType': 'Other' });
-                            } catch { /* Spalte existiert nicht mehr — ignoriert */ }
-                            if (ok) {
-                              await refreshEvents();
-                              window.alert(isDe ? `Event "${event.title}" wurde auf das Standard-Schema migriert.` : `Event "${event.title}" has been migrated to the standard schema.`);
+                              const cleanedFields = (ev.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
+                              const splitActive = (ev.durchstarterCapacity || 0) > 0 && (ev.funstarterCapacity || 0) > 0;
+                              const baseUpdates: Record<string, unknown> = {
+                                'CustomFields': JSON.stringify(cleanedFields),
+                                // v11.9: Split-Capacity-Werte werden NICHT
+                                // angefasst (DurchstarterCapacity /
+                                // FunstarterCapacity bleiben). Die alten
+                                // Begriffe wandern in SplitLabelA / SplitLabelB
+                                // — der Organizer kann sie danach im Wizard
+                                // frei umbenennen, ohne dass die Anmeldung
+                                // bricht. StarterType-Werte der Teilnehmer
+                                // ('Durchstarter' / 'Funstarter') bleiben
+                                // unveraendert in der Subsite, weil splitLabelA/
+                                // splitLabelB nur die UI-Anzeige steuern, die
+                                // SP-Persistenz aber weiter mit den internen
+                                // IDs arbeitet.
+                                'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
+                                'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
+                              };
+                              const ok = await updateEvent(ev.id, baseUpdates);
+                              try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
+                              if (!ok) { errors.push(`„${ev.title}"`); return; }
+                              // v11.9: Subsite-Spalten neu syncen — fehlende
+                              // Spalten werden angelegt, b2run_*-Spalten die
+                              // nicht mehr in customFields stehen werden
+                              // gelöscht. StarterType / PreferredStarterType
+                              // bleiben erhalten solange split aktiv ist.
+                              if (ev.subsiteUrl && eventServiceRef) {
+                                try {
+                                  // CustomField (EventService) vs.
+                                  // EventSpecificField (Type) — wir mappen
+                                  // auf das CustomField-Schema (visible
+                                  // default true).
+                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                  const cfForFix: any[] = cleanedFields.map(f => ({
+                                    id: f.id,
+                                    label: f.label,
+                                    type: f.type,
+                                    required: !!f.required,
+                                    visible: true,
+                                    options: f.options || [],
+                                    /* eslint-disable @typescript-eslint/no-explicit-any */
+                                    spInternalName: (f as any).spInternalName || '',
+                                    ...((f as any).helpText ? { helpText: (f as any).helpText } : {}),
+                                    ...((f as any).multi ? { multi: true } : {}),
+                                    ...((f as any).showIf ? { showIf: (f as any).showIf } : {}),
+                                    /* eslint-enable @typescript-eslint/no-explicit-any */
+                                  }));
+                                  await eventServiceRef.fixRegistrationListColumns(ev.subsiteUrl, {
+                                    isB2Run: splitActive,
+                                    hasQuiz: (ev.quiz || []).length > 0,
+                                    customFields: cfForFix,
+                                  });
+                                } catch (err) { console.warn('[DEX] fixRegistrationListColumns failed for', ev.id, err); }
+                              }
+                            } catch (err) {
+                              console.warn('[DEX] migrate event failed:', ev.id, err);
+                              errors.push(`„${ev.title}"`);
+                            }
+                          };
+                          try {
+                            await migrateOne(event);
+                            for (const k of kidsToMigrate) {
+                              await migrateOne(k);
+                            }
+                            await refreshEvents();
+                            const total = 1 + kidsToMigrate.length;
+                            if (errors.length === 0) {
+                              window.alert(isDe
+                                ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
+                                : `Migration completed — ${total} event(s) migrated to the standard schema.`);
                             } else {
-                              window.alert(isDe ? 'Migration fehlgeschlagen.' : 'Migration failed.');
+                              window.alert(isDe
+                                ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console.`
+                                : `Migration partially failed for: ${errors.join(', ')}. See browser console.`);
                             }
                           } catch (err) {
                             console.warn('[DEX] migrate B2Run event failed:', err);
@@ -2308,6 +2376,69 @@ export default function AdminPage(): React.ReactElement {
                     setRepairOrganizersResult(`Fehler: ${err instanceof Error ? err.message : String(err)}`);
                   }
                   setIsRepairingOrganizers(false);
+                }}
+              />
+            )}
+
+            {/* v11.9: B2Run-Migration als Action-Tile im Admin-Event-Detail.
+                Erkennt Legacy-Events (type='B2Run' oder b2run_*-Custom-
+                Fields vorhanden) und bietet die gleiche Migration an wie
+                der „B2Run migrieren"-Button in der Event-Liste. Damit
+                findet der Admin den Knopf auch wenn er das Event bereits
+                ausgewählt hat. */}
+            {isAdmin && selectedEvent && (selectedEvent.type === 'B2Run' || (selectedEvent.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                title="Legacy-B2Run migrieren"
+                desc="Entfernt den B2Run-Type, löscht die b2run_*-Custom-Fields und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
+                badge="admin"
+                onClick={async () => {
+                  if (!eventServiceRef) return;
+                  const kids = childEventsOf(selectedEvent.id);
+                  const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
+                  const msg = `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
+                    `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
+                    `• b2run_*-Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n` +
+                    `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
+                    `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
+                    (kidsToMigrate.length > 0
+                      ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
+                      : `Keine Sub-Events mit Legacy-B2Run-Spuren gefunden — nur das Hauptevent wird migriert.`);
+                  if (!window.confirm(msg)) return;
+                  const errors: string[] = [];
+                  const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
+                    try {
+                      const cleanedFields = (ev.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
+                      const baseUpdates: Record<string, unknown> = {
+                        'CustomFields': JSON.stringify(cleanedFields),
+                        'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
+                        'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
+                      };
+                      const ok = await updateEvent(ev.id, baseUpdates);
+                      try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
+                      if (!ok) errors.push(`„${ev.title}"`);
+                    } catch (err) {
+                      console.warn('[DEX] migrate event failed:', ev.id, err);
+                      errors.push(`„${ev.title}"`);
+                    }
+                  };
+                  try {
+                    // Hauptevent zuerst, dann alle b2run-Sub-Events.
+                    await migrateOne(selectedEvent);
+                    for (const k of kidsToMigrate) {
+                      await migrateOne(k);
+                    }
+                    await refreshEvents();
+                    if (errors.length === 0) {
+                      const total = 1 + kidsToMigrate.length;
+                      window.alert(`Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`);
+                    } else {
+                      window.alert(`Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console für Details.`);
+                    }
+                  } catch (err) {
+                    console.warn('[DEX] migrate B2Run event failed:', err);
+                    window.alert('Migration fehlgeschlagen — siehe Browser-Console.');
+                  }
                 }}
               />
             )}
