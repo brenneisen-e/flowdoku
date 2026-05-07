@@ -1369,8 +1369,8 @@ export default function AdminPage(): React.ReactElement {
                                 : `\n\nAdditionally ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '"' + (k.title || '?') + '"').join(', ')}.`)
                             : '';
                           const msg = isDe
-                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
-                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• b2run_* custom fields (age group, t-shirt size, start block, mobile, privacy etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
+                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• B2Run-Extras (Leistungsnachweis-Pflicht, Startblock-Mapping pro Gruppe) werden entfernt. Wenn du eine Leistungsnachweis-Abfrage weiter brauchst, lege sie als Custom-Field mit Gruppen-Bindung an.\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
+                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• B2Run extras (performance-proof requirement, per-group start-block mapping) are removed. If you still need a performance-proof prompt, add it as a custom field bound to a group.\n• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
                           if (!window.confirm(msg)) return;
                           const errors: string[] = [];
                           const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
@@ -1391,6 +1391,28 @@ export default function AdminPage(): React.ReactElement {
                                 'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                               };
+                              // v11.12: B2Run-Extra-Config aus
+                              // EmailTemplateOverrides._b2run entfernen
+                              // (durchstarterRequiresProof, Startblock-
+                              // Mappings). Das war B2Run-spezifisches
+                              // Legacy-Verhalten — die hardcoded „Leistungs-
+                              // nachweis vorhanden"-Checkbox in der
+                              // Registrierung verschwindet damit. Wenn der
+                              // Organizer eine Leistungsnachweis-Abfrage
+                              // weiter braucht, kann er sie im Wizard als
+                              // Custom-Field mit onlyForGroup hinterlegen.
+                              try {
+                                const overridesRaw = (ev.emailTemplateOverrides || '').toString();
+                                if (overridesRaw.trim()) {
+                                  const parsed = JSON.parse(overridesRaw);
+                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                  if (parsed && typeof parsed === 'object' && (parsed as any)._b2run) {
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    delete (parsed as any)._b2run;
+                                    baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
+                                  }
+                                }
+                              } catch { /* invalid JSON → einfach ignorieren */ }
                               const ok = await updateEvent(ev.id, baseUpdates);
                               try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                               if (!ok) { errors.push(`„${ev.title}"`); return; }
@@ -2391,7 +2413,8 @@ export default function AdminPage(): React.ReactElement {
                   const msg = `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
                     `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
                     `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
-                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
+                    `• B2Run-Extras (Leistungsnachweis-Pflicht, Startblock-Mapping pro Gruppe) werden entfernt. Bei Bedarf als Custom-Field mit Gruppen-Bindung wieder anlegen.\n` +
+                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
                     `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
                     (kidsToMigrate.length > 0
                       ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
@@ -2405,6 +2428,21 @@ export default function AdminPage(): React.ReactElement {
                         'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                       };
+                      // v11.12: B2Run-Extra-Config aus
+                      // EmailTemplateOverrides._b2run entfernen
+                      // (durchstarterRequiresProof, Startblock-Mappings).
+                      try {
+                        const overridesRaw = (ev.emailTemplateOverrides || '').toString();
+                        if (overridesRaw.trim()) {
+                          const parsed = JSON.parse(overridesRaw);
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          if (parsed && typeof parsed === 'object' && (parsed as any)._b2run) {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            delete (parsed as any)._b2run;
+                            baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
+                          }
+                        }
+                      } catch { /* invalid JSON → einfach ignorieren */ }
                       const ok = await updateEvent(ev.id, baseUpdates);
                       try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                       if (!ok) errors.push(`„${ev.title}"`);
