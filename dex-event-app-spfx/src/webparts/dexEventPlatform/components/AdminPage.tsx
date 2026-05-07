@@ -69,6 +69,65 @@ function translateStatus(status: string, isDe: boolean): string {
   }
 }
 
+// v11.14: Migriert hardcoded B2Run-Sonderbehandlungen aus dem Render-
+// Code von RegistrationPage.tsx in echte Custom-Field-Properties:
+//
+// - b2run_mobilnummer ist nur sichtbar wenn b2run_infoservice='true'
+//   → wird durch eine showIf-Bedingung auf dem Mobilnummer-Feld ersetzt.
+//   Der Pflicht-Status bleibt dynamisch (true wenn sichtbar via showIf).
+// - b2run_datenschutz hat im Render hardcoded externalLinks-Fallbacks
+//   (B2Run-AGB + Datenschutz-URL) wenn die Field-Properties leer sind
+//   → wird in das Field selbst persistiert.
+// - b2run_laufshirt wird im Render auf required=true gezwungen
+//   → wird in der Field-Property persistiert.
+//
+// Wird nur einmalig bei der Migration aufgerufen — die in-Memory-Field-
+// Liste wird mutiert; Caller speichert das Ergebnis als CustomFields-
+// JSON. Wenn keine relevanten Felder existieren, no-op.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
+  let changed = false;
+  for (const f of fields) {
+    const id = String(f.id || '').toLowerCase();
+    if (id === 'b2run_mobilnummer') {
+      // v11.14: showIf-Constraint auf b2run_infoservice='true'.
+      // Damit übernimmt die generische Render-Logik die Sichtbarkeit
+      // statt der hardcoded Sonderprüfung.
+      const sf = f.showIf;
+      const alreadySet = sf && sf.fieldId === 'b2run_infoservice'
+        && Array.isArray(sf.values) && sf.values.indexOf('true') >= 0;
+      if (!alreadySet) {
+        f.showIf = { fieldId: 'b2run_infoservice', values: ['true'] };
+        // Wenn der User Infoservice aktiviert, ist die Mobilnummer
+        // Pflicht — über showIf gerendert ist die Pflicht-Logik
+        // jetzt deterministisch (Feld sichtbar ⇒ Feld Pflicht).
+        f.required = true;
+        changed = true;
+      }
+    } else if (id === 'b2run_datenschutz') {
+      // v11.14: Hardcoded B2Run-AGB- und Datenschutz-Links als
+      // externalLinks-Property persistieren, sodass der Render-
+      // Fallback-Path obsolet wird.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const links: any[] = Array.isArray(f.externalLinks) ? f.externalLinks : [];
+      if (links.length === 0) {
+        f.externalLinks = [
+          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+        ];
+        changed = true;
+      }
+    } else if (id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || ''))) {
+      // v11.14: Hardcoded required=true persistieren.
+      if (!f.required) {
+        f.required = true;
+        changed = true;
+      }
+    }
+  }
+  return { changed };
+}
+
 // v7.6: Wiederverwendbare Action-Kachel fuer den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
 // Deloitte-Gruen. Unterstuetzt Button (onClick), Link (href, oeffnet in neuem
@@ -1442,6 +1501,14 @@ export default function AdminPage(): React.ReactElement {
                                   }
                                 }
                               } catch { /* invalid JSON → einfach ignorieren */ }
+                              // v11.14: hardcoded B2Run-Field-Specials in
+                              // echte Field-Properties migrieren (showIf
+                              // für Mobilnummer, externalLinks für
+                              // Datenschutz, required für Laufshirt).
+                              const fieldExtras = migrateB2RunFieldExtras(keptFields);
+                              if (fieldExtras.changed) {
+                                baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                              }
                               const ok = await updateEvent(ev.id, baseUpdates);
                               try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                               if (!ok) { errors.push(`„${ev.title}"`); return; }
@@ -2499,6 +2566,12 @@ export default function AdminPage(): React.ReactElement {
                           }
                         }
                       } catch { /* invalid JSON → einfach ignorieren */ }
+                      // v11.14: hardcoded B2Run-Field-Specials in echte
+                      // Field-Properties migrieren.
+                      const fieldExtras = migrateB2RunFieldExtras(keptFields);
+                      if (fieldExtras.changed) {
+                        baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                      }
                       const ok = await updateEvent(ev.id, baseUpdates);
                       try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                       if (!ok) errors.push(`„${ev.title}"`);
