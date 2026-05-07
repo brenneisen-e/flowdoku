@@ -1369,47 +1369,39 @@ export default function AdminPage(): React.ReactElement {
                                 : `\n\nAdditionally ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '"' + (k.title || '?') + '"').join(', ')}.`)
                             : '';
                           const msg = isDe
-                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• B2Run-spezifische Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei aendern).\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unveraendert.${kidsHint}`
-                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• B2Run-specific custom fields (starter type, start block, mobile-info service, privacy, performance proof) are removed from the field config.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
+                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
+                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• b2run_* custom fields (age group, t-shirt size, start block, mobile, privacy etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
                           if (!window.confirm(msg)) return;
                           const errors: string[] = [];
                           const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                             try {
-                              const cleanedFields = (ev.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
+                              // v11.11: KEINE Custom-Fields mehr löschen.
+                              // Die b2run_*-Felder bleiben als generische
+                              // Custom-Fields erhalten — der Organizer kann
+                              // sie im Wizard danach selbst umbenennen oder
+                              // entfernen. Vorher (v11.9) hat die Migration
+                              // sie aggressiv aus customFields entfernt, was
+                              // zu Datenverlust geführt hat (Altersgruppe,
+                              // T-Shirt-Größe etc. waren weg, obwohl nur
+                              // die Type-Spalte und Labels umgestellt
+                              // werden sollten).
+                              const keptFields = (ev.eventSpecificFields || []);
                               const splitActive = (ev.durchstarterCapacity || 0) > 0 && (ev.funstarterCapacity || 0) > 0;
                               const baseUpdates: Record<string, unknown> = {
-                                'CustomFields': JSON.stringify(cleanedFields),
-                                // v11.9: Split-Capacity-Werte werden NICHT
-                                // angefasst (DurchstarterCapacity /
-                                // FunstarterCapacity bleiben). Die alten
-                                // Begriffe wandern in SplitLabelA / SplitLabelB
-                                // — der Organizer kann sie danach im Wizard
-                                // frei umbenennen, ohne dass die Anmeldung
-                                // bricht. StarterType-Werte der Teilnehmer
-                                // ('Durchstarter' / 'Funstarter') bleiben
-                                // unveraendert in der Subsite, weil splitLabelA/
-                                // splitLabelB nur die UI-Anzeige steuern, die
-                                // SP-Persistenz aber weiter mit den internen
-                                // IDs arbeitet.
                                 'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                               };
                               const ok = await updateEvent(ev.id, baseUpdates);
                               try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                               if (!ok) { errors.push(`„${ev.title}"`); return; }
-                              // v11.9: Subsite-Spalten neu syncen — fehlende
-                              // Spalten werden angelegt, b2run_*-Spalten die
-                              // nicht mehr in customFields stehen werden
-                              // gelöscht. StarterType / PreferredStarterType
-                              // bleiben erhalten solange split aktiv ist.
+                              // v11.11: Subsite-Spalten syncen — fehlende
+                              // Spalten werden angelegt. Die b2run_*-Spalten
+                              // bleiben drin, weil sie auch in customFields
+                              // bleiben.
                               if (ev.subsiteUrl && eventServiceRef) {
                                 try {
-                                  // CustomField (EventService) vs.
-                                  // EventSpecificField (Type) — wir mappen
-                                  // auf das CustomField-Schema (visible
-                                  // default true).
                                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  const cfForFix: any[] = cleanedFields.map(f => ({
+                                  const cfForFix: any[] = keptFields.map(f => ({
                                     id: f.id,
                                     label: f.label,
                                     type: f.type,
@@ -2390,7 +2382,7 @@ export default function AdminPage(): React.ReactElement {
               <ActionTile
                 icon={<RefreshCw size={18} />}
                 title="Legacy-B2Run migrieren"
-                desc="Entfernt den B2Run-Type, löscht die b2run_*-Custom-Fields und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
+                desc="Entfernt den B2Run-Type und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe etc.) BLEIBEN als generische Custom-Fields erhalten. Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
                 badge="admin"
                 onClick={async () => {
                   if (!eventServiceRef) return;
@@ -2398,8 +2390,8 @@ export default function AdminPage(): React.ReactElement {
                   const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
                   const msg = `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
                     `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
-                    `• b2run_*-Custom-Fields (Starter-Typ, Startblock, Mobilnummer-Infoservice, Datenschutz, Leistungsnachweis) werden aus der Felder-Konfiguration entfernt.\n` +
                     `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
+                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
                     `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
                     (kidsToMigrate.length > 0
                       ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
@@ -2408,9 +2400,8 @@ export default function AdminPage(): React.ReactElement {
                   const errors: string[] = [];
                   const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                     try {
-                      const cleanedFields = (ev.eventSpecificFields || []).filter(f => !(f.id || '').toLowerCase().startsWith('b2run_'));
+                      // v11.11: Custom-Fields werden NICHT mehr gelöscht.
                       const baseUpdates: Record<string, unknown> = {
-                        'CustomFields': JSON.stringify(cleanedFields),
                         'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                       };
@@ -2438,6 +2429,99 @@ export default function AdminPage(): React.ReactElement {
                   } catch (err) {
                     console.warn('[DEX] migrate B2Run event failed:', err);
                     window.alert('Migration fehlgeschlagen — siehe Browser-Console.');
+                  }
+                }}
+              />
+            )}
+
+            {/* v11.11: Custom-Fields aus Versionsverlauf zurückholen.
+                Hilft den Admins, denen die v11.9-Migration die b2run_*-
+                Felder (Altersgruppe, T-Shirt-Größe etc.) versehentlich
+                aus customFields entfernt hat. Liest die SP-Versionen des
+                Event-Items, sucht die jüngste Version mit b2run_*-
+                Feldern und mergt diese zurück in das aktuelle
+                CustomFields-Array. Bestehende Felder bleiben unverändert
+                — es werden NUR fehlende b2run_*-Felder ergänzt. */}
+            {isAdmin && selectedEvent && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                title="Custom-Fields aus Versionsverlauf zurückholen"
+                desc="Liest den SharePoint-Versionsverlauf des Events und holt verloren gegangene b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer etc.) zurück. Nützlich nach der v11.9-Migration, die diese Felder versehentlich gelöscht hat. Bestehende Felder werden NICHT überschrieben — es werden nur fehlende Felder ergänzt."
+                badge="admin"
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent) return;
+                  try {
+                    const history = await eventServiceRef.getEventCustomFieldsHistory(parseInt(selectedEvent.id, 10));
+                    if (history.length === 0) {
+                      window.alert('Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.');
+                      return;
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const currentFields: any[] = (selectedEvent.eventSpecificFields || []).map(f => ({ ...f }));
+                    const currentIds = new Set(currentFields.map(f => String(f.id || '').toLowerCase()));
+                    // Jüngste Version mit b2run_*-Feldern finden, die noch
+                    // NICHT in currentFields stecken.
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    let foundFields: any[] = [];
+                    let foundVersion = '';
+                    let foundModified = '';
+                    for (const v of history) {
+                      const missingB2run = v.customFields.filter(f => {
+                        const id = String(f.id || '').toLowerCase();
+                        return id.indexOf('b2run_') === 0 && !currentIds.has(id);
+                      });
+                      if (missingB2run.length > 0) {
+                        foundFields = missingB2run;
+                        foundVersion = v.versionLabel;
+                        foundModified = v.modified;
+                        break;
+                      }
+                    }
+                    if (foundFields.length === 0) {
+                      window.alert('Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.');
+                      return;
+                    }
+                    const fieldList = foundFields.map(f => `• ${f.label || f.id}`).join('\n');
+                    const modifiedDate = foundModified ? new Date(foundModified).toLocaleString('de-DE') : '?';
+                    if (!window.confirm(`Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`)) {
+                      return;
+                    }
+                    const merged = [...currentFields, ...foundFields];
+                    const ok = await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(merged) });
+                    if (!ok) {
+                      window.alert('Update fehlgeschlagen — siehe Browser-Console.');
+                      return;
+                    }
+                    // Subsite-Spalten gleich mit-syncen, damit die b2run_*-
+                    // Spalten in der Teilnehmerliste wieder existieren.
+                    if (selectedEvent.subsiteUrl) {
+                      try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const cfForFix: any[] = merged.map((f: any) => ({
+                          id: f.id,
+                          label: f.label,
+                          type: f.type,
+                          required: !!f.required,
+                          visible: true,
+                          options: f.options || [],
+                          spInternalName: f.spInternalName || '',
+                          ...(f.helpText ? { helpText: f.helpText } : {}),
+                          ...(f.multi ? { multi: true } : {}),
+                          ...(f.showIf ? { showIf: f.showIf } : {}),
+                        }));
+                        const splitActive = (selectedEvent.durchstarterCapacity || 0) > 0 && (selectedEvent.funstarterCapacity || 0) > 0;
+                        await eventServiceRef.fixRegistrationListColumns(selectedEvent.subsiteUrl, {
+                          isB2Run: splitActive,
+                          hasQuiz: (selectedEvent.quiz || []).length > 0,
+                          customFields: cfForFix,
+                        });
+                      } catch (err) { console.warn('[DEX] fixRegistrationListColumns nach Restore fehlgeschlagen:', err); }
+                    }
+                    await refreshEvents();
+                    window.alert(`${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`);
+                  } catch (err) {
+                    console.warn('[DEX] restore custom fields from history failed:', err);
+                    window.alert('Zurückholen fehlgeschlagen — siehe Browser-Console.');
                   }
                 }}
               />

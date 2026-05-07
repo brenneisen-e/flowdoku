@@ -2788,6 +2788,55 @@ export class EventService {
   /**
    * Event aktualisieren
    */
+  /**
+   * v11.11: Versionsverlauf des Event-Items aus DEX_Events lesen, um
+   * versehentlich gelöschte Custom-Fields (z.B. b2run_*-Felder nach
+   * der zu aggressiven v11.9-Migration) wieder zurückzuholen.
+   *
+   * Liefert eine Liste der Versionen, jeweils mit dem geparsten
+   * `CustomFields`-Array (sortiert: neueste zuerst). Werte ohne
+   * CustomFields oder mit leerem Array fallen einfach mit raus, sind
+   * aber nicht gefiltert — der Caller entscheidet, welche Version
+   * relevant ist.
+   */
+  public async getEventCustomFieldsHistory(eventId: number): Promise<Array<{
+    versionLabel: string;
+    modified: string;
+    customFields: Array<Record<string, unknown>>;
+  }>> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/versions?$select=VersionLabel,Modified,CustomFields`;
+      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+      });
+      if (!response.ok) {
+        console.warn('[DEX] getEventCustomFieldsHistory failed:', response.status);
+        return [];
+      }
+      const data = await response.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const versions: any[] = data.value || [];
+      return versions.map(v => {
+        let parsed: Array<Record<string, unknown>> = [];
+        try {
+          const raw = (v.CustomFields || '').toString();
+          if (raw.trim()) {
+            const obj = JSON.parse(raw);
+            if (Array.isArray(obj)) parsed = obj as Array<Record<string, unknown>>;
+          }
+        } catch { /* invalid JSON in old version → leer */ }
+        return {
+          versionLabel: String(v.VersionLabel || ''),
+          modified: String(v.Modified || ''),
+          customFields: parsed,
+        };
+      });
+    } catch (err) {
+      console.warn('[DEX] getEventCustomFieldsHistory error:', err);
+      return [];
+    }
+  }
+
   public async updateEvent(eventId: number, updates: Record<string, unknown>): Promise<boolean> {
     try {
       const payload = {
