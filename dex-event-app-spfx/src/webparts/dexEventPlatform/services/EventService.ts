@@ -5783,28 +5783,49 @@ export class EventService {
   // syncCounterToMax). Gibt den neuen Counter-Wert zurueck damit der Admin
   // direkt sehen kann auf was es gepatcht wurde.
   public async resetCounterToMax(subsiteUrl: string): Promise<{ counter: number; max: number }> {
-    // v9.13: Erst Counter-Liste sicherstellen (legt sie an, falls fehlt;
-    // patcht Permissions monotonic auf Visitors=Contribute, falls bestehende
-    // Liste noch Read-Inheritance hatte). Dann auf max syncen.
+    // v11.27: bidirektionaler Reset. Vorher rief diese Methode nur
+    // syncCounterToMax auf — das ist monotonic up-only und liess einen
+    // zu hohen Counter unveraendert. Genau das hat der Maintainer beobachtet:
+    // Counter=11, Max-TID=4, Klick auf "Counter zurücksetzen" → keine
+    // Aenderung, weiterhin 11. Jetzt setzen wir den Counter explizit
+    // auf max(TID) — egal ob er drunter (gefaehrlich, Doppel-IDs moeglich)
+    // oder drueber stand (harmlos, nur Luecken-Springen).
     try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
     const max = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
-    // Wenn der Counter aktuell unter max steht: hochziehen.
-    // Wenn er drueber steht: lassen (monotonic up-only).
-    await this.syncCounterToMax(subsiteUrl);
-    // Counter neu lesen, damit wir den aktuellen Stand zurueckgeben
-    let counter = 0;
-    try {
-      const resp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const raw = data?.NextValue ?? data?.d?.NextValue;
-        counter = typeof raw === 'number' ? raw : (typeof raw === 'string' ? (parseInt(raw, 10) || 0) : 0);
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    let finalCounter = 0;
+    // ETag-CAS-Loop, falls jemand parallel inserted und den Counter inkrementiert.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        if (!getResp.ok) break;
+        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+        if (!etag) break;
+        const data = await getResp.json();
+        const rawCurrent = data?.NextValue ?? data?.d?.NextValue;
+        const current = typeof rawCurrent === 'number' ? rawCurrent : (typeof rawCurrent === 'string' ? (parseInt(rawCurrent, 10) || 0) : 0);
+        if (current === max) {
+          finalCounter = current;
+          break;
+        }
+        const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': max }, etag);
+        if (patchResp.ok) {
+          finalCounter = max;
+          console.warn(`[DEX] resetCounterToMax: counter von ${current} auf ${max} gesetzt (Subsite: ${subsiteUrl}).`);
+          break;
+        }
+        if (patchResp.status !== 412) {
+          finalCounter = current;
+          break;
+        }
+        // 412 = jemand war schneller, nochmal lesen+patchen
+        await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+      } catch (err) {
+        console.warn('[DEX] resetCounterToMax error:', err);
+        break;
       }
-    } catch { /* */ }
-    return { counter, max };
+    }
+    return { counter: finalCounter, max };
   }
 
   private async syncCounterToMax(subsiteUrl: string): Promise<void> {
