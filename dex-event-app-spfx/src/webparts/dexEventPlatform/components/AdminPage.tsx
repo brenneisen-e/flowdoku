@@ -2995,9 +2995,13 @@ export default function AdminPage(): React.ReactElement {
         // Labels wenn der Organizer keine eigenen gesetzt hat.
         const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
         const labelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
+        // v11.29: Label + Anzahl beide linksbuendig — vorher
+        // justify-content: space-between schob die Anzahl an den
+        // rechten Rand der Karte (bei breiten Cards optisch
+        // disconnected vom Label).
         const cardA = (
           <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-green-dark, #6b9a1e)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
               <strong style={{ color: 'var(--dex-green-dark, #6b9a1e)' }}>{labelA}</strong>
               <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
                 {durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span>
@@ -3010,7 +3014,7 @@ export default function AdminPage(): React.ReactElement {
         );
         const cardB = (
           <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-orange, #ff8c00)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
               <strong style={{ color: 'var(--dex-orange, #ff8c00)' }}>{labelB}</strong>
               <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
                 {funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span>
@@ -3948,10 +3952,14 @@ export default function AdminPage(): React.ReactElement {
             // Labels statt hartcodeten 'Durchstarter'/'Funstarter'.
             const wlLabelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
             const wlLabelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
+            // v11.29: Reihenfolge respektiert splitDisplayOrderReversed
+            // (gleicher Toggle wie auf Register-Page + Kapazitaets-Cards).
+            const wlA = renderWaitlistTable(`Warteliste ${wlLabelA}`, waitlistDurch, 'var(--dex-green-dark, #6b9a1e)');
+            const wlB = renderWaitlistTable(`Warteliste ${wlLabelB}`, waitlistFun, 'var(--dex-orange, #ff8c00)');
+            const reversed = !!selectedEvent?.splitDisplayOrderReversed;
             return (
               <>
-                {renderWaitlistTable(`Warteliste ${wlLabelA}`, waitlistDurch, 'var(--dex-green-dark, #6b9a1e)')}
-                {renderWaitlistTable(`Warteliste ${wlLabelB}`, waitlistFun, 'var(--dex-orange, #ff8c00)')}
+                {reversed ? <>{wlB}{wlA}</> : <>{wlA}{wlB}</>}
                 {renderWaitlistTable('Warteliste ohne Gruppe', waitlistUnassigned, 'var(--dex-gray-500)')}
               </>
             );
