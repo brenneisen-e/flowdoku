@@ -15,7 +15,7 @@ import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
-import { RefreshCw, X } from './Icons';
+import { RefreshCw, X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 
 interface MyEventEntry {
@@ -1083,7 +1083,7 @@ export default function MyEventsPage(): React.ReactElement {
                     „wer organisiert das". */}
                 {!editingId || editingId !== event.id ? (
                   displayData.length > 0 && (
-                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                       {displayData.map(({ label, value }) => (
                         <span key={label} style={{
                           fontSize: '0.78rem', padding: '4px 10px', borderRadius: 4,
@@ -1094,6 +1094,24 @@ export default function MyEventsPage(): React.ReactElement {
                           {label}: <strong>{value}</strong>
                         </span>
                       ))}
+                      {/* v11.30: Edit-Button direkt neben den Angaben-Tags
+                          (statt unten in der Aktions-Zeile). Naeher am Inhalt
+                          den er bearbeitet. */}
+                      <button
+                        type="button"
+                        onClick={() => { setEditData(customData); setEditingId(event.id); }}
+                        style={{
+                          fontSize: '0.78rem', padding: '4px 10px', borderRadius: 4,
+                          background: 'transparent',
+                          color: 'var(--dex-gray-700)',
+                          border: '1px solid var(--dex-gray-300)',
+                          cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                        }}
+                        title={t('myevents.edit')}
+                      >
+                        <Pencil size={12} /> {t('myevents.edit')}
+                      </button>
                     </div>
                   )
                 ) : (
@@ -1359,9 +1377,15 @@ export default function MyEventsPage(): React.ReactElement {
                           {t('myevents.latecancel')}
                         </span>
                       )}
-                      <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => { if (editingId === event.id) { setEditingId(null); } else { setEditData(customData); setEditingId(event.id); } }}>
-                        {editingId === event.id ? t('general.cancel') : t('myevents.edit')}
-                      </button>
+                      {/* v11.30: „Angaben bearbeiten"-Button wandert nach
+                          oben neben die Angaben-Tags. Hier in der Aktions-
+                          Zeile nur noch der Cancel-Edit-Button waehrend
+                          aktiver Bearbeitung — sonst leer. */}
+                      {editingId === event.id && (
+                        <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => setEditingId(null)}>
+                          {t('general.cancel')}
+                        </button>
+                      )}
                       {/* v10.27: Gruppe wechseln bei Split-Capacity-Events.
                           Sichtbar nur wenn beide Kapazitäten > 0 sind und der
                           User aktiv angemeldet (nicht abgemeldet) ist. Ein
