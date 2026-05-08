@@ -4618,6 +4618,48 @@ export class EventService {
    * Liefert { ok, status, full } zurück — die App nutzt das, um die richtige
    * Mail (Anmeldung vs. Warteliste) zu queuen und dem User Feedback zu geben.
    */
+  /**
+   * v11.24: Tauscht StarterType (und PreferredStarterType) bei ALLEN
+   * Registrierungen einer Subsite: jeder 'Durchstarter' wird zu
+   * 'Funstarter' und umgekehrt. Wird vom Admin-Center aufgerufen, wenn
+   * der Organizer im Wizard die Reihenfolge der Gruppen-Labels +
+   * -Kapazitäten getauscht hat — die existierenden Anmeldungen sind
+   * dann technisch noch in der „alten" Slot-Bedeutung. Dieser Flip
+   * synchronisiert sie mit der neuen Reihenfolge.
+   *
+   * Liefert die Anzahl erfolgreich aktualisierter Items zurück.
+   */
+  public async flipAllStarterTypes(subsiteUrl: string): Promise<{ ok: boolean; updated: number; failed: number }> {
+    try {
+      const all = await this.getAllRegistrations(subsiteUrl);
+      let updated = 0;
+      let failed = 0;
+      for (const r of all) {
+        const flip = (t: string | undefined): string => {
+          if (t === 'Durchstarter') return 'Funstarter';
+          if (t === 'Funstarter') return 'Durchstarter';
+          return t || '';
+        };
+        const newStarter = flip(r.StarterType);
+        const newPref = flip(r.PreferredStarterType);
+        if (newStarter === (r.StarterType || '') && newPref === (r.PreferredStarterType || '')) continue;
+        try {
+          const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${r.Id})`;
+          const body: Record<string, unknown> = {};
+          if (newStarter !== (r.StarterType || '')) body['StarterType'] = newStarter;
+          if (newPref !== (r.PreferredStarterType || '')) body['PreferredStarterType'] = newPref;
+          const resp = await this._merge(url, body);
+          if (resp.ok) updated++;
+          else failed++;
+        } catch { failed++; }
+      }
+      return { ok: failed === 0, updated, failed };
+    } catch (err) {
+      console.warn('[DEX] flipAllStarterTypes error:', err);
+      return { ok: false, updated: 0, failed: 0 };
+    }
+  }
+
   public async switchSplitGroup(
     subsiteUrl: string,
     itemId: number,

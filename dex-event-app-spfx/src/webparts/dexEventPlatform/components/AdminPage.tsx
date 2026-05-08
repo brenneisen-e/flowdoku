@@ -2609,6 +2609,7 @@ export default function AdminPage(): React.ReactElement {
                 Feldern und mergt diese zurück in das aktuelle
                 CustomFields-Array. Bestehende Felder bleiben unverändert
                 — es werden NUR fehlende b2run_*-Felder ergänzt. */}
+
             {isAdmin && selectedEvent && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
@@ -3352,29 +3353,10 @@ export default function AdminPage(): React.ReactElement {
                         const actual = reg.StarterType || '';
                         const pref = reg.PreferredStarterType || '';
                         if (!actual && !pref) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
-                        // v11.23: Internal-ID → User-Label mappen. Vorher
-                        // wurde direkt 'Durchstarter'/'Funstarter' angezeigt
-                        // — wenn der Organizer aber freie Labels gesetzt
-                        // oder die Reihenfolge der Gruppen getauscht hatte
-                        // (splitLabelA='Funstarter 18:40Uhr',
-                        // splitLabelB='Durchstarter 17:00Uhr'), wirkte die
-                        // Tabellenanzeige inkonsistent zur Kapazitäts-Karte
-                        // ("1 Funstarter" oben, aber Teilnehmer-Zeile zeigt
-                        // 'Durchstarter'). Jetzt wird die interne ID via
-                        // splitLabelA/B in das angezeigte Label übersetzt.
-                        const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
-                        const labelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
-                        const mapType = (t: string): string => {
-                          if (t === 'Durchstarter') return labelA;
-                          if (t === 'Funstarter') return labelB;
-                          return t;
-                        };
-                        const actualLabel = mapType(actual);
-                        const prefLabel = mapType(pref);
                         if (actual && pref && actual !== pref) {
-                          return <span>{actualLabel} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {prefLabel})</span></span>;
+                          return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
                         }
-                        return <span>{actualLabel || `Wunsch: ${prefLabel}`}</span>;
+                        return <span>{actual || `Wunsch: ${pref}`}</span>;
                       })()}
                     </td>
                   );
