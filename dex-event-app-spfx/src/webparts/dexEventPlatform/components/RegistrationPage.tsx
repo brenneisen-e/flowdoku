@@ -1455,10 +1455,14 @@ export default function RegistrationPage(): React.ReactElement {
                     : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  {([
-                    { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' },
-                    { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' },
-                  ]).map(opt => {
+                  {(() => {
+                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
+                    const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' };
+                    // v11.25: pure UI-Reihenfolge — bei reversed wird Karte B
+                    // zuerst gerendert. Interne IDs/Capacities/StarterType der
+                    // Anmeldungen bleiben unangetastet.
+                    return event.splitDisplayOrderReversed ? [optB, optA] : [optA, optB];
+                  })().map(opt => {
                     const free = opt.cap - opt.count;
                     const isFull = free <= 0;
                     const isActive = preferredStarterType === opt.id;

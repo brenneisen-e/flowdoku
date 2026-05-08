@@ -447,6 +447,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const co = (parsed as any)._coOrganizers;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const tt = (parsed as any)._testTeam;
+          // v11.25: pure Display-Reihenfolge-Umkehr fuer Split-Capacity-Karten.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const splitDispRev = !!(parsed as any)._splitDisplayOrderReversed;
           const b2Part = b && typeof b === 'object' ? {
             durchstarterStartblock: typeof b.durchstarterStartblock === 'string' ? b.durchstarterStartblock : undefined,
             funstarterStartblock: typeof b.funstarterStartblock === 'string' ? b.funstarterStartblock : undefined,
@@ -464,7 +467,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const ttNames: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.name || '')) : [];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ttEmails: string[] = Array.isArray(tt) ? tt.map((x: any) => String(x?.email || '')) : [];
-          return { ...b2Part, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
+          return { ...b2Part, splitDisplayOrderReversed: splitDispRev, qrScannerNames: qrNames, qrScannerEmails: qrEmails, coOrganizerNames: coNames, coOrganizerEmails: coEmails, testTeamNames: ttNames, testTeamEmails: ttEmails };
         } catch { return { qrScannerNames: [], qrScannerEmails: [], coOrganizerNames: [], coOrganizerEmails: [], testTeamNames: [], testTeamEmails: [] }; }
       })(),
       agenda: (() => { try { return e.Agenda ? JSON.parse(e.Agenda) : []; } catch { return []; } })(),

@@ -117,6 +117,15 @@ export interface DeloitteEvent {
    *    Gruppen nur ein UI-Konstrukt sind aber organisatorisch fluide
    *    behandelt werden. */
   splitSharedWaitlist?: boolean;
+  /** v11.25: Reine Display-Reihenfolge der zwei Gruppen-Karten in der
+   *  Registrierungs-UI umkehren. Default false — Karte A links / zuerst,
+   *  Karte B rechts / zweitens. Mit true wird Karte B zuerst gezeigt
+   *  (Group 2 prominent). Aenderung beeinflusst NUR die Anzeige-Reihen-
+   *  folge in RegistrationPage und der Kapazitaets-Uebersicht im
+   *  AdminCenter — keinerlei Daten-Migration, splitLabelA/B,
+   *  durchstarter-/funstarterCapacity und die internen StarterType-
+   *  IDs auf den Anmeldungen bleiben unangetastet. */
+  splitDisplayOrderReversed?: boolean;
   /** v11.0: Wenn true, koennen sich Teilnehmer ueber „Meine Events" eine
    *  PDF-Datei pro Anmeldung hochladen (z.B. Reisekostenbeleg, Foto-
    *  Einverstaendnis, Zertifikat). Die Datei wird als Item-Attachment an
