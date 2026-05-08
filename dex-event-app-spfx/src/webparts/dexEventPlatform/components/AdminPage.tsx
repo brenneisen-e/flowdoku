@@ -2320,18 +2320,21 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
-            {/* 7b. Counter zurücksetzen — Admin only (v9.13).
-                Recovery-Button falls der DEX_TeilnehmerCounter aus
-                irgendeinem Grund unter den tatsaechlich vergebenen
-                Max-TID gefallen ist (z.B. durch den alten
-                syncCounterToMax-Bug aus v9.10/v9.11). Liest max(TID)
-                aus der Teilnehmerliste und patcht den Counter
-                monotonic-up auf diesen Wert. */}
+            {/* 7b. Counter zurücksetzen — Admin only (v9.13 → v11.27).
+                Recovery-Button um den DEX_TeilnehmerCounter EXAKT auf
+                max(TeilnehmerID) der Subsite zu setzen. Bidirektional:
+                Counter wird hochgezogen wenn er drunter steht (gegen
+                Doppel-IDs), oder runtergesetzt wenn er drueber steht
+                (z.B. nach vielen Abmeldungen, die TIDs gefressen
+                haben). Vorher (vor v11.27) lief es nur monotonic-up,
+                weshalb ein zu hoher Counter (Counter=11, Max-TID=4)
+                nicht zurueckgesetzt wurde — Klick auf den Button
+                hatte dann keinen sichtbaren Effekt. */}
             {isAdmin && (
               <ActionTile
                 icon={<Hash size={18} />}
                 title={isResettingCounter ? 'Counter wird zurückgesetzt…' : 'Counter zurücksetzen'}
-                desc="Setzt den TeilnehmerID-Counter auf den aktuellen Max-Wert der Teilnehmerliste. Hilft, wenn neue Anmeldungen versehentlich bei niedrigen IDs (z.B. wieder bei 1) starten — sehr seltener Fall, aber Recovery falls der Counter durch frühere App-Versionen drift gewesen sein sollte."
+                desc="Setzt den TeilnehmerID-Counter exakt auf den aktuellen Max-TID der Teilnehmerliste. Hilft, wenn neue Anmeldungen mit zu hohen IDs starten (Lücken durch frühere Abmeldungen) oder wenn sie versehentlich bei zu niedrigen IDs (z.B. wieder bei 1) starten würden. Bidirektional — egal ob der Counter zu hoch oder zu niedrig steht."
                 badge="admin"
                 busy={isResettingCounter}
                 disabled={!selectedEvent?.subsiteUrl}
