@@ -16,6 +16,7 @@ import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
 import { RefreshCw, X } from './Icons';
+import { InfoTooltip } from './InfoTooltip';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -1847,10 +1848,11 @@ function MyEventSubEvents(props: {
                       <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
                         {f.label}
                         {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
+                        {/* v11.16: konsistenter InfoTooltip — gleicher
+                            Look wie auf der Register-Page und im
+                            Sub-Event-Modal. */}
+                        {f.helpText && <InfoTooltip text={f.helpText} />}
                       </label>
-                      {f.helpText && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>{f.helpText}</div>
-                      )}
                       {f.type === 'select' ? (
                         f.multi ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
