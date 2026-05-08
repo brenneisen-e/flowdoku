@@ -900,6 +900,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [splitSharedWaitlist, setSplitSharedWaitlist] = React.useState<boolean>(
     !!editEvent?.splitSharedWaitlist
   );
+  // v11.25: Anzeige-Reihenfolge der zwei Gruppen-Karten in der Registrierung
+  // umkehren. Pure UI-Toggle — interne Daten (splitLabelA/B, Kapazitäten,
+  // StarterType auf Anmeldungen) bleiben unangetastet.
+  const [splitDisplayOrderReversed, setSplitDisplayOrderReversed] = React.useState<boolean>(
+    !!editEvent?.splitDisplayOrderReversed
+  );
   // v11.0: Teilnehmer-Upload aktivieren + optionaler Hinweistext
   const [allowAttendeeUpload, setAllowAttendeeUpload] = React.useState<boolean>(
     !!editEvent?.allowAttendeeUpload
@@ -1889,7 +1895,12 @@ export default function EventCreationPage(): React.ReactElement {
       const testTeamConfig = testTeamEmails.length > 0
         ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0)
+      // v11.25: Display-Reihenfolge-Toggle als piggyback in
+      // EmailTemplateOverrides._splitDisplayOrderReversed.
+      const splitDispRevConfig = splitDisplayOrderReversed && useSplitCapacities
+        ? { _splitDisplayOrderReversed: true }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0)
         ? JSON.stringify({
             ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
             ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
@@ -1897,6 +1908,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...qrScannerConfig,
             ...coOrganizerConfig,
             ...testTeamConfig,
+            ...splitDispRevConfig,
             ...emailTemplateOverrides,
           })
         : '';
@@ -2249,12 +2261,17 @@ export default function EventCreationPage(): React.ReactElement {
           const ttExtra = testTeamEmails.length > 0
             ? { _testTeam: testTeamNames.map((n, i) => ({ name: n, email: testTeamEmails[i] || '' })).filter(x => x.email) }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0;
+          // v11.25: Display-Reihenfolge-Toggle (siehe Edit-Pfad oben).
+          const splitDispRevExtra = splitDisplayOrderReversed && useSplitCapacities
+            ? { _splitDisplayOrderReversed: true }
+            : {};
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
                 ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
                 ...b2runExtra,
+                ...splitDispRevExtra,
                 ...qrExtra,
                 ...coExtra,
                 ...ttExtra,
@@ -5529,6 +5546,42 @@ export default function EventCreationPage(): React.ReactElement {
                           {isDe ? 'Eine gemeinsame Warteliste' : 'One shared waitlist'}
                         </label>
                       </div>
+                    </div>
+                  )}
+
+                  {/* v11.25: Display-Reihenfolge der zwei Gruppen-Karten in der
+                      Registrierungs-UI umkehren. Reine Anzeige-Toggle —
+                      splitLabelA/B, Kapazitäten und die internen StarterType-IDs
+                      bleiben unangetastet. Nur bei aktiver Split-Capacity
+                      sinnvoll. */}
+                  {useSplitCapacities && (
+                    <div style={{ marginTop: 12, padding: '12px 14px', background: '#fff', borderRadius: 8 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={splitDisplayOrderReversed}
+                          onChange={e => setSplitDisplayOrderReversed(e.target.checked)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          <strong>{isDe ? 'Reihenfolge in der Registrierung umkehren' : 'Reverse order on registration page'}</strong>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> ob die zwei Gruppen-Karten (&bdquo;{splitLabelA.trim() || 'Gruppe A'}&ldquo; und &bdquo;{splitLabelB.trim() || 'Gruppe B'}&ldquo;) in der Registrierungs-Maske in der <strong>aktuellen</strong> oder in <strong>umgekehrter</strong> Reihenfolge angezeigt werden.<br /><br />
+                              <strong>Anzeige in der App:</strong> aus = &bdquo;{splitLabelA.trim() || 'Gruppe A'}&ldquo; links, &bdquo;{splitLabelB.trim() || 'Gruppe B'}&ldquo; rechts. An = umgekehrt: &bdquo;{splitLabelB.trim() || 'Gruppe B'}&ldquo; links, &bdquo;{splitLabelA.trim() || 'Gruppe A'}&ldquo; rechts. Gilt für Registrierung und für die Kapazitäts-Übersicht im Admin-Center.<br /><br />
+                              <strong>Auswirkung für Teilnehmer:</strong> rein optisch — ändert nichts an den Plätzen, Wartelisten oder bestehenden Anmeldungen. Nur eine andere Reihenfolge der Auswahl-Buttons.<br /><br />
+                              <strong>Hinweis:</strong> wenn du tatsächlich &bdquo;Gruppe 2&ldquo; zur prominenteren machen willst, ohne deine Labels und Kapazitäten zu vertauschen, ist <strong>dieses Häkchen</strong> der saubere Weg. Manuelles Vertauschen von Label A ↔ B + Kapazitäten zerschießt die Verbindung zu den existierenden Anmeldungen.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What you set here:</strong> whether the two group cards (&bdquo;{splitLabelA.trim() || 'group A'}&ldquo; and &bdquo;{splitLabelB.trim() || 'group B'}&ldquo;) appear in the <strong>current</strong> or <strong>reversed</strong> order on the registration page.<br /><br />
+                              <strong>Shown in the app:</strong> off = &bdquo;{splitLabelA.trim() || 'group A'}&ldquo; left, &bdquo;{splitLabelB.trim() || 'group B'}&ldquo; right. On = reversed.<br /><br />
+                              <strong>Effect for attendees:</strong> purely visual — does not affect seats, waitlists or existing registrations. Just a different order of selection buttons.<br /><br />
+                              <strong>Note:</strong> if you want to make &bdquo;group 2&ldquo; the more prominent one without swapping your labels and capacities, this checkbox is the clean way. Manually swapping label A ↔ B + capacities breaks the link to existing registrations.
+                            </>
+                          )} />
+                        </span>
+                      </label>
                     </div>
                   )}
 
