@@ -26,6 +26,10 @@ interface MyEventEntry {
    *  nur als Container, damit die Session-Registrierungen sichtbar und verwaltbar
    *  bleiben. Das Status-Badge zeigt "Nur Sessions" statt dem echten Parent-Status. */
   sessionsOnly?: boolean;
+  /** v11.31: Titel der Sub-Events fuer die der User aktiv angemeldet ist —
+   *  wird bei sessionsOnly-Entries befuellt, damit der Hinweis-Text die
+   *  konkreten Sub-Event-Namen in Klammern ausgeben kann. */
+  subEventTitles?: string[];
 }
 
 function formatDate(iso: string): string {
@@ -675,9 +679,14 @@ export default function MyEventsPage(): React.ReactElement {
             // Verhalten.
             if (reg.Status === 'Abgemeldet') {
               const kids = childEventsOf(event.id);
-              const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
-              if (hasActiveChild) {
-                entries.push({ event, registration: { ...reg, Status: 'Angemeldet' }, sessionsOnly: true });
+              const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+              if (activeKids.length > 0) {
+                entries.push({
+                  event,
+                  registration: { ...reg, Status: 'Angemeldet' },
+                  sessionsOnly: true,
+                  subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
+                });
               } else {
                 entries.push({ event, registration: reg });
               }
@@ -698,8 +707,8 @@ export default function MyEventsPage(): React.ReactElement {
         if (parentsAlreadyAdded.has(parent.id)) continue;
         const kids = childEventsOf(parent.id);
         if (kids.length === 0) continue;
-        const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
-        if (!hasActiveChild) continue;
+        const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+        if (activeKids.length === 0) continue;
         // Virtuelle Registration — reicht als Platzhalter. Status 'Abgemeldet' würde den
         // Eintrag in den "past"-Bucket werfen; wir nutzen 'Angemeldet' mit sessionsOnly=true
         // als Marker, damit er in "activeEntries" erscheint aber die Parent-Aktionen ausgeblendet werden.
@@ -713,7 +722,12 @@ export default function MyEventsPage(): React.ReactElement {
           CancellationDate: '',
           CustomData: '',
         };
-        entries.push({ event: parent, registration: virtualReg, sessionsOnly: true });
+        entries.push({
+          event: parent,
+          registration: virtualReg,
+          sessionsOnly: true,
+          subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
+        });
       }
       // Zusatzschleife: abgemeldete Events finden. DEX_Participants haelt nur
       // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
@@ -734,9 +748,14 @@ export default function MyEventsPage(): React.ReactElement {
             // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
             // Eintrag fuer das Parent existiert.
             const kids = childEventsOf(event.id);
-            const hasActiveChild = kids.some(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
-            if (hasActiveChild) {
-              entries.push({ event, registration: { ...reg, Status: 'Angemeldet' }, sessionsOnly: true });
+            const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+            if (activeKids.length > 0) {
+              entries.push({
+                event,
+                registration: { ...reg, Status: 'Angemeldet' },
+                sessionsOnly: true,
+                subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
+              });
             } else {
               entries.push({ event, registration: reg });
             }
@@ -915,7 +934,7 @@ export default function MyEventsPage(): React.ReactElement {
 
       {activeEntries.length > 0 && (
         <div className="my-events-list">
-          {activeEntries.map(({ event, registration, sessionsOnly }) => {
+          {activeEntries.map(({ event, registration, sessionsOnly, subEventTitles }) => {
             // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
             try {
@@ -1007,15 +1026,23 @@ export default function MyEventsPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
-                    {sessionsOnly && (
-                      <div style={{
-                        marginTop: 6, padding: '6px 10px', borderRadius: 6,
-                        background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
-                        color: 'var(--dex-orange)', fontSize: '0.78rem',
-                      }}>
-                        {t('myevents.sessionsonly.hint')}
-                      </div>
-                    )}
+                    {sessionsOnly && (() => {
+                      // v11.31: aktive Sub-Events des Users in Klammern
+                      // hinter dem Hinweis-Text auflisten. Daten kommen
+                      // aus loadMyRegistrations (subEventTitles).
+                      const subList = (subEventTitles && subEventTitles.length > 0)
+                        ? ` (${subEventTitles.join(', ')})`
+                        : '';
+                      return (
+                        <div style={{
+                          marginTop: 6, padding: '6px 10px', borderRadius: 6,
+                          background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
+                          color: 'var(--dex-orange)', fontSize: '0.78rem',
+                        }}>
+                          {t('myevents.sessionsonly.hint')}{subList}.
+                        </div>
+                      );
+                    })()}
 
                     {/* Kompakte Info-Zeile: Location + Datum inline, umbricht auf schmalen Bildschirmen */}
                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
@@ -1737,9 +1764,34 @@ function MyEventSubEvents(props: {
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
           const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
+          // v11.31: Custom-Field-Antworten gehoeren INS Sub-Event-Karten-
+          // Layout, nicht ausserhalb. Maintainer-Wunsch: Tags zwischen
+          // der Datums-/Adress-Zeile und den Action-Buttons (rechts) als
+          // kleiner gruener Pastell-Stripe IN der Karte.
+          const filledFieldTags = (() => {
+            if (!isReg) return null;
+            const data = seData[ce.id] || {};
+            const filled = (ce.eventSpecificFields || [])
+              .filter(f => f.label && (data[f.id] || '').trim())
+              .map(f => ({ label: f.label, value: data[f.id] }));
+            if (filled.length === 0) return null;
+            return (
+              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {filled.map(({ label, value }) => (
+                  <span key={label} style={{
+                    fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
+                    background: 'rgba(134,188,37,0.14)',
+                    color: 'var(--dex-green-dark, #4a7c1f)',
+                    border: '1px solid rgba(134,188,37,0.30)',
+                  }}>
+                    {label}: <strong>{value}</strong>
+                  </span>
+                ))}
+              </div>
+            );
+          })();
           return (
-            <React.Fragment key={ce.id}>
-            <div style={{
+            <div key={ce.id} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
               padding: '8px 12px', borderRadius: 8,
               background: isReg ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #fafafa)',
@@ -1764,6 +1816,7 @@ function MyEventSubEvents(props: {
                     </span>
                   )}
                 </div>
+                {filledFieldTags}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {isReg && (ce.eventSpecificFields || []).filter(f => f.label).length > 0 && (
@@ -1789,30 +1842,6 @@ function MyEventSubEvents(props: {
                 </button>
               </div>
             </div>
-            {/* v10.27: Antworten anzeigen falls Custom-Fields ausgefuellt
-                wurden — analog zum Hauptevent als pastellgruene Tags. */}
-            {isReg && (() => {
-              const data = seData[ce.id] || {};
-              const filled = (ce.eventSpecificFields || [])
-                .filter(f => f.label && (data[f.id] || '').trim())
-                .map(f => ({ label: f.label, value: data[f.id] }));
-              if (filled.length === 0) return null;
-              return (
-                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {filled.map(({ label, value }) => (
-                    <span key={label} style={{
-                      fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
-                      background: 'rgba(134,188,37,0.14)',
-                      color: 'var(--dex-green-dark, #4a7c1f)',
-                      border: '1px solid rgba(134,188,37,0.30)',
-                    }}>
-                      {label}: <strong>{value}</strong>
-                    </span>
-                  ))}
-                </div>
-              );
-            })()}
-            </React.Fragment>
           );
         })}
       </div>
