@@ -484,6 +484,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
         // RegistrationPage abgesichert).
         externalLinks: cf.externalLinks,
+        // v11.16: onlyForGroup aus dem persistierten Feld durchreichen.
+        // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthaelt
+        // den Schluessel), aber der Loader hat ihn nie zurueckgelesen —
+        // Folge: die Gruppen-spezifische Sichtbarkeit (Funstarter only /
+        // Durchstarter only) hat in der Registrierungs-UI nie gegriffen,
+        // weil die Filter-Chain auf undefined gefallen ist.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onlyForGroup: (cf as any).onlyForGroup,
       })),
     };
   }
