@@ -1935,7 +1935,14 @@ export default function EventCreationPage(): React.ReactElement {
       updates['AttendeeUploadHint'] = (attendeeUploadHint || '').trim();
       updates['AttendeeUploadLabel'] = (attendeeUploadLabel || '').trim();
 
-      setProgress(50);
+      // v11.22: feinere Progress-Stufen waehrend Edit-Save. Vorher
+      // sprang es bei 50% sehr lange auf der Stelle, weil zwischen
+      // setProgress(50) und setProgress(100) die Dokument-Sync,
+      // updateEvent, Berechtigungs-Sync, Sub-Event-Persistierung,
+      // Teilnehmer-Spalten-Sync, Bild-Upload und Outlook-Update
+      // nacheinander liefen — alles ohne Zwischen-Tick.
+      setProgress(40);
+      setProgressLabel(isDe ? 'Dokumente werden synchronisiert...' : 'Syncing documents...');
 
       // Dokument-Sync: entfernte Attachments loeschen + neue hochladen.
       // Wichtig: erst loeschen, dann uploaden (SharePoint verbietet Duplikat-Namen).
@@ -1966,6 +1973,9 @@ export default function EventCreationPage(): React.ReactElement {
         }
       }
 
+      setProgress(55);
+      setProgressLabel(isDe ? 'Event-Daten werden gespeichert...' : 'Saving event data...');
+
       // v11.20: Direkt vor dem updateEvent-Call loggen was am SP-Server
       // landet. Damit sehen wir im Browser-DevTools:
       //   1. ob updates['CustomFields'] als JSON-String den helpText
@@ -1976,6 +1986,8 @@ export default function EventCreationPage(): React.ReactElement {
       console.log('[DEX][edit-save] updates.CustomFields about to POST:', updates['CustomFields']);
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        setProgress(65);
+        setProgressLabel(isDe ? 'Berechtigungen werden gesetzt...' : 'Setting permissions...');
         // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
         // sein, die bisher nur in EmailTemplateOverrides._coOrganizers stehen, aber
         // noch keine SharePoint-Berechtigung auf Subsite + Teilnehmerliste haben.
@@ -1996,10 +2008,14 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
 
+        setProgress(75);
+        setProgressLabel(isDe ? 'Sub-Events werden gespeichert...' : 'Saving sub-events...');
         // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
         try { await persistSubEventsForParent(selectedEventId); }
         catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
 
+        setProgress(82);
+        setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
         // Custom-Fields-Columns auf der Teilnehmerliste auto-sync: falls
         // neue Custom-Fields ohne spInternalName hinzugekommen sind oder
         // SP-Spalten fehlen, jetzt anlegen + spInternalName ins Event
@@ -2061,10 +2077,11 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
 
+        setProgress(90);
         // Bild als Attachment hochladen (falls neues Bild gewaehlt wurde)
         if (imageFile) {
           try {
-            setProgressLabel('Bild wird hochgeladen...');
+            setProgressLabel(isDe ? 'Bild wird hochgeladen...' : 'Uploading image...');
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const ctx = (window as any).__dexSpfxContext;
             if (ctx) {
@@ -2086,6 +2103,8 @@ export default function EventCreationPage(): React.ReactElement {
             setImageUploadError('Bild-Upload fehlgeschlagen.');
           }
         }
+        setProgress(95);
+        setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
         // Outlook-Termin Update triggern — NUR wenn der Organizer das explizit
         // per Checkbox angefordert hat. Grund: auch kleine Aenderungen (z.B.
         // Description-Tippfix) loesen sonst eine "Updated meeting"-Mail an ALLE
