@@ -1759,16 +1759,23 @@ export default function EventCreationPage(): React.ReactElement {
 
     if (isEditMode && selectedEventId) {
       setProgressLabel('Event wird aktualisiert...');
-      // v11.17: Debug-Trace fuer helpText-Save-Pfad. Maintainer hat
-      // berichtet, dass eingegebene Beschreibungen nach dem Speichern
-      // wieder weg sind. Diese Log-Zeile zeigt im Browser-DevTools
-      // direkt, ob die customFields in dem Moment des Save-Klicks die
-      // helpText-Eintraege haben — wenn ja, ist die Persistierung das
-      // Problem; wenn nein, faengt der State sie nicht.
+      // v11.18: Debug-Trace JSON-stringified, sodass der Output ohne
+      // Array-Aufklappen direkt als Text in der Console steht.
       // eslint-disable-next-line no-console
-      console.log('[DEX][edit-save] customFields state at save:', customFields.map(f => ({
-        id: f.id, label: f.label, helpText: f.helpText, onlyForGroup: f.onlyForGroup, showIf: f.showIf,
-      })));
+      console.log('[DEX][edit-save] customFields state at save:\n' + JSON.stringify(
+        customFields.map(f => ({
+          id: f.id,
+          label: f.label,
+          type: f.type,
+          required: f.required,
+          helpText: f.helpText,
+          onlyForGroup: f.onlyForGroup,
+          showIf: f.showIf,
+          externalLinks: f.externalLinks,
+        })),
+        null,
+        2
+      ));
       // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
       // Pairs — verhindert Mismatch-State in DEX_Events.
       const sanitizedOrgPairEdit = sanitizeOrganizerPairs();
