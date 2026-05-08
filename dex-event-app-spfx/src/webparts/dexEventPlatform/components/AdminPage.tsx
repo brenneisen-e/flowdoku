@@ -2945,91 +2945,80 @@ export default function AdminPage(): React.ReactElement {
 
       {/* Zähler + QR/Check-in Aktionen.
           v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
-          Sonst Grid auf 4 Spalten. */}
-      <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: `repeat(${(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) ? 5 : 4}, 1fr)`, gap: 12, marginBottom: 24 }}>
-        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>
-            {registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
-        </div>
-        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
-            {registrations.filter(r => r.Status === 'QR versendet').length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
-        </div>
-        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
-            {registrations.filter(r => r.Status === 'Eingecheckt').length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
-        </div>
-        {(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) && (
-          <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-            <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-              {registrations.filter(r => r.Status === 'Warteliste').length}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
-          </div>
-        )}
-        <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
-            {registrations.filter(r => r.Status === 'Abgemeldet').length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
-        </div>
-      </div>
-
-      {/* Split-Kapazitäts-Übersicht (seit v6.5): getrennte Belegung pro Starter-Typ. */}
-      {isSplitCapacity && (() => {
+          Sonst Grid auf 4 Spalten.
+          v11.32: Bei Split-Capacity wird die separate Kapazitaets-Karten-Reihe
+          unten in die „Angemeldet"-Kachel hochgezogen. Die Kachel bekommt
+          dann doppelte Breite (2fr) damit Group-A/B-Breakdown sauber drin
+          Platz hat — keine zwei breiten Vollbreite-Karten mehr. */}
+      {(() => {
+        const hasWaitlistKPI = !!(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0);
+        // Fraktionen pro Spalte — Angemeldet bekommt 2fr wenn Split aktiv ist.
+        const angeFr = isSplitCapacity ? '2fr' : '1fr';
+        const tail = `1fr 1fr${hasWaitlistKPI ? ' 1fr' : ''} 1fr`; // QR / Eingecheckt / [Warteliste] / Abgemeldet
+        const gridCols = `${angeFr} ${tail}`;
         const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const totalActive = active.length;
         const durchActive = active.filter(r => r.StarterType === 'Durchstarter').length;
         const funActive = active.filter(r => r.StarterType === 'Funstarter').length;
         const durchCap = selectedEvent?.durchstarterCapacity || 0;
         const funCap = selectedEvent?.funstarterCapacity || 0;
-        const durchWait = waitlistDurch.length;
-        const funWait = waitlistFun.length;
-        // v11.6: frei waehlbare Gruppen-Labels statt der hardcodeten
-        // 'Durchstarter'/'Funstarter'-Begriffe — fallback auf die alten
-        // Labels wenn der Organizer keine eigenen gesetzt hat.
         const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
         const labelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
-        // v11.29: Label + Anzahl beide linksbuendig — vorher
-        // justify-content: space-between schob die Anzahl an den
-        // rechten Rand der Karte (bei breiten Cards optisch
-        // disconnected vom Label).
-        const cardA = (
-          <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-green-dark, #6b9a1e)' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-              <strong style={{ color: 'var(--dex-green-dark, #6b9a1e)' }}>{labelA}</strong>
-              <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-                {durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span>
-              </span>
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-              Warteliste: <strong style={{ color: 'var(--dex-orange)' }}>{durchWait}</strong>
-            </div>
-          </div>
-        );
-        const cardB = (
-          <div className="card" style={{ padding: 16, borderLeft: '3px solid var(--dex-orange, #ff8c00)' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-              <strong style={{ color: 'var(--dex-orange, #ff8c00)' }}>{labelB}</strong>
-              <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-                {funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span>
-              </span>
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-              Warteliste: <strong style={{ color: 'var(--dex-orange)' }}>{funWait}</strong>
-            </div>
-          </div>
-        );
-        // v11.25: gleiche Display-Reihenfolge wie auf der Registrierungs-Seite.
         const reversed = !!selectedEvent?.splitDisplayOrderReversed;
+        const grpA = (
+          <div key="grpA" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelA}>● {labelA}</span>
+            <strong style={{ whiteSpace: 'nowrap' }}>{durchActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{durchCap}</span></strong>
+          </div>
+        );
+        const grpB = (
+          <div key="grpB" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ color: 'var(--dex-orange, #ff8c00)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelB}>● {labelB}</span>
+            <strong style={{ whiteSpace: 'nowrap' }}>{funActive}<span style={{ color: 'var(--dex-gray-400)' }}>/{funCap}</span></strong>
+          </div>
+        );
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-            {reversed ? <>{cardB}{cardA}</> : <>{cardA}{cardB}</>}
+          <div className="admin-counters" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12, marginBottom: 24 }}>
+            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1565c0' }}>{totalActive}</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.registered')}</div>
+              {isSplitCapacity && (
+                <div style={{
+                  marginTop: 10, paddingTop: 10,
+                  borderTop: '1px solid var(--dex-gray-200)',
+                  fontSize: '0.82rem', textAlign: 'left',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  {reversed ? <>{grpB}{grpA}</> : <>{grpA}{grpB}</>}
+                </div>
+              )}
+            </div>
+            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
+                {registrations.filter(r => r.Status === 'QR versendet').length}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
+            </div>
+            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
+                {registrations.filter(r => r.Status === 'Eingecheckt').length}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
+            </div>
+            {hasWaitlistKPI && (
+              <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
+                  {registrations.filter(r => r.Status === 'Warteliste').length}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
+              </div>
+            )}
+            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
+                {registrations.filter(r => r.Status === 'Abgemeldet').length}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
+            </div>
           </div>
         );
       })()}
