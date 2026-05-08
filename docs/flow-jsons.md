@@ -72,7 +72,8 @@ Die App (EventContext.cancelRegistration) macht seit v6.7 kein Client-seitiges N
 Get_EventDetails
  └── Is_B2RunSplit (DurchstarterCapacity > 0 AND FunstarterCapacity > 0)
      ├── WENN JA (B2Run-Split-Event):
-     │   ├── Count_Active_Durchstarter (Compose)
+     │   ├── Filter_Active_Durchstarter (Query / Filter array)
+     │   ├── Count_Active_Durchstarter (Compose: length(body('Filter_Active_Durchstarter')))
      │   ├── Check_Durchstarter_Free (Condition: aktive Durchstarter < DurchstarterCapacity)
      │   │   └── WENN JA:
      │   │       ├── Get_Waitlist_First_Durchstarter (SharePoint GET: $filter=Status eq 'Warteliste' and PreferredStarterType eq 'Durchstarter')
@@ -82,7 +83,8 @@ Get_EventDetails
      │   │               ├── Get_Email_Template_Durchstarter
      │   │               ├── Queue_Email_Durchstarter (Nachrücken-Mail)
      │   │               └── Queue_Outlook_Durchstarter (Einladen)
-     │   ├── Count_Active_Funstarter (Compose, runAfter Check_Durchstarter_Free)
+     │   ├── Filter_Active_Funstarter (Query / Filter array, runAfter Check_Durchstarter_Free)
+     │   ├── Count_Active_Funstarter (Compose: length(body('Filter_Active_Funstarter')))
      │   └── Check_Funstarter_Free (Condition: aktive Funstarter < FunstarterCapacity)
      │       └── WENN JA:
      │           ├── Get_Waitlist_First_Funstarter (SharePoint GET: $filter=PreferredStarterType eq 'Funstarter')
@@ -101,9 +103,15 @@ Get_EventDetails
 
 **Wichtige Details:**
 - Im B2Run-Split-Zweig werden **beide Typen nacheinander** geprüft (Durchstarter zuerst, dann Funstarter). Wenn beide freie Plätze + passende Warteliste-Einträge haben, werden in einem einzigen Flow-Run zwei Teilnehmer nachgerückt.
-- Der `StarterType`-Filter in Count_Active_* nutzt `item()?['StarterType']?['Value']` — weil StarterType in der Teilnehmer-Liste ein Choice-Feld ist. Bei Warteliste-Teilnehmern ohne zugewiesenen StarterType greift `not(equals(..., 'Warteliste'))` — sie werden nicht mitgezählt.
+- Filterung pro Starter-Typ läuft seit 2026-05-08 (v11.25-Iteration des Flow-Cleanups) über **zwei `Filter array`-Actions** (`Filter_Active_Durchstarter` / `Filter_Active_Funstarter`) statt über inline-`filter()`-Expressions im Compose. Hintergrund: das Template-Function `filter` ist in vielen Power-Automate-Tenants nicht verfügbar (`The template function 'filter' is not defined or not valid`). Die `Filter array`-Action ist eine echte Action und funktioniert ueberall.
+- Die Filter-Bedingung ist:
+  - **Durchstarter:** `@and(equals(item()?['StarterType'], 'Durchstarter'), not(equals(item()?['Status'], 'Warteliste')))`
+  - **Funstarter:** `@and(equals(item()?['StarterType'], 'Funstarter'), not(equals(item()?['Status'], 'Warteliste')))`
+  - **Wichtig:** der Vergleich nutzt `item()?['StarterType']` direkt — NICHT `?['Value']`. Grund: die Items kommen über `Send HTTP request to SharePoint` mit `odata=nometadata` zurück, dabei werden Choice-Felder als plain Strings serialisiert (nicht als `{ Value: '...' }`-Objekt wie beim nativen SharePoint-Connector).
+- `Count_Active_Durchstarter` / `Count_Active_Funstarter` (Compose) zählen einfach `length(body('Filter_Active_<typ>'))`.
 - `Promote_Durchstarter` / `Promote_Funstarter` setzen **Status=Angemeldet UND StarterType=<typ>** — der nachgerückte Warteliste-Teilnehmer bekommt automatisch den freigewordenen Typ zugewiesen.
 - `Queue_Email_*` füllen `{{Name}}` und `{{EventTitle}}` aus dem SharePoint-Template (DEX_EmailTemplates, TemplateType=`Nachruecken`, Language=EN/DE).
+- Die internen Slot-IDs `Durchstarter` / `Funstarter` in den Filter- und Promote-Actions sind **nicht** die User-Labels (die sind frei via `splitLabelA` / `splitLabelB`), sondern fixe Choice-Werte der `StarterType`-Spalte auf der Teilnehmer-Liste — funktional wie ein Enum mit zwei Werten („Slot A" und „Slot B"). Der Flow funktioniert unverändert für jedes Event, egal wie der Organizer die Gruppen labelt.
 
 ### Änderungen 2026-04-22 (v6.6) — Zwei-Pass-Sortierung der Teilnehmer-IDs
 
