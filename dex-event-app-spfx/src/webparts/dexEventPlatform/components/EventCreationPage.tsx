@@ -662,6 +662,11 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       // v10.24: onlyForGroup-Constraint aus dem persistierten Feld uebernehmen.
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+      // v11.15: externalLinks aus dem persistierten Feld uebernehmen
+      // (z.B. AGB/Datenschutz-URLs auf b2run_datenschutz). Vorher
+      // hat der Edit-Load die Links komplett gedroppt → beim ersten
+      // Save eines bestehenden Events sind sie verloren gegangen.
+      ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -1675,6 +1680,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           })));
         await updateEvent(draft.dbId, {
           'Title': childPayload.title,
@@ -1783,6 +1794,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           }))),
       };
 
@@ -1977,6 +1994,12 @@ export default function EventCreationPage(): React.ReactElement {
                 spInternalName: (f as any).spInternalName || '',
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -2210,6 +2233,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           })),
       });
 

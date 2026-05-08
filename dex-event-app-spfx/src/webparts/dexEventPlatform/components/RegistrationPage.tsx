@@ -760,7 +760,11 @@ export default function RegistrationPage(): React.ReactElement {
         <span>
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
           {field.label}
-          {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+          {/* v11.15: konsistenter InfoTooltip auch fuer Checkbox-Felder
+              — vorher nur winziges html-title-i, das User leicht
+              uebersehen. Jetzt gleicher Hover-Popover wie bei anderen
+              Feldtypen. */}
+          {field.helpText && <InfoTooltip text={field.helpText} />}
           {field.externalLinks && field.externalLinks.length > 0 && (
             <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
               {field.externalLinks.map((l, i) => (
