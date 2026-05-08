@@ -383,7 +383,7 @@ export default function AdminPage(): React.ReactElement {
   const [qrPreviewSubject, setQrPreviewSubject] = React.useState('');
   const [qrPreviewLoading, setQrPreviewLoading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'>('id');
+  const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
@@ -667,7 +667,7 @@ export default function AdminPage(): React.ReactElement {
   // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
   //  - columnOrder = geordnete Liste sichtbarer Spalten-IDs
   //  - hiddenColumns = ausgeblendete Spalten-IDs (können übers "+ Spalte"-Popover wieder zugeschaltet werden)
-  // Die Spezialspalten 'id' / 'name' / 'action' sind alwaysVisible und können nicht ausgeblendet werden.
+  // Die Spezialspalten 'id' / 'vorname' / 'nachname' / 'action' sind alwaysVisible und können nicht ausgeblendet werden.
   const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
   const [hiddenColumns, setHiddenColumns] = React.useState<string[]>([]);
   const [showColumnPicker, setShowColumnPicker] = React.useState(false);
@@ -729,7 +729,11 @@ export default function AdminPage(): React.ReactElement {
     const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
       { id: 'id', label: '#', alwaysVisible: true },
       { id: 'anrede', label: 'Anrede' },
-      { id: 'name', label: 'Name', alwaysVisible: true },
+      // v11.26: getrennte Vorname / Nachname Spalten statt der einen
+      // kombinierten 'name'-Spalte. Alte localStorage-Eintraege mit 'name'
+      // werden im useEffect-Loader unten in 'vorname','nachname' migriert.
+      { id: 'vorname', label: 'Vorname', alwaysVisible: true },
+      { id: 'nachname', label: 'Nachname', alwaysVisible: true },
       { id: 'email', label: 'Email' },
       { id: 'jobTitle', label: 'Job Title' },
       { id: 'location', label: 'Standort' },
@@ -768,10 +772,26 @@ export default function AdminPage(): React.ReactElement {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.hidden)) {
-          const knownOrder = parsed.order.filter((id: string) => allIds.indexOf(id) >= 0);
+          // v11.26: Migration alter Spaltenkonfigurationen — die zentrale
+          // 'name'-Spalte wurde in 'vorname' + 'nachname' aufgeteilt. Wenn
+          // ein gespeichertes Layout noch 'name' enthaelt, an gleicher
+          // Position durch ['vorname','nachname'] ersetzen, damit der
+          // User seine gewuenschte Reihenfolge beibehaelt.
+          const migratedOrder: string[] = [];
+          for (const id of parsed.order as string[]) {
+            if (id === 'name') {
+              if (migratedOrder.indexOf('vorname') < 0) migratedOrder.push('vorname');
+              if (migratedOrder.indexOf('nachname') < 0) migratedOrder.push('nachname');
+            } else {
+              migratedOrder.push(id);
+            }
+          }
+          const knownOrder = migratedOrder.filter((id: string) => allIds.indexOf(id) >= 0);
           const missing = allIds.filter(id => knownOrder.indexOf(id) < 0);
           setColumnOrder([...knownOrder, ...missing]);
-          setHiddenColumns(parsed.hidden.filter((id: string) => allIds.indexOf(id) >= 0));
+          // 'name' aus hidden auch herausfiltern (wenn jemals manuell hidden gesetzt wurde,
+          // unwahrscheinlich da alwaysVisible — aber defensiv).
+          setHiddenColumns(parsed.hidden.filter((id: string) => id !== 'name' && allIds.indexOf(id) >= 0));
           return;
         }
       }
@@ -1649,9 +1669,22 @@ export default function AdminPage(): React.ReactElement {
     switch (sortColumn) {
       case 'id': cmp = (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0); break;
       case 'anrede': cmp = (a.Anrede || '').localeCompare(b.Anrede || '', 'de'); break;
-      case 'name': {
-        const na = (a.Vorname && a.Nachname) ? `${a.Nachname} ${a.Vorname}` : (a.ParticipantName || '');
-        const nb = (b.Vorname && b.Nachname) ? `${b.Nachname} ${b.Vorname}` : (b.ParticipantName || '');
+      // v11.26: getrennte Vorname / Nachname Sortierung.
+      case 'vorname': {
+        const na = (a.Vorname || (a.ParticipantName || '').split(' ')[0] || '');
+        const nb = (b.Vorname || (b.ParticipantName || '').split(' ')[0] || '');
+        cmp = na.localeCompare(nb, 'de');
+        break;
+      }
+      case 'nachname': {
+        // Fallback fuer Alt-Daten ohne separates Vorname/Nachname:
+        // Letztes Wort aus ParticipantName als Nachname.
+        const lastWord = (s: string): string => {
+          const parts = s.trim().split(/\s+/);
+          return parts.length > 0 ? parts[parts.length - 1] : '';
+        };
+        const na = a.Nachname || lastWord(a.ParticipantName || '');
+        const nb = b.Nachname || lastWord(b.ParticipantName || '');
         cmp = na.localeCompare(nb, 'de');
         break;
       }
@@ -1662,7 +1695,7 @@ export default function AdminPage(): React.ReactElement {
     return sortAsc ? cmp : -cmp;
   };
 
-  const handleSort = (col: 'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'): void => {
+  const handleSort = (col: 'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'): void => {
     if (sortColumn === col) { setSortAsc(!sortAsc); }
     else { setSortColumn(col); setSortAsc(true); }
   };
@@ -3246,8 +3279,8 @@ export default function AdminPage(): React.ReactElement {
               // nur die Iteration ist umgebaut.
               const visibleColumnIds = columnOrder.filter(id => hiddenColumns.indexOf(id) < 0);
 
-              const sortableCols: Record<string, 'id' | 'anrede' | 'name' | 'email' | 'status' | 'date'> = {
-                id: 'id', anrede: 'anrede', name: 'name', email: 'email', status: 'status', date: 'date',
+              const sortableCols: Record<string, 'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'> = {
+                id: 'id', anrede: 'anrede', vorname: 'vorname', nachname: 'nachname', email: 'email', status: 'status', date: 'date',
               };
 
               const hideButton = (id: string): React.ReactNode => {
@@ -3282,7 +3315,7 @@ export default function AdminPage(): React.ReactElement {
                       style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }}
                       onClick={() => handleSort(sortable)}
                     >
-                      {id === 'id' ? '#' : id === 'anrede' ? 'Anrede' : id === 'name' ? 'Name' : id === 'email' ? 'Email' : id === 'status' ? 'Status' : 'Registriert am'}
+                      {id === 'id' ? '#' : id === 'anrede' ? 'Anrede' : id === 'vorname' ? 'Vorname' : id === 'nachname' ? 'Nachname' : id === 'email' ? 'Email' : id === 'status' ? 'Status' : 'Registriert am'}
                       {sortIcon(sortable)}
                       {hideButton(id)}
                     </th>
@@ -3336,8 +3369,19 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'anrede') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
                 }
-                if (id === 'name') {
-                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>;
+                if (id === 'vorname') {
+                  // Fallback fuer Alt-Daten: erstes Wort aus ParticipantName.
+                  const v = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
+                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{v || '-'}</td>;
+                }
+                if (id === 'nachname') {
+                  // Fallback fuer Alt-Daten: alles ausser dem ersten Wort als Nachname.
+                  let n = reg.Nachname || '';
+                  if (!n && reg.ParticipantName) {
+                    const parts = reg.ParticipantName.trim().split(/\s+/);
+                    if (parts.length > 1) n = parts.slice(1).join(' ');
+                  }
+                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{n || '-'}</td>;
                 }
                 if (id === 'email') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>;
