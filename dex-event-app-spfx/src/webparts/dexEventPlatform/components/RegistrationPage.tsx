@@ -760,7 +760,11 @@ export default function RegistrationPage(): React.ReactElement {
         <span>
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
           {field.label}
-          {field.helpText && <span className="info-icon" title={field.helpText} style={{ marginLeft: 8 }}>i</span>}
+          {/* v11.15: konsistenter InfoTooltip auch fuer Checkbox-Felder
+              — vorher nur winziges html-title-i, das User leicht
+              uebersehen. Jetzt gleicher Hover-Popover wie bei anderen
+              Feldtypen. */}
+          {field.helpText && <InfoTooltip text={field.helpText} />}
           {field.externalLinks && field.externalLinks.length > 0 && (
             <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
               {field.externalLinks.map((l, i) => (
@@ -1512,10 +1516,14 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </div>
                 )}
-                {/* v11.5: Custom-Fields mit onlyForGroup-Constraint
+                {/* v11.12: Custom-Fields mit onlyForGroup-Constraint
                     direkt INNERHALB der Gruppen-Auswahl-Box rendern.
                     Klappt erst auf, wenn der User eine Gruppe gewählt
-                    hat und das Feld der gewählten Gruppe entspricht. */}
+                    hat und das Feld der gewählten Gruppe entspricht.
+                    Gleicher orange-getönter Style wie der Legacy-
+                    Leistungsnachweis-Block — sodass jede Gruppen-
+                    spezifische Abfrage optisch klar als „Folge der
+                    Gruppen-Wahl" erkennbar ist. */}
                 {preferredStarterType && (() => {
                   const groupSpec = event.eventSpecificFields
                     .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
@@ -1542,13 +1550,16 @@ export default function RegistrationPage(): React.ReactElement {
                   const grpLabel = preferredStarterType === 'Durchstarter' ? labelA : labelB;
                   return (
                     <div style={{
-                      marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--dex-gray-300)',
+                      marginTop: 12, padding: '12px 14px',
+                      background: 'rgba(237,139,0,0.06)',
+                      border: '1px solid var(--dex-orange)',
+                      borderRadius: 8,
                       display: 'flex', flexDirection: 'column', gap: 12,
                     }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-orange, #ed8b00)' }}>
                         {locale === 'de'
-                          ? `Zusätzliche Angaben für die Gruppe „${grpLabel}"`
-                          : `Additional details for the „${grpLabel}" group`}
+                          ? `Zusätzliche Angaben für „${grpLabel}"`
+                          : `Additional details for „${grpLabel}"`}
                       </div>
                       {groupSpec.map(renderRegField)}
                     </div>

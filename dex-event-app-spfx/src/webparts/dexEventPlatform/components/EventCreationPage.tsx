@@ -662,6 +662,11 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       // v10.24: onlyForGroup-Constraint aus dem persistierten Feld uebernehmen.
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+      // v11.15: externalLinks aus dem persistierten Feld uebernehmen
+      // (z.B. AGB/Datenschutz-URLs auf b2run_datenschutz). Vorher
+      // hat der Edit-Load die Links komplett gedroppt → beim ersten
+      // Save eines bestehenden Events sind sie verloren gegangen.
+      ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -1049,7 +1054,7 @@ export default function EventCreationPage(): React.ReactElement {
       key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
       label: 'Mobilnummer',
       description: 'Freitext, dynamisch Pflicht wenn Infoservice aktiv',
-      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true }),
+      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } }),
     },
     {
       key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
@@ -1142,7 +1147,7 @@ export default function EventCreationPage(): React.ReactElement {
       key: 'b2run_mobilnummer', category: 'b2run', icon: 'Phone',
       label: 'Mobile number',
       description: 'Free text, dynamically required when info service is active',
-      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobile number (only if info service is enabled)', type: 'text', required: false, options: [], visible: true }),
+      build: (_n) => ({ id: `b2run_mobilnummer`, label: 'Mobile number (only if info service is enabled)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } }),
     },
     {
       key: 'b2run_anonym', category: 'b2run', icon: 'Hide3',
@@ -1291,7 +1296,7 @@ export default function EventCreationPage(): React.ReactElement {
         { id: 'b2run_gruppe', label: 'Gruppe', type: 'select', required: true, options: ['offene Klasse', 'Nordic Walker', 'Damen', 'Herren'], visible: true },
         { id: 'b2run_altersklasse', label: 'Altersklasse', type: 'select', required: true, options: ['unter 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
         { id: 'b2run_infoservice', label: 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: false, options: [], visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobilnummer (nur bei aktiviertem Infoservice)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } },
         { id: 'b2run_anonym', label: 'Anonym teilnehmen', type: 'checkbox', required: false, options: [], visible: true },
         { id: 'b2run_laufshirt', label: 'Deloitte-Laufshirt', type: 'select', required: true, options: ['Habe bereits ein Laufshirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
         {
@@ -1311,7 +1316,7 @@ export default function EventCreationPage(): React.ReactElement {
         { id: 'b2run_gruppe', label: 'Category', type: 'select', required: true, options: ['Open class', 'Nordic Walker', 'Women', 'Men'], visible: true },
         { id: 'b2run_altersklasse', label: 'Age group', type: 'select', required: true, options: ['under 18', '18-29', '30-39', '40-49', '50-59', '60+'], visible: true },
         { id: 'b2run_infoservice', label: 'Use B2Run info service (SMS — mobile number required)', type: 'checkbox', required: false, options: [], visible: true },
-        { id: 'b2run_mobilnummer', label: 'Mobile number (only if info service is enabled)', type: 'text', required: false, options: [], visible: true },
+        { id: 'b2run_mobilnummer', label: 'Mobile number (only if info service is enabled)', type: 'text', required: true, options: [], visible: true, showIf: { fieldId: 'b2run_infoservice', values: ['true'] } },
         { id: 'b2run_anonym', label: 'Participate anonymously', type: 'checkbox', required: false, options: [], visible: true },
         { id: 'b2run_laufshirt', label: 'Deloitte running shirt', type: 'select', required: true, options: ['I already have one', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
         {
@@ -1675,6 +1680,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           })));
         await updateEvent(draft.dbId, {
           'Title': childPayload.title,
@@ -1783,6 +1794,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           }))),
       };
 
@@ -1977,6 +1994,12 @@ export default function EventCreationPage(): React.ReactElement {
                 spInternalName: (f as any).spInternalName || '',
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -2210,6 +2233,12 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+            // mit-persistieren — vorher haben alle drei Persist-Pfade
+            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+            ...(f.externalLinks && f.externalLinks.length > 0
+              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+              : {}),
           })),
       });
 

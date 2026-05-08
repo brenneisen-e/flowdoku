@@ -69,6 +69,65 @@ function translateStatus(status: string, isDe: boolean): string {
   }
 }
 
+// v11.14: Migriert hardcoded B2Run-Sonderbehandlungen aus dem Render-
+// Code von RegistrationPage.tsx in echte Custom-Field-Properties:
+//
+// - b2run_mobilnummer ist nur sichtbar wenn b2run_infoservice='true'
+//   → wird durch eine showIf-Bedingung auf dem Mobilnummer-Feld ersetzt.
+//   Der Pflicht-Status bleibt dynamisch (true wenn sichtbar via showIf).
+// - b2run_datenschutz hat im Render hardcoded externalLinks-Fallbacks
+//   (B2Run-AGB + Datenschutz-URL) wenn die Field-Properties leer sind
+//   → wird in das Field selbst persistiert.
+// - b2run_laufshirt wird im Render auf required=true gezwungen
+//   → wird in der Field-Property persistiert.
+//
+// Wird nur einmalig bei der Migration aufgerufen — die in-Memory-Field-
+// Liste wird mutiert; Caller speichert das Ergebnis als CustomFields-
+// JSON. Wenn keine relevanten Felder existieren, no-op.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
+  let changed = false;
+  for (const f of fields) {
+    const id = String(f.id || '').toLowerCase();
+    if (id === 'b2run_mobilnummer') {
+      // v11.14: showIf-Constraint auf b2run_infoservice='true'.
+      // Damit übernimmt die generische Render-Logik die Sichtbarkeit
+      // statt der hardcoded Sonderprüfung.
+      const sf = f.showIf;
+      const alreadySet = sf && sf.fieldId === 'b2run_infoservice'
+        && Array.isArray(sf.values) && sf.values.indexOf('true') >= 0;
+      if (!alreadySet) {
+        f.showIf = { fieldId: 'b2run_infoservice', values: ['true'] };
+        // Wenn der User Infoservice aktiviert, ist die Mobilnummer
+        // Pflicht — über showIf gerendert ist die Pflicht-Logik
+        // jetzt deterministisch (Feld sichtbar ⇒ Feld Pflicht).
+        f.required = true;
+        changed = true;
+      }
+    } else if (id === 'b2run_datenschutz') {
+      // v11.14: Hardcoded B2Run-AGB- und Datenschutz-Links als
+      // externalLinks-Property persistieren, sodass der Render-
+      // Fallback-Path obsolet wird.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const links: any[] = Array.isArray(f.externalLinks) ? f.externalLinks : [];
+      if (links.length === 0) {
+        f.externalLinks = [
+          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
+          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
+        ];
+        changed = true;
+      }
+    } else if (id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || ''))) {
+      // v11.14: Hardcoded required=true persistieren.
+      if (!f.required) {
+        f.required = true;
+        changed = true;
+      }
+    }
+  }
+  return { changed };
+}
+
 // v7.6: Wiederverwendbare Action-Kachel fuer den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
 // Deloitte-Gruen. Unterstuetzt Button (onClick), Link (href, oeffnet in neuem
@@ -1369,8 +1428,8 @@ export default function AdminPage(): React.ReactElement {
                                 : `\n\nAdditionally ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '"' + (k.title || '?') + '"').join(', ')}.`)
                             : '';
                           const msg = isDe
-                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
-                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• b2run_* custom fields (age group, t-shirt size, start block, mobile, privacy etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
+                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt — bleibt also als richtige Frage erhalten.\n• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt. Bei Bedarf als Custom-Field mit Gruppen-Bindung wieder anlegen.\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
+                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• If performance-proof requirement was active: it is converted into a regular custom field „Leistungsnachweis vorhanden" (checkbox, required, only for group A) — stays as a proper prompt.\n• Hardcoded per-group start-block mapping is removed. If needed, add it as a custom field bound to a group.\n• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
                           if (!window.confirm(msg)) return;
                           const errors: string[] = [];
                           const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
@@ -1385,12 +1444,71 @@ export default function AdminPage(): React.ReactElement {
                               // T-Shirt-Größe etc. waren weg, obwohl nur
                               // die Type-Spalte und Labels umgestellt
                               // werden sollten).
-                              const keptFields = (ev.eventSpecificFields || []);
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              const keptFields: any[] = (ev.eventSpecificFields || []).map(f => ({ ...f }));
                               const splitActive = (ev.durchstarterCapacity || 0) > 0 && (ev.funstarterCapacity || 0) > 0;
                               const baseUpdates: Record<string, unknown> = {
                                 'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                               };
+                              // v11.13: B2Run-Extras aus
+                              // EmailTemplateOverrides._b2run nicht mehr nur
+                              // löschen, sondern in echte Custom-Fields mit
+                              // onlyForGroup-Bindung übersetzen:
+                              // - durchstarterRequiresProof → Custom-Field
+                              //   „Leistungsnachweis vorhanden" (Checkbox,
+                              //   Pflicht, onlyForGroup='A').
+                              // - durchstarterStartblock / funstarterStart-
+                              //   block (Auto-Mapping) waren reine UI-
+                              //   Convenience und werden ersatzlos entfernt.
+                              //   Wenn der Organizer pro Gruppe einen
+                              //   Startblock vorgeben will, lege er das
+                              //   manuell als Custom-Field mit
+                              //   onlyForGroup A bzw. B an.
+                              try {
+                                const overridesRaw = (ev.emailTemplateOverrides || '').toString();
+                                if (overridesRaw.trim()) {
+                                  const parsed = JSON.parse(overridesRaw);
+                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                  const b2 = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
+                                  if (b2 && typeof b2 === 'object') {
+                                    if (b2.durchstarterRequiresProof) {
+                                      const PROOF_ID = 'b2run_leistungsnachweis';
+                                      const existing = keptFields.find(f => String(f.id || '').toLowerCase() === PROOF_ID);
+                                      if (existing) {
+                                        existing.onlyForGroup = 'A';
+                                        existing.required = true;
+                                        if (!existing.label) existing.label = 'Leistungsnachweis vorhanden';
+                                        if (!existing.type) existing.type = 'checkbox';
+                                        if (!existing.helpText) existing.helpText = 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.';
+                                      } else {
+                                        keptFields.push({
+                                          id: PROOF_ID,
+                                          label: 'Leistungsnachweis vorhanden',
+                                          type: 'checkbox',
+                                          required: true,
+                                          options: [],
+                                          visible: true,
+                                          onlyForGroup: 'A',
+                                          helpText: 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.',
+                                        });
+                                      }
+                                      baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                                    }
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    delete (parsed as any)._b2run;
+                                    baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
+                                  }
+                                }
+                              } catch { /* invalid JSON → einfach ignorieren */ }
+                              // v11.14: hardcoded B2Run-Field-Specials in
+                              // echte Field-Properties migrieren (showIf
+                              // für Mobilnummer, externalLinks für
+                              // Datenschutz, required für Laufshirt).
+                              const fieldExtras = migrateB2RunFieldExtras(keptFields);
+                              if (fieldExtras.changed) {
+                                baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                              }
                               const ok = await updateEvent(ev.id, baseUpdates);
                               try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                               if (!ok) { errors.push(`„${ev.title}"`); return; }
@@ -2391,7 +2509,9 @@ export default function AdminPage(): React.ReactElement {
                   const msg = `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
                     `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
                     `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
-                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer, Datenschutz etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
+                    `• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt.\n` +
+                    `• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt.\n` +
+                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
                     `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
                     (kidsToMigrate.length > 0
                       ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
@@ -2401,10 +2521,57 @@ export default function AdminPage(): React.ReactElement {
                   const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                     try {
                       // v11.11: Custom-Fields werden NICHT mehr gelöscht.
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const keptFields: any[] = (ev.eventSpecificFields || []).map(f => ({ ...f }));
                       const baseUpdates: Record<string, unknown> = {
                         'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                       };
+                      // v11.13: B2Run-Extras aus EmailTemplateOverrides._b2run
+                      // in echte Custom-Fields mit onlyForGroup übersetzen
+                      // (siehe ausführlicher Kommentar im Card-Button-Pfad).
+                      try {
+                        const overridesRaw = (ev.emailTemplateOverrides || '').toString();
+                        if (overridesRaw.trim()) {
+                          const parsed = JSON.parse(overridesRaw);
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const b2 = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
+                          if (b2 && typeof b2 === 'object') {
+                            if (b2.durchstarterRequiresProof) {
+                              const PROOF_ID = 'b2run_leistungsnachweis';
+                              const existing = keptFields.find(f => String(f.id || '').toLowerCase() === PROOF_ID);
+                              if (existing) {
+                                existing.onlyForGroup = 'A';
+                                existing.required = true;
+                                if (!existing.label) existing.label = 'Leistungsnachweis vorhanden';
+                                if (!existing.type) existing.type = 'checkbox';
+                                if (!existing.helpText) existing.helpText = 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.';
+                              } else {
+                                keptFields.push({
+                                  id: PROOF_ID,
+                                  label: 'Leistungsnachweis vorhanden',
+                                  type: 'checkbox',
+                                  required: true,
+                                  options: [],
+                                  visible: true,
+                                  onlyForGroup: 'A',
+                                  helpText: 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.',
+                                });
+                              }
+                              baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                            }
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            delete (parsed as any)._b2run;
+                            baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
+                          }
+                        }
+                      } catch { /* invalid JSON → einfach ignorieren */ }
+                      // v11.14: hardcoded B2Run-Field-Specials in echte
+                      // Field-Properties migrieren.
+                      const fieldExtras = migrateB2RunFieldExtras(keptFields);
+                      if (fieldExtras.changed) {
+                        baseUpdates['CustomFields'] = JSON.stringify(keptFields);
+                      }
                       const ok = await updateEvent(ev.id, baseUpdates);
                       try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
                       if (!ok) errors.push(`„${ev.title}"`);
