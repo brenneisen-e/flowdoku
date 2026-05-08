@@ -350,6 +350,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     try {
       if (e.CustomFields) customFields = JSON.parse(e.CustomFields);
     } catch { /* ungueltig */ }
+    // v11.18: Debug-Trace fuer den helpText-Roundtrip — den rohen SP-String
+    // logge ich direkt aus, damit wir sehen koennen ob helpText/onlyForGroup
+    // tatsaechlich in dem zurueckkommenden JSON drin sind. Wenn ja → das
+    // Wizard-Loadmapping verschluckt sie. Wenn nicht → SP hat sie beim
+    // Save gar nicht erst gespeichert.
+    if (typeof e.CustomFields === 'string' && e.CustomFields.indexOf('helpText') >= 0) {
+      // Nur ausfuehrlich loggen wenn das Event tatsaechlich helpText
+      // beinhaltet — sonst lautes Logging fuer alle alten Events.
+      // eslint-disable-next-line no-console
+      console.log('[DEX][load] Raw CustomFields for event', e.Id, e.Title, ':\n', e.CustomFields);
+    }
 
     return {
       id: e.Id.toString(),
