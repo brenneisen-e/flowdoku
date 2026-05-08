@@ -594,7 +594,11 @@ export default function RegistrationPage(): React.ReactElement {
           const sType = isSplitGroup ? (inheritedStarterType || undefined) : undefined;
           // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
           // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
-          const seFieldValues = sessionFieldValues[ce.id] || {};
+          // v11.34: Anrede (salutation) zusätzlich mitgeben — vorher fehlte sie
+          // bei Sub-Event-Anmeldungen, die Teilnehmerliste hatte dann „-" in
+          // der Anrede-Spalte. Salutation kommt aus dem Hauptformular und ist
+          // pro User identisch fuer alle Sub-Event-Anmeldungen.
+          const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
           const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
           if (ok) anySuccess = true;
           subOpsDone++;
