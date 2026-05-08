@@ -130,6 +130,12 @@ export default function RegistrationPage(): React.ReactElement {
   const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // v11.33: Submit-Overlay mit Fortschrittsanzeige (Prozent + Label).
+  // Bei vielen Sub-Events / vielen Custom-Fields kann der Submit
+  // mehrere Sekunden dauern — vorher hat der User nur einen disabled
+  // Button gesehen ohne Feedback was gerade passiert.
+  const [submitProgress, setSubmitProgress] = React.useState(0);
+  const [submitProgressLabel, setSubmitProgressLabel] = React.useState('');
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   const [showDescription, setShowDescription] = React.useState(true);
@@ -515,6 +521,8 @@ export default function RegistrationPage(): React.ReactElement {
   const performRegistration = async (starterTypeToUse: string): Promise<void> => {
     setError('');
     setIsSubmitting(true);
+    setSubmitProgress(5);
+    setSubmitProgressLabel(locale === 'de' ? 'Anmeldung wird vorbereitet…' : 'Preparing registration…');
     try {
       const customData: Record<string, string> = {
         salutation,
@@ -527,8 +535,20 @@ export default function RegistrationPage(): React.ReactElement {
       let anySuccess = false;
       let parentOk = true;
 
+      // Verfeinerte Progress-Stufen je nach Anzahl Sub-Events:
+      // - parent: 5 → 30 → 50 (wenn Parent-Anmeldung lief)
+      // - sub-events: 50 → 90 (gleichmaessig verteilt)
+      // - finalize: 90 → 100
+      const subOps = childEvents.filter(ce => {
+        const wasReg = sessionMeta[ce.id]?.wasRegistered;
+        const isSel = selectedSessions.has(ce.id);
+        return (isSel && !wasReg) || (!isSel && wasReg && !registerForOther);
+      }).length;
+
       // 1) Haupt-Event anmelden (nur wenn Checkbox an und noch nicht angemeldet).
       if (willRegisterParent || registerForOther) {
+        setSubmitProgress(30);
+        setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
         parentOk = await registerForEvent(
           selectedEventId!,
           customData,
@@ -539,6 +559,9 @@ export default function RegistrationPage(): React.ReactElement {
         );
         if (parentOk) anySuccess = true;
         else setError(t('reg.error'));
+        setSubmitProgress(50);
+      } else {
+        setSubmitProgress(50);
       }
 
       // 2) Ausgewählte Sessions an-/abmelden (unabhängig vom Parent).
@@ -560,25 +583,38 @@ export default function RegistrationPage(): React.ReactElement {
       // anmelden. Vorher war der Sub-Event-Loop hinter !registerForOther
       // versteckt — Beobachtung des Users: 'beim register for someone else kann
       // man nur fürs Main Event anmelden, nicht für die Sub-Events'. Fix.
+      let subOpsDone = 0;
       for (const ce of childEvents) {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
         const isSel = selectedSessions.has(ce.id);
         if (isSel && !wasReg) {
+          setSubmitProgressLabel(locale === 'de'
+            ? `Sub-Event „${ce.title || '?'}" wird angemeldet…`
+            : `Registering for sub-event „${ce.title || '?'}"…`);
           const sType = isSplitGroup ? (inheritedStarterType || undefined) : undefined;
           // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
           // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
           const seFieldValues = sessionFieldValues[ce.id] || {};
           const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
           if (ok) anySuccess = true;
+          subOpsDone++;
+          setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         } else if (!isSel && wasReg && !registerForOther) {
+          setSubmitProgressLabel(locale === 'de'
+            ? `Sub-Event „${ce.title || '?'}" wird abgemeldet…`
+            : `Cancelling sub-event „${ce.title || '?'}"…`);
           // Cancel-Pfad bleibt aufs Selbst-Anmelden begrenzt: ein Stellvertreter
           // soll nicht aus Versehen einen Sub-Event-Slot des Anderen freigeben
           // weil er den Haken nicht gesetzt hat. Wer einen TN abmelden will,
           // macht das aktiv im Admin Center.
           await cancelRegistration(ce.id);
           anySuccess = true;
+          subOpsDone++;
+          setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         }
       }
+      setSubmitProgress(95);
+      setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');
 
       if (anySuccess) {
         // Flag: wenn ausschließlich Sessions angemeldet/geändert wurden (kein
@@ -594,7 +630,15 @@ export default function RegistrationPage(): React.ReactElement {
     } catch {
       setError(t('reg.genericerror'));
     } finally {
-      setIsSubmitting(false);
+      setSubmitProgress(100);
+      setSubmitProgressLabel(locale === 'de' ? 'Fertig!' : 'Done!');
+      // Kleine Verzoegerung damit der User die 100%-Anzeige kurz sieht
+      // bevor das Overlay wieder verschwindet.
+      setTimeout(() => {
+        setIsSubmitting(false);
+        setSubmitProgress(0);
+        setSubmitProgressLabel('');
+      }, 250);
     }
   };
 
@@ -838,6 +882,58 @@ export default function RegistrationPage(): React.ReactElement {
           {event && event.registrationDeadline && (
             <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
           )}
+        </div>
+      )}
+      {/* v11.33: Submit-Overlay mit Spinner + Prozent + Live-Label.
+          Wird waehrend des gesamten Anmelde-Flows (Parent + alle Sub-Events
+          + Bestaetigungen) eingeblendet, sodass der User auch bei langen
+          Submits klares Feedback bekommt. */}
+      {isSubmitting && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={locale === 'de' ? 'Anmeldung läuft' : 'Submitting registration'}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '28px 32px',
+            maxWidth: 460, width: '100%',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+          }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 48, height: 48, borderRadius: '50%',
+                border: '4px solid var(--dex-gray-200)',
+                borderTopColor: 'var(--dex-green, #86bc25)',
+                animation: 'dex-spin 0.9s linear infinite',
+              }}
+            />
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
+              {locale === 'de' ? 'Anmeldung läuft …' : 'Submitting registration …'}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textAlign: 'center', minHeight: 18 }}>
+              {submitProgressLabel}
+            </div>
+            <div style={{ width: '100%', height: 8, borderRadius: 4, background: 'var(--dex-gray-200)', overflow: 'hidden' }}>
+              <div style={{
+                width: `${Math.min(100, Math.max(0, submitProgress))}%`,
+                height: '100%',
+                background: 'var(--dex-green, #86bc25)',
+                transition: 'width 0.25s ease',
+              }} />
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>
+              {submitProgress}%
+            </div>
+          </div>
+          <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
       <div className="registration-layout">

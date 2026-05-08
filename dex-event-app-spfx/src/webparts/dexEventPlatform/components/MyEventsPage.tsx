@@ -792,6 +792,34 @@ export default function MyEventsPage(): React.ReactElement {
     const entry = myEvents.find(e => e.event.id === eventId);
     const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
 
+    // v11.33: Cascade-Prompt — wenn das Hauptevent Sub-Events hat fuer
+    // die der User aktiv angemeldet ist, fragen ob diese auch abgemeldet
+    // werden sollen. Default: nicht-cascading (defensive). Cascade laeuft
+    // VOR dem Parent-Cancel, weil sonst der Parent-Cancel ggf. Subsite-
+    // Auswirkungen hat.
+    const childIdsToCancel: string[] = [];
+    if (entry) {
+      const kids = childEventsOf(eventId);
+      const activeKids: { id: string; title: string }[] = [];
+      for (const ce of kids) {
+        try {
+          const reg = await getMyRegistration(ce.id);
+          if (reg && reg.Status !== 'Abgemeldet') {
+            activeKids.push({ id: ce.id, title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event') });
+          }
+        } catch { /* ignore */ }
+      }
+      if (activeKids.length > 0) {
+        const list = activeKids.map(k => '• ' + k.title).join('\n');
+        const msg = isDe
+          ? `Du hast für dieses Event auch ${activeKids.length} Sub-Event(s) angemeldet:\n\n${list}\n\nSollen diese ebenfalls abgemeldet werden?\n\n• OK = Hauptevent UND alle aufgeführten Sub-Events abmelden\n• Abbrechen = nur Hauptevent abmelden, Sub-Event-Anmeldungen behalten`
+          : `You are also registered for ${activeKids.length} sub-event(s) of this event:\n\n${list}\n\nShould these also be cancelled?\n\n• OK = cancel main event AND all listed sub-events\n• Cancel = cancel main event only, keep sub-event registrations`;
+        if (window.confirm(msg)) {
+          for (const k of activeKids) childIdsToCancel.push(k.id);
+        }
+      }
+    }
+
     const success = await cancelRegistration(eventId);
     if (success) {
       // Late cancellation: alle Organizer zusammen benachrichtigen (EINE Mail an
@@ -829,6 +857,13 @@ export default function MyEventsPage(): React.ReactElement {
               .catch(err => console.warn('[DEX] LateCancel queueEmail failed:', err));
           }
         } catch { /* Email-Fehler ignorieren */ }
+      }
+      // v11.33: nach erfolgreicher Parent-Abmeldung optional die ausgewaehlten
+      // Sub-Events kaskadieren. Best-effort — Fehler einzelner Sub-Events
+      // brechen den Reload nicht ab.
+      for (const childId of childIdsToCancel) {
+        try { await cancelRegistration(childId); }
+        catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
       }
       await loadMyRegistrations();
     }
@@ -870,9 +905,28 @@ export default function MyEventsPage(): React.ReactElement {
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
 
   if (isLoading) {
+    // v11.33: animierter Loader statt nur einer grauen Zeile —
+    // gibt dem User klares visuelles Feedback dass die Daten geladen
+    // werden (vorher wirkte der Bildschirm fast leer / gefroren).
     return (
-      <div className="page-container text-center">
-        <p style={{ color: 'var(--dex-gray-400)', padding: 48 }}>{t('myevents.loading')}</p>
+      <div className="page-container text-center" style={{ padding: '64px 16px' }}>
+        <div style={{
+          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+        }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 48, height: 48, borderRadius: '50%',
+              border: '4px solid var(--dex-gray-200)',
+              borderTopColor: 'var(--dex-green, #86bc25)',
+              animation: 'dex-spin 0.9s linear infinite',
+            }}
+          />
+          <p style={{ color: 'var(--dex-gray-600)', margin: 0, fontSize: '0.95rem' }}>
+            {t('myevents.loading')}
+          </p>
+        </div>
+        <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
