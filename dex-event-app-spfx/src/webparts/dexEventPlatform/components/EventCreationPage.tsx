@@ -2016,13 +2016,25 @@ export default function EventCreationPage(): React.ReactElement {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 spInternalName: (f as any).spInternalName || '',
                 ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
+                ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+                // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
+                // mit-persistieren — vorher haben alle drei Persist-Pfade
+                // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
+                ...(f.externalLinks && f.externalLinks.length > 0
+                  ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+                  : {}),
+                // v11.21 KRITISCHER BUG-FIX: helpText UND showIf wurden hier
+                // beim cfForFix-Mapping nicht mit-uebernommen — der zweite
+                // updateEvent-Call (siehe `merged`-JSON unten, ueberschreibt
+                // CustomFields nochmal mit der spInternalName-Anreicherung)
+                // hat die helpText- und showIf-Properties wieder vom SP-
+                // Item entfernt. Folge: jede gespeicherte Beschreibung war
+                // direkt nach dem Save wieder weg, obwohl der erste
+                // updateEvent sie korrekt geschrieben hatte.
+                ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+                ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
+                  ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
+                  : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
