@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
-import { EventType, AgendaItem, DeloitteEvent } from '../types';
+import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
@@ -649,16 +649,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
-  // v11.19: Mapper rausgezogen, damit sowohl der useState-Initializer als
-  // auch der Re-Sync-useEffect denselben Code nutzen koennen. Vorher gab
-  // es eine Race-Condition: useState-Init lief beim Wizard-Mount mit
-  // stale events-Daten (der EventContext hatte loadEvents() nach dem
-  // letzten Save noch nicht abgeschlossen) — der Wizard hat helpText/
-  // onlyForGroup/externalLinks nie gesehen, obwohl SP sie korrekt
-  // gespeichert hatte.
-  const mapEventToCustomFields = React.useCallback((ev: DeloitteEvent | null | undefined): CustomFieldInput[] => {
-    if (!ev) return [];
-    return ev.eventSpecificFields.map(f => ({
+  // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
+  // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
+  // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
+  // nachweislich helpText="Test123" hatte). Das Aufrufen von
+  // setCustomFields aus dem Effect heraus war zu fragil. Stattdessen
+  // verlassen wir uns wieder auf den useState-Initializer + zusaetzlich
+  // ein detaillierteres Save-Log um zu sehen was *wirklich* an SP geht.
+  const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>(
+    editEvent ? editEvent.eventSpecificFields.map(f => ({
       id: f.id, label: f.label, type: f.type, required: f.required,
       options: f.options ? [...f.options] : [], visible: true,
       ...(f.multi ? { multi: true } : {}),
@@ -666,34 +665,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
-    }));
-  }, []);
-  const [customFields, setCustomFields] = React.useState<CustomFieldInput[]>(
-    editEvent ? mapEventToCustomFields(editEvent) : []
+    })) : []
   );
-  // v11.19: Wenn sich editEvent.eventSpecificFields aendert (z.B. weil
-  // EventContext.loadEvents() nach dem letzten Save jetzt erst die
-  // frischen Daten geliefert hat), customFields neu syncen — sonst
-  // bleibt der Wizard auf der stale Initial-State haengen und der
-  // gerade gespeicherte helpText / onlyForGroup wird nie sichtbar.
-  // Trigger ist eine JSON-Signature des persistierten Felder-Arrays,
-  // damit React nicht bei jedem Re-Render erneut feuert.
-  const persistedFieldsSig = React.useMemo(() => {
-    if (!editEvent) return '';
-    return JSON.stringify(editEvent.eventSpecificFields.map(f => ({
-      id: f.id, helpText: f.helpText, onlyForGroup: f.onlyForGroup,
-      showIf: f.showIf, externalLinks: f.externalLinks,
-    })));
-  }, [editEvent]);
-  const lastSyncedSigRef = React.useRef<string>(persistedFieldsSig);
-  React.useEffect(() => {
-    if (!editEvent) return;
-    if (persistedFieldsSig === lastSyncedSigRef.current) return;
-    lastSyncedSigRef.current = persistedFieldsSig;
-    setCustomFields(mapEventToCustomFields(editEvent));
-    // eslint-disable-next-line no-console
-    console.log('[DEX][edit] customFields re-synced from editEvent (post-loadEvents):', persistedFieldsSig.substring(0, 200));
-  }, [persistedFieldsSig, editEvent, mapEventToCustomFields]);
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
   // Outlook-Termin-Header: beide Ueberschriften sind pro Event editierbar.
   // Default: eventTitle + formatiertes Startdatum. Parsed aus bestehendem
@@ -1993,6 +1966,14 @@ export default function EventCreationPage(): React.ReactElement {
         }
       }
 
+      // v11.20: Direkt vor dem updateEvent-Call loggen was am SP-Server
+      // landet. Damit sehen wir im Browser-DevTools:
+      //   1. ob updates['CustomFields'] als JSON-String den helpText
+      //      enthaelt (= Save sendet's korrekt → SP-Persist OK).
+      //   2. oder ob updates['CustomFields'] ohne helpText/onlyForGroup
+      //      ankommt (= State zum Save-Zeitpunkt war schon kaputt).
+      // eslint-disable-next-line no-console
+      console.log('[DEX][edit-save] updates.CustomFields about to POST:', updates['CustomFields']);
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
         // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
