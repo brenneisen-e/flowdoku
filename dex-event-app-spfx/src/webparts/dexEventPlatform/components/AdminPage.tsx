@@ -1885,9 +1885,10 @@ export default function AdminPage(): React.ReactElement {
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
-                {/* Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Wenn der selektierte
-                    Event Child-Events hat, zeigen wir einen Dropdown zum schnellen
-                    Umschalten in die Admin-Ansicht der Child-Events (oder zurück zum Parent). */}
+                {/* v11.28: Bookmark-Tabs statt Dropdown fuer schnelles Umschalten
+                    zwischen Hauptevent und Sub-Events. Pro Tab wird die aktuelle
+                    Teilnehmerzahl (currentParticipants aus EventContext) als
+                    kleiner Badge angezeigt. */}
                 {selectedEvent && (() => {
                   const isChild = !!selectedEvent.parentEventId;
                   const siblings = isChild
@@ -1895,30 +1896,76 @@ export default function AdminPage(): React.ReactElement {
                     : childEventsOf(selectedEvent.id);
                   if (!isChild && siblings.length === 0) return null;
                   const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const tabs: Array<{ id: string; label: string; count: number; isParent: boolean; ev: any }> = [];
+                  if (parent) {
+                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parent.currentParticipants || 0, isParent: true, ev: parent });
+                  }
+                  for (const c of siblings) {
+                    tabs.push({ id: c.id, label: c.title || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
+                  }
                   return (
-                    <select
-                      className="form-input"
-                      value={selectedEvent.id}
-                      onChange={e => {
-                        const target = [parent, ...siblings].find(x => x && x.id === e.target.value);
-                        // Nicht nur setSelectedEvent — sonst bleibt die alte
-                        // Teilnehmerliste stehen (Parent-Teilnehmer tauchen dann in
-                        // der Session-Ansicht auf). handleSelectEvent lädt die
-                        // Registrations aus der richtigen Subsite neu.
-                        if (target) handleSelectEvent(target).catch(() => { /* fehler wird intern gesetzt */ });
+                    <div
+                      role="tablist"
+                      aria-label={isDe ? 'Event wechseln' : 'Switch event'}
+                      style={{
+                        display: 'flex', flexWrap: 'wrap', gap: 6,
+                        marginBottom: 16,
+                        borderBottom: '1px solid var(--dex-gray-200)',
+                        paddingBottom: 0,
                       }}
-                      style={{ maxWidth: 340, padding: '6px 12px', fontSize: '0.85rem' }}
-                      aria-label="Event wechseln"
                     >
-                      {parent && (
-                        <option value={parent.id}>Hauptevent: {parent.title}</option>
-                      )}
-                      {siblings.map(c => (
-                        <option key={c.id} value={c.id}>
-                          Session: {c.title || 'ohne Titel'}
-                        </option>
-                      ))}
-                    </select>
+                      {tabs.map(t => {
+                        const active = t.id === selectedEvent.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 8,
+                              padding: '8px 14px',
+                              border: '1px solid var(--dex-gray-200)',
+                              borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                              borderRadius: '8px 8px 0 0',
+                              background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                              color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                              fontWeight: active ? 700 : 500,
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                              marginBottom: -1,
+                              whiteSpace: 'nowrap',
+                              maxWidth: 280,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                            }}
+                            title={t.label}
+                          >
+                            {t.isParent && (
+                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                                {isDe ? 'Haupt' : 'Main'}
+                              </span>
+                            )}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                            <span
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                minWidth: 24, height: 20, padding: '0 6px',
+                                borderRadius: 999,
+                                background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
+                                color: active ? '#fff' : 'var(--dex-gray-700)',
+                                fontSize: '0.72rem', fontWeight: 700,
+                              }}
+                            >
+                              {t.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   );
                 })()}
               {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
@@ -3250,20 +3297,21 @@ export default function AdminPage(): React.ReactElement {
 
       {/* Teilnehmerliste */}
       <div className="card" style={{ padding: 24 }}>
-        <div className="flex-between mb-16" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>
+        {/* v11.28: Suchfeld direkt neben dem „Teilnehmer (N)"-Header
+            statt rechtsbuendig — fluessiger Lese-Flow von links nach
+            rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
+        <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Teilnehmer suchen..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
-            />
-          </div>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Teilnehmer suchen..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
+          />
         </div>
 
         {regLoadError ? (
