@@ -640,6 +640,14 @@ export default function MyEventsPage(): React.ReactElement {
   const [editData, setEditData] = React.useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = React.useState(false);
   const [loadError, setLoadError] = React.useState('');
+  // v11.34: Cascade-Cancel-Dialog (Parent → Sub-Events). State haelt
+  // den Dialog-Inhalt + die Resolver-Funktion, damit performCancel auf
+  // die User-Wahl awaiten kann statt window.confirm.
+  const [cascadeDialog, setCascadeDialog] = React.useState<{
+    parentTitle: string;
+    subEvents: { id: string; title: string }[];
+    resolve: (_choice: 'cascade' | 'parent-only' | 'abort') => void;
+  } | null>(null);
 
   React.useEffect(() => {
     // Warten bis Events fertig geladen sind, sonst zeigen wir Fehler obwohl nur noch geladen wird
@@ -792,11 +800,12 @@ export default function MyEventsPage(): React.ReactElement {
     const entry = myEvents.find(e => e.event.id === eventId);
     const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
 
-    // v11.33: Cascade-Prompt — wenn das Hauptevent Sub-Events hat fuer
-    // die der User aktiv angemeldet ist, fragen ob diese auch abgemeldet
-    // werden sollen. Default: nicht-cascading (defensive). Cascade laeuft
-    // VOR dem Parent-Cancel, weil sonst der Parent-Cancel ggf. Subsite-
-    // Auswirkungen hat.
+    // v11.33/v11.34: Cascade-Prompt via gestyltem Modal — wenn das
+    // Hauptevent Sub-Events hat fuer die der User aktiv angemeldet ist,
+    // fragen ob diese auch abgemeldet werden sollen. Drei Auswahlen:
+    // - 'cascade'      → Parent + alle Sub-Events abmelden
+    // - 'parent-only'  → nur Parent abmelden, Sub-Events behalten
+    // - 'abort'        → den ganzen Cancel-Vorgang abbrechen
     const childIdsToCancel: string[] = [];
     if (entry) {
       const kids = childEventsOf(eventId);
@@ -810,11 +819,20 @@ export default function MyEventsPage(): React.ReactElement {
         } catch { /* ignore */ }
       }
       if (activeKids.length > 0) {
-        const list = activeKids.map(k => '• ' + k.title).join('\n');
-        const msg = isDe
-          ? `Du hast für dieses Event auch ${activeKids.length} Sub-Event(s) angemeldet:\n\n${list}\n\nSollen diese ebenfalls abgemeldet werden?\n\n• OK = Hauptevent UND alle aufgeführten Sub-Events abmelden\n• Abbrechen = nur Hauptevent abmelden, Sub-Event-Anmeldungen behalten`
-          : `You are also registered for ${activeKids.length} sub-event(s) of this event:\n\n${list}\n\nShould these also be cancelled?\n\n• OK = cancel main event AND all listed sub-events\n• Cancel = cancel main event only, keep sub-event registrations`;
-        if (window.confirm(msg)) {
+        const choice = await new Promise<'cascade' | 'parent-only' | 'abort'>(resolve => {
+          setCascadeDialog({
+            parentTitle: entry.event.title,
+            subEvents: activeKids,
+            resolve,
+          });
+        });
+        setCascadeDialog(null);
+        if (choice === 'abort') {
+          setCancellingId(null);
+          setIsCancelling(false);
+          return;
+        }
+        if (choice === 'cascade') {
           for (const k of activeKids) childIdsToCancel.push(k.id);
         }
       }
@@ -1573,6 +1591,87 @@ export default function MyEventsPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v11.34: Cascade-Cancel-Modal — ersetzt das frueher genutzte
+          window.confirm. Drei klare Aktionen: alles abmelden, nur
+          Hauptevent, Abbrechen. */}
+      {cascadeDialog && (() => {
+        const dlg = cascadeDialog;
+        const choose = (c: 'cascade' | 'parent-only' | 'abort'): void => dlg.resolve(c);
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => choose('abort')}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2000,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: 12, padding: '28px 32px',
+                maxWidth: 520, width: '100%',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+                display: 'flex', flexDirection: 'column', gap: 16,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+                {isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?'}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Du bist für <strong>{dlg.subEvents.length}</strong> Sub-Event{dlg.subEvents.length === 1 ? '' : 's'} von <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong> angemeldet:</>
+                  : <>You are registered for <strong>{dlg.subEvents.length}</strong> sub-event{dlg.subEvents.length === 1 ? '' : 's'} of <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong>:</>
+                }
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
+                {dlg.subEvents.map(s => <li key={s.id}>{s.title}</li>)}
+              </ul>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.4 }}>
+                {isDe
+                  ? 'Wähle wie weiter:'
+                  : 'How do you want to proceed?'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => choose('cascade')}
+                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
+                >
+                  {isDe
+                    ? `Alles abmelden (Hauptevent + ${dlg.subEvents.length} Sub-Event${dlg.subEvents.length === 1 ? '' : 's'})`
+                    : `Cancel everything (main event + ${dlg.subEvents.length} sub-event${dlg.subEvents.length === 1 ? '' : 's'})`}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => choose('parent-only')}
+                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
+                >
+                  {isDe
+                    ? 'Nur Hauptevent abmelden, Sub-Events behalten'
+                    : 'Cancel main event only, keep sub-events'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => choose('abort')}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'var(--dex-gray-500)', cursor: 'pointer',
+                    fontSize: '0.85rem', textDecoration: 'underline',
+                    padding: '6px 16px',
+                  }}
+                >
+                  {isDe ? 'Abbrechen — nichts abmelden' : 'Cancel — keep everything'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1730,6 +1829,14 @@ function MyEventSubEvents(props: {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editDraft, setEditDraft] = React.useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = React.useState(false);
+  // v11.34: Cascade-Cancel-Dialog fuer Sub-Event-Cancel — fragt ob auch
+  // die anderen aktiven Sub-Events des gleichen Parents abgemeldet
+  // werden sollen (Peer-Cancel).
+  const [peerCancelDialog, setPeerCancelDialog] = React.useState<{
+    targetTitle: string;
+    peers: { id: string; title: string }[];
+    resolve: (_choice: 'all' | 'one' | 'abort') => void;
+  } | null>(null);
 
   const refresh = React.useCallback(async (): Promise<void> => {
     try {
@@ -1780,10 +1887,33 @@ function MyEventSubEvents(props: {
   };
 
   const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    // v11.34: Beim Cancel eines Sub-Events fragen, ob die anderen aktiven
+    // Sub-Events des gleichen Parents auch abgemeldet werden sollen
+    // (Peer-Cancel-Cascade) — gleicher Pattern wie der Parent-Cancel.
+    let peerIdsToCancel: string[] = [];
+    if (currentlyRegistered) {
+      const peers = props.childEvents
+        .filter(ce => ce.id !== childEventId && registeredSet.has(ce.id))
+        .map(ce => ({ id: ce.id, title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event') }));
+      if (peers.length > 0) {
+        const target = props.childEvents.find(ce => ce.id === childEventId);
+        const targetTitle = (target && target.title) || (isDe ? 'dieses Sub-Event' : 'this sub-event');
+        const choice = await new Promise<'all' | 'one' | 'abort'>(resolve => {
+          setPeerCancelDialog({ targetTitle, peers, resolve });
+        });
+        setPeerCancelDialog(null);
+        if (choice === 'abort') return;
+        if (choice === 'all') peerIdsToCancel = peers.map(p => p.id);
+      }
+    }
     setBusyId(childEventId);
     try {
       if (currentlyRegistered) {
         await props.cancelRegistration(childEventId);
+        for (const peerId of peerIdsToCancel) {
+          try { await props.cancelRegistration(peerId); }
+          catch (err) { console.warn('[DEX] peer-cancel failed:', peerId, err); }
+        }
       } else {
         await props.registerForEvent(childEventId, {});
       }
@@ -2013,6 +2143,82 @@ function MyEventSubEvents(props: {
                 </button>
                 <button className="btn btn-primary" onClick={saveEdit} disabled={savingEdit}>
                   {savingEdit ? '…' : (isDe ? 'Speichern' : 'Save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* v11.34: Peer-Cancel-Modal — beim Cancel eines Sub-Events fragen,
+          ob die anderen aktiven Sub-Events des gleichen Parents auch
+          abgemeldet werden sollen. */}
+      {peerCancelDialog && (() => {
+        const dlg = peerCancelDialog;
+        const choose = (c: 'all' | 'one' | 'abort'): void => dlg.resolve(c);
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => choose('abort')}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2000,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: 12, padding: '28px 32px',
+                maxWidth: 520, width: '100%',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+                display: 'flex', flexDirection: 'column', gap: 16,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+                {isDe ? 'Auch andere Sub-Events abmelden?' : 'Cancel other sub-events too?'}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Du meldest dich von <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong> ab. Du bist außerdem für <strong>{dlg.peers.length}</strong> weiteres Sub-Event{dlg.peers.length === 1 ? '' : 's'} angemeldet:</>
+                  : <>You are cancelling <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong>. You are also registered for <strong>{dlg.peers.length}</strong> other sub-event{dlg.peers.length === 1 ? '' : 's'}:</>
+                }
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
+                {dlg.peers.map(p => <li key={p.id}>{p.title}</li>)}
+              </ul>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => choose('all')}
+                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
+                >
+                  {isDe
+                    ? `Alle abmelden (das gewählte + ${dlg.peers.length} weiteres)`
+                    : `Cancel all (selected + ${dlg.peers.length} other${dlg.peers.length === 1 ? '' : 's'})`}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => choose('one')}
+                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
+                >
+                  {isDe
+                    ? 'Nur das gewählte abmelden'
+                    : 'Cancel only the selected one'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => choose('abort')}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'var(--dex-gray-500)', cursor: 'pointer',
+                    fontSize: '0.85rem', textDecoration: 'underline',
+                    padding: '6px 16px',
+                  }}
+                >
+                  {isDe ? 'Abbrechen — nichts abmelden' : 'Cancel — keep everything'}
                 </button>
               </div>
             </div>
