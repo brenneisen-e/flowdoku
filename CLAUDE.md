@@ -356,6 +356,16 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 - DEX_IDReorder_TeilnehmerIDs — TeilnehmerIDs renummerieren + Warteliste nachrücken
 - DEX_SEND_MAIL — Mail-Versand aus DEX_Emails-Queue
 - DEX_CreateOutlookEvent — Outlook-Termin initial anlegen
+  - **Trigger-Konsequenz (wichtig):** Der Flow lauscht ausschließlich auf
+    `GetOnNewItems` in DEX_Events — er feuert **nur** beim Anlegen eines
+    neuen DEX_Events-Items, **nicht** bei MERGE/PATCH-Updates. Wenn der
+    User auf einem bestehenden Sub-Event (oder Top-Level-Event) nachträglich
+    `DisableOutlook` von `true` auf `false` umstellt, würde der Flow den
+    Trigger nie sehen — es entstünde nie ein Outlook-Termin. Lösung in der
+    SPFx-App: Sub-Event in diesem Fall delete+recreate (siehe
+    `persistSubEventsForParent` in `EventCreationPage.tsx`); bei
+    vorhandenen Anmeldungen wird der User per `window.confirm` gewarnt,
+    weil `deleteEvent` kaskadierend Subsite + TeilnehmerIDs entfernt.
 - DEX_Outlook_Einladungen — Teilnehmer hinzufügen/entfernen, Termin aktualisieren/löschen
 - DEX_OutlookDeclineHandler — Decline-Mails abfangen → Reminder-Mail queuen (inkl. weitergeleitete Declines FW:/WG:)
 - DEX_OutlookForwardHandler — Meeting-Forward-Notifications abfangen → FYI-Mail an Organizer wenn weitergeleiteter Empfänger nicht registriert

@@ -403,6 +403,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
+      outlookEventId: e.OutlookEventId || '',
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,

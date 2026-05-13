@@ -41,6 +41,11 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                 {isDe
                   ? 'Im Event-Wizard zu Reiter 5 "Kommunikation" wechseln — dort gibt es unterhalb der E-Mail-Templates die Sektion "Sub-Events". Pro Session legst du Titel, Beschreibung, Ort, Start-/Endzeit und optional eine Max-Teilnehmerzahl sowie einen Anmeldeschluss fest. Zwei Schalter pro Session steuern, ob eigene Mails bzw. ein eigener Outlook-Termin erzeugt werden.'
                   : 'In the event wizard, go to step 5 "Communication" — below the email template list you will find the "Sub-events" section. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
+                <br /><br />
+                <strong>{isDe ? 'Wichtig — Outlook nachträglich aktivieren:' : 'Important — enabling Outlook after the fact:'}</strong>{' '}
+                {isDe
+                  ? 'Wenn du auf einem bereits gespeicherten Sub-Event den Outlook-Schalter nachträglich einschaltest, muss das Sub-Event komplett neu aufgesetzt werden — der Outlook-Termin entsteht nur beim allerersten Speichern eines Sub-Events. Hat das Sub-Event schon Anmeldungen, fragt die App vor dem Speichern explizit nach Bestätigung und weist darauf hin, dass dadurch die bisherigen Anmeldungen, Teilnehmer-IDs und die Teilnehmer-Subsite verloren gehen (landen 93 Tage im Papierkorb). Tipp: setze den Outlook-Schalter direkt beim Anlegen richtig — dann passiert das nie.'
+                  : 'If you turn the Outlook toggle on for a sub-event that has already been saved, the sub-event has to be re-created from scratch — the Outlook event is only created when a sub-event is first saved. If the sub-event already has registrations, the app will ask for explicit confirmation before saving and warn you that those registrations, participant IDs and the participant subsite will be discarded (recycled for 93 days). Tip: set the Outlook toggle correctly when you create the sub-event — that way it never comes up.'}
               </>
             ),
             mockup: (

@@ -66,6 +66,12 @@ export interface DeloitteEvent {
   imageUrl?: string;
   subsiteUrl?: string;
   outlookBody: string;
+  /** OutlookEventId aus DEX_Events. Wird vom DEX_CreateOutlookEvent-Flow nach
+   *  erfolgreichem Anlegen des Kalendertermins geschrieben (Wert='FAILED' bei
+   *  Fehler). Leer = noch kein Outlook-Termin angelegt; wichtig u.a. für die
+   *  Erkennung „nachträglich Outlook aktiviert" auf Sub-Events
+   *  (`persistSubEventsForParent` in `EventCreationPage.tsx`). */
+  outlookEventId?: string;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
