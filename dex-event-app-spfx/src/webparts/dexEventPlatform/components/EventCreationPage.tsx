@@ -854,6 +854,25 @@ export default function EventCreationPage(): React.ReactElement {
     if (!editEvent) return [];
     return childEventsOf(editEvent.id).map(k => k.id);
   });
+  // Snapshot der initialen Outlook-Metadaten pro Sub-Event (DisableOutlook +
+  // OutlookEventId + SubsiteUrl). Wird beim Save gebraucht, um zu erkennen, ob
+  // ein Sub-Event nachträglich von „Outlook deaktiviert" auf „Outlook
+  // aktiviert" gedreht wurde — der DEX_CreateOutlookEvent-Flow lauscht nur
+  // auf NEUE DEX_Events-Items (GetOnNewItems-Trigger), deshalb muss das
+  // betroffene Sub-Event in diesem Fall gelöscht und neu angelegt werden,
+  // damit überhaupt ein Outlook-Termin entsteht.
+  const [initialSubEventOutlookMeta] = React.useState<Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string }>>(() => {
+    if (!editEvent) return {};
+    const acc: Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string }> = {};
+    for (const k of childEventsOf(editEvent.id)) {
+      acc[k.id] = {
+        disableOutlook: !!k.disableOutlook,
+        outlookEventId: k.outlookEventId || '',
+        subsiteUrl: k.subsiteUrl || '',
+      };
+    }
+    return acc;
+  });
   // Bereiche, die per "+ Bereich"-Button angelegt aber noch nicht mit einer
   // Frage belegt wurden. Sobald eine Frage per Drag&Drop reinkommt, ergibt sich
   // der Section-Name aus dem question.section-Feld selbst — pendingSections
@@ -1666,6 +1685,67 @@ export default function EventCreationPage(): React.ReactElement {
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
+        // Spezialfall: Outlook nachträglich aktivieren.
+        // Wenn der User auf einem **bestehenden** Sub-Event die "Outlook
+        // erstellen"-Checkbox einschaltet (DisableOutlook: true → false) und
+        // bisher kein Outlook-Termin angelegt wurde (OutlookEventId leer),
+        // muss das Sub-Event neu angelegt werden — der Power-Automate-Flow
+        // `DEX_CreateOutlookEvent` triggert ausschließlich auf NEUE
+        // DEX_Events-Items (GetOnNewItems). Ein reines MERGE-Update würde
+        // den Flow nie anstoßen → kein Outlook-Termin.
+        const initialMeta = initialSubEventOutlookMeta[draft.dbId];
+        const wasOutlookDisabled = !!initialMeta?.disableOutlook;
+        const nowOutlookEnabled = !draft.disableOutlook;
+        const hadOutlookEventId = !!(initialMeta?.outlookEventId);
+        const needsOutlookRecreate = wasOutlookDisabled && nowOutlookEnabled && !hadOutlookEventId;
+        if (needsOutlookRecreate) {
+          // Teilnehmerzahl in der Sub-Event-Subsite prüfen — bei vorhandenen
+          // Anmeldungen muss der User explizit bestätigen, weil delete()
+          // kaskadierend Subsite + Teilnehmerliste + TeilnehmerIDs entfernt.
+          let participantCount = 0;
+          if (initialMeta?.subsiteUrl) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const ctx = (window as any).__dexSpfxContext;
+              if (ctx) {
+                const svc = new EventService(ctx);
+                const counts = await svc.getRegistrationCount(initialMeta.subsiteUrl);
+                participantCount = (counts.registered || 0) + (counts.waitlist || 0);
+              }
+            } catch { /* Count-Fehler: konservativ als „unbekannt > 0" behandeln */ participantCount = -1; }
+          }
+          let confirmed = true;
+          if (participantCount !== 0) {
+            const countStr = participantCount > 0 ? String(participantCount) : (isDe ? 'eventuell vorhandene' : 'possibly existing');
+            const msg = isDe
+              ? `Beim Sub-Event „${draft.title}" wurde „Outlook-Termin erstellen" nachträglich aktiviert.\n\n`
+                + `Damit der Outlook-Termin überhaupt angelegt wird, muss das Sub-Event komplett neu aufgesetzt werden — ein nachträgliches Aktivieren reicht nicht aus.\n\n`
+                + `Dadurch gehen die ${countStr} bestehende(n) Teilnehmer-Anmeldung(en), alle Teilnehmer-IDs sowie die zugehörige Teilnehmer-Subsite verloren (landen 93 Tage im Papierkorb der Site Collection).\n\n`
+                + `Trotzdem fortfahren?`
+              : `On sub-event "${draft.title}" you turned on "Create Outlook event" after the fact.\n\n`
+                + `To actually create the Outlook event, the sub-event must be re-created from scratch — toggling the flag alone is not enough.\n\n`
+                + `This will discard the ${countStr} existing participant registration(s), all participant IDs and the sub-event's participant subsite (recycled for 93 days in the site collection bin).\n\n`
+                + `Continue anyway?`;
+            confirmed = window.confirm(msg);
+          }
+          if (confirmed) {
+            try {
+              await deleteEvent(draft.dbId);
+            } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
+            // Achtung: draft.dbId NICHT zu keptDbIds hinzufügen, weil das
+            // Item gerade gelöscht wurde. Stattdessen frisches Item anlegen,
+            // damit DEX_CreateOutlookEvent (GetOnNewItems) triggert.
+            await createEvent(childPayload);
+            continue;
+          } else {
+            // User hat abgebrochen → DisableOutlook bleibt true, damit der
+            // gespeicherte Zustand konsistent zur Realität bleibt (kein
+            // Outlook-Termin existiert, also auch nicht so tun als wäre einer
+            // gewünscht). Update-Pfad unten schreibt DisableOutlook=true.
+            draft.disableOutlook = true;
+            childPayload.disableOutlook = true;
+          }
+        }
         keptDbIds.add(draft.dbId);
         // Update bestehender Sub-Event: nur geänderte Felder patchen. CustomFields
         // werden als JSON-String serialisiert (gleiche Form wie bei regulären
@@ -2131,10 +2211,13 @@ export default function EventCreationPage(): React.ReactElement {
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
             }
           } catch { /* Outlook-Update optional */ }
-          // Sub-Event-Outlook-Updates laufen bereits über persistSubEventsForParent
-          // (updateEvent auf jeden Draft mit dbId) — der bestehende DEX_Outlook_Einladungen-
-          // Flow für Parent-Events wird pro Sub-Event ebenfalls getriggert, weil ein
-          // Sub-Event dieselbe Updateevent-Logik nutzt wie ein Top-Level-Event.
+          // Sub-Event-Outlook-Updates: das nachträgliche **Aktivieren** der
+          // Outlook-Checkbox auf einem bestehenden Sub-Event wird in
+          // persistSubEventsForParent als delete+recreate behandelt (sonst
+          // triggert DEX_CreateOutlookEvent nicht, weil dieser Flow nur auf
+          // NEUE DEX_Events-Items lauscht). Ein bereits angelegter Sub-Event-
+          // Termin wird vom DEX_Outlook_Einladungen-Flow via UpdateEvent
+          // aktualisiert — analog zum Parent-Event.
         }
         setProgress(100);
         setProgressLabel('Änderungen gespeichert!');
