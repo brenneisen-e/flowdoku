@@ -4418,14 +4418,17 @@ export class EventService {
   public buildOverbookApologyEmail(
     name: string,
     eventTitle: string,
-    lang: string
+    lang: string,
+    waitlistPos?: number
   ): { subject: string; body: string } {
     const isDe = (lang || 'EN').toUpperCase() === 'DE';
     const first = (name || '').split(' ')[0] || name;
+    const hasPos = typeof waitlistPos === 'number' && waitlistPos > 0;
     if (isDe) {
       const inner = `<p>Hallo ${first},</p>`
         + `<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>${eventTitle}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>`
         + `<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>`
+        + (hasPos ? `<p>Du stehst jetzt auf <strong>Warteliste-Platz ${waitlistPos}</strong>.</p>` : '')
         + `<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>`
         + `<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`;
       return {
@@ -4436,6 +4439,7 @@ export class EventService {
     const inner = `<p>Hi ${first},</p>`
       + `<p>we sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>${eventTitle}</strong> although capacity was already full.</p>`
       + `<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>`
+      + (hasPos ? `<p>You are now <strong>waitlist position ${waitlistPos}</strong>.</p>` : '')
       + `<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>`
       + `<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`;
     return {
