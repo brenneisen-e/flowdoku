@@ -19,9 +19,10 @@ import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2 } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
+import { InfoTooltip } from './InfoTooltip';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -404,6 +405,7 @@ export default function AdminPage(): React.ReactElement {
   const [obWithMail, setObWithMail] = React.useState(true);
   const [obMailSubject, setObMailSubject] = React.useState('');
   const [obMailBody, setObMailBody] = React.useState('');
+  const [obMailLang, setObMailLang] = React.useState<'DE' | 'EN'>('DE');
   const [obRemoveCalendar, setObRemoveCalendar] = React.useState(true);
   const [obKeepVariant, setObKeepVariant] = React.useState<'active' | 'firstWaitlist'>('firstWaitlist');
   const [obBusy, setObBusy] = React.useState(false);
@@ -683,17 +685,52 @@ export default function AdminPage(): React.ReactElement {
     }
   };
 
-  // v11.36: Mailtext vorbefüllen, sobald der „Bestätigen"-Dialog aufgeht.
+  // v11.36: Fairer Wartelisten-Rang einer Person in ihrer Gruppe — gleiche
+  // Logik wie die Review-Box. Genutzt für die "neue Warteliste-Position" im
+  // Mailtext (Vorschlag + Sammel-Versand).
+  const getFairWaitlistRank = (reg: SPRegistration): number => {
+    if (!selectedEvent) return 0;
+    const ACT = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const isSplit = isSplitCapacity;
+    const keyOf = (r: SPRegistration): string => isSplit ? (r.StarterType || r.PreferredStarterType || '?') : 'all';
+    const capOf = (k: string): number => !isSplit
+      ? (selectedEvent.maxParticipants || 0)
+      : (k === 'Durchstarter' ? (selectedEvent.durchstarterCapacity || 0) : k === 'Funstarter' ? (selectedEvent.funstarterCapacity || 0) : 0);
+    const k = keyOf(reg);
+    const activeSorted = registrations
+      .filter(r => ACT.indexOf(r.Status) >= 0 && keyOf(r) === k)
+      .slice().sort((a, b) => a.Id - b.Id);
+    const cap = capOf(k);
+    const overCap = cap > 0 ? activeSorted.slice(cap) : [];
+    const existingWl = registrations.filter(r => r.Status === 'Warteliste' && keyOf(r) === k);
+    const fairWl = [...overCap, ...existingWl].sort((a, b) =>
+      new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
+    const idx = fairWl.findIndex(x => x.Id === reg.Id);
+    return idx >= 0 ? idx + 1 : 0;
+  };
+
+  // v11.36: Beim Öffnen des „Bestätigen"-Dialogs die Mail-Sprache aus dem
+  // Event vorbelegen (Default DE wenn nicht explizit EN) — umschaltbar.
+  React.useEffect(() => {
+    if (overbookModal?.mode === 'confirm') {
+      setObMailLang((selectedEvent?.emailLanguage || '').toUpperCase() === 'EN' ? 'EN' : 'DE');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overbookModal]);
+
+  // v11.36: Mailtext vorbefüllen — reagiert auf Dialog-Öffnen UND Sprachwahl.
+  // Enthält die neue Wartelisten-Position der ersten Zielperson.
   React.useEffect(() => {
     if (overbookModal?.mode === 'confirm' && eventServiceRef && selectedEvent) {
       const t = overbookModal.targets[0];
       const nm = t ? ((t.Vorname && t.Nachname) ? `${t.Vorname} ${t.Nachname}` : t.ParticipantName) : '';
-      const m = eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, selectedEvent.emailLanguage || 'EN');
+      const pos = t ? getFairWaitlistRank(t) : 0;
+      const m = eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, pos);
       setObMailSubject(m.subject);
       setObMailBody(m.body);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overbookModal]);
+  }, [overbookModal, obMailLang]);
 
   // v11.36: Überbuchungs-Entscheidung ausführen (einzeln oder Sammel) und
   // danach IDs neu vergeben + Counter/Seat-Sync + Liste neu laden.
@@ -712,7 +749,7 @@ export default function AdminPage(): React.ReactElement {
             // Einzeln: ggf. vom Admin editierter Text. Sammel: pro Person
             // frisch personalisiert aus dem Standard-Template.
             const mail = isBulk
-              ? eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, selectedEvent.emailLanguage || 'EN')
+              ? eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, getFairWaitlistRank(reg))
               : { subject: obMailSubject, body: obMailBody };
             try {
               await eventServiceRef.queueEmail(
@@ -3507,13 +3544,23 @@ export default function AdminPage(): React.ReactElement {
                 <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                   Über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.
                 </span>
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '5px 12px', marginLeft: 'auto', color: 'var(--dex-red, #c00)' }}
-                  onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
-                >
-                  Alle bestätigen ({flagged.length})
-                </button>
+                <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.78rem', padding: '5px 12px', color: 'var(--dex-red, #c00)' }}
+                    onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
+                  >
+                    Alle bestätigen ({flagged.length})
+                  </button>
+                  <InfoTooltip placement="left" text={
+                    <>
+                      <strong>Sammel-Aktion:</strong> setzt <strong>alle</strong> markierten Personen auf die <strong>Warteliste</strong> (gruppentreu).<br /><br />
+                      Die Optionen <strong>mit/ohne Mail</strong>, <strong>Kalender-Abmeldung</strong> und <strong>Sprache</strong> gelten <strong>für alle gleich</strong> — eine gemeinsame Entscheidung.<br /><br />
+                      Der Mailtext ist trotzdem <strong>pro Person personalisiert</strong> (Name + individuelle neue Warteliste-Position).<br /><br />
+                      Sollen einzelne Personen <strong>anders</strong> behandelt werden (z.B. &bdquo;Platz behalten&ldquo;), nutze stattdessen die <strong>Einzel-Buttons</strong> pro Zeile.
+                    </>
+                  } />
+                </div>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -3522,7 +3569,6 @@ export default function AdminPage(): React.ReactElement {
                       <th style={{ padding: '4px 8px' }}>Aktuell</th>
                       <th style={{ padding: '4px 8px' }}>Name</th>
                       <th style={{ padding: '4px 8px' }}>Gruppe</th>
-                      <th style={{ padding: '4px 8px' }}>Überbuchung</th>
                       <th style={{ padding: '4px 8px' }}>Angemeldet</th>
                       <th style={{ padding: '4px 8px' }}>Über Kapazität</th>
                       <th style={{ padding: '4px 8px' }}>Abstand zum letzten fairen Platz</th>
@@ -3554,13 +3600,6 @@ export default function AdminPage(): React.ReactElement {
                             <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{reg.ParticipantEmail}</div>
                           </td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>{grpLabel}</td>
-                          <td style={{ padding: '6px 8px' }}>
-                            {overBy !== null && overBy > 0
-                              ? <span title={`${overBy}. Person über der Kapazität dieser Gruppe (nach Anmeldezeit)`} style={{ fontWeight: 700, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                                  {overBy}. Überbuchung
-                                </span>
-                              : '—'}
-                          </td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
                             {position !== null && cap > 0
@@ -3578,28 +3617,39 @@ export default function AdminPage(): React.ReactElement {
                               : '—'}
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 4, color: 'var(--dex-red, #c00)' }}
-                              onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
-                            >
-                              Auf Warteliste
-                            </button>
-                            <span
-                              title={'„Auf Warteliste" = die Person wird (gruppentreu) auf die Warteliste gesetzt — sie hatte fälschlich einen Platz. Im nächsten Dialog wählst du: mit oder ohne Entschuldigungs-Mail (Deloitte-Layout, geht in die Mail-Queue) und ob sie vom Kalendereintrag abgemeldet wird. Es wird ein Audit-Eintrag geschrieben (war fälschlich angemeldet, Original-Registrierung). Danach werden die TeilnehmerIDs automatisch neu vergeben.'}
-                              style={{ cursor: 'help', color: 'var(--dex-gray-500)', marginRight: 10, fontSize: '0.85rem' }}
-                            >ⓘ</span>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 4 }}
-                              onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
-                            >
-                              Platz behalten
-                            </button>
-                            <span
-                              title={'„Platz behalten" = die Person verliert den Platz NICHT. Im nächsten Dialog wählst du: (a) Erste(r) auf der Warteliste der Gruppe — rückt beim nächsten frei werdenden Platz garantiert als Erste(r) nach; oder (b) bleibt angemeldet — die Gruppe ist dann +1 über Kapazität, der nächste frei werdende Platz wird einmal NICHT nachgerückt bis die Überzahl wieder absorbiert ist. Beide Varianten mit Audit-Eintrag, danach IDs neu.'}
-                              style={{ cursor: 'help', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}
-                            >ⓘ</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 10 }}>
+                              <button
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
+                                onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
+                              >
+                                Auf Warteliste
+                              </button>
+                              <InfoTooltip placement="left" text={
+                                <>
+                                  <strong>&bdquo;Auf Warteliste&ldquo;</strong> — die Person wird (gruppentreu) auf die <strong>Warteliste</strong> gesetzt; sie hatte fälschlich einen Platz.<br /><br />
+                                  Im nächsten Dialog wählst du: <strong>mit oder ohne Entschuldigungs-Mail</strong> (Deloitte-Layout, geht in die Mail-Queue — nicht direkt versendet) und ob sie <strong>vom Kalendereintrag abgemeldet</strong> wird.<br /><br />
+                                  Es wird ein <strong>Audit-Eintrag</strong> geschrieben (war fälschlich angemeldet, Original-Registrierung). Danach werden die <strong>TeilnehmerIDs automatisch neu vergeben</strong>.
+                                </>
+                              } />
+                            </span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <button
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
+                              >
+                                Platz behalten
+                              </button>
+                              <InfoTooltip placement="left" text={
+                                <>
+                                  <strong>&bdquo;Platz behalten&ldquo;</strong> — die Person verliert den Platz <strong>nicht</strong>. Im nächsten Dialog wählst du:<br /><br />
+                                  <strong>(a) Erste(r) auf der Warteliste</strong> der Gruppe — rückt beim nächsten frei werdenden Platz garantiert als Erste(r) nach.<br /><br />
+                                  <strong>(b) Bleibt angemeldet</strong> — die Gruppe ist dann <strong>+1</strong> über Kapazität; der nächste frei werdende Platz wird <strong>einmal nicht</strong> nachgerückt, bis die Überzahl absorbiert ist.<br /><br />
+                                  Beide Varianten mit <strong>Audit-Eintrag</strong>, danach IDs neu.
+                                </>
+                              } />
+                            </span>
                           </td>
                         </tr>
                       );
@@ -5277,6 +5327,26 @@ export default function AdminPage(): React.ReactElement {
                   <input type="checkbox" checked={obWithMail} onChange={e => setObWithMail(e.target.checked)} disabled={obBusy} />
                   Mit Entschuldigungs-Mail (Deloitte-Layout, in die Mail-Queue)
                 </label>
+                {obWithMail && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 10px', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--dex-gray-600)' }}>Sprache:</span>
+                    {(['DE', 'EN'] as const).map(lng => (
+                      <button
+                        key={lng}
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={obBusy}
+                        onClick={() => setObMailLang(lng)}
+                        style={{
+                          fontSize: '0.75rem', padding: '3px 12px',
+                          ...(obMailLang === lng ? { background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 600 } : {}),
+                        }}
+                      >
+                        {lng === 'DE' ? 'Deutsch' : 'English'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {obWithMail && overbookModal.targets.length === 1 && (
                   <div style={{ marginBottom: 10 }}>
                     <input
@@ -5290,19 +5360,45 @@ export default function AdminPage(): React.ReactElement {
                       value={obMailBody}
                       onChange={e => setObMailBody(e.target.value)}
                       disabled={obBusy}
-                      rows={7}
+                      rows={5}
                       style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.72rem', padding: 8 }}
                     />
-                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 8px' }}>
                       Vorschlagstext — editierbar. Wird in die Mail-Queue gelegt, nicht direkt versendet.
                     </p>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginBottom: 4 }}>Vorschau (echte Deloitte-Mail):</div>
+                    <div
+                      style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 6, maxHeight: 280, overflow: 'auto', background: '#fff' }}
+                      dangerouslySetInnerHTML={{
+                        __html: obMailBody
+                          .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
+                          .replace(/\{\{ORB_URL\}\}/g, getCachedOrbBase64() || ''),
+                      }}
+                    />
                   </div>
                 )}
-                {obWithMail && overbookModal.targets.length > 1 && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 10px' }}>
-                    Bei &bdquo;Alle&ldquo; wird der Standardtext je Person personalisiert versendet.
-                  </p>
-                )}
+                {obWithMail && overbookModal.targets.length > 1 && (() => {
+                  const t0 = overbookModal.targets[0];
+                  const nm0 = (t0.Vorname && t0.Nachname) ? `${t0.Vorname} ${t0.Nachname}` : t0.ParticipantName;
+                  const prev = eventServiceRef
+                    ? eventServiceRef.buildOverbookApologyEmail(nm0, selectedEvent.title, obMailLang, getFairWaitlistRank(t0)).body
+                    : '';
+                  return (
+                    <div style={{ marginBottom: 10 }}>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 6px' }}>
+                        Bei &bdquo;Alle&ldquo; wird der Standardtext je Person personalisiert versendet (eigene Wartelisten-Position). Vorschau am Beispiel der ersten Person:
+                      </p>
+                      <div
+                        style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 6, maxHeight: 260, overflow: 'auto', background: '#fff' }}
+                        dangerouslySetInnerHTML={{
+                          __html: prev
+                            .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
+                            .replace(/\{\{ORB_URL\}\}/g, getCachedOrbBase64() || ''),
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', margin: '10px 0', cursor: 'pointer' }}>
                   <input type="checkbox" checked={obRemoveCalendar} onChange={e => setObRemoveCalendar(e.target.checked)} disabled={obBusy} />
                   Vom Kalendereintrag abmelden (falls vorhanden)
