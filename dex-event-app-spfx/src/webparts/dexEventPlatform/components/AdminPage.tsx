@@ -4147,11 +4147,26 @@ export default function AdminPage(): React.ReactElement {
                       </tr>
                     </thead>
                     <tbody>
-                      {activeRegs.map((reg, i) => (
-                        <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          {visibleColumnIds.map(id => renderCell(id, reg, i))}
-                        </tr>
-                      ))}
+                      {activeRegs.map((reg, i) => {
+                        // v11.36: über Kapazität markierte Personen auch in der
+                        // eigentlichen Teilnehmerliste hervorheben (orange),
+                        // damit man sie nicht nur in der Review-Box sieht.
+                        const isOverbook = reg.OverbookReview === 'Pending';
+                        return (
+                          <tr
+                            key={reg.Id}
+                            title={isOverbook ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : undefined}
+                            style={{
+                              borderBottom: '1px solid var(--dex-gray-100)',
+                              ...(isOverbook
+                                ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
+                                : {}),
+                            }}
+                          >
+                            {visibleColumnIds.map(id => renderCell(id, reg, i))}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </>
