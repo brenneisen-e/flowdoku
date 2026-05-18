@@ -3450,10 +3450,54 @@ export default function AdminPage(): React.ReactElement {
         {(() => {
           // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
           // prüfen" markierten Personen (OverbookReview='Pending') mit
-          // Aktions-Buttons. Erst durch eine Aktion ändert sich der Status.
+          // Fairness-Kontext + Aktions-Buttons. Erst durch eine Aktion
+          // ändert sich der Status.
           const flagged = registrations.filter(r => r.OverbookReview === 'Pending');
-          if (flagged.length === 0) return null;
+          if (flagged.length === 0 || !selectedEvent) return null;
           const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
+          const ACTIVE_ST = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+          // Gruppen-Key: bei Split die Gruppe, sonst ein gemeinsamer Topf.
+          const keyOf = (r: SPRegistration): string => isSplitCapacity ? (groupOf(r) || '?') : 'all';
+          const capOf = (key: string): number => {
+            if (!isSplitCapacity) return selectedEvent.maxParticipants || 0;
+            if (key === 'Durchstarter') return selectedEvent.durchstarterCapacity || 0;
+            if (key === 'Funstarter') return selectedEvent.funstarterCapacity || 0;
+            return 0;
+          };
+          // Pro Gruppe: aktive Anmeldungen in Anmeldereihenfolge (Id asc =
+          // Reihenfolge der Registrierung — identisch zur Detect-Logik).
+          const activeByGroup: Record<string, SPRegistration[]> = {};
+          registrations
+            .filter(r => ACTIVE_ST.indexOf(r.Status) >= 0)
+            .slice()
+            .sort((a, b) => a.Id - b.Id)
+            .forEach(r => { const k = keyOf(r); (activeByGroup[k] = activeByGroup[k] || []).push(r); });
+          // Faire Wartelisten-Reihenfolge je Gruppe: die über Kapazität
+          // Aktiven + bereits vorhandene Warteliste, nach RegistrationDate.
+          const fairWaitByGroup: Record<string, SPRegistration[]> = {};
+          Object.keys(activeByGroup).forEach(k => {
+            const cap = capOf(k);
+            const overCap = cap > 0 ? activeByGroup[k].slice(cap) : [];
+            const existingWl = registrations.filter(r => r.Status === 'Warteliste' && keyOf(r) === k);
+            fairWaitByGroup[k] = [...overCap, ...existingWl].sort((a, b) =>
+              new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
+          });
+          // Faire Aktiv-Gesamtzahl (bei sauberer Liste) für die faire ID.
+          let totalFairActive = 0;
+          Object.keys(activeByGroup).forEach(k => {
+            const cap = capOf(k);
+            totalFairActive += cap > 0 ? Math.min(activeByGroup[k].length, cap) : activeByGroup[k].length;
+          });
+          const fmtGap = (ms: number): string => {
+            if (!isFinite(ms) || ms < 0) return '—';
+            const s = Math.round(ms / 1000);
+            if (s < 90) return `${s} Sek`;
+            const m = Math.round(s / 60);
+            if (m < 90) return `${m} Min`;
+            const h = Math.round(m / 60);
+            if (h < 48) return `${h} Std`;
+            return `${Math.round(h / 24)} Tage`;
+          };
           return (
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -3461,7 +3505,7 @@ export default function AdminPage(): React.ReactElement {
                   Überbuchung – zu prüfen ({flagged.length})
                 </strong>
                 <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                  Diese Personen wurden über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.
+                  Über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.
                 </span>
                 <button
                   className="btn btn-secondary"
@@ -3473,31 +3517,89 @@ export default function AdminPage(): React.ReactElement {
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(237,139,0,0.4)', textAlign: 'left', color: 'var(--dex-gray-600)' }}>
+                      <th style={{ padding: '4px 8px' }}>Aktuell</th>
+                      <th style={{ padding: '4px 8px' }}>Name</th>
+                      <th style={{ padding: '4px 8px' }}>Gruppe</th>
+                      <th style={{ padding: '4px 8px' }}>Überbuchung</th>
+                      <th style={{ padding: '4px 8px' }}>Angemeldet</th>
+                      <th style={{ padding: '4px 8px' }}>Über Kapazität</th>
+                      <th style={{ padding: '4px 8px' }}>Abstand zum letzten fairen Platz</th>
+                      <th style={{ padding: '4px 8px' }}>Fairer Platz</th>
+                      <th style={{ padding: '4px 8px', textAlign: 'right' }}>Aktion</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {flagged.map(reg => {
                       const nm = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                      const k = keyOf(reg);
+                      const grpLabel = isSplitCapacity ? (groupOf(reg) || '—') : '—';
+                      const cap = capOf(k);
+                      const bucket = activeByGroup[k] || [];
+                      const idx = bucket.findIndex(x => x.Id === reg.Id); // 0-basiert
+                      const position = idx >= 0 ? idx + 1 : null;
+                      const overBy = (position !== null && cap > 0) ? position - cap : null;
+                      const cutoff = (cap > 0 && cap - 1 < bucket.length) ? bucket[cap - 1] : null;
+                      const cutoffNm = cutoff ? ((cutoff.Vorname && cutoff.Nachname) ? `${cutoff.Vorname} ${cutoff.Nachname}` : cutoff.ParticipantName) : '';
+                      const gapMs = cutoff ? (new Date(reg.RegistrationDate).getTime() - new Date(cutoff.RegistrationDate).getTime()) : NaN;
+                      const wl = fairWaitByGroup[k] || [];
+                      const wlRank = wl.findIndex(x => x.Id === reg.Id) + 1; // 1-basiert; 0 = nicht gefunden
+                      const fairId = totalFairActive + (wlRank > 0 ? wlRank : (overBy || 0));
                       return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid rgba(237,139,0,0.25)' }}>
                           <td style={{ padding: '6px 8px', fontWeight: 600 }}>#{reg.TeilnehmerID ?? '—'}</td>
-                          <td style={{ padding: '6px 8px' }}>{nm}</td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>{groupOf(reg) || '—'}</td>
+                          <td style={{ padding: '6px 8px' }}>
+                            {nm}
+                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{reg.ParticipantEmail}</div>
+                          </td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>{grpLabel}</td>
+                          <td style={{ padding: '6px 8px' }}>
+                            {overBy !== null && overBy > 0
+                              ? <span title={`${overBy}. Person über der Kapazität dieser Gruppe (nach Anmeldezeit)`} style={{ fontWeight: 700, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                                  {overBy}. Überbuchung
+                                </span>
+                              : '—'}
+                          </td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                            {position !== null && cap > 0
+                              ? <>Platz <strong>{position}</strong> bei Kap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>
+                              : '—'}
+                          </td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                            {cutoff
+                              ? <><strong>+{fmtGap(gapMs)}</strong><div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>nach {cutoffNm} ({formatDate(cutoff.RegistrationDate)})</div></>
+                              : '—'}
+                          </td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                            {wlRank > 0
+                              ? <>Warteliste-Platz <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= TeilnehmerID ~#{fairId} bei sauberer Liste</div></>
+                              : '—'}
+                          </td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                             <button
                               className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 6, color: 'var(--dex-red, #c00)' }}
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 4, color: 'var(--dex-red, #c00)' }}
                               onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
                             >
                               Auf Warteliste
                             </button>
+                            <span
+                              title={'„Auf Warteliste" = die Person wird (gruppentreu) auf die Warteliste gesetzt — sie hatte fälschlich einen Platz. Im nächsten Dialog wählst du: mit oder ohne Entschuldigungs-Mail (Deloitte-Layout, geht in die Mail-Queue) und ob sie vom Kalendereintrag abgemeldet wird. Es wird ein Audit-Eintrag geschrieben (war fälschlich angemeldet, Original-Registrierung). Danach werden die TeilnehmerIDs automatisch neu vergeben.'}
+                              style={{ cursor: 'help', color: 'var(--dex-gray-500)', marginRight: 10, fontSize: '0.85rem' }}
+                            >ⓘ</span>
                             <button
                               className="btn btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 4 }}
                               onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
                             >
                               Platz behalten
                             </button>
+                            <span
+                              title={'„Platz behalten" = die Person verliert den Platz NICHT. Im nächsten Dialog wählst du: (a) Erste(r) auf der Warteliste der Gruppe — rückt beim nächsten frei werdenden Platz garantiert als Erste(r) nach; oder (b) bleibt angemeldet — die Gruppe ist dann +1 über Kapazität, der nächste frei werdende Platz wird einmal NICHT nachgerückt bis die Überzahl wieder absorbiert ist. Beide Varianten mit Audit-Eintrag, danach IDs neu.'}
+                              style={{ cursor: 'help', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}
+                            >ⓘ</span>
                           </td>
                         </tr>
                       );
