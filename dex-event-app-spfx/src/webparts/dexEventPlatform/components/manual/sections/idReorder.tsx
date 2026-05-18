@@ -85,6 +85,20 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
               ? 'Soll die Liste nach mehreren Reaktivierungen wieder lückenlos durchnummeriert sein, einmal "IDs neu vergeben" klicken — der Flow sortiert Aktive (1..N) und Warteliste (N+1..N+M) sauber.'
               : 'After several reactivations, click "Renumber IDs" once to get a gap-free sequence — the flow sorts active (1..N) and waitlist (N+1..N+M) cleanly.',
           },
+          {
+            number: 5,
+            title: isDe ? 'Überbuchung prüfen & bereinigen' : 'Check & fix overbooking',
+            description: (
+              <>
+                {isDe
+                  ? 'Bei sehr vielen zeitgleichen Anmeldungen kann es passieren, dass mehr Personen angemeldet werden als Plätze da sind (pro Gruppe bei Zwei-Gruppen-Events). Der Button "Überbuchung prüfen" findet die zuletzt über Kapazität Angemeldeten und markiert sie — es wird zunächst nichts geändert. Oben in der Teilnehmerliste erscheint die Box "Überbuchung – zu prüfen" mit Buttons pro Person und einem Sammel-Button "Alle bestätigen". Pro Person entscheidest du: "Auf Warteliste" (optional mit Entschuldigungs-Mail im Deloitte-Layout und/oder Abmeldung vom Kalendereintrag) oder "Platz behalten" (entweder als Erste(r) auf der Warteliste oder bleibt angemeldet, dann rückt einmal niemand nach bis die Überzahl absorbiert ist). Nach jeder Entscheidung werden die TeilnehmerIDs automatisch neu vergeben — du siehst dabei einen Fortschrittsbalken mit Prozent. Jede Korrektur wird im ChangeLog der Person vermerkt (war fälschlich angemeldet, ursprünglicher Registrierungszeitpunkt), bleibt also nachvollziehbar.'
+                  : 'With a large number of simultaneous registrations, more people can end up registered than there are seats (per group for two-group events). The "Check overbooking" button finds the people registered last over capacity and flags them — nothing is changed yet. A box "Overbooking – to review" appears at the top of the participant list with per-person buttons and a bulk "Confirm all". Per person you decide: "To waitlist" (optionally with an apology email in the Deloitte layout and/or removal from the calendar invite) or "Keep seat" (either first on the waitlist, or stays registered — then one promotion is skipped until the surplus is absorbed). After each decision the participant IDs are renumbered automatically, with a percentage progress bar. Every correction is recorded in the person\'s change log (was mistakenly registered, original registration time), so it stays auditable.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Das dürfen auch Organizer für ihre eigenen Events (nicht nur Admins) — es zählt als Teilnehmerverwaltung. Vorbeugend gilt: die App reserviert Plätze seit v11.36 atomar pro Gruppe, im Zweifel (Fehler/Überlast) landet eine Anmeldung sicherheitshalber auf der Warteliste statt fälschlich „Angemeldet".'
+              : 'Organizers may do this for their own events too (not just admins) — it counts as participant management. Preventively: since v11.36 the app reserves seats atomically per group; in case of error/overload a registration safely goes to the waitlist instead of wrongly "registered".',
+          },
         ],
       },
     ],

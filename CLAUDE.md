@@ -241,6 +241,51 @@ Wenn Aenderungen am Teilnehmerlisten-Schema noetig sind (neue Spalten, Reihenfol
 3. Der Admin kann im Admin Center per Button **"Spalten fixen"** bestehende Events nachtraeglich aktualisieren
 4. Dieser Button legt fehlende Spalten an und setzt die View-Reihenfolge korrekt
 
+**v11.36 — Spalte `OverbookReview`** (Single line text): Marker für die
+Überbuchungs-Bereinigung. `''` = normal, `'Pending'` = vom Button
+**"Überbuchung prüfen"** als über Kapazität erkannt (wird NICHT in die
+Default-View aufgenommen — die UI surfacet die Markierung über die Box
+"Überbuchung – zu prüfen" oben in der Teilnehmerliste). Wird in
+`createRegistrationList()` + `fixRegistrationListColumns()` angelegt.
+
+### v11.36 — Überbuchungs-Schutz (atomar) + Bereinigungs-Tool
+
+**Ursache Überbuchung:** Die alte Anmelde-Kapazitätsprüfung war
+read-then-write (TOCTOU-Race) **und** fail-open (`catch` ließ den Status
+auf `Angemeldet` bei SP-Throttling während Anmeldewellen) — Massen-
+Überbuchung bei vielen zeitgleichen Anmeldungen. `MaxParticipants=0` bei
+Gruppen-Events machte den Fallback zahnlos.
+
+**Atomare Prävention:** `reserveSeat()` in EventService inkrementiert pro
+Gruppe einen Sitzplatz-Zähler auf `DEX_TeilnehmerCounter` per **ETag-CAS
+(IF-MATCH, 412-Retry)** — exakt das Muster von `getNextTeilnehmerId`. Neue
+Counter-Felder: `SeatsTaken`, `SeatsTakenDurch`, `SeatsTakenFun` (Number,
+in `ensureCounterListField()` angelegt). `EventContext.registerForEvent`
+ruft `reserveSeat` → `'reserved'` = Angemeldet, `'full'`/`'error'` =
+**fail-closed Warteliste** (nie optimistisch Angemeldet). `cancelRegistration`
++ Reorder + Detect rufen `syncSeatsToActiveCount()` (Reconcile aus echtem
+Bestand; errt safe Richtung „voll", weil der Power-Automate-Nachrück-Flow
+den Counter nicht anfasst). Rest-Edgecases (≤1 unter Extremlast) fängt das
+Tool ab.
+
+**Bereinigungs-Tool (Admin ODER Organizer eigener Events):** Button
+**"Überbuchung prüfen"** → `detectOverbooking()` markiert pro Gruppe die
+zuletzt über Kapazität Angemeldeten (`OverbookReview='Pending'`), **ohne
+Status-Änderung**. Box oben in der Teilnehmerliste zeigt sie mit Buttons
+pro Person + Sammel-„Alle bestätigen". Pro Person:
+- **Bestätigen** → `resolveOverbookToWaitlist()` (Status=Warteliste,
+  gruppentreu, ChangeLog-Audit „war fälschlich angemeldet, Original-
+  Registrierung"). Modal: mit/ohne Mail (Deloitte-Wrap-Vorschlagstext,
+  editierbar, **in die Queue**, nicht direkt) + in **beiden** Pfaden die
+  Kalender-Abmelde-Frage (`queueOutlookEvent(...,'Ausladen')`).
+- **Platz behalten** → Variante (a) `resolveOverbookKeepActive` (bleibt
+  Angemeldet, Gruppe +1, Flow rückt einmal nicht nach — `Check_<Typ>_Free`
+  strikt `<` absorbiert das) ODER (b) `resolveOverbookKeepAsFirstWaitlist`
+  (Erste(r) auf Gruppen-Warteliste via RegistrationDate-Backdate, ChangeLog).
+Nach jeder Aktion automatisch `reorderParticipantIDs()` (Aktive 1..N,
+Warteliste N+1..) + `syncSeatsToActiveCount()` + Liste neu laden. Der
+Reorder meldet Fortschritt via `onProgress`-Callback → %-Overlay in der UI.
+
 ### Icons / Design
 
 **IMPORTANT:** KEINE Emojis im UI verwenden. Stattdessen ausschließlich **Fluent UI Icons** (modern, einfarbig, SVG):
