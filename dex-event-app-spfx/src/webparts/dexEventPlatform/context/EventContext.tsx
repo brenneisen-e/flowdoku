@@ -590,28 +590,38 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Die Entscheidung "möchte ich auf den anderen Typ umsteigen" trifft der User
     // explizit im UI (RegistrationPage Pre-Check-Dialog), bevor er hier reinkommt —
     // dann hat preferredStarterType bereits den neuen Wunsch.
-    const isSplitGroup = event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+    const isSplitGroup = !!event && typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    // v11.36: Atomare Sitzplatz-Reservierung statt des alten read-then-write
+    // (TOCTOU-Race + fail-open-catch → Massen-Überbuchung bei Anmeldewellen).
+    // reserveSeat inkrementiert den Gruppen-Counter per ETag-CAS:
+    //   'reserved' → Platz sicher belegt → Angemeldet
+    //   'full'     → Gruppe voll → Warteliste
+    //   'error'    → Counter nicht nutzbar → FAIL-CLOSED → Warteliste
+    //                (NIE optimistisch Angemeldet — genau das war der Bug).
     if (event && isSplitGroup && preferredStarterType) {
-      try {
-        const allRegs = await eventService.getAllRegistrations(subsiteUrl);
-        const activeRegs = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-        const durchCount = activeRegs.filter(r => r.StarterType === 'Durchstarter').length;
-        const funCount = activeRegs.filter(r => r.StarterType === 'Funstarter').length;
-        const durchFree = (event.durchstarterCapacity || 0) - durchCount;
-        const funFree = (event.funstarterCapacity || 0) - funCount;
-        if (preferredStarterType === 'Durchstarter' && durchFree > 0) {
-          effectiveStarterType = 'Durchstarter';
-        } else if (preferredStarterType === 'Funstarter' && funFree > 0) {
-          effectiveStarterType = 'Funstarter';
-        } else {
-          // Wunsch-Typ voll → Warteliste für genau diesen Typ.
-          status = 'Warteliste';
-          effectiveStarterType = undefined; // wird erst beim Nachrücken gesetzt
-        }
-      } catch { /* Bei Fehler: normale Logik */ }
-    } else if (event && event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants) {
+      const cap = preferredStarterType === 'Durchstarter'
+        ? (event.durchstarterCapacity || 0)
+        : (event.funstarterCapacity || 0);
+      const seat = await eventService.reserveSeat(subsiteUrl, preferredStarterType as 'Durchstarter' | 'Funstarter', cap);
+      if (seat === 'reserved') {
+        effectiveStarterType = preferredStarterType;
+      } else {
+        // 'full' ODER 'error' → fail-closed auf Warteliste für genau diesen Typ.
+        status = 'Warteliste';
+        effectiveStarterType = undefined; // wird erst beim Nachrücken gesetzt
+      }
+    } else if (event && isSplitGroup && !preferredStarterType) {
+      // Split-Event ohne Gruppenwahl: sicherste Variante ist Warteliste
+      // (die UI erzwingt normalerweise eine Gruppenwahl; das ist der Schutz
+      // gegen den Pfad, der früher ungebremst auf Angemeldet fiel).
       status = 'Warteliste';
+      effectiveStarterType = undefined;
+    } else if (event && event.maxParticipants > 0) {
+      const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants);
+      if (seat !== 'reserved') {
+        status = 'Warteliste';
+      }
     }
 
     // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
@@ -901,6 +911,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             );
             if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
           } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
+          // v11.36: Sitzplatz-Counter nach der Abmeldung mit dem echten
+          // Bestand abgleichen, damit der frei gewordene Platz für die
+          // nächste Anmeldung wieder reservierbar ist (best-effort).
+          try {
+            const isSplit = typeof event.durchstarterCapacity === 'number'
+              && typeof event.funstarterCapacity === 'number'
+              && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+            await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+          } catch { /* best-effort */ }
         }
       } else {
         console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);

@@ -327,6 +327,9 @@ export interface SPRegistration {
   ParticipantName: string;
   ParticipantEmail: string;
   Status: string;
+  /** v11.36: '' = normal, 'Pending' = vom „Überbuchung prüfen"-Lauf als
+   *  über Gruppen-/Event-Kapazität markiert; wartet auf Admin-Entscheidung. */
+  OverbookReview?: string;
   RegistrationDate: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchfuehrte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchfuehrte
@@ -3123,6 +3126,10 @@ export class EventService {
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+      // v11.36: Überbuchungs-Review-Marker. '' = normal, 'Pending' = vom
+      // „Überbuchung prüfen"-Lauf als über Kapazität erkannt; der Admin
+      // entscheidet pro Person (auf Warteliste / Platz behalten).
+      { title: 'OverbookReview', type: 2 },
       { title: 'CustomData', type: 3 },
     ];
 
@@ -4034,7 +4041,10 @@ export class EventService {
    * Damit stehen im Teilnehmerlisten-Grid die Angemeldeten sauber oben, die
    * Warteliste sauber unten — kein Durchmischen mehr.
    */
-  public async reorderParticipantIDs(subsiteUrl: string): Promise<{ success: number; errors: number }> {
+  public async reorderParticipantIDs(
+    subsiteUrl: string,
+    onProgress?: (pct: number) => void
+  ): Promise<{ success: number; errors: number }> {
     // Alle Items laden, sortiert nach SP Id (Erstellungsreihenfolge = Reihenfolge der Registrierung)
     const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
@@ -4073,16 +4083,27 @@ export class EventService {
 
     let success = 0;
     let errors = 0;
+    const totalItems = allItems.length || 1;
+    let processed = 0;
+    if (onProgress) { try { onProgress(0); } catch { /* */ } }
     for (const item of allItems) {
       const newId = targetIds.get(item.Id) ?? null;
-      if (newId === item.TeilnehmerID) { success++; continue; }
-      try {
-        const resp = await this._merge(
-          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${item.Id})`,
-          { 'TeilnehmerID': newId }
-        );
-        if (resp.ok || resp.status === 406) { success++; } else { errors++; }
-      } catch { errors++; }
+      if (newId === item.TeilnehmerID) {
+        success++;
+      } else {
+        try {
+          const resp = await this._merge(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${item.Id})`,
+            { 'TeilnehmerID': newId }
+          );
+          if (resp.ok || resp.status === 406) { success++; } else { errors++; }
+        } catch { errors++; }
+      }
+      processed++;
+      if (onProgress) {
+        // 0..95 % während der Merges; die letzten 5 % für syncCounterToMax.
+        try { onProgress(Math.min(95, Math.round((processed / totalItems) * 95))); } catch { /* */ }
+      }
     }
 
     // v7.31 / v9.14: Counter konsistent halten — syncCounterToMax patcht
@@ -4092,8 +4113,335 @@ export class EventService {
     // sonst hat die App ein anderes Problem das ein expliziter Klick auf
     // "Counter zurücksetzen" loest.
     try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
+    if (onProgress) { try { onProgress(100); } catch { /* */ } }
 
     return { success, errors };
+  }
+
+  // ==================== v11.36: Überbuchungs-Schutz + Bereinigung ====================
+
+  private static readonly ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+
+  /**
+   * Zählt die aktiven (= nicht Warteliste/Abgemeldet) Anmeldungen, gesamt und
+   * pro Starter-Gruppe. Quelle ist die echte Teilnehmerliste — wird zum Seeden
+   * und Reconcilen der Sitzplatz-Counter genutzt.
+   */
+  private async getActiveCounts(subsiteUrl: string): Promise<{ total: number; durch: number; fun: number }> {
+    const regs = await this.getAllRegistrations(subsiteUrl);
+    const active = regs.filter(r => EventService.ACTIVE_STATI.indexOf(r.Status) >= 0);
+    return {
+      total: active.length,
+      durch: active.filter(r => r.StarterType === 'Durchstarter').length,
+      fun: active.filter(r => r.StarterType === 'Funstarter').length,
+    };
+  }
+
+  private seatFieldFor(group: string): 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun' {
+    if (group === 'Durchstarter') return 'SeatsTakenDurch';
+    if (group === 'Funstarter') return 'SeatsTakenFun';
+    return 'SeatsTaken';
+  }
+
+  /**
+   * v11.36: Atomare Sitzplatz-Reservierung pro Gruppe via ETag-CAS auf der
+   * DEX_TeilnehmerCounter-Liste — exakt dasselbe bewährte Muster wie
+   * getNextTeilnehmerId (IF-MATCH, 412-Retry mit Backoff).
+   *
+   * Verhindert die Überbuchung bei zeitgleichen Anmeldungen: zwei parallele
+   * Anmeldungen können nicht beide den letzten Platz greifen — die CAS
+   * serialisiert das Increment, der Verlierer liest neu und sieht „voll".
+   *
+   * Rückgabe:
+   * - 'reserved' → Platz wurde atomar belegt, Aufrufer darf 'Angemeldet' setzen
+   * - 'full'     → Gruppe/Event ist voll → Aufrufer setzt 'Warteliste'
+   * - 'error'    → Counter nicht nutzbar (Liste fehlt, Permission, Retries
+   *                 erschöpft). Aufrufer MUSS fail-closed handeln (Warteliste),
+   *                 NICHT optimistisch 'Angemeldet'.
+   *
+   * Self-Seed: ist das Seat-Feld noch nie gesetzt (null), wird es einmalig aus
+   * der echten aktiven Anzahl der Gruppe initialisiert, bevor entschieden wird.
+   */
+  public async reserveSeat(
+    subsiteUrl: string,
+    group: '' | 'Durchstarter' | 'Funstarter',
+    cap: number
+  ): Promise<'reserved' | 'full' | 'error'> {
+    // cap <= 0 = unbegrenzt → kein Reservieren nötig.
+    if (!cap || cap <= 0) return 'reserved';
+    const field = this.seatFieldFor(group);
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    const MAX_RETRIES = 40;
+    let triedSeed = false;
+    let triedLazyCreate = false;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      let getResp: SPHttpClientResponse;
+      try {
+        getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+      } catch {
+        return 'error';
+      }
+      if (!getResp.ok) {
+        if (getResp.status === 404 && !triedLazyCreate) {
+          triedLazyCreate = true;
+          try { await this.ensureCounterList(subsiteUrl); continue; } catch { return 'error'; }
+        }
+        return 'error';
+      }
+      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+      if (!etag) return 'error';
+      let data;
+      try { data = await getResp.json(); } catch { return 'error'; }
+      const rawVal = data?.[field] ?? data?.d?.[field];
+      let current: number;
+      if (rawVal === null || rawVal === undefined) {
+        // Feld noch nie initialisiert → einmalig aus echtem Bestand seeden.
+        if (triedSeed) { current = 0; } else {
+          triedSeed = true;
+          try {
+            const counts = await this.getActiveCounts(subsiteUrl);
+            current = group === 'Durchstarter' ? counts.durch : group === 'Funstarter' ? counts.fun : counts.total;
+          } catch { current = 0; }
+        }
+      } else {
+        current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
+      }
+      if (current >= cap) return 'full';
+      const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: current + 1 }, etag);
+      if (patchResp.ok) return 'reserved';
+      if (patchResp.status !== 412) return 'error';
+      const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
+      await new Promise(res => setTimeout(res, Math.floor(baseDelay * (0.5 + Math.random()))));
+    }
+    // Retries erschöpft → fail-closed (Aufrufer setzt Warteliste).
+    console.warn('[DEX] reserveSeat: 40 Retries erschoepft — fail-closed (Warteliste).');
+    return 'error';
+  }
+
+  /**
+   * v11.36: Sitzplatz-Counter mit dem echten aktiven Bestand abgleichen.
+   * Nach Abmeldungen, Reorder und Überbuchungs-Bereinigung aufrufen. Die
+   * Power-Automate-Nachrück-Promotion fasst den Counter nicht an — dieser
+   * Reconcile (aktive Anzahl aus der Liste) hält ihn ehrlich. Best-effort,
+   * ETag-CAS, blockiert nie den aufrufenden Flow.
+   */
+  public async syncSeatsToActiveCount(
+    subsiteUrl: string,
+    opts: { isSplit: boolean }
+  ): Promise<void> {
+    let counts: { total: number; durch: number; fun: number };
+    try { counts = await this.getActiveCounts(subsiteUrl); } catch { return; }
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    const desired = opts.isSplit
+      ? { SeatsTakenDurch: counts.durch, SeatsTakenFun: counts.fun, SeatsTaken: counts.total }
+      : { SeatsTaken: counts.total };
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        if (!getResp.ok) return;
+        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+        if (!etag) return;
+        const patchResp = await this._mergeIfMatch(counterItemUrl, desired, etag);
+        if (patchResp.ok) return;
+        if (patchResp.status !== 412) return;
+        await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+      } catch { return; }
+    }
+  }
+
+  /**
+   * v11.36: Überbuchung erkennen + markieren (ändert KEINEN Status).
+   * Pro Gruppe (bzw. gesamt bei Nicht-Split) werden die zuletzt angemeldeten
+   * Einträge über Kapazität (höchste SP-Id = zuletzt registriert) mit
+   * OverbookReview='Pending' markiert. First-come-first-served: wer zuerst
+   * da war, behält den Platz.
+   */
+  public async detectOverbooking(
+    subsiteUrl: string,
+    opts: { isSplit: boolean; maxParticipants?: number; durchstarterCapacity?: number; funstarterCapacity?: number }
+  ): Promise<{ groups: Array<{ group: string; cap: number; activeBefore: number; marked: number }>; total: number; errors: number }> {
+    const regs = await this.getAllRegistrations(subsiteUrl); // Id asc
+    const groups: Array<{ group: string; cap: number; activeBefore: number; marked: number }> = [];
+    let total = 0;
+    let errors = 0;
+    const markExcess = async (items: SPRegistration[], cap: number, label: string): Promise<void> => {
+      const before = items.length;
+      let marked = 0;
+      if (cap > 0 && before > cap) {
+        const excess = items.slice(cap); // Id asc → ab Index cap = die neuesten
+        for (const it of excess) {
+          if (it.OverbookReview === 'Pending') { marked++; total++; continue; }
+          try {
+            const resp = await this._merge(
+              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${it.Id})`,
+              { 'OverbookReview': 'Pending' }
+            );
+            if (resp.ok || resp.status === 406) { marked++; total++; } else { errors++; }
+          } catch { errors++; }
+        }
+      }
+      groups.push({ group: label, cap, activeBefore: before, marked });
+    };
+    const isActive = (r: SPRegistration): boolean => EventService.ACTIVE_STATI.indexOf(r.Status) >= 0;
+    if (opts.isSplit) {
+      await markExcess(regs.filter(r => isActive(r) && r.StarterType === 'Durchstarter'), opts.durchstarterCapacity || 0, 'Durchstarter');
+      await markExcess(regs.filter(r => isActive(r) && r.StarterType === 'Funstarter'), opts.funstarterCapacity || 0, 'Funstarter');
+    } else {
+      await markExcess(regs.filter(isActive), opts.maxParticipants || 0, 'all');
+    }
+    return { groups, total, errors };
+  }
+
+  /** v11.36: Review-Marker einer Zeile entfernen (ohne Status-Änderung). */
+  public async clearOverbookMark(subsiteUrl: string, itemId: number): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'OverbookReview': '' }
+      );
+      return resp.ok || resp.status === 406;
+    } catch { return false; }
+  }
+
+  /**
+   * v11.36: Markierte Person auf die Warteliste setzen (= „Bestätigen").
+   * Gruppentreu: PreferredStarterType bleibt die Gruppe, StarterType wird
+   * geleert (wie bei switchSplitGroup → Warteliste).
+   */
+  public async resolveOverbookToWaitlist(
+    subsiteUrl: string,
+    itemId: number,
+    group: string
+  ): Promise<boolean> {
+    try {
+      // Audit: festhalten, dass die Person kurz einen bestätigten Platz hatte
+      // und wegen der technischen Überbuchung auf Warteliste korrigiert wurde
+      // (inkl. Original-Registrierung) — dauerhaft nachvollziehbar, unabhängig
+      // von der späteren TeilnehmerID-Neuvergabe.
+      let changeLog = '';
+      let origDate = '';
+      try {
+        const ex = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog,RegistrationDate`,
+          SPHttpClient.configurations.v1
+        );
+        if (ex.ok) {
+          const d = await ex.json();
+          changeLog = d.ChangeLog || d.d?.ChangeLog || '';
+          origDate = d.RegistrationDate || d.d?.RegistrationDate || '';
+        }
+      } catch { /* ChangeLog optional */ }
+      const stamp = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const note = `[${stamp}] Überbuchung: war fälschlich angemeldet (technisches Problem bei zeitgleicher Anmeldung) → auf Warteliste korrigiert (Original-Registrierung: ${origDate || 'unbekannt'})`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = group
+        ? { 'Status': 'Warteliste', 'StarterType': '', 'PreferredStarterType': group, 'OverbookReview': '' }
+        : { 'Status': 'Warteliste', 'OverbookReview': '' };
+      body['ChangeLog'] = changeLog ? `${changeLog}\n${note}` : note;
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        body
+      );
+      return resp.ok || resp.status === 406;
+    } catch { return false; }
+  }
+
+  /**
+   * v11.36: „Platz behalten" — Variante (a): bleibt angemeldet (Marker weg).
+   * Die Gruppe bleibt damit ggf. +1 über Kapazität; der Power-Automate-Flow
+   * (Check_<Typ>_Free bzw. Check_Nachrücken, strikt `<`) rückt beim nächsten
+   * Frei-Werden in dieser Gruppe einmal NICHT nach — die Überzahl wird so
+   * automatisch absorbiert. Identisch zu clearOverbookMark, eigener Name
+   * nur fürs Audit/Lesbarkeit.
+   */
+  public async resolveOverbookKeepActive(subsiteUrl: string, itemId: number): Promise<boolean> {
+    return this.clearOverbookMark(subsiteUrl, itemId);
+  }
+
+  /**
+   * v11.36: „Platz behalten" — Variante (b): Person wird Erste(r) auf der
+   * gruppeneigenen Warteliste. Der Nachrück-Flow sortiert Warteliste nach
+   * RegistrationDate asc — daher setzen wir RegistrationDate knapp VOR den
+   * frühesten aktuellen Wartelisten-Eintrag derselben Gruppe. Original-Datum
+   * wird im ChangeLog vermerkt.
+   */
+  public async resolveOverbookKeepAsFirstWaitlist(
+    subsiteUrl: string,
+    itemId: number,
+    group: string
+  ): Promise<boolean> {
+    try {
+      const all = await this.getAllRegistrations(subsiteUrl);
+      const sameGroupWaitlist = all.filter(r =>
+        r.Status === 'Warteliste' && (!group || r.PreferredStarterType === group)
+      );
+      let newDateMs = Date.now();
+      for (const w of sameGroupWaitlist) {
+        const t = new Date(w.RegistrationDate).getTime();
+        if (!isNaN(t) && t < newDateMs) newDateMs = t;
+      }
+      newDateMs -= 1000; // 1s vor den/die bisherige(n) Erste(n)
+      const self = all.find(r => r.Id === itemId);
+      const origDate = self?.RegistrationDate || '';
+      const stamp = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      let changeLog = '';
+      try {
+        const ex = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=ChangeLog`,
+          SPHttpClient.configurations.v1
+        );
+        if (ex.ok) { const d = await ex.json(); changeLog = d.ChangeLog || d.d?.ChangeLog || ''; }
+      } catch { /* ChangeLog optional */ }
+      const note = `[${stamp}] Überbuchung: Platz behalten → Erste(r) auf Warteliste (Original-Registrierung: ${origDate})`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        'Status': 'Warteliste',
+        'StarterType': '',
+        'PreferredStarterType': group || '',
+        'RegistrationDate': new Date(newDateMs).toISOString(),
+        'OverbookReview': '',
+        'ChangeLog': changeLog ? `${changeLog}\n${note}` : note,
+      };
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        body
+      );
+      return resp.ok || resp.status === 406;
+    } catch { return false; }
+  }
+
+  /**
+   * v11.36: Vorgeschlagener Entschuldigungs-Mailtext (Deloitte-Wrap, DE/EN)
+   * für „Bestätigen mit Mail". Der Admin kann den Text im Modal vor dem
+   * Versand editieren.
+   */
+  public buildOverbookApologyEmail(
+    name: string,
+    eventTitle: string,
+    lang: string
+  ): { subject: string; body: string } {
+    const isDe = (lang || 'EN').toUpperCase() === 'DE';
+    const first = (name || '').split(' ')[0] || name;
+    if (isDe) {
+      const inner = `<p>Hallo ${first},</p>`
+        + `<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>${eventTitle}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>`
+        + `<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>`
+        + `<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>`
+        + `<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`;
+      return {
+        subject: `Wichtig: Korrektur deiner Anmeldung — ${eventTitle}`,
+        body: wrapTemplateForStorage('#ed8b00', 'Anmeldung korrigiert', eventTitle, inner),
+      };
+    }
+    const inner = `<p>Hi ${first},</p>`
+      + `<p>we sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>${eventTitle}</strong> although capacity was already full.</p>`
+      + `<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>`
+      + `<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>`
+      + `<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`;
+    return {
+      subject: `Important: correction of your registration — ${eventTitle}`,
+      body: wrapTemplateForStorage('#ed8b00', 'Registration corrected', eventTitle, inner),
+    };
   }
 
   /**
@@ -4138,6 +4486,7 @@ export class EventService {
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+      { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(
@@ -5575,14 +5924,25 @@ export class EventService {
   // Hilfsroutine: prueft ob auf der Counter-Liste die NextValue-Spalte
   // existiert und legt sie an wenn sie fehlt. Idempotent.
   private async ensureCounterListField(subsiteUrl: string): Promise<void> {
-    const fieldUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields/getbytitle('NextValue')`;
-    const probe = await this.context.spHttpClient.get(fieldUrl, SPHttpClient.configurations.v1);
-    if (probe.ok) return;
     const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`;
-    await this._post(
-      fieldsUrl,
-      { '__metadata': { 'type': 'SP.Field' }, 'Title': 'NextValue', 'FieldTypeKind': 9, 'Required': false }
-    );
+    // v7.28: NextValue (TeilnehmerID-Automat).
+    // v11.36: SeatsTaken / SeatsTakenDurch / SeatsTakenFun — atomare
+    // Sitzplatz-Reservierung pro Gruppe (gegen Überbuchung bei
+    // zeitgleichen Anmeldungen). Alle Number-Felder, default 0/leer.
+    const wanted = ['NextValue', 'SeatsTaken', 'SeatsTakenDurch', 'SeatsTakenFun'];
+    for (const name of wanted) {
+      try {
+        const probe = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields/getbytitle('${name}')`,
+          SPHttpClient.configurations.v1
+        );
+        if (probe.ok) continue;
+        await this._post(
+          fieldsUrl,
+          { '__metadata': { 'type': 'SP.Field' }, 'Title': name, 'FieldTypeKind': 9, 'Required': false }
+        );
+      } catch { /* best-effort; reserveSeat fällt sonst sauber zurück */ }
+    }
   }
 
   // v7.28: Counter-Liste fuer ein Event anlegen (1 Liste mit 1 Item) und

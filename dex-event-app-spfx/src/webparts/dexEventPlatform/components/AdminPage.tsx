@@ -391,6 +391,25 @@ export default function AdminPage(): React.ReactElement {
   const [resetCounterResult, setResetCounterResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
   const [fixColumnsResult, setFixColumnsResult] = React.useState<string | null>(null);
+  // v11.36: Überbuchungs-Bereinigung
+  const [isDetectingOverbook, setIsDetectingOverbook] = React.useState(false);
+  const [detectOverbookResult, setDetectOverbookResult] = React.useState<string | null>(null);
+  // Modal-State für „Bestätigen" (einzeln oder Sammel) bzw. „Platz behalten".
+  // mode: 'confirm' = auf Warteliste; 'keep' = Platz behalten.
+  // targets: betroffene Registrierungen (1 = einzeln, n = Sammel „Alle").
+  const [overbookModal, setOverbookModal] = React.useState<{
+    mode: 'confirm' | 'keep';
+    targets: SPRegistration[];
+  } | null>(null);
+  const [obWithMail, setObWithMail] = React.useState(true);
+  const [obMailSubject, setObMailSubject] = React.useState('');
+  const [obMailBody, setObMailBody] = React.useState('');
+  const [obRemoveCalendar, setObRemoveCalendar] = React.useState(true);
+  const [obKeepVariant, setObKeepVariant] = React.useState<'active' | 'firstWaitlist'>('firstWaitlist');
+  const [obBusy, setObBusy] = React.useState(false);
+  // v11.36: Fortschritts-Overlay für die ID-Neuvergabe (0..100 %, null = aus).
+  const [reorderProgress, setReorderProgress] = React.useState<number | null>(null);
+  const [reorderProgressLabel, setReorderProgressLabel] = React.useState('');
   const [isFixingFields, setIsFixingFields] = React.useState(false);
   const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
@@ -662,6 +681,74 @@ export default function AdminPage(): React.ReactElement {
     } finally {
       setIsSavingEdit(false);
     }
+  };
+
+  // v11.36: Mailtext vorbefüllen, sobald der „Bestätigen"-Dialog aufgeht.
+  React.useEffect(() => {
+    if (overbookModal?.mode === 'confirm' && eventServiceRef && selectedEvent) {
+      const t = overbookModal.targets[0];
+      const nm = t ? ((t.Vorname && t.Nachname) ? `${t.Vorname} ${t.Nachname}` : t.ParticipantName) : '';
+      const m = eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, selectedEvent.emailLanguage || 'EN');
+      setObMailSubject(m.subject);
+      setObMailBody(m.body);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overbookModal]);
+
+  // v11.36: Überbuchungs-Entscheidung ausführen (einzeln oder Sammel) und
+  // danach IDs neu vergeben + Counter/Seat-Sync + Liste neu laden.
+  const runOverbookResolution = async (): Promise<void> => {
+    if (!overbookModal || !eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setObBusy(true);
+    const sub = selectedEvent.subsiteUrl;
+    const isBulk = overbookModal.targets.length > 1;
+    try {
+      for (const reg of overbookModal.targets) {
+        const grp = reg.StarterType || reg.PreferredStarterType || '';
+        const nm = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+        if (overbookModal.mode === 'confirm') {
+          await eventServiceRef.resolveOverbookToWaitlist(sub, reg.Id, grp);
+          if (obWithMail && reg.ParticipantEmail && !selectedEvent.disableEmails) {
+            // Einzeln: ggf. vom Admin editierter Text. Sammel: pro Person
+            // frisch personalisiert aus dem Standard-Template.
+            const mail = isBulk
+              ? eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, selectedEvent.emailLanguage || 'EN')
+              : { subject: obMailSubject, body: obMailBody };
+            try {
+              await eventServiceRef.queueEmail(
+                mail.subject, reg.ParticipantEmail, nm, mail.body,
+                'Info', selectedEvent.title, selectedEvent.id
+              );
+            } catch { /* Mail-Fehler darf Korrektur nicht blockieren */ }
+          }
+          if (obRemoveCalendar && reg.ParticipantEmail && !selectedEvent.disableOutlook) {
+            try {
+              await eventServiceRef.queueOutlookEvent(
+                reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
+              );
+            } catch { /* Kalender-Abmeldung best-effort */ }
+          }
+        } else {
+          // Platz behalten
+          if (obKeepVariant === 'active') {
+            await eventServiceRef.resolveOverbookKeepActive(sub, reg.Id);
+          } else {
+            await eventServiceRef.resolveOverbookKeepAsFirstWaitlist(sub, reg.Id, grp);
+          }
+        }
+      }
+      // IDs neu vergeben (Aktive 1..N, Warteliste N+1..) + Counter + Seat-Sync.
+      // Mit Fortschritts-Overlay, damit man bei großen Listen sieht wie weit.
+      setReorderProgressLabel('IDs werden neu vergeben…');
+      setReorderProgress(0);
+      try { await eventServiceRef.reorderParticipantIDs(sub, pct => setReorderProgress(pct)); } catch { /* */ }
+      try { await eventServiceRef.syncSeatsToActiveCount(sub, { isSplit: isSplitCapacity }); } catch { /* */ }
+      setReorderProgress(null);
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch { /* einzelne Fehler werden geschluckt; Liste wird trotzdem neu geladen */ }
+    setObBusy(false);
+    setOverbookModal(null);
   };
 
   // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
@@ -2354,14 +2441,20 @@ export default function AdminPage(): React.ReactElement {
                   if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.')) return;
                   setIsReorderingIDs(true);
                   setReorderResult(null);
+                  setReorderProgressLabel('IDs werden neu vergeben…');
+                  setReorderProgress(0);
                   try {
-                    const result = await eventServiceRef.reorderParticipantIDs(selectedEvent.subsiteUrl);
+                    const result = await eventServiceRef.reorderParticipantIDs(
+                      selectedEvent.subsiteUrl,
+                      pct => setReorderProgress(pct)
+                    );
                     setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                   } catch {
                     setReorderResult('Fehler beim Neuvergeben der IDs');
                   }
+                  setReorderProgress(null);
                   setIsReorderingIDs(false);
                 }}
               />
@@ -2399,6 +2492,53 @@ export default function AdminPage(): React.ReactElement {
                     setResetCounterResult('Fehler beim Zurücksetzen des Counters');
                   }
                   setIsResettingCounter(false);
+                }}
+              />
+            )}
+
+            {/* 7c. Überbuchung prüfen — Admin ODER Organizer des Events (v11.36).
+                Markiert pro Gruppe (bzw. gesamt) die zuletzt über Kapazität
+                Angemeldeten mit OverbookReview='Pending'. Ändert KEINEN
+                Status — Admin/Organizer entscheidet danach pro Person über
+                die Buttons in der „Überbuchung – zu prüfen"-Box oben in der
+                Teilnehmerliste. Organizer dürfen das für eigene Events, weil
+                es Teilnehmerverwaltung ist (analog Abmelden/QR/Massenmail). */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+              <ActionTile
+                icon={<Users size={18} />}
+                title={isDetectingOverbook ? 'Wird geprüft…' : 'Überbuchung prüfen'}
+                desc="Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Buttons oben in der Teilnehmerliste."
+                badge="organizer"
+                busy={isDetectingOverbook}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={detectOverbookResult}
+                resultIsError={!!detectOverbookResult && detectOverbookResult.indexOf('Fehler') >= 0}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm('Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)')) return;
+                  setIsDetectingOverbook(true);
+                  setDetectOverbookResult(null);
+                  try {
+                    const res = await eventServiceRef.detectOverbooking(selectedEvent.subsiteUrl, {
+                      isSplit: isSplitCapacity,
+                      maxParticipants: selectedEvent.maxParticipants || 0,
+                      durchstarterCapacity: selectedEvent.durchstarterCapacity || 0,
+                      funstarterCapacity: selectedEvent.funstarterCapacity || 0,
+                    });
+                    // Counter mit echtem Bestand abgleichen (best-effort).
+                    try { await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit: isSplitCapacity }); } catch { /* */ }
+                    const parts = res.groups
+                      .map(g => `${g.group}: ${g.activeBefore}/${g.cap || '∞'} → ${g.marked} markiert`)
+                      .join(' · ');
+                    setDetectOverbookResult(res.total > 0
+                      ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
+                      : `Keine Überbuchung gefunden (${parts})`);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  } catch {
+                    setDetectOverbookResult('Fehler beim Prüfen der Überbuchung');
+                  }
+                  setIsDetectingOverbook(false);
                 }}
               />
             )}
@@ -3306,6 +3446,68 @@ export default function AdminPage(): React.ReactElement {
             style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
           />
         </div>
+
+        {(() => {
+          // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
+          // prüfen" markierten Personen (OverbookReview='Pending') mit
+          // Aktions-Buttons. Erst durch eine Aktion ändert sich der Status.
+          const flagged = registrations.filter(r => r.OverbookReview === 'Pending');
+          if (flagged.length === 0) return null;
+          const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.95rem' }}>
+                  Überbuchung – zu prüfen ({flagged.length})
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  Diese Personen wurden über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78rem', padding: '5px 12px', marginLeft: 'auto', color: 'var(--dex-red, #c00)' }}
+                  onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
+                >
+                  Alle bestätigen ({flagged.length})
+                </button>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <tbody>
+                    {flagged.map(reg => {
+                      const nm = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+                      return (
+                        <tr key={reg.Id} style={{ borderBottom: '1px solid rgba(237,139,0,0.25)' }}>
+                          <td style={{ padding: '6px 8px', fontWeight: 600 }}>#{reg.TeilnehmerID ?? '—'}</td>
+                          <td style={{ padding: '6px 8px' }}>{nm}</td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>{groupOf(reg) || '—'}</td>
+                          <td style={{ padding: '6px 8px', color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 6, color: 'var(--dex-red, #c00)' }}
+                              onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
+                            >
+                              Auf Warteliste
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                              onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
+                            >
+                              Platz behalten
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         {regLoadError ? (
           <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
@@ -4896,6 +5098,126 @@ export default function AdminPage(): React.ReactElement {
           </div>
         );
       })()}
+
+      {/* v11.36: Fortschritts-Overlay für die ID-Neuvergabe (mit %). */}
+      {reorderProgress !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 28, background: '#fff', borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontWeight: 600, marginBottom: 14 }}>{reorderProgressLabel || 'IDs werden neu vergeben…'}</div>
+            <div style={{ height: 12, borderRadius: 6, background: 'var(--dex-gray-200, #e5e5e5)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%', width: `${reorderProgress}%`,
+                  background: 'var(--dex-green, #86bc25)', borderRadius: 6,
+                  transition: 'width 0.25s ease',
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 10, fontSize: '1.1rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {reorderProgress}%
+            </div>
+            <div style={{ marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+              Bitte warten — das Fenster nicht schließen.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
+      {overbookModal && selectedEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => { if (!obBusy) setOverbookModal(null); }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="card"
+            style={{ width: '100%', maxWidth: 560, maxHeight: '88vh', overflow: 'auto', padding: 24, background: '#fff', borderRadius: 8 }}
+          >
+            {overbookModal.mode === 'confirm' ? (
+              <>
+                <h3 style={{ marginTop: 0 }}>
+                  Auf Warteliste bestätigen ({overbookModal.targets.length})
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                  {overbookModal.targets.length === 1
+                    ? `${(overbookModal.targets[0].Vorname && overbookModal.targets[0].Nachname) ? `${overbookModal.targets[0].Vorname} ${overbookModal.targets[0].Nachname}` : overbookModal.targets[0].ParticipantName} wird auf die Warteliste der Gruppe zurückgesetzt. Im Audit-Log wird vermerkt, dass die Person fälschlich angemeldet war.`
+                    : `${overbookModal.targets.length} Personen werden auf die Warteliste zurückgesetzt. Im Audit-Log jeder Person wird der Vorgang vermerkt.`}
+                </p>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', margin: '10px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={obWithMail} onChange={e => setObWithMail(e.target.checked)} disabled={obBusy} />
+                  Mit Entschuldigungs-Mail (Deloitte-Layout, in die Mail-Queue)
+                </label>
+                {obWithMail && overbookModal.targets.length === 1 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <input
+                      className="form-input"
+                      value={obMailSubject}
+                      onChange={e => setObMailSubject(e.target.value)}
+                      disabled={obBusy}
+                      style={{ width: '100%', marginBottom: 6, padding: '6px 10px', fontSize: '0.82rem' }}
+                    />
+                    <textarea
+                      value={obMailBody}
+                      onChange={e => setObMailBody(e.target.value)}
+                      disabled={obBusy}
+                      rows={7}
+                      style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.72rem', padding: 8 }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                      Vorschlagstext — editierbar. Wird in die Mail-Queue gelegt, nicht direkt versendet.
+                    </p>
+                  </div>
+                )}
+                {obWithMail && overbookModal.targets.length > 1 && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 10px' }}>
+                    Bei &bdquo;Alle&ldquo; wird der Standardtext je Person personalisiert versendet.
+                  </p>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', margin: '10px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={obRemoveCalendar} onChange={e => setObRemoveCalendar(e.target.checked)} disabled={obBusy} />
+                  Vom Kalendereintrag abmelden (falls vorhanden)
+                </label>
+              </>
+            ) : (
+              <>
+                <h3 style={{ marginTop: 0 }}>Platz behalten ({overbookModal.targets.length})</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                  Wie soll die Person ihren Platz behalten?
+                </p>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.85rem', margin: '10px 0', cursor: 'pointer' }}>
+                  <input type="radio" name="obkeep" checked={obKeepVariant === 'firstWaitlist'} onChange={() => setObKeepVariant('firstWaitlist')} disabled={obBusy} style={{ marginTop: 3 }} />
+                  <span><strong>Erste(r) auf der Warteliste</strong> — rückt beim nächsten frei werdenden Platz der Gruppe garantiert als Erste(r) nach (risikoarm).</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.85rem', margin: '10px 0', cursor: 'pointer' }}>
+                  <input type="radio" name="obkeep" checked={obKeepVariant === 'active'} onChange={() => setObKeepVariant('active')} disabled={obBusy} style={{ marginTop: 3 }} />
+                  <span><strong>Bleibt angemeldet</strong> (als Letzte(r)) — Gruppe bleibt +1, der nächste frei werdende Platz wird einmal nicht nachgerückt, bis die Überzahl absorbiert ist.</span>
+                </label>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+              <button className="btn btn-secondary" onClick={() => setOverbookModal(null)} disabled={obBusy}>
+                Abbrechen
+              </button>
+              <button className="btn btn-primary" onClick={() => { runOverbookResolution().catch(() => { /* */ }); }} disabled={obBusy}>
+                {obBusy ? 'Wird ausgeführt…' : (overbookModal.mode === 'confirm' ? 'Bestätigen & IDs neu vergeben' : 'Übernehmen & IDs neu vergeben')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
