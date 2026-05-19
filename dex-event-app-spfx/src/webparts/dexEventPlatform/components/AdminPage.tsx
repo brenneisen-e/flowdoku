@@ -788,6 +788,64 @@ export default function AdminPage(): React.ReactElement {
     setOverbookModal(null);
   };
 
+  // v11.36: TeilnehmerIDs neu vergeben — gemeinsam von der Toolbox-Kachel
+  // UND dem Hinweis-Modal genutzt (mit %-Fortschritts-Overlay).
+  const runIdReorder = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setIsReorderingIDs(true);
+    setReorderResult(null);
+    setReorderProgressLabel('IDs werden neu vergeben…');
+    setReorderProgress(0);
+    try {
+      const result = await eventServiceRef.reorderParticipantIDs(
+        selectedEvent.subsiteUrl,
+        pct => setReorderProgress(pct)
+      );
+      setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch {
+      setReorderResult('Fehler beim Neuvergeben der IDs');
+    }
+    setReorderProgress(null);
+    setIsReorderingIDs(false);
+  };
+
+  // v11.36: Erkennt „kaputte" TeilnehmerIDs — die echten Schmerzfälle aus
+  // zeitgleichen Anmeldungen: (a) doppelte ID unter Nicht-Abgemeldeten,
+  // (b) aktive/Warteliste-Eintrag ohne (oder ≤0) TeilnehmerID. Lücken nach
+  // Stornos zählen NICHT als kaputt (das ist normal bis zum nächsten Reorder).
+  // Die TeilnehmerIDs sind durch den DEX_IDReorder-Flow immer durchlaufend —
+  // es gibt also keinen „kaputt"-Zustand zu erkennen. Relevant ist nur: gab
+  // es KÜRZLICH eine Abmeldung? Dann läuft die automatische Batch-Korrektur
+  // (Nachrücken + ID-Neuvergabe per Power Automate) evtl. noch im Hintergrund
+  // und man sollte NICHT parallel manuell „IDs neu vergeben".
+  const RECENT_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 Minuten
+  const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
+    let latest = 0;
+    for (const r of regs) {
+      if (r.Status !== 'Abgemeldet') continue;
+      const t = new Date(r.CancellationDate || '').getTime();
+      if (!isNaN(t) && t > latest) latest = t;
+    }
+    if (latest > 0 && (Date.now() - latest) < RECENT_CANCEL_WINDOW_MS) {
+      return { recent: true, whenIso: new Date(latest).toISOString() };
+    }
+    return { recent: false, whenIso: '' };
+  };
+  const [showIdFixModal, setShowIdFixModal] = React.useState(false);
+  const idFixCheckedForRef = React.useRef<string | null>(null);
+
+  // Beim Öffnen eines Events einmalig prüfen, ob es gerade eine Abmeldung gab
+  // (Batch-Korrektur läuft evtl. noch) → Hinweis-Modal zeigen.
+  React.useEffect(() => {
+    if (!selectedEvent || isLoadingRegs || registrations.length === 0) return;
+    if (idFixCheckedForRef.current === selectedEvent.id) return;
+    idFixCheckedForRef.current = selectedEvent.id;
+    if (recentCancellation(registrations).recent) setShowIdFixModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, registrations, isLoadingRegs]);
+
   // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
   //  - columnOrder = geordnete Liste sichtbarer Spalten-IDs
   //  - hiddenColumns = ausgeblendete Spalten-IDs (können übers "+ Spalte"-Popover wieder zugeschaltet werden)
@@ -2462,37 +2520,21 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
-            {/* 7. TeilnehmerIDs neu vergeben — Admin only */}
-            {isAdmin && (
+            {/* 7. TeilnehmerIDs neu vergeben — Admin ODER Organizer des Events (v11.36) */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Hash size={18} />}
                 title={isReorderingIDs ? 'IDs werden vergeben…' : 'IDs neu vergeben'}
-                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch."
-                badge="admin"
+                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist."
+                badge="organizer"
                 busy={isReorderingIDs}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={reorderResult}
                 resultIsError={!!reorderResult && reorderResult.indexOf('Fehler') >= 0}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.')) return;
-                  setIsReorderingIDs(true);
-                  setReorderResult(null);
-                  setReorderProgressLabel('IDs werden neu vergeben…');
-                  setReorderProgress(0);
-                  try {
-                    const result = await eventServiceRef.reorderParticipantIDs(
-                      selectedEvent.subsiteUrl,
-                      pct => setReorderProgress(pct)
-                    );
-                    setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
-                  } catch {
-                    setReorderResult('Fehler beim Neuvergeben der IDs');
-                  }
-                  setReorderProgress(null);
-                  setIsReorderingIDs(false);
+                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.')) return;
+                  await runIdReorder();
                 }}
               />
             )}
@@ -5296,6 +5338,54 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v11.36: Hinweis-Modal — es gab kürzlich eine Abmeldung, die
+          automatische Batch-Korrektur (Nachrücken + ID-Neuvergabe per
+          Flow) läuft evtl. noch. NICHT parallel manuell korrigieren. */}
+      {showIdFixModal && selectedEvent && (() => {
+        const info = recentCancellation(registrations);
+        const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2050,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => { if (!isReorderingIDs) setShowIdFixModal(false); }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="card"
+              style={{ width: '100%', maxWidth: 520, padding: 26, background: '#fff', borderRadius: 10 }}
+            >
+              <h3 style={{ marginTop: 0, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                Kürzlich abgemeldet — Korrektur läuft evtl. noch
+              </h3>
+              <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig.
+              </p>
+              <div style={{ margin: '14px 0', padding: 12, borderRadius: 8, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+                <strong>Bitte ein paar Minuten warten</strong>, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Die IDs sind ohnehin durchlaufend; meist musst du gar nichts tun.
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+                <button className="btn btn-primary" onClick={() => setShowIdFixModal(false)} disabled={isReorderingIDs}>
+                  Verstanden
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={isReorderingIDs || !selectedEvent.subsiteUrl}
+                  title="Nur nutzen wenn du sicher bist, dass die automatische Korrektur abgeschlossen ist."
+                  onClick={async () => { setShowIdFixModal(false); await runIdReorder(); }}
+                >
+                  {isReorderingIDs ? 'Wird korrigiert…' : 'Trotzdem jetzt korrigieren'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (

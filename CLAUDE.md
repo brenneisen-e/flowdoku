@@ -204,7 +204,7 @@ Wenn du also eine neue SP-Liste mit Sonderzeichen im Namen anlegst und Items per
 | QR-Codes versenden | ❌ | ✅ (eigene) | ✅ (alle) |
 | E-Mail-Adressen kopieren | ❌ | ✅ (eigene) | ✅ |
 | Massenmail an Teilnehmer (RichText-Editor + Deloitte-Template) | ❌ | ✅ (eigene) | ✅ (alle) |
-| **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ❌ | ✅ |
+| **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ✅ (eigene, ab v11.36) | ✅ |
 | **Spalten fixen** (fehlende Felder + View-Reihenfolge) | ❌ | ❌ | ✅ |
 
 **Administration:**
@@ -285,6 +285,18 @@ pro Person + Sammel-„Alle bestätigen". Pro Person:
 Nach jeder Aktion automatisch `reorderParticipantIDs()` (Aktive 1..N,
 Warteliste N+1..) + `syncSeatsToActiveCount()` + Liste neu laden. Der
 Reorder meldet Fortschritt via `onProgress`-Callback → %-Overlay in der UI.
+
+**Kürzlich-abgemeldet-Hinweis (v11.36):** Die TeilnehmerIDs sind durch den
+`DEX_IDReorder`-Flow **immer durchlaufend** — es gibt keinen „kaputt"-
+Zustand zu erkennen. Beim Öffnen eines Events prüft `recentCancellation()`
+nur, ob die jüngste `CancellationDate` (Status='Abgemeldet') **< 10 Min**
+her ist. Falls ja, erscheint einmalig pro Event-Öffnung ein Hinweis-Modal:
+die automatische Batch-Korrektur (Nachrücken + ID-Neuvergabe per Flow) läuft
+evtl. noch → **ein paar Minuten warten**, NICHT parallel manuell „IDs neu
+vergeben". Das Modal hat „Verstanden" (primär) + „Trotzdem jetzt
+korrigieren" (sekundär, ruft `runIdReorder`). „IDs neu vergeben" ist seit
+v11.36 für **Admin ODER Organizer eigener Events** freigeschaltet
+(Teilnehmerverwaltung), mit %-Overlay.
 
 ### Icons / Design
 
