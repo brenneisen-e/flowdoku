@@ -286,15 +286,17 @@ Nach jeder Aktion automatisch `reorderParticipantIDs()` (Aktive 1..N,
 Warteliste N+1..) + `syncSeatsToActiveCount()` + Liste neu laden. Der
 Reorder meldet Fortschritt via `onProgress`-Callback → %-Overlay in der UI.
 
-**Kaputte-IDs-Hinweis (v11.36):** Beim Öffnen eines Events im Admin Center
-prüft `computeIdsBroken()` die geladenen Registrierungen — kaputt =
-**doppelte TeilnehmerID** unter Nicht-Abgemeldeten ODER **aktive/Warteliste
-ohne ID** (Lücken nach Storno zählen NICHT). Trifft das zu, erscheint
-einmalig pro Event-Öffnung ein Hinweis-Modal mit „IDs jetzt korrigieren"
-(ruft denselben `runIdReorder` wie die Kachel, inkl. %-Overlay) + expliziter
-Warnung, dies **nicht während laufender Anmeldewellen** zu tun. „IDs neu
-vergeben" ist seit v11.36 für **Admin ODER Organizer eigener Events**
-freigeschaltet (Teilnehmerverwaltung).
+**Kürzlich-abgemeldet-Hinweis (v11.36):** Die TeilnehmerIDs sind durch den
+`DEX_IDReorder`-Flow **immer durchlaufend** — es gibt keinen „kaputt"-
+Zustand zu erkennen. Beim Öffnen eines Events prüft `recentCancellation()`
+nur, ob die jüngste `CancellationDate` (Status='Abgemeldet') **< 10 Min**
+her ist. Falls ja, erscheint einmalig pro Event-Öffnung ein Hinweis-Modal:
+die automatische Batch-Korrektur (Nachrücken + ID-Neuvergabe per Flow) läuft
+evtl. noch → **ein paar Minuten warten**, NICHT parallel manuell „IDs neu
+vergeben". Das Modal hat „Verstanden" (primär) + „Trotzdem jetzt
+korrigieren" (sekundär, ruft `runIdReorder`). „IDs neu vergeben" ist seit
+v11.36 für **Admin ODER Organizer eigener Events** freigeschaltet
+(Teilnehmerverwaltung), mit %-Overlay.
 
 ### Icons / Design
 

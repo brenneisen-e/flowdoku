@@ -815,31 +815,34 @@ export default function AdminPage(): React.ReactElement {
   // zeitgleichen Anmeldungen: (a) doppelte ID unter Nicht-Abgemeldeten,
   // (b) aktive/Warteliste-Eintrag ohne (oder ≤0) TeilnehmerID. Lücken nach
   // Stornos zählen NICHT als kaputt (das ist normal bis zum nächsten Reorder).
-  const computeIdsBroken = (regs: SPRegistration[]): { broken: boolean; reason: string } => {
-    const relevant = regs.filter(r => r.Status && r.Status !== 'Abgemeldet');
-    const seen = new Map<number, number>();
-    let dup = 0;
-    let missing = 0;
-    for (const r of relevant) {
-      const tid = typeof r.TeilnehmerID === 'number' ? r.TeilnehmerID : null;
-      if (tid === null || tid <= 0) { missing++; continue; }
-      seen.set(tid, (seen.get(tid) || 0) + 1);
+  // Die TeilnehmerIDs sind durch den DEX_IDReorder-Flow immer durchlaufend —
+  // es gibt also keinen „kaputt"-Zustand zu erkennen. Relevant ist nur: gab
+  // es KÜRZLICH eine Abmeldung? Dann läuft die automatische Batch-Korrektur
+  // (Nachrücken + ID-Neuvergabe per Power Automate) evtl. noch im Hintergrund
+  // und man sollte NICHT parallel manuell „IDs neu vergeben".
+  const RECENT_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 Minuten
+  const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
+    let latest = 0;
+    for (const r of regs) {
+      if (r.Status !== 'Abgemeldet') continue;
+      const t = new Date(r.CancellationDate || '').getTime();
+      if (!isNaN(t) && t > latest) latest = t;
     }
-    seen.forEach(c => { if (c > 1) dup++; });
-    if (dup > 0 && missing > 0) return { broken: true, reason: `${dup} doppelte ID(s) und ${missing} ohne ID` };
-    if (dup > 0) return { broken: true, reason: `${dup} doppelte TeilnehmerID(s)` };
-    if (missing > 0) return { broken: true, reason: `${missing} Eintrag/Einträge ohne TeilnehmerID` };
-    return { broken: false, reason: '' };
+    if (latest > 0 && (Date.now() - latest) < RECENT_CANCEL_WINDOW_MS) {
+      return { recent: true, whenIso: new Date(latest).toISOString() };
+    }
+    return { recent: false, whenIso: '' };
   };
   const [showIdFixModal, setShowIdFixModal] = React.useState(false);
   const idFixCheckedForRef = React.useRef<string | null>(null);
 
-  // Beim Öffnen eines Events mit kaputten IDs einmalig das Hinweis-Modal zeigen.
+  // Beim Öffnen eines Events einmalig prüfen, ob es gerade eine Abmeldung gab
+  // (Batch-Korrektur läuft evtl. noch) → Hinweis-Modal zeigen.
   React.useEffect(() => {
     if (!selectedEvent || isLoadingRegs || registrations.length === 0) return;
     if (idFixCheckedForRef.current === selectedEvent.id) return;
     idFixCheckedForRef.current = selectedEvent.id;
-    if (computeIdsBroken(registrations).broken) setShowIdFixModal(true);
+    if (recentCancellation(registrations).recent) setShowIdFixModal(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, registrations, isLoadingRegs]);
 
@@ -5336,10 +5339,12 @@ export default function AdminPage(): React.ReactElement {
         </div>
       )}
 
-      {/* v11.36: Hinweis-Modal bei kaputten TeilnehmerIDs (Duplikate / fehlende
-          IDs durch zeitgleiche Anmeldungen) — beim Öffnen des Events. */}
+      {/* v11.36: Hinweis-Modal — es gab kürzlich eine Abmeldung, die
+          automatische Batch-Korrektur (Nachrücken + ID-Neuvergabe per
+          Flow) läuft evtl. noch. NICHT parallel manuell korrigieren. */}
       {showIdFixModal && selectedEvent && (() => {
-        const diag = computeIdsBroken(registrations);
+        const info = recentCancellation(registrations);
+        const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
         return (
           <div
             role="dialog"
@@ -5356,27 +5361,25 @@ export default function AdminPage(): React.ReactElement {
               style={{ width: '100%', maxWidth: 520, padding: 26, background: '#fff', borderRadius: 10 }}
             >
               <h3 style={{ marginTop: 0, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                TeilnehmerIDs dieses Events sind nicht sauber
+                Kürzlich abgemeldet — Korrektur läuft evtl. noch
               </h3>
               <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                Beim Öffnen wurde erkannt: <strong>{diag.reason || 'inkonsistente IDs'}</strong>. Das passiert typischerweise durch <strong>zeitgleiche Anmeldungen</strong>.
-              </p>
-              <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                Mit <strong>&bdquo;IDs jetzt korrigieren&ldquo;</strong> werden die TeilnehmerIDs sauber neu vergeben (Aktive 1…N, Warteliste N+1…), inklusive Counter-Abgleich. Es werden keine An-/Abmeldungen geändert.
+                Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig.
               </p>
               <div style={{ margin: '14px 0', padding: 12, borderRadius: 8, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-                <strong>Achtung:</strong> Nicht ausführen, während gerade <strong>viele Anmeldungen laufen</strong> (z.B. kurz nach Anmeldestart). Warte, bis die Anmeldewelle vorbei ist — sonst können sofort wieder neue Inkonsistenzen entstehen.
+                <strong>Bitte ein paar Minuten warten</strong>, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Die IDs sind ohnehin durchlaufend; meist musst du gar nichts tun.
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-                <button className="btn btn-secondary" onClick={() => setShowIdFixModal(false)} disabled={isReorderingIDs}>
-                  Später
+                <button className="btn btn-primary" onClick={() => setShowIdFixModal(false)} disabled={isReorderingIDs}>
+                  Verstanden
                 </button>
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                   disabled={isReorderingIDs || !selectedEvent.subsiteUrl}
+                  title="Nur nutzen wenn du sicher bist, dass die automatische Korrektur abgeschlossen ist."
                   onClick={async () => { setShowIdFixModal(false); await runIdReorder(); }}
                 >
-                  {isReorderingIDs ? 'Wird korrigiert…' : 'IDs jetzt korrigieren'}
+                  {isReorderingIDs ? 'Wird korrigiert…' : 'Trotzdem jetzt korrigieren'}
                 </button>
               </div>
             </div>

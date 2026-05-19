@@ -159,7 +159,7 @@ const PERMISSIONS: PermissionRow[] = [
     description: 'Freitext-Mail via RichText-Editor an alle Teilnehmer verschicken — im Deloitte-Template-Wrapper.',
     user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'IDs neu vergeben (Renummerierung)',
-    description: 'TeilnehmerID sauber neu durchnummerieren (Aktive 1…N, Warteliste N+1…), inkl. Counter-Abgleich, mit %-Fortschrittsanzeige. Seit v11.36 auch für Organizer eigener Events (zählt als Teilnehmerverwaltung). Beim Öffnen eines Events mit kaputten IDs (Duplikate/fehlende IDs aus zeitgleichen Anmeldungen) erscheint automatisch ein Hinweis-Modal mit Korrigieren-Button — inkl. Warnung, dies nicht während laufender Anmeldewellen zu tun.',
+    description: 'TeilnehmerID sauber neu durchnummerieren (Aktive 1…N, Warteliste N+1…), inkl. Counter-Abgleich, mit %-Fortschrittsanzeige. Seit v11.36 auch für Organizer eigener Events (zählt als Teilnehmerverwaltung). Die IDs sind durch den Flow ohnehin durchlaufend; öffnet man ein Event kurz nach einer Abmeldung, erscheint ein Hinweis-Modal, dass die automatische Korrektur (Nachrücken + ID-Neuvergabe) evtl. noch läuft und man ein paar Minuten warten soll, statt parallel manuell zu korrigieren.',
     user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Teilnehmerverwaltung', feature: 'Spalten fixen (Schema reparieren)',
     description: 'Fehlende Basis-Spalten nachlegen + View-Reihenfolge korrigieren; entfernt B2Run/Quiz-Spalten auf Events, die sie nicht brauchen.',
