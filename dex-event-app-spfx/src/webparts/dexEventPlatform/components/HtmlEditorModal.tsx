@@ -170,7 +170,16 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     if (previewMode === 'email') {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
       const subheading = `Event ${previewVars.EventTitle || ''}`;
-      const wrapped = wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars);
+      // Manche System-Templates (z.B. Nachruecken, OutlookDeclineReminder)
+      // werden bereits komplett Deloitte-gewrappt gespeichert
+      // (wrapTemplateForStorage), weil die Power-Automate-Flows den BodyHtml
+      // roh versenden. In dem Fall NICHT noch einmal wrappen — sonst tauchen
+      // Logo + Event-Titel doppelt auf. Gleiche Logik wie im Outlook-Zweig
+      // und in buildEmailFromTemplate (isPreWrapped).
+      const isAlreadyWrapped = /^\s*(<!doctype|<html)/i.test(bodyWithVars);
+      const wrapped = isAlreadyWrapped
+        ? bodyWithVars
+        : wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars);
       return wrapped
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
         .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
