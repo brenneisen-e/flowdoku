@@ -204,7 +204,7 @@ Wenn du also eine neue SP-Liste mit Sonderzeichen im Namen anlegst und Items per
 | QR-Codes versenden | ❌ | ✅ (eigene) | ✅ (alle) |
 | E-Mail-Adressen kopieren | ❌ | ✅ (eigene) | ✅ |
 | Massenmail an Teilnehmer (RichText-Editor + Deloitte-Template) | ❌ | ✅ (eigene) | ✅ (alle) |
-| **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ❌ | ✅ |
+| **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ✅ (eigene, ab v11.36) | ✅ |
 | **Spalten fixen** (fehlende Felder + View-Reihenfolge) | ❌ | ❌ | ✅ |
 
 **Administration:**
@@ -285,6 +285,16 @@ pro Person + Sammel-„Alle bestätigen". Pro Person:
 Nach jeder Aktion automatisch `reorderParticipantIDs()` (Aktive 1..N,
 Warteliste N+1..) + `syncSeatsToActiveCount()` + Liste neu laden. Der
 Reorder meldet Fortschritt via `onProgress`-Callback → %-Overlay in der UI.
+
+**Kaputte-IDs-Hinweis (v11.36):** Beim Öffnen eines Events im Admin Center
+prüft `computeIdsBroken()` die geladenen Registrierungen — kaputt =
+**doppelte TeilnehmerID** unter Nicht-Abgemeldeten ODER **aktive/Warteliste
+ohne ID** (Lücken nach Storno zählen NICHT). Trifft das zu, erscheint
+einmalig pro Event-Öffnung ein Hinweis-Modal mit „IDs jetzt korrigieren"
+(ruft denselben `runIdReorder` wie die Kachel, inkl. %-Overlay) + expliziter
+Warnung, dies **nicht während laufender Anmeldewellen** zu tun. „IDs neu
+vergeben" ist seit v11.36 für **Admin ODER Organizer eigener Events**
+freigeschaltet (Teilnehmerverwaltung).
 
 ### Icons / Design
 

@@ -788,6 +788,61 @@ export default function AdminPage(): React.ReactElement {
     setOverbookModal(null);
   };
 
+  // v11.36: TeilnehmerIDs neu vergeben — gemeinsam von der Toolbox-Kachel
+  // UND dem Hinweis-Modal genutzt (mit %-Fortschritts-Overlay).
+  const runIdReorder = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setIsReorderingIDs(true);
+    setReorderResult(null);
+    setReorderProgressLabel('IDs werden neu vergeben…');
+    setReorderProgress(0);
+    try {
+      const result = await eventServiceRef.reorderParticipantIDs(
+        selectedEvent.subsiteUrl,
+        pct => setReorderProgress(pct)
+      );
+      setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch {
+      setReorderResult('Fehler beim Neuvergeben der IDs');
+    }
+    setReorderProgress(null);
+    setIsReorderingIDs(false);
+  };
+
+  // v11.36: Erkennt „kaputte" TeilnehmerIDs — die echten Schmerzfälle aus
+  // zeitgleichen Anmeldungen: (a) doppelte ID unter Nicht-Abgemeldeten,
+  // (b) aktive/Warteliste-Eintrag ohne (oder ≤0) TeilnehmerID. Lücken nach
+  // Stornos zählen NICHT als kaputt (das ist normal bis zum nächsten Reorder).
+  const computeIdsBroken = (regs: SPRegistration[]): { broken: boolean; reason: string } => {
+    const relevant = regs.filter(r => r.Status && r.Status !== 'Abgemeldet');
+    const seen = new Map<number, number>();
+    let dup = 0;
+    let missing = 0;
+    for (const r of relevant) {
+      const tid = typeof r.TeilnehmerID === 'number' ? r.TeilnehmerID : null;
+      if (tid === null || tid <= 0) { missing++; continue; }
+      seen.set(tid, (seen.get(tid) || 0) + 1);
+    }
+    seen.forEach(c => { if (c > 1) dup++; });
+    if (dup > 0 && missing > 0) return { broken: true, reason: `${dup} doppelte ID(s) und ${missing} ohne ID` };
+    if (dup > 0) return { broken: true, reason: `${dup} doppelte TeilnehmerID(s)` };
+    if (missing > 0) return { broken: true, reason: `${missing} Eintrag/Einträge ohne TeilnehmerID` };
+    return { broken: false, reason: '' };
+  };
+  const [showIdFixModal, setShowIdFixModal] = React.useState(false);
+  const idFixCheckedForRef = React.useRef<string | null>(null);
+
+  // Beim Öffnen eines Events mit kaputten IDs einmalig das Hinweis-Modal zeigen.
+  React.useEffect(() => {
+    if (!selectedEvent || isLoadingRegs || registrations.length === 0) return;
+    if (idFixCheckedForRef.current === selectedEvent.id) return;
+    idFixCheckedForRef.current = selectedEvent.id;
+    if (computeIdsBroken(registrations).broken) setShowIdFixModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, registrations, isLoadingRegs]);
+
   // v6.17: Spaltenkonfiguration der Teilnehmertabelle (pro Event, lokal gespeichert).
   //  - columnOrder = geordnete Liste sichtbarer Spalten-IDs
   //  - hiddenColumns = ausgeblendete Spalten-IDs (können übers "+ Spalte"-Popover wieder zugeschaltet werden)
@@ -2462,37 +2517,21 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
-            {/* 7. TeilnehmerIDs neu vergeben — Admin only */}
-            {isAdmin && (
+            {/* 7. TeilnehmerIDs neu vergeben — Admin ODER Organizer des Events (v11.36) */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Hash size={18} />}
                 title={isReorderingIDs ? 'IDs werden vergeben…' : 'IDs neu vergeben'}
-                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch."
-                badge="admin"
+                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist."
+                badge="organizer"
                 busy={isReorderingIDs}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={reorderResult}
                 resultIsError={!!reorderResult && reorderResult.indexOf('Fehler') >= 0}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.')) return;
-                  setIsReorderingIDs(true);
-                  setReorderResult(null);
-                  setReorderProgressLabel('IDs werden neu vergeben…');
-                  setReorderProgress(0);
-                  try {
-                    const result = await eventServiceRef.reorderParticipantIDs(
-                      selectedEvent.subsiteUrl,
-                      pct => setReorderProgress(pct)
-                    );
-                    setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
-                  } catch {
-                    setReorderResult('Fehler beim Neuvergeben der IDs');
-                  }
-                  setReorderProgress(null);
-                  setIsReorderingIDs(false);
+                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.')) return;
+                  await runIdReorder();
                 }}
               />
             )}
@@ -5296,6 +5335,54 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v11.36: Hinweis-Modal bei kaputten TeilnehmerIDs (Duplikate / fehlende
+          IDs durch zeitgleiche Anmeldungen) — beim Öffnen des Events. */}
+      {showIdFixModal && selectedEvent && (() => {
+        const diag = computeIdsBroken(registrations);
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2050,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => { if (!isReorderingIDs) setShowIdFixModal(false); }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="card"
+              style={{ width: '100%', maxWidth: 520, padding: 26, background: '#fff', borderRadius: 10 }}
+            >
+              <h3 style={{ marginTop: 0, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                TeilnehmerIDs dieses Events sind nicht sauber
+              </h3>
+              <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                Beim Öffnen wurde erkannt: <strong>{diag.reason || 'inkonsistente IDs'}</strong>. Das passiert typischerweise durch <strong>zeitgleiche Anmeldungen</strong>.
+              </p>
+              <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                Mit <strong>&bdquo;IDs jetzt korrigieren&ldquo;</strong> werden die TeilnehmerIDs sauber neu vergeben (Aktive 1…N, Warteliste N+1…), inklusive Counter-Abgleich. Es werden keine An-/Abmeldungen geändert.
+              </p>
+              <div style={{ margin: '14px 0', padding: 12, borderRadius: 8, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+                <strong>Achtung:</strong> Nicht ausführen, während gerade <strong>viele Anmeldungen laufen</strong> (z.B. kurz nach Anmeldestart). Warte, bis die Anmeldewelle vorbei ist — sonst können sofort wieder neue Inkonsistenzen entstehen.
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+                <button className="btn btn-secondary" onClick={() => setShowIdFixModal(false)} disabled={isReorderingIDs}>
+                  Später
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={isReorderingIDs || !selectedEvent.subsiteUrl}
+                  onClick={async () => { setShowIdFixModal(false); await runIdReorder(); }}
+                >
+                  {isReorderingIDs ? 'Wird korrigiert…' : 'IDs jetzt korrigieren'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (
