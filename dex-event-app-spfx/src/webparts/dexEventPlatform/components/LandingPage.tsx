@@ -13,9 +13,56 @@ export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
   const { currentUser } = useCurrentUser();
-  const { sendAdminInquiry } = useEvents();
+  const { sendAdminInquiry, events, isEventsLoading, getAppViewCount, incrementAppViewCount } = useEvents();
   const [showInfo, setShowInfo] = React.useState(false);
   const [showInquiry, setShowInquiry] = React.useState(false);
+
+  // v11.47: KPI-Werte fuer die drei Boxen ueber dem "Entwickelt von …"-Block.
+  // - hostedEvents: vergangene, nicht-fictive, nicht-gecancelte Events.
+  // - participants: Summe aller currentParticipants ueber diese Events.
+  // - appViews: Counter aus _Config-Zeile (DEX_EmailTemplates), pro
+  //   Browser-Session genau einmal inkrementiert.
+  const now = Date.now();
+  const hostedEventsList = (events || []).filter(e => {
+    if (e.isFictive) return false;
+    if (e.status === 'Cancelled') return false;
+    if (!e.endDate) return false;
+    const ts = new Date(e.endDate).getTime();
+    return !isNaN(ts) && ts < now;
+  });
+  const kpiHostedEvents = hostedEventsList.length;
+  const kpiParticipants = hostedEventsList.reduce(
+    (sum, e) => sum + (e.currentParticipants || 0), 0,
+  );
+  const [kpiAppViews, setKpiAppViews] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    // Einmal pro Browser-Session inkrementieren, sonst zaehlt jeder Tab-
+    // Wechsel zur LandingPage neu — was "App-Aufrufe" verzerren wuerde.
+    const SESSION_KEY = 'dex-app-view-counted';
+    const alreadyCounted = (() => {
+      try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch { return false; }
+    })();
+    let cancelled = false;
+    (async () => {
+      try {
+        if (alreadyCounted) {
+          const v = await getAppViewCount();
+          if (!cancelled && typeof v === 'number') setKpiAppViews(v);
+        } else {
+          const next = await incrementAppViewCount();
+          if (!cancelled && typeof next === 'number') {
+            setKpiAppViews(next);
+            try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ }
+          } else {
+            const v = await getAppViewCount();
+            if (!cancelled && typeof v === 'number') setKpiAppViews(v);
+          }
+        }
+      } catch { /* KPI ist best-effort, Landing soll nicht crashen */ }
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const userFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
   const [inquiryName, setInquiryName] = React.useState(userFullName);
   const [inquiryEvent, setInquiryEvent] = React.useState('');
@@ -181,6 +228,20 @@ export default function LandingPage(): React.ReactElement {
                 : 'Want to use the DEX App for your event too? Just reach out to us!'}
             </button>
           </div>
+          {/* v11.47: Drei KPI-Boxen ueber dem "Entwickelt von ..."-Block.
+              Werte werden beim ersten Mount animiert von 0 auf den Zielwert
+              hochgezaehlt (ease-out, ca. 1.6s). Solange Events oder
+              App-View-Counter noch laden, stehen die Werte auf null und
+              die Animation startet erst, wenn die echten Daten da sind. */}
+          <KpiRow
+            locale={locale}
+            eventsLoading={isEventsLoading}
+            viewsLoading={kpiAppViews === null}
+            events={kpiHostedEvents}
+            participants={kpiParticipants}
+            views={kpiAppViews ?? 0}
+          />
+
           <div
             style={{
               fontSize: '0.95rem',
@@ -307,6 +368,120 @@ export default function LandingPage(): React.ReactElement {
       )}
     </div>
   );
+}
+
+// v11.47: KPI-Box-Reihe ueber dem "Entwickelt von ..."-Block. Drei Boxen
+// nebeneinander: gehostete Events, Teilnehmer, App-Aufrufe. Jede Box mit
+// einer AnimatedCounter-Komponente, die beim ersten Verfuegbarwerden des
+// Werts von 0 zum Zielwert ease-out hochzaehlt (~1.6s). Solange Daten noch
+// laden, steht ein dezenter Skeleton-Punkt im Wert-Feld.
+function KpiRow(props: {
+  locale: string;
+  eventsLoading: boolean;
+  viewsLoading: boolean;
+  events: number;
+  participants: number;
+  views: number;
+}): React.ReactElement {
+  const isDe = props.locale === 'de';
+  const labels = isDe
+    ? { ev: 'Events gehostet', pa: 'Teilnehmer', vi: 'App-Aufrufe' }
+    : { ev: 'Events hosted', pa: 'Attendees', vi: 'App views' };
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+      marginTop: 18, marginBottom: 4,
+    }}>
+      <KpiBox label={labels.ev} value={props.events} loading={props.eventsLoading} />
+      <KpiBox label={labels.pa} value={props.participants} loading={props.eventsLoading} />
+      <KpiBox label={labels.vi} value={props.views} loading={props.viewsLoading} />
+    </div>
+  );
+}
+
+function KpiBox(props: { label: string; value: number; loading: boolean }): React.ReactElement {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '12px 8px',
+      background: 'linear-gradient(135deg, rgba(134,188,37,0.08), rgba(0,118,168,0.04))',
+      border: '1px solid var(--dex-gray-200)',
+      borderRadius: 12,
+      minWidth: 0,
+    }}>
+      <div style={{
+        fontSize: 'clamp(1.4rem, 4vw, 1.9rem)', fontWeight: 800,
+        color: 'var(--dex-green-dark, #4a7c1f)',
+        lineHeight: 1.1, letterSpacing: '-0.02em',
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {props.loading
+          ? <SkeletonDots />
+          : <AnimatedCounter value={props.value} />}
+      </div>
+      <div style={{
+        marginTop: 6,
+        fontSize: '0.72rem', color: 'var(--dex-gray-500)',
+        fontWeight: 500, textAlign: 'center', lineHeight: 1.2,
+      }}>
+        {props.label}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonDots(): React.ReactElement {
+  return (
+    <span aria-hidden="true" style={{ display: 'inline-flex', gap: 4, opacity: 0.55 }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', animation: 'dexKpiPulse 1.2s ease-in-out infinite' }} />
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', animation: 'dexKpiPulse 1.2s ease-in-out 0.2s infinite' }} />
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', animation: 'dexKpiPulse 1.2s ease-in-out 0.4s infinite' }} />
+      <style>{`
+        @keyframes dexKpiPulse {
+          0%, 100% { transform: scale(0.6); opacity: 0.3; }
+          50%      { transform: scale(1);   opacity: 1; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+/** Ease-out-Cubic-Animation von 0 (bzw. dem letzten geanimierten Wert) auf
+ *  `value`. Wenn `value` sich aendert, startet eine neue Animation; bei
+ *  schnellen Aenderungen wird die laufende Animation sauber durch eine neue
+ *  ersetzt (requestAnimationFrame + AbortFlag). */
+function AnimatedCounter(props: { value: number; durationMs?: number }): React.ReactElement {
+  const target = Math.max(0, Math.floor(props.value || 0));
+  const duration = props.durationMs ?? 1600;
+  const [shown, setShown] = React.useState<number>(0);
+  const startRef = React.useRef<number>(0);
+  const fromRef = React.useRef<number>(0);
+  const rafRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    fromRef.current = shown;
+    startRef.current = 0;
+    const step = (ts: number): void => {
+      if (startRef.current === 0) startRef.current = ts;
+      const elapsed = ts - startRef.current;
+      const t = Math.min(1, elapsed / duration);
+      // ease-out-cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const value = fromRef.current + (target - fromRef.current) * eased;
+      setShown(Math.round(value));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        rafRef.current = null;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, duration]);
+  return <span>{shown.toLocaleString('de-DE')}</span>;
 }
 
 // v7.1: Entwickler-Name mit Hover-Popover auf der LandingPage.
