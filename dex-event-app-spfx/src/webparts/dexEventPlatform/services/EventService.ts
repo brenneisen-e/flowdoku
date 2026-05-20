@@ -1557,6 +1557,26 @@ export class EventService {
   }
 
   /**
+   * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals fuer
+   * irgendein Event angemeldet/auf Warteliste waren). Liest nur das ItemCount-
+   * Metadatum der Liste, nicht alle Items — schnell und cheap. Liefert null
+   * bei Fehler.
+   */
+  public async getParticipantsListCount(): Promise<number | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')?$select=ItemCount`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const raw = data?.ItemCount ?? data?.d?.ItemCount;
+      if (raw === null || raw === undefined) return null;
+      return typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0);
+    } catch { return null; }
+  }
+
+  /**
    * v11.47: Aktuellen App-Aufruf-Counter aus der _Config-Zeile von
    * DEX_EmailTemplates lesen. Liefert 0 wenn das Feld leer / nicht
    * vorhanden ist. null bei Lese-Fehler.

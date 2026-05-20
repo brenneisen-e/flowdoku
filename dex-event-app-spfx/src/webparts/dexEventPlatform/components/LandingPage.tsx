@@ -318,36 +318,20 @@ export default function LandingPage(): React.ReactElement {
 export function KpiRow(props: {
   locale: string;
   eventsLoading: boolean;
-  viewsLoading: boolean;
+  participantsLoading: boolean;
   events: number;
   participants: number;
-  views: number;
-  hidden: boolean;
 }): React.ReactElement {
   const isDe = props.locale === 'de';
   const labels = isDe
-    ? { ev: 'Events gehostet', pa: 'Teilnehmer', vi: 'App-Aufrufe' }
-    : { ev: 'Events hosted', pa: 'Attendees', vi: 'App views' };
-  // v11.48: aria-hidden, opacity + maxHeight-Collapse fuer sauberes
-  // Ausblenden — ohne Layout-Sprung, alles ueber 'transition'.
+    ? { ev: 'Events', pa: 'Teilnehmer' }
+    : { ev: 'Events', pa: 'Attendees' };
   return (
-    <div
-      aria-hidden={props.hidden}
-      style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: props.hidden ? 0 : 10,
-        marginTop: props.hidden ? 0 : 18,
-        marginBottom: props.hidden ? 0 : 4,
-        maxHeight: props.hidden ? 0 : 200,
-        opacity: props.hidden ? 0 : 1,
-        overflow: 'hidden',
-        pointerEvents: props.hidden ? 'none' : 'auto',
-        transition: 'opacity 400ms ease, max-height 500ms ease, margin 500ms ease, gap 500ms ease',
-      }}
-    >
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10,
+    }}>
       <KpiBox label={labels.ev} value={props.events} loading={props.eventsLoading} />
-      <KpiBox label={labels.pa} value={props.participants} loading={props.eventsLoading} />
-      <KpiBox label={labels.vi} value={props.views} loading={props.viewsLoading} />
+      <KpiBox label={labels.pa} value={props.participants} loading={props.participantsLoading} />
     </div>
   );
 }

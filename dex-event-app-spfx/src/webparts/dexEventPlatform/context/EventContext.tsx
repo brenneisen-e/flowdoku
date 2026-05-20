@@ -151,12 +151,9 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
-  /** v11.47: App-Aufruf-Counter aus der _Config-Zeile lesen. Liefert 0
-   *  falls noch nie inkrementiert, null bei Lese-Fehler. */
-  getAppViewCount: () => Promise<number | null>;
-  /** v11.47: App-Aufruf-Counter um 1 inkrementieren (ETag-CAS).
-   *  Liefert den neuen Wert, oder null bei Fehler. */
-  incrementAppViewCount: () => Promise<number | null>;
+  /** v11.50: Anzahl Items in DEX_Participants (unique User insgesamt).
+   *  Liest schnell aus dem ItemCount-Metadatum, lädt keine Items. */
+  getParticipantsListCount: () => Promise<number | null>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -1234,8 +1231,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
-        getAppViewCount: () => eventService.getAppViewCount(),
-        incrementAppViewCount: () => eventService.incrementAppViewCount(),
+        getParticipantsListCount: () => eventService.getParticipantsListCount(),
       },
     },
     props.children

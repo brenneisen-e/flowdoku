@@ -40,50 +40,25 @@ export interface IDexEventPlatformProps {
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, isEventsLoading, events, getAppViewCount, incrementAppViewCount } = useEvents();
+  const { markExpiredEventsAsCompleted, isEventsLoading, events, getParticipantsListCount } = useEvents();
 
-  // v11.48: KPI-Werte fuer die drei Boxen waehrend der Boot-Ladephase
-  // (Spinner + Progress-Bar). Wir wollen die Zahlen genau hier zaehlen
-  // sehen — auf der eigentlichen LandingPage (nach Boot) tauchen sie nicht
-  // mehr auf, weil dort der "Entwickelt von ..."-Block hin gehoert.
-  const _nowTs = Date.now();
+  // v11.48/v11.50: KPI-Werte fuer die zwei Boxen waehrend der Boot-Ladephase.
+  // - hostedEvents: alle nicht-Test-, nicht-gecancelten Events
+  //   (vergangene wie aktive zaehlen mit).
+  // - participants: ItemCount der DEX_Participants-Liste (unique User insg.).
   const hostedEventsList = (events || []).filter(e => {
     if (e.isFictive) return false;
     if (e.status === 'Cancelled') return false;
-    if (!e.endDate) return false;
-    const ts = new Date(e.endDate).getTime();
-    return !isNaN(ts) && ts < _nowTs;
+    return true;
   });
   const kpiHostedEvents = hostedEventsList.length;
-  const kpiParticipants = hostedEventsList.reduce(
-    (sum, e) => sum + (e.currentParticipants || 0), 0,
-  );
-  const [kpiAppViews, setKpiAppViews] = React.useState<number | null>(null);
+  const [kpiParticipants, setKpiParticipants] = React.useState<number | null>(null);
   React.useEffect(() => {
-    // Pro Browser-Session genau einmal inkrementieren — sessionStorage-Guard
-    // verhindert, dass Reload/Navigate-Zurueck die Counter-Zahl nach oben
-    // jagt. ETag-CAS auf SP-Seite haelt den Schreibvorgang race-condition-
-    // sicher (analog reserveSeat).
-    const SESSION_KEY = 'dex-app-view-counted';
-    const alreadyCounted = (() => {
-      try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch { return false; }
-    })();
     let cancelled = false;
     (async () => {
       try {
-        if (alreadyCounted) {
-          const v = await getAppViewCount();
-          if (!cancelled && typeof v === 'number') setKpiAppViews(v);
-        } else {
-          const next = await incrementAppViewCount();
-          if (!cancelled && typeof next === 'number') {
-            setKpiAppViews(next);
-            try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ }
-          } else {
-            const v = await getAppViewCount();
-            if (!cancelled && typeof v === 'number') setKpiAppViews(v);
-          }
-        }
+        const n = await getParticipantsListCount();
+        if (!cancelled && typeof n === 'number') setKpiParticipants(n);
       } catch { /* KPI ist best-effort */ }
     })().catch(() => { /* */ });
     return () => { cancelled = true; };
@@ -392,20 +367,18 @@ function AppContent(): React.ReactElement {
                   {bootProgress} %
                 </div>
               </div>
-              {/* v11.48: KPI-Boxen im Boot-Loader. Skeleton-Punkte solange
-                  Events / AppViewCount laden, danach ease-out-Count-Up von
-                  0 zum Zielwert. Sobald der Boot-Loader entfaellt (beide
-                  Provider fertig), verschwinden die Boxen automatisch mit
-                  ihm — keine extra Fade-Logik noetig. */}
-              <div style={{ width: 'min(420px, 92%)', marginTop: 18 }}>
+              {/* v11.48/v11.50: KPI-Boxen im Boot-Loader. Skeleton-Punkte
+                  solange Events / Participants-Count laden, danach
+                  ease-out-Count-Up von 0 zum Zielwert. Sobald der Boot-
+                  Loader entfaellt (beide Provider fertig), verschwinden
+                  die Boxen automatisch mit ihm. */}
+              <div style={{ width: 'min(320px, 80%)', marginTop: 18 }}>
                 <KpiRow
                   locale="de"
                   eventsLoading={isEventsLoading}
-                  viewsLoading={kpiAppViews === null}
+                  participantsLoading={kpiParticipants === null}
                   events={kpiHostedEvents}
-                  participants={kpiParticipants}
-                  views={kpiAppViews ?? 0}
-                  hidden={false}
+                  participants={kpiParticipants ?? 0}
                 />
               </div>
             </div>
