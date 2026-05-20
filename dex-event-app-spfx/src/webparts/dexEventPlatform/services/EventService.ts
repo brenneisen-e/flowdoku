@@ -1506,6 +1506,13 @@ export class EventService {
         // Wird pro Browser-Session genau einmal inkrementiert (Session-Guard
         // in LandingPage), ETag-CAS-Retry im incrementAppViewCount().
         { title: 'AppViewCount', type: 9 }, // Number
+        // v11.52: gecachter Total-Teilnehmer-Counter fuer das LandingPage-KPI.
+        // Live-Zaehlung ueber alle Event-Subsites war zu langsam — stattdessen
+        // liest der Boot-Loader diesen einen Wert (schneller REST-Call), und
+        // sobald die App fertig geladen hat, schreiben wir den frischen Wert
+        // im Hintergrund zurueck. Eventual consistency, fuer KPI-Anzeige ok.
+        { title: 'TotalParticipantsCount', type: 9 }, // Number
+        { title: 'TotalEventsCount', type: 9 }, // Number — analog fuer 'Events'
       ];
       for (const f of logoFields) {
         try {
@@ -1554,6 +1561,50 @@ export class EventService {
         }
       }
     } catch (err) { console.warn('[DEX] ensureEmailTemplatesConfig fehlgeschlagen:', err); }
+  }
+
+  /**
+   * v11.52: Gecachte KPI-Werte (TotalParticipantsCount + TotalEventsCount)
+   * aus der _Config-Zeile von DEX_EmailTemplates lesen. Ein einziger REST-
+   * Call, kein Subsite-Roundtrip — Boot-Loader zeigt das innerhalb von ms.
+   * Liefert null bei Fehler, sonst { participants, events } mit 0 als
+   * Default fuer leere Felder.
+   */
+  public async getKpiCache(): Promise<{ participants: number; events: number } | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,TotalParticipantsCount,TotalEventsCount`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return { participants: 0, events: 0 };
+      const it = items[0];
+      const pRaw = it.TotalParticipantsCount;
+      const eRaw = it.TotalEventsCount;
+      const p = (pRaw === null || pRaw === undefined) ? 0 : (typeof pRaw === 'number' ? pRaw : (parseInt(String(pRaw), 10) || 0));
+      const e = (eRaw === null || eRaw === undefined) ? 0 : (typeof eRaw === 'number' ? eRaw : (parseInt(String(eRaw), 10) || 0));
+      return { participants: p, events: e };
+    } catch { return null; }
+  }
+
+  /**
+   * v11.52: Gecachte KPI-Werte zurueckschreiben. Wird nach vollem App-Load
+   * im Hintergrund aufgerufen (DexEventPlatform), damit der naechste Boot-
+   * Loader frische Zahlen sieht. Best-effort, kein ETag-CAS noetig — bei
+   * gleichzeitigen Schreibern gewinnt der letzte, was fuer KPI ok ist.
+   */
+  public async updateKpiCache(values: { participants: number; events: number }): Promise<boolean> {
+    const itemUrl = await this.getConfigItemUrl();
+    if (!itemUrl) return false;
+    try {
+      const resp = await this._mergeIfMatch(itemUrl, {
+        'TotalParticipantsCount': Math.max(0, Math.floor(values.participants || 0)),
+        'TotalEventsCount': Math.max(0, Math.floor(values.events || 0)),
+      }, '*');
+      return resp.ok;
+    } catch { return false; }
   }
 
   /**

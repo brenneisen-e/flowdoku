@@ -151,6 +151,12 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
+  /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
+   *  ein einziger schneller REST-Call, fuer Boot-Loader-Anzeige. */
+  getKpiCache: () => Promise<{ participants: number; events: number } | null>;
+  /** v11.52: Frische KPI-Werte in _Config schreiben. Wird nach vollem
+   *  App-Load im Hintergrund aufgerufen, damit naechster Boot frisch ist. */
+  updateKpiCache: (v: { participants: number; events: number }) => Promise<boolean>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -1228,6 +1234,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
+        getKpiCache: () => eventService.getKpiCache(),
+        updateKpiCache: (v) => eventService.updateKpiCache(v),
       },
     },
     props.children
