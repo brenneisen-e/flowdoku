@@ -2470,6 +2470,13 @@ export default function AdminPage(): React.ReactElement {
                 if (!selectedEvent) return;
                 const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
                 const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
+                // v11.42: Signatur uebernimmt die echten Organizer-Namen
+                // (Vorname Nachname pro Zeile), damit der Empfaenger sieht
+                // wer einlaedt — statt eines generischen "Dein Event-Team".
+                const orgList = (selectedEvent.organizers || []).filter(s => (s || '').trim());
+                const signatureNames = orgList.length > 0
+                  ? orgList.map(n => n.trim()).join('<br />')
+                  : (isDe ? 'Dein Event-Team' : 'Your event team');
                 const defaultBody = isDe
                   ? `<p>Hallo,</p>
 <p>wir laden dich herzlich zum Event <strong>${selectedEvent.title}</strong> ein.</p>
@@ -2477,14 +2484,14 @@ export default function AdminPage(): React.ReactElement {
 <p>${linkHtml}</p>
 <p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>
 <p>Bei Rückfragen meld dich gern bei uns.</p>
-<p>Viele Grüße<br />Dein Event-Team</p>`
+<p>Viele Grüße<br />${signatureNames}</p>`
                   : `<p>Hello,</p>
 <p>we would like to invite you to the event <strong>${selectedEvent.title}</strong>.</p>
 <p>You can register via our event platform:</p>
 <p>${linkHtml}</p>
 <p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>
 <p>Feel free to reach out if you have any questions.</p>
-<p>Best regards<br />Your event team</p>`;
+<p>Best regards<br />${signatureNames}</p>`;
                 setInviteSubject(isDe
                   ? `Einladung: ${selectedEvent.title}`
                   : `Invitation: ${selectedEvent.title}`);
