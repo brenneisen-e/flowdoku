@@ -48,6 +48,9 @@ export interface HtmlEditorModalProps {
     disabled?: boolean;
     icon?: React.ReactNode;
   };
+  /** v11.40: Optionaler React-Knoten oberhalb von Subject/Ueberschrift im
+   *  Editor — z.B. fuer eine Ziel-Auswahl im Einladungsmail-Modal. */
+  headerExtra?: React.ReactNode;
 }
 
 const FONT_SIZES: Array<{ label: string; px: number }> = [
@@ -73,6 +76,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
     extraAction,
+    headerExtra,
   } = props;
 
   const editorRef = React.useRef<HTMLDivElement>(null);
@@ -244,6 +248,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           {/* === EDITOR === */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--dex-gray-200)', overflow: 'auto' }}>
             <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {headerExtra}
               {previewMode === 'email' && (
                 <>
                   <div>

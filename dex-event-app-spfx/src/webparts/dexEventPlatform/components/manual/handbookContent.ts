@@ -19,6 +19,7 @@ import { registerForOtherSection } from './sections/registerForOther';
 import { checkInSection } from './sections/checkIn';
 import { quizSection } from './sections/quiz';
 import { massMailSection } from './sections/massMail';
+import { inviteMailSection } from './sections/inviteMail';
 import { rolesSection } from './sections/roles';
 import { templatesSection } from './sections/templates';
 import { idReorderSection } from './sections/idReorder';
@@ -45,6 +46,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     registerForOtherSection(locale),
     quizSection(locale),
     massMailSection(locale),
+    inviteMailSection(locale),
     rolesSection(locale),
     templatesSection(locale),
     idReorderSection(locale),
