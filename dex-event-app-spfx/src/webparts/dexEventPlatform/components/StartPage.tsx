@@ -3,13 +3,27 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
+import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Calendar, Pin, Settings } from './Icons';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { canCreateEvents } = useRoles();
+  const { events } = useEvents();
+  const { currentUser } = useCurrentUser();
   const { t } = useLanguage();
+
+  // v11.38: Co-Organizer pro Event (per-Event-Rolle, ohne globale Organizer-
+  // Rolle in DEX_Roles) sehen die Organizer-Kachel ebenfalls — AdminPage
+  // gewaehrt ihnen ohnehin Zugriff auf "ihre" Events (siehe isOrganizerFor
+  // dort), aber ohne Kachel im Startmenue gab es bisher keinen Einstieg.
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const isCoOrganizerOfAny = !!currentEmailLc && (events || []).some(
+    e => (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
+  );
+  const showAdminTile = canCreateEvents || isCoOrganizerOfAny;
 
   return (
     <div className="page-container">
@@ -36,7 +50,7 @@ export default function StartPage(): React.ReactElement {
           100% { transform: rotate(360deg) scale(1); }
         }
       `}</style>
-      <div className={`start-grid${canCreateEvents ? ' start-grid--with-admin' : ''}`}>
+      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}`}>
         <div className="card card-clickable start-card" onClick={() => navigate('register')}>
           <div className="start-card__icon">
             <Calendar size={64} strokeWidth={1} />
@@ -51,7 +65,7 @@ export default function StartPage(): React.ReactElement {
           <h2>{t('start.myevents')}</h2>
           <p style={{ whiteSpace: 'nowrap' }}>{t('start.myevents.desc')}</p>
         </div>
-        {canCreateEvents && (
+        {showAdminTile && (
           <div className="card card-clickable start-card start-card--admin" onClick={() => navigate('admin')}>
             <div className="start-card__icon">
               <Settings size={64} strokeWidth={1} />
