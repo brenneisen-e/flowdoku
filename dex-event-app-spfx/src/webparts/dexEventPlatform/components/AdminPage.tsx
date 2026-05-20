@@ -59,14 +59,22 @@ const DEX_LOCATION_TOKENS: string[] = [
 
 /** Wenn die Adresse als unerlaubter Massen-Verteiler erkannt wird, gibt den
  *  Block-Grund zurueck — sonst null. Heuristik bewusst konservativ: matched
- *  nur, wenn der Local-Part eindeutig ein Standort-/All-Verteiler ist. Team-
- *  Mailboxen wie 'frankfurt-event-team@' bleiben erlaubt. */
+ *  nur, wenn der Local-Part (bzw. der gesamte Token, falls kein '@' vorhanden)
+ *  eindeutig ein Standort-/All-Verteiler ist. Team-Mailboxen wie
+ *  'frankfurt-event-team@' bleiben erlaubt.
+ *
+ *  v11.44: Auch reine Tokens ohne '@' werden geprueft — der Mailverteiler
+ *  kann Eintraege wie 'All' oder 'Duesseldorf' enthalten, die direkt aus dem
+ *  Standort-/Location-Picker stammen. Vorher wurden die durchgelassen, weil
+ *  der Parser an `at <= 0` zurueckkehrte. */
 function getBlockedInviteReason(email: string): string | null {
   const lc = (email || '').trim().toLowerCase();
   if (!lc) return null;
   const at = lc.indexOf('@');
-  if (at <= 0) return null;
-  const local = lc.slice(0, at);
+  // Mit '@': Local-Part vor dem '@' pruefen. Ohne '@': gesamten Token pruefen
+  // (z.B. wenn die Sichtbarkeit per Location-Picker auf 'All' gesetzt war
+  // und 'All' so im audienceFilter landet).
+  const local = at > 0 ? lc.slice(0, at) : lc;
   // Token-Split: Local-Part nach .-_ tokenisieren.
   const tokens = local.split(/[._-]/).filter(Boolean);
   // (1) deall / de.all / de-all / alldeloitte etc. — globaler DE-Verteiler.
@@ -2470,24 +2478,21 @@ export default function AdminPage(): React.ReactElement {
                 if (!selectedEvent) return;
                 const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
                 const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
-                // v11.42/v11.43: Signatur listet die Organizer — bei Deloitte
-                // duzt man sich, also reicht der Vorname (erstes Wort des
-                // displayName). Bei "Mustermann, Max"-Reihenfolge nehmen wir
-                // den Teil nach dem Komma als Vornamen.
-                const orgList = (selectedEvent.organizers || []).filter(s => (s || '').trim());
-                const firstNameOf = (full: string): string => {
-                  const f = (full || '').trim();
-                  if (!f) return '';
-                  if (f.indexOf(',') >= 0) {
-                    const after = f.split(',')[1] || '';
-                    const fn = after.trim().split(/\s+/)[0] || '';
-                    if (fn) return fn;
-                  }
-                  return f.split(/\s+/)[0] || f;
-                };
+                // v11.44: Signatur in zwei Stufen:
+                //   1. "Das <Event-Titel> Orga Team" als kollektive Absender-
+                //      bezeichnung — gibt der Mail einen erkennbaren Anker.
+                //   2. Darunter die einzelnen Organizer mit vollem Namen
+                //      (Vorname Nachname), in Reihenfolge wie im Wizard
+                //      eingetragen — Haupt-Organizer zuerst.
+                const orgList = (selectedEvent.organizers || [])
+                  .map(s => (s || '').trim())
+                  .filter(Boolean);
+                const teamLine = isDe
+                  ? `Das ${selectedEvent.title} Orga Team`
+                  : `The ${selectedEvent.title} Organizer Team`;
                 const signatureNames = orgList.length > 0
-                  ? orgList.map(firstNameOf).filter(Boolean).join('<br />')
-                  : (isDe ? 'Dein Event-Team' : 'Your event team');
+                  ? `${teamLine}<br />${orgList.join('<br />')}`
+                  : teamLine;
                 const defaultBody = isDe
                   ? `<p>Hallo,</p>
 <p>wir laden dich herzlich zum Event <strong>${selectedEvent.title}</strong> ein.</p>

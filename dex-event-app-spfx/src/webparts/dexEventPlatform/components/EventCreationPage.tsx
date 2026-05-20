@@ -1469,7 +1469,11 @@ export default function EventCreationPage(): React.ReactElement {
     setDescription('Testbeschreibung für ein Demo-Event.');
     setLocation('Köln, Testort');
     setLocationFilter('');
-    setAudience('All');
+    // v11.45: Demo-Event darf NICHT 'All' in den Mailverteiler legen — das
+    // gilt als pauschaler All-Verteiler und ist beim Einladungs-Versand
+    // (siehe AdminPage.getBlockedInviteReason) hart geblockt. Mailverteiler
+    // bleibt im Demo-Template leer; der Organizer fuellt ihn bewusst.
+    setAudience('');
     setStartDate(toDatetime(eventStart));
     setEndDate(toDatetime(eventEnd));
     setRegistrationDeadline(toDate(deadline));
