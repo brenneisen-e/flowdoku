@@ -425,6 +425,14 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
+  // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
+  // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
+  const [showInviteModal, setShowInviteModal] = React.useState(false);
+  const [inviteSubject, setInviteSubject] = React.useState('');
+  const [inviteHeading, setInviteHeading] = React.useState('');
+  const [inviteBody, setInviteBody] = React.useState('');
+  const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
+  const [inviteSending, setInviteSending] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // Outlook-Decline-Check (Admin only): zeigt Teilnehmer, die in Outlook
   // abgesagt haben, aber in der Teilnehmerliste noch aktiv gelistet sind.
@@ -2387,6 +2395,49 @@ export default function AdminPage(): React.ReactElement {
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
                 setShowEmailModal(true);
+              }}
+            />
+
+            {/* v11.40: 4b. Einladungsmail — Mail mit Anmelde-Link an dich
+                (zum Weiterleiten an Kollegen / Teams / externe Adressen)
+                oder direkt an den auf dem Event hinterlegten Mailverteiler.
+                Default-Text + Link werden vorbefuellt, sind aber im RichText-
+                Editor frei editierbar. */}
+            <ActionTile
+              icon={<Send size={18} />}
+              title={isDe ? 'Einladungsmail' : 'Invitation email'}
+              desc={isDe
+                ? 'Versendet eine Einladungs-Mail mit Anmelde-Link — an dich zum Weiterleiten oder direkt an den hinterlegten Mailverteiler des Events.'
+                : 'Sends an invitation email with the registration link — to yourself for forwarding or directly to the configured mail distribution list of the event.'}
+              badge="organizer"
+              onClick={() => {
+                if (!selectedEvent) return;
+                const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
+                const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
+                const defaultBody = isDe
+                  ? `<p>Hallo,</p>
+<p>wir laden dich herzlich zum Event <strong>${selectedEvent.title}</strong> ein.</p>
+<p>Du kannst dich ab sofort über unsere Event-Plattform anmelden:</p>
+<p>${linkHtml}</p>
+<p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>
+<p>Bei Rückfragen meld dich gern bei uns.</p>
+<p>Viele Grüße<br />Dein Event-Team</p>`
+                  : `<p>Hello,</p>
+<p>we would like to invite you to the event <strong>${selectedEvent.title}</strong>.</p>
+<p>You can register via our event platform:</p>
+<p>${linkHtml}</p>
+<p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>
+<p>Feel free to reach out if you have any questions.</p>
+<p>Best regards<br />Your event team</p>`;
+                setInviteSubject(isDe
+                  ? `Einladung: ${selectedEvent.title}`
+                  : `Invitation: ${selectedEvent.title}`);
+                setInviteHeading(isDe
+                  ? `Einladung zu ${selectedEvent.title}`
+                  : `Invitation to ${selectedEvent.title}`);
+                setInviteBody(defaultBody);
+                setInviteTarget('organizer');
+                setShowInviteModal(true);
               }}
             />
 
@@ -5091,6 +5142,166 @@ export default function AdminPage(): React.ReactElement {
               label: emailSending ? 'Wird eingetragen…' : `An ${recipients.length} Teilnehmer senden`,
               onClick: sendAction,
               disabled: emailSending || !emailSubject.trim() || !emailBody.trim() || recipients.length === 0,
+              icon: <Send size={16} />,
+            }}
+          />
+        );
+      })()}
+
+      {/* ===== EINLADUNGSMAIL MODAL (v11.40) ===== */}
+      {showInviteModal && selectedEvent && (() => {
+        const audienceEmails = (selectedEvent.audienceFilter || [])
+          .map(s => (s || '').trim())
+          .filter(Boolean);
+        const myEmail = currentUser.email || '';
+        const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
+        const targetEmails = inviteTarget === 'organizer' ? [myEmail].filter(Boolean) : audienceEmails;
+        const recipientLabel = inviteTarget === 'organizer'
+          ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
+          : (isDe
+            ? `An Mailverteiler (${audienceEmails.length === 0 ? 'leer' : audienceEmails.length + ' Empfänger'})`
+            : `To mail distribution (${audienceEmails.length === 0 ? 'empty' : audienceEmails.length + ' recipients'})`);
+        const orgNames = (selectedEvent.organizers || []).join(', ');
+        const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
+        const previewVars: Record<string, string> = {
+          EventTitle: selectedEvent.title,
+          Organizer: orgNames,
+          Link: appUrl,
+        };
+        const customLogo = (() => {
+          try {
+            const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+            return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
+          } catch { return ''; }
+        })();
+        const sendAction = async (): Promise<void> => {
+          if (!eventServiceRef || !selectedEvent) return;
+          if (targetEmails.length === 0) {
+            alert(isDe
+              ? (inviteTarget === 'audience'
+                ? 'Es ist kein Mailverteiler auf dem Event hinterlegt. Bitte zuerst in Schritt 3 (Sichtbarkeit) Empfänger ergänzen.'
+                : 'Keine eigene E-Mail-Adresse verfügbar.')
+              : (inviteTarget === 'audience'
+                ? 'No mail distribution list configured on the event. Please add recipients in step 3 (Visibility) first.'
+                : 'No own email address available.'));
+            return;
+          }
+          const confirmMsg = isDe
+            ? (inviteTarget === 'organizer'
+              ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
+              : `Einladungs-Mail an ${audienceEmails.length} Empfänger des Mailverteilers senden?\n\n${audienceEmails.join(', ')}`)
+            : (inviteTarget === 'organizer'
+              ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
+              : `Send invitation email to ${audienceEmails.length} recipients of the mail distribution?\n\n${audienceEmails.join(', ')}`);
+          if (!confirm(confirmMsg)) return;
+          setInviteSending(true);
+          const resolvedSubject = replacePlaceholders(inviteSubject, previewVars);
+          const resolvedHeading = replacePlaceholders(inviteHeading, previewVars);
+          const resolvedBody = replacePlaceholders(inviteBody, previewVars);
+          const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+          const allEmails = targetEmails.join(';');
+          const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
+          try {
+            await eventServiceRef.queueEmail(
+              resolvedSubject, allEmails, recipientName, fullBody,
+              'Einladung', selectedEvent.title, selectedEvent.id,
+            );
+            setInviteSending(false);
+            alert(isDe
+              ? `Einladungs-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`
+              : `Invitation email queued for ${targetEmails.length} recipient(s).`);
+            setShowInviteModal(false);
+          } catch {
+            setInviteSending(false);
+            alert(isDe ? 'Fehler beim Eintragen der E-Mail.' : 'Error queueing the email.');
+          }
+        };
+        const headerExtra = (
+          <div style={{
+            padding: 12,
+            background: 'var(--dex-gray-50, #fafafa)',
+            border: '1px solid var(--dex-gray-200)',
+            borderRadius: 'var(--dex-radius)',
+            marginBottom: 4,
+          }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 8 }}>
+              {isDe ? 'Empfänger' : 'Recipient'}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: '0.82rem' }}>
+              <input
+                type="radio"
+                name="inviteTarget"
+                checked={inviteTarget === 'organizer'}
+                onChange={() => setInviteTarget('organizer')}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong>{isDe ? 'An mich — zum Weiterleiten' : 'To me — for forwarding'}</strong>
+                <br />
+                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>
+                  {myEmail}
+                </span>
+              </span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: audienceEmails.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.82rem', opacity: audienceEmails.length === 0 ? 0.55 : 1 }}>
+              <input
+                type="radio"
+                name="inviteTarget"
+                checked={inviteTarget === 'audience'}
+                onChange={() => setInviteTarget('audience')}
+                disabled={audienceEmails.length === 0}
+                style={{ marginTop: 3 }}
+              />
+              <span style={{ flex: 1 }}>
+                <strong>
+                  {isDe
+                    ? `An Mailverteiler des Events (${audienceEmails.length})`
+                    : `To event mail distribution (${audienceEmails.length})`}
+                </strong>
+                <br />
+                <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem', wordBreak: 'break-word' }}>
+                  {audienceEmails.length === 0
+                    ? (isDe
+                      ? 'Kein Mailverteiler auf dem Event hinterlegt — in Schritt 3 (Sichtbarkeit) im Event-Edit ergänzen.'
+                      : 'No mail distribution configured — add recipients in step 3 (Visibility) of event edit.')
+                    : audienceEmails.join(', ')}
+                </span>
+              </span>
+            </label>
+          </div>
+        );
+        return (
+          <HtmlEditorModal
+            open={showInviteModal}
+            onClose={() => !inviteSending && setShowInviteModal(false)}
+            title={isDe
+              ? `Einladungsmail: ${selectedEvent.title}`
+              : `Invitation email: ${selectedEvent.title}`}
+            value={inviteBody}
+            onChange={setInviteBody}
+            previewMode="email"
+            emailSubject={inviteSubject}
+            onEmailSubjectChange={setInviteSubject}
+            emailHeading={inviteHeading}
+            onEmailHeadingChange={setInviteHeading}
+            emailHeadingColor="#86bc25"
+            previewVars={previewVars}
+            insertableVars={[
+              { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },
+              { key: '{{Link}}', label: isDe ? 'Anmelde-Link' : 'Registration link' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+            ]}
+            imageBase64={customLogo}
+            headerExtra={headerExtra}
+            extraAction={{
+              label: inviteSending
+                ? (isDe ? 'Wird eingetragen…' : 'Queueing…')
+                : (isDe ? `Senden — ${recipientLabel}` : `Send — ${recipientLabel}`),
+              onClick: sendAction,
+              disabled: inviteSending
+                || !inviteSubject.trim()
+                || !inviteBody.trim()
+                || targetEmails.length === 0,
               icon: <Send size={16} />,
             }}
           />
