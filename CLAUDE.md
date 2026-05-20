@@ -204,7 +204,7 @@ Wenn du also eine neue SP-Liste mit Sonderzeichen im Namen anlegst und Items per
 | QR-Codes versenden | ❌ | ✅ (eigene) | ✅ (alle) |
 | E-Mail-Adressen kopieren | ❌ | ✅ (eigene) | ✅ |
 | Massenmail an Teilnehmer (RichText-Editor + Deloitte-Template) | ❌ | ✅ (eigene) | ✅ (alle) |
-| Einladungsmail mit Anmelde-Link (an mich oder an Mailverteiler) | ❌ | ✅ (eigene, ab v11.40) | ✅ (alle) |
+| Einladungsmail mit Anmelde-Link (an mich oder an Mailverteiler — Standort-/All-Verteiler hart geblockt, siehe v11.41) | ❌ | ✅ (eigene, ab v11.40) | ✅ (alle) |
 | **IDs neu vergeben** (sequentielle Renummerierung) | ❌ | ✅ (eigene, ab v11.36) | ✅ |
 | **Spalten fixen** (fehlende Felder + View-Reihenfolge) | ❌ | ❌ | ✅ |
 

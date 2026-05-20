@@ -83,6 +83,24 @@ export function inviteMailSection(locale: 'de' | 'en'): ManualSection {
               </Callout>
             ),
           },
+          {
+            number: 5,
+            title: isDe ? 'Was nicht erlaubt ist' : 'What is not allowed',
+            description: (
+              <>
+                {isDe
+                  ? 'Die Einladungs-Mail darf NICHT an pauschale Standort-Verteiler (z.B. de.duesseldorf@deloitte.de, frankfurt@deloitte.de) oder an All-Verteiler (deall@, all@, alldeloitte@) gehen — solche Aussendungen brauchen Marketing-/CMC-Freigabe und sind aus der App heraus gesperrt. Stehen entsprechende Adressen im Mailverteiler des Events, zeigt der Dialog einen roten Warnhinweis mit den blockierten Empfängern. Beim Klick auf „Senden" erscheint ein Fehler-Modal und die Mail wird gar nicht erst in die Queue eingetragen. Kleinere, explizite Verteilergruppen (Team-Mailboxen, Funktions-Accounts wie z.B. sap-alliance@) bleiben erlaubt.'
+                  : 'The invitation email must NOT go to entire location distribution lists (e.g. de.duesseldorf@deloitte.de, frankfurt@deloitte.de) or to all-distribution lists (deall@, all@, alldeloitte@) — these require marketing/CMC approval and are blocked in the app. If such addresses appear in the event mail distribution, the dialog shows a red warning with the blocked recipients. Clicking "Send" shows an error modal and the mail is not queued at all. Smaller, explicit distribution groups (team mailboxes, functional accounts like sap-alliance@) remain allowed.'}
+              </>
+            ),
+            mockup: (
+              <Callout variant="warning">
+                {isDe
+                  ? 'Die Sperre prüft den lokalen Teil der E-Mail-Adresse (vor dem @) auf bekannte Muster: deall, all, sowie de.<Stadt> / <Stadt>.de / Stadt-alleinstehend (Berlin, Düsseldorf, Frankfurt, Hamburg, Köln, München, …). Falls ein zukünftiger Verteiler unter ein anderes Muster fällt, lass uns das wissen — die Block-Liste ist erweiterbar.'
+                  : 'The block checks the local part of the email address (before the @) for known patterns: deall, all, plus de.<city> / <city>.de / <city> alone (Berlin, Düsseldorf, Frankfurt, Hamburg, Cologne, Munich, …). If a future distribution falls under a different pattern, let us know — the block list is extensible.'}
+              </Callout>
+            ),
+          },
         ],
       },
     ],

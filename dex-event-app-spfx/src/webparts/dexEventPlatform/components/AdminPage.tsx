@@ -43,6 +43,62 @@ function getStatusColor(status: string): string {
   }
 }
 
+// v11.41: Einladungsmail-Empfaenger-Blocker. Die Einladungsmail darf NIE an
+// komplette Standort-Verteiler ('de.duesseldorf@...', 'duesseldorf@...' etc.)
+// oder an pauschale 'all'-Listen ('deall@...', 'all@...', 'alldeloitte@...')
+// gehen. Hintergrund: solche Aussendungen sind ohne CMC-/Marketing-Freigabe
+// nicht erlaubt — kleinere explizite Verteilergruppen (Team-Mailboxen,
+// Funktions-Accounts) bleiben aber zulaessig.
+const DEX_LOCATION_TOKENS: string[] = [
+  'berlin', 'dresden', 'duesseldorf', 'dusseldorf', 'düsseldorf',
+  'frankfurt', 'goerlitz', 'görlitz', 'halle', 'hamburg', 'hannover',
+  'koeln', 'köln', 'cologne', 'leipzig', 'magdeburg', 'mannheim',
+  'muenchen', 'münchen', 'munich', 'nuernberg', 'nürnberg', 'nuremberg',
+  'stuttgart', 'walldorf',
+];
+
+/** Wenn die Adresse als unerlaubter Massen-Verteiler erkannt wird, gibt den
+ *  Block-Grund zurueck — sonst null. Heuristik bewusst konservativ: matched
+ *  nur, wenn der Local-Part eindeutig ein Standort-/All-Verteiler ist. Team-
+ *  Mailboxen wie 'frankfurt-event-team@' bleiben erlaubt. */
+function getBlockedInviteReason(email: string): string | null {
+  const lc = (email || '').trim().toLowerCase();
+  if (!lc) return null;
+  const at = lc.indexOf('@');
+  if (at <= 0) return null;
+  const local = lc.slice(0, at);
+  // Token-Split: Local-Part nach .-_ tokenisieren.
+  const tokens = local.split(/[._-]/).filter(Boolean);
+  // (1) deall / de.all / de-all / alldeloitte etc. — globaler DE-Verteiler.
+  if (local === 'deall' || local === 'alldeloitte' || tokens.includes('deall') || tokens.includes('alldeloitte')) {
+    return 'globaler Deloitte-DE-Verteiler';
+  }
+  // (2) 'all' als eigenstaendiger Token oder Local-Part — pauschale Liste.
+  if (local === 'all' || tokens.includes('all')) {
+    return 'globaler "all"-Verteiler';
+  }
+  // (3) Standort-Verteiler: Local-Part ist exakt eine Stadt ODER beginnt /
+  //     endet mit 'de.' / 'de-' und enthaelt eine Stadt als Token.
+  for (const loc of DEX_LOCATION_TOKENS) {
+    if (local === loc) return `Standort-Verteiler (${loc})`;
+    // 'de.<loc>' / 'de-<loc>' / '<loc>.de' / '<loc>-de'
+    if (tokens.length === 2 && tokens.includes('de') && tokens.includes(loc)) {
+      return `Standort-Verteiler (${loc})`;
+    }
+  }
+  return null;
+}
+
+/** Liefert pro Empfaenger die Block-Begruendung — leeres Array = alles OK. */
+function getBlockedInviteRecipients(emails: string[]): Array<{ email: string; reason: string }> {
+  const out: Array<{ email: string; reason: string }> = [];
+  for (const e of emails) {
+    const reason = getBlockedInviteReason(e);
+    if (reason) out.push({ email: e, reason });
+  }
+  return out;
+}
+
 // v9.20: EventStatus-Labels lokalisieren (DE).
 function localizeStatus(status: string): string {
   switch (status) {
@@ -5156,6 +5212,11 @@ export default function AdminPage(): React.ReactElement {
         const myEmail = currentUser.email || '';
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
         const targetEmails = inviteTarget === 'organizer' ? [myEmail].filter(Boolean) : audienceEmails;
+        // v11.41: Blocked-Check fuer den aktuell gewaehlten Empfaenger-Modus.
+        // 'organizer'-Modus blockt eigentlich nie — die eigene Mail ist immer
+        // eine Person, kein Verteiler — aber wir laufen das defensiv mit.
+        const blockedInTargets = getBlockedInviteRecipients(targetEmails);
+        const blockedInAudience = getBlockedInviteRecipients(audienceEmails);
         const recipientLabel = inviteTarget === 'organizer'
           ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
           : (isDe
@@ -5184,6 +5245,15 @@ export default function AdminPage(): React.ReactElement {
               : (inviteTarget === 'audience'
                 ? 'No mail distribution list configured on the event. Please add recipients in step 3 (Visibility) first.'
                 : 'No own email address available.'));
+            return;
+          }
+          // v11.41: Hart blocken — Einladungsmail darf nie an pauschale
+          // Standort-/All-Verteiler ('deall', 'all', 'de.<stadt>') gehen.
+          if (blockedInTargets.length > 0) {
+            const lines = blockedInTargets.map(b => `• ${b.email}  (${b.reason})`).join('\n');
+            alert(isDe
+              ? `Die Einladungs-Mail darf NICHT an pauschale Standort- oder All-Verteiler verschickt werden.\n\nFolgende Empfänger sind blockiert:\n\n${lines}\n\nBitte entferne diese Adressen aus dem Mailverteiler in Schritt 3 des Event-Edits oder nutze die Option „An mich (zum Weiterleiten)".`
+              : `The invitation email must NOT be sent to entire location or all-distribution lists.\n\nThe following recipients are blocked:\n\n${lines}\n\nPlease remove these addresses from the mail distribution in step 3 of event edit, or use the option "To me (for forwarding)".`);
             return;
           }
           const confirmMsg = isDe
@@ -5266,6 +5336,28 @@ export default function AdminPage(): React.ReactElement {
                       : 'No mail distribution configured — add recipients in step 3 (Visibility) of event edit.')
                     : audienceEmails.join(', ')}
                 </span>
+                {blockedInAudience.length > 0 && (
+                  <div style={{
+                    marginTop: 6, padding: '6px 8px',
+                    background: '#fef3f2', border: '1px solid #c9302c',
+                    borderRadius: 6, color: '#7a1f1c',
+                    fontSize: '0.75rem', lineHeight: 1.4,
+                  }}>
+                    <strong>
+                      {isDe ? '⚠ Blockierte Empfänger im Mailverteiler:' : '⚠ Blocked recipients in the distribution list:'}
+                    </strong>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                      {blockedInAudience.map(b => (
+                        <li key={b.email}><code>{b.email}</code> — {b.reason}</li>
+                      ))}
+                    </ul>
+                    <div style={{ marginTop: 4 }}>
+                      {isDe
+                        ? 'Pauschale Standort- oder All-Verteiler sind für Einladungs-Mails nicht zulässig. Bitte aus dem Mailverteiler entfernen (Event-Edit, Schritt 3) — sonst wird das Senden blockiert.'
+                        : 'Entire location or all-distribution lists are not allowed for invitation emails. Please remove from the distribution list (event edit, step 3) — otherwise sending is blocked.'}
+                    </div>
+                  </div>
+                )}
               </span>
             </label>
           </div>
