@@ -40,26 +40,61 @@ export interface IDexEventPlatformProps {
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
+  const { markExpiredEventsAsCompleted, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
-  // v11.48/v11.51: KPI-Werte fuer die zwei Boxen waehrend der Boot-Ladephase.
-  // - hostedEvents: alle nicht-Test-, nicht-gecancelten Events (aktive +
-  //   vergangene).
-  // - participants: Summe von currentParticipants ueber genau diese Events.
-  //   currentParticipants wird in EventContext.loadParticipantCountsForEvents
-  //   live aus jeder Subsite gezaehlt (Status 'Angemeldet'/'QR versendet'/
-  //   'Eingecheckt') — Doppelzaehlung pro Event ausgeschlossen, aber wer
-  //   sich fuer mehrere Events anmeldet, zaehlt pro Event einmal. Das ist
-  //   bewusst "Teilnehmer-Plaetze gefuellt", nicht "unique Personen".
-  const hostedEventsList = (events || []).filter(e => {
-    if (e.isFictive) return false;
-    if (e.status === 'Cancelled') return false;
-    return true;
-  });
-  const kpiHostedEvents = hostedEventsList.length;
-  const kpiParticipants = hostedEventsList.reduce(
-    (sum, e) => sum + (e.currentParticipants || 0), 0,
-  );
+  // v11.52: KPI-Boxen im Boot-Loader. Live-Zaehlung ueber alle Event-
+  // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
+  // jetzt lesen wir einen gecachten Wert aus der _Config-Zeile von
+  // DEX_EmailTemplates: EIN schneller REST-Call, sofort verfuegbar.
+  // Im Hintergrund laeuft nach vollem Event-Load ein Refresh, der die
+  // Cache-Werte aktualisiert — naechster Boot sieht frische Zahlen.
+  const [kpiCache, setKpiCache] = React.useState<{ participants: number; events: number } | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await getKpiCache();
+        if (!cancelled && v) setKpiCache(v);
+      } catch { /* */ }
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sobald Events + Counts fertig sind, frische Werte berechnen und in den
+  // Cache zurueckschreiben — beim naechsten Boot-Loader sind sie sofort
+  // sichtbar. Pro Browser-Session schreiben wir hoechstens EINMAL (Session-
+  // Storage-Guard), damit bei 10k+ aktiven Usern nicht jeder Tab-Wechsel
+  // einen SP-Write triggert. Lesen tut jeder Boot — der Cache konvergiert
+  // also permanent, ohne Schreib-Last.
+  const kpiRefreshedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    if (kpiRefreshedRef.current) return;
+    kpiRefreshedRef.current = true;
+    const SESSION_KEY = 'dex-kpi-cache-refreshed';
+    let alreadyDoneThisSession = false;
+    try { alreadyDoneThisSession = sessionStorage.getItem(SESSION_KEY) === '1'; } catch { /* */ }
+    const hosted = events.filter(e => !e.isFictive && e.status !== 'Cancelled');
+    const eventsCount = hosted.length;
+    const participantsCount = hosted.reduce((s, e) => s + (e.currentParticipants || 0), 0);
+    // Optimistisches In-Memory-Update — falls der Boot-Loader irgendwann
+    // erneut angezeigt wuerde, zeigt er die frischen Werte sofort.
+    setKpiCache({ participants: participantsCount, events: eventsCount });
+    if (alreadyDoneThisSession) return;
+    // SP-Update best-effort, im Hintergrund. IF-MATCH '*' = last-writer-wins,
+    // bei 10k+ Usern ist Eventual Consistency hier ausreichend.
+    updateKpiCache({ participants: participantsCount, events: eventsCount })
+      .then(ok => {
+        if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ } }
+      })
+      .catch(() => { /* */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEventsLoading, events]);
+
+  const kpiHostedEvents = kpiCache?.events ?? 0;
+  const kpiParticipants = kpiCache?.participants ?? 0;
 
   // v7.5/7.6: Boot-Progress. Zeitbasiert + asymptotisch: über die ersten ~3-4
   // Sekunden steigt der Wert relativ schnell, danach immer langsamer Richtung
@@ -371,8 +406,8 @@ function AppContent(): React.ReactElement {
               <div style={{ width: 'min(320px, 80%)', marginTop: 18 }}>
                 <KpiRow
                   locale="de"
-                  eventsLoading={isEventsLoading}
-                  participantsLoading={isEventsLoading}
+                  eventsLoading={kpiCache === null}
+                  participantsLoading={kpiCache === null}
                   events={kpiHostedEvents}
                   participants={kpiParticipants}
                 />
