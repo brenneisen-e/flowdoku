@@ -2470,12 +2470,23 @@ export default function AdminPage(): React.ReactElement {
                 if (!selectedEvent) return;
                 const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
                 const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
-                // v11.42: Signatur uebernimmt die echten Organizer-Namen
-                // (Vorname Nachname pro Zeile), damit der Empfaenger sieht
-                // wer einlaedt — statt eines generischen "Dein Event-Team".
+                // v11.42/v11.43: Signatur listet die Organizer — bei Deloitte
+                // duzt man sich, also reicht der Vorname (erstes Wort des
+                // displayName). Bei "Mustermann, Max"-Reihenfolge nehmen wir
+                // den Teil nach dem Komma als Vornamen.
                 const orgList = (selectedEvent.organizers || []).filter(s => (s || '').trim());
+                const firstNameOf = (full: string): string => {
+                  const f = (full || '').trim();
+                  if (!f) return '';
+                  if (f.indexOf(',') >= 0) {
+                    const after = f.split(',')[1] || '';
+                    const fn = after.trim().split(/\s+/)[0] || '';
+                    if (fn) return fn;
+                  }
+                  return f.split(/\s+/)[0] || f;
+                };
                 const signatureNames = orgList.length > 0
-                  ? orgList.map(n => n.trim()).join('<br />')
+                  ? orgList.map(firstNameOf).filter(Boolean).join('<br />')
                   : (isDe ? 'Dein Event-Team' : 'Your event team');
                 const defaultBody = isDe
                   ? `<p>Hallo,</p>
@@ -5219,6 +5230,15 @@ export default function AdminPage(): React.ReactElement {
         const myEmail = currentUser.email || '';
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
         const targetEmails = inviteTarget === 'organizer' ? [myEmail].filter(Boolean) : audienceEmails;
+        // v11.43: Organizer-Mails als CC mitschicken — damit alle Organizer
+        // sehen, dass die Einladung raus ist und ggf. auf Rueckfragen
+        // antworten koennen. Duplikate gegenueber TO werden rausgefiltert
+        // (z.B. wenn der Sender selbst Organizer ist und 'An mich' waehlt).
+        const toLcSet = new Set(targetEmails.map(e => (e || '').toLowerCase()));
+        const ccEmails = (selectedEvent.organizerEmails || [])
+          .map(s => (s || '').trim())
+          .filter(Boolean)
+          .filter(e => !toLcSet.has(e.toLowerCase()));
         // v11.41: Blocked-Check fuer den aktuell gewaehlten Empfaenger-Modus.
         // 'organizer'-Modus blockt eigentlich nie — die eigene Mail ist immer
         // eine Person, kein Verteiler — aber wir laufen das defensiv mit.
@@ -5277,11 +5297,13 @@ export default function AdminPage(): React.ReactElement {
           const resolvedBody = replacePlaceholders(inviteBody, previewVars);
           const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
           const allEmails = targetEmails.join(';');
+          const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
           try {
             await eventServiceRef.queueEmail(
               resolvedSubject, allEmails, recipientName, fullBody,
               'Einladung', selectedEvent.title, selectedEvent.id,
+              ccString || undefined,
             );
             setInviteSending(false);
             alert(isDe
@@ -5367,6 +5389,21 @@ export default function AdminPage(): React.ReactElement {
                 )}
               </span>
             </label>
+            {ccEmails.length > 0 && (
+              <div style={{
+                marginTop: 10, paddingTop: 8,
+                borderTop: '1px dashed var(--dex-gray-200)',
+                fontSize: '0.78rem', color: 'var(--dex-gray-600)',
+              }}>
+                <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'CC' : 'CC'}: </strong>
+                <span style={{ wordBreak: 'break-word' }}>{ccEmails.join(', ')}</span>
+                <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
+                  {isDe
+                    ? 'Alle Organizer dieses Events werden automatisch in CC gesetzt.'
+                    : 'All organizers of this event are automatically added in CC.'}
+                </div>
+              </div>
+            )}
           </div>
         );
         return (
