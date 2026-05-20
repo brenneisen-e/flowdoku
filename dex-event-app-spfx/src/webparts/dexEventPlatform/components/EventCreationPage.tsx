@@ -742,12 +742,24 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent?.emailTemplateOverrides ? (() => {
       try {
         const parsed = JSON.parse(editEvent.emailTemplateOverrides);
-        // _eventLogo wird separat ueber emailLogoPreview-State verwaltet —
-        // nicht in emailTemplateOverrides doppelt halten (sonst laesst sich das
-        // Custom-Logo nach Remove nicht mehr aus SP entfernen).
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { _eventLogo, ...rest } = parsed;
-        return rest;
+        // v11.39: Alle Piggyback-Keys rausstrippen — sie werden in separaten
+        // States gehalten (emailLogoPreview, outlookLogoPreview, testTeamEmails
+        // etc.) und beim Speichern frisch dazugemerged. Wenn sie hier
+        // mitgeschleppt werden, überschreibt der spread `...emailTemplateOverrides`
+        // am Ende von handleSubmit die frisch berechneten Werte und das
+        // Entfernen z.B. eines Test-Team-Mitglieds bleibt ohne Wirkung.
+        const {
+          _eventLogo, _outlookLogo, _b2run,
+          _qrScanners, _coOrganizers, _testTeam,
+          _splitDisplayOrderReversed,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...rest
+        } = parsed as Record<string, unknown>;
+        // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
+        void _eventLogo; void _outlookLogo; void _b2run;
+        void _qrScanners; void _coOrganizers; void _testTeam;
+        void _splitDisplayOrderReversed;
+        return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
   );
