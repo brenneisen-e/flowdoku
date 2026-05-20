@@ -13,71 +13,9 @@ export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
   const { currentUser } = useCurrentUser();
-  const { sendAdminInquiry, events, isEventsLoading, getAppViewCount, incrementAppViewCount } = useEvents();
+  const { sendAdminInquiry } = useEvents();
   const [showInfo, setShowInfo] = React.useState(false);
   const [showInquiry, setShowInquiry] = React.useState(false);
-
-  // v11.47: KPI-Werte fuer die drei Boxen ueber dem "Entwickelt von …"-Block.
-  // - hostedEvents: vergangene, nicht-fictive, nicht-gecancelte Events.
-  // - participants: Summe aller currentParticipants ueber diese Events.
-  // - appViews: Counter aus _Config-Zeile (DEX_EmailTemplates), pro
-  //   Browser-Session genau einmal inkrementiert.
-  const now = Date.now();
-  const hostedEventsList = (events || []).filter(e => {
-    if (e.isFictive) return false;
-    if (e.status === 'Cancelled') return false;
-    if (!e.endDate) return false;
-    const ts = new Date(e.endDate).getTime();
-    return !isNaN(ts) && ts < now;
-  });
-  const kpiHostedEvents = hostedEventsList.length;
-  const kpiParticipants = hostedEventsList.reduce(
-    (sum, e) => sum + (e.currentParticipants || 0), 0,
-  );
-  const [kpiAppViews, setKpiAppViews] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    // Einmal pro Browser-Session inkrementieren, sonst zaehlt jeder Tab-
-    // Wechsel zur LandingPage neu — was "App-Aufrufe" verzerren wuerde.
-    const SESSION_KEY = 'dex-app-view-counted';
-    const alreadyCounted = (() => {
-      try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch { return false; }
-    })();
-    let cancelled = false;
-    (async () => {
-      try {
-        if (alreadyCounted) {
-          const v = await getAppViewCount();
-          if (!cancelled && typeof v === 'number') setKpiAppViews(v);
-        } else {
-          const next = await incrementAppViewCount();
-          if (!cancelled && typeof next === 'number') {
-            setKpiAppViews(next);
-            try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ }
-          } else {
-            const v = await getAppViewCount();
-            if (!cancelled && typeof v === 'number') setKpiAppViews(v);
-          }
-        }
-      } catch { /* KPI ist best-effort, Landing soll nicht crashen */ }
-    })().catch(() => { /* */ });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // v11.48: KPIs sind nur waehrend der Lade-Phase + Count-Up-Animation
-  // sichtbar — danach fadet die Reihe aus und kollabiert ihre Hoehe, sodass
-  // nur noch der "Entwickelt von ..."-Block uebrig bleibt. Damit fuehlt
-  // es sich wie ein Splash-Effekt beim Start an, anstatt dauerhaft die
-  // Landing zu verlaengern.
-  const kpiDataLoaded = !isEventsLoading && kpiAppViews !== null;
-  const [kpiHidden, setKpiHidden] = React.useState(false);
-  React.useEffect(() => {
-    if (!kpiDataLoaded) return;
-    // Daten da → Count-Up laeuft 1.6s, danach 1.8s Hold, dann ausblenden.
-    const HIDE_DELAY = 1600 + 1800;
-    const timer = setTimeout(() => setKpiHidden(true), HIDE_DELAY);
-    return () => clearTimeout(timer);
-  }, [kpiDataLoaded]);
   const userFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
   const [inquiryName, setInquiryName] = React.useState(userFullName);
   const [inquiryEvent, setInquiryEvent] = React.useState('');
@@ -243,20 +181,6 @@ export default function LandingPage(): React.ReactElement {
                 : 'Want to use the DEX App for your event too? Just reach out to us!'}
             </button>
           </div>
-          {/* v11.47/v11.48: Drei KPI-Boxen ueber dem "Entwickelt von ..."-
-              Block — nur waehrend der initialen Lade-Phase + Count-Up-
-              Animation sichtbar. Nach Hold-Periode fadet die Reihe aus
-              und kollabiert ihre Hoehe, sodass die Landing am Ende
-              schlank bleibt. */}
-          <KpiRow
-            locale={locale}
-            eventsLoading={isEventsLoading}
-            viewsLoading={kpiAppViews === null}
-            events={kpiHostedEvents}
-            participants={kpiParticipants}
-            views={kpiAppViews ?? 0}
-            hidden={kpiHidden}
-          />
 
           <div
             style={{
@@ -391,7 +315,7 @@ export default function LandingPage(): React.ReactElement {
 // einer AnimatedCounter-Komponente, die beim ersten Verfuegbarwerden des
 // Werts von 0 zum Zielwert ease-out hochzaehlt (~1.6s). Solange Daten noch
 // laden, steht ein dezenter Skeleton-Punkt im Wert-Feld.
-function KpiRow(props: {
+export function KpiRow(props: {
   locale: string;
   eventsLoading: boolean;
   viewsLoading: boolean;
