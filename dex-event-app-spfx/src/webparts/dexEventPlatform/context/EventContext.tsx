@@ -151,9 +151,6 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
-  /** v11.50: Anzahl Items in DEX_Participants (unique User insgesamt).
-   *  Liest schnell aus dem ItemCount-Metadatum, lädt keine Items. */
-  getParticipantsListCount: () => Promise<number | null>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -1231,7 +1228,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
-        getParticipantsListCount: () => eventService.getParticipantsListCount(),
       },
     },
     props.children

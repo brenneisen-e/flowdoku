@@ -40,30 +40,26 @@ export interface IDexEventPlatformProps {
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, isEventsLoading, events, getParticipantsListCount } = useEvents();
+  const { markExpiredEventsAsCompleted, isEventsLoading, events } = useEvents();
 
-  // v11.48/v11.50: KPI-Werte fuer die zwei Boxen waehrend der Boot-Ladephase.
-  // - hostedEvents: alle nicht-Test-, nicht-gecancelten Events
-  //   (vergangene wie aktive zaehlen mit).
-  // - participants: ItemCount der DEX_Participants-Liste (unique User insg.).
+  // v11.48/v11.51: KPI-Werte fuer die zwei Boxen waehrend der Boot-Ladephase.
+  // - hostedEvents: alle nicht-Test-, nicht-gecancelten Events (aktive +
+  //   vergangene).
+  // - participants: Summe von currentParticipants ueber genau diese Events.
+  //   currentParticipants wird in EventContext.loadParticipantCountsForEvents
+  //   live aus jeder Subsite gezaehlt (Status 'Angemeldet'/'QR versendet'/
+  //   'Eingecheckt') — Doppelzaehlung pro Event ausgeschlossen, aber wer
+  //   sich fuer mehrere Events anmeldet, zaehlt pro Event einmal. Das ist
+  //   bewusst "Teilnehmer-Plaetze gefuellt", nicht "unique Personen".
   const hostedEventsList = (events || []).filter(e => {
     if (e.isFictive) return false;
     if (e.status === 'Cancelled') return false;
     return true;
   });
   const kpiHostedEvents = hostedEventsList.length;
-  const [kpiParticipants, setKpiParticipants] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const n = await getParticipantsListCount();
-        if (!cancelled && typeof n === 'number') setKpiParticipants(n);
-      } catch { /* KPI ist best-effort */ }
-    })().catch(() => { /* */ });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const kpiParticipants = hostedEventsList.reduce(
+    (sum, e) => sum + (e.currentParticipants || 0), 0,
+  );
 
   // v7.5/7.6: Boot-Progress. Zeitbasiert + asymptotisch: über die ersten ~3-4
   // Sekunden steigt der Wert relativ schnell, danach immer langsamer Richtung
@@ -376,9 +372,9 @@ function AppContent(): React.ReactElement {
                 <KpiRow
                   locale="de"
                   eventsLoading={isEventsLoading}
-                  participantsLoading={kpiParticipants === null}
+                  participantsLoading={isEventsLoading}
                   events={kpiHostedEvents}
-                  participants={kpiParticipants ?? 0}
+                  participants={kpiParticipants}
                 />
               </div>
             </div>
