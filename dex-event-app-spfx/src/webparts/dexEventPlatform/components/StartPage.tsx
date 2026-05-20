@@ -15,15 +15,27 @@ export default function StartPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const { t } = useLanguage();
 
-  // v11.38: Co-Organizer pro Event (per-Event-Rolle, ohne globale Organizer-
-  // Rolle in DEX_Roles) sehen die Organizer-Kachel ebenfalls — AdminPage
-  // gewaehrt ihnen ohnehin Zugriff auf "ihre" Events (siehe isOrganizerFor
-  // dort), aber ohne Kachel im Startmenue gab es bisher keinen Einstieg.
+  // v11.38/v11.46: Co-Organizer pro Event (per-Event-Rolle, ohne globale
+  // Organizer-Rolle in DEX_Roles) sehen die Organizer-Kachel ebenfalls —
+  // AdminPage gewaehrt ihnen ohnehin Zugriff auf "ihre" Events (siehe
+  // isOrganizerFor dort), aber ohne Kachel im Startmenue gab es bisher
+  // keinen Einstieg.
+  //
+  // v11.46-Fix: seit v9.20 hat der Wizard nur EINEN Organizer-Picker und
+  // schreibt alle Personen (Haupt-Organizer wie Co-Organizer) in
+  // event.organizerEmails — das alte Feld event.coOrganizerEmails wird
+  // garnicht mehr befuellt (siehe EventCreationPage const-State ohne Setter).
+  // Der bisherige Check auf nur coOrganizerEmails fand also fuer alle nach
+  // v9.20 angelegten Events nichts. Pruefung jetzt analog zu
+  // AdminPage.isOrganizerFor: organizerEmails ODER coOrganizerEmails
+  // (Backward-Compat fuer alte Events).
   const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const isCoOrganizerOfAny = !!currentEmailLc && (events || []).some(
-    e => (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
-  );
-  const showAdminTile = canCreateEvents || isCoOrganizerOfAny;
+  const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
+    const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+    if (inOrg) return true;
+    return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+  });
+  const showAdminTile = canCreateEvents || isOrganizerOfAnyEvent;
 
   return (
     <div className="page-container">

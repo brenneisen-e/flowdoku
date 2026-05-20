@@ -25,14 +25,20 @@ export default function Header(): React.ReactElement {
   // v6.26: Zugriff auch fuer User, die per E-Mail in event.qrScannerEmails
   // mindestens eines Events eingetragen sind — ohne globale Organizer-Rolle.
   // v9.18: Co-Organizer pro Event ebenfalls Check-In-faehig.
+  // v11.46: Seit v9.20 hat der Wizard nur einen Organizer-Picker, der alle
+  // (Haupt-Organizer wie Co-Organizer) in event.organizerEmails schreibt.
+  // Pruefung deshalb analog zu AdminPage.isOrganizerFor: organizerEmails ODER
+  // coOrganizerEmails (Backward-Compat fuer alte Events).
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerOfAny = !!currentEmailLc && (events || []).some(
     e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
   );
-  const isCoOrganizerOfAny = !!currentEmailLc && (events || []).some(
-    e => (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
-  );
-  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny || isCoOrganizerOfAny;
+  const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
+    const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+    if (inOrg) return true;
+    return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+  });
+  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny || isOrganizerOfAnyEvent;
   const { t, locale, setLocale } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
