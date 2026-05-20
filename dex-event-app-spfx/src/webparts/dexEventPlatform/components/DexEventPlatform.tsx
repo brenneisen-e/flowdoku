@@ -39,7 +39,7 @@ export interface IDexEventPlatformProps {
 // Innere Komponente, die den NavigationContext nutzen kann
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
-  const { isAdmin, isRolesLoading } = useRoles();
+  const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zaehlung ueber alle Event-
@@ -61,15 +61,16 @@ function AppContent(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sobald Events + Counts fertig sind, frische Werte berechnen und in den
-  // Cache zurueckschreiben — beim naechsten Boot-Loader sind sie sofort
-  // sichtbar. Pro Browser-Session schreiben wir hoechstens EINMAL (Session-
-  // Storage-Guard), damit bei 10k+ aktiven Usern nicht jeder Tab-Wechsel
-  // einen SP-Write triggert. Lesen tut jeder Boot — der Cache konvergiert
-  // also permanent, ohne Schreib-Last.
+  // v11.54: Self-Heal-Recompute nur durch Admin oder Organizer ausloesen.
+  // Normale User lesen den gecachten Wert (1 schneller GET) — kein
+  // Recompute-Roundtrip, kein SP-Write. Bei 10k+ aktiven Usern reicht es
+  // voellig, wenn die paar Dutzend Admins/Organizer den Cache periodisch
+  // konvergieren lassen. Direkt-Increments bei Register/Cancel/Create/
+  // Delete laufen weiterhin fuer alle Rollen — Cache bleibt nah dran.
   const kpiRefreshedRef = React.useRef(false);
   React.useEffect(() => {
-    if (isEventsLoading) return;
+    if (isEventsLoading || isRolesLoading) return;
+    if (!isAdmin && !isOrganizer) return;
     if (!events || events.length === 0) return;
     if (kpiRefreshedRef.current) return;
     kpiRefreshedRef.current = true;
@@ -79,19 +80,15 @@ function AppContent(): React.ReactElement {
     const hosted = events.filter(e => !e.isFictive && e.status !== 'Cancelled');
     const eventsCount = hosted.length;
     const participantsCount = hosted.reduce((s, e) => s + (e.currentParticipants || 0), 0);
-    // Optimistisches In-Memory-Update — falls der Boot-Loader irgendwann
-    // erneut angezeigt wuerde, zeigt er die frischen Werte sofort.
     setKpiCache({ participants: participantsCount, events: eventsCount });
     if (alreadyDoneThisSession) return;
-    // SP-Update best-effort, im Hintergrund. IF-MATCH '*' = last-writer-wins,
-    // bei 10k+ Usern ist Eventual Consistency hier ausreichend.
     updateKpiCache({ participants: participantsCount, events: eventsCount })
       .then(ok => {
         if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ } }
       })
       .catch(() => { /* */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEventsLoading, events]);
+  }, [isEventsLoading, isRolesLoading, isAdmin, isOrganizer, events]);
 
   const kpiHostedEvents = kpiCache?.events ?? 0;
   const kpiParticipants = kpiCache?.participants ?? 0;
@@ -364,10 +361,10 @@ function AppContent(): React.ReactElement {
               </div>
               <div className="landing__text">
                 <h1 style={{ lineHeight: 1.25 }}>
-                  Willkommen auf der neuen <strong style={{ whiteSpace: 'nowrap' }}>Event Experience Platform.</strong>
+                  Welcome to the new <strong style={{ whiteSpace: 'nowrap' }}>Event Experience Platform.</strong>
                 </h1>
                 <p style={{ color: 'var(--dex-gray-500)', marginTop: 12, fontSize: '0.95rem' }}>
-                  Jeden Moment geht&apos;s los…
+                  Just a moment…
                 </p>
               </div>
               {/* Determinate-Progress-Bar (v7.5). Die Phasen Rollen-Load
@@ -405,7 +402,7 @@ function AppContent(): React.ReactElement {
                   die Boxen automatisch mit ihm. */}
               <div style={{ width: 'min(320px, 80%)', marginTop: 18 }}>
                 <KpiRow
-                  locale="de"
+                  locale="en"
                   eventsLoading={kpiCache === null}
                   participantsLoading={kpiCache === null}
                   events={kpiHostedEvents}
