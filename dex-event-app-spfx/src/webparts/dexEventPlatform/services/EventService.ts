@@ -1502,6 +1502,10 @@ export class EventService {
         { title: 'LogoBase64', type: 3 },
         { title: 'DefaultImageBase64', type: 3 },
         { title: 'TestTeamEmails', type: 3 }, // Note (multi-line text), ";"-separiert
+        // v11.47: App-Aufruf-Counter fuer die KPI-Boxen auf der LandingPage.
+        // Wird pro Browser-Session genau einmal inkrementiert (Session-Guard
+        // in LandingPage), ETag-CAS-Retry im incrementAppViewCount().
+        { title: 'AppViewCount', type: 9 }, // Number
       ];
       for (const f of logoFields) {
         try {
@@ -1550,6 +1554,99 @@ export class EventService {
         }
       }
     } catch (err) { console.warn('[DEX] ensureEmailTemplatesConfig fehlgeschlagen:', err); }
+  }
+
+  /**
+   * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals fuer
+   * irgendein Event angemeldet/auf Warteliste waren). Liest nur das ItemCount-
+   * Metadatum der Liste, nicht alle Items — schnell und cheap. Liefert null
+   * bei Fehler.
+   */
+  public async getParticipantsListCount(): Promise<number | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')?$select=ItemCount`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const raw = data?.ItemCount ?? data?.d?.ItemCount;
+      if (raw === null || raw === undefined) return null;
+      return typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0);
+    } catch { return null; }
+  }
+
+  /**
+   * v11.47: Aktuellen App-Aufruf-Counter aus der _Config-Zeile von
+   * DEX_EmailTemplates lesen. Liefert 0 wenn das Feld leer / nicht
+   * vorhanden ist. null bei Lese-Fehler.
+   */
+  public async getAppViewCount(): Promise<number | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,AppViewCount`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return 0;
+      const raw = items[0].AppViewCount;
+      if (raw === null || raw === undefined) return 0;
+      return typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0);
+    } catch { return null; }
+  }
+
+  /**
+   * v11.47: App-Aufruf-Counter um 1 inkrementieren — ETag-CAS-Retry analog
+   * zum reserveSeat-Muster. Liefert den neuen Wert nach Inkrement, oder
+   * null bei Fehler / Retry-Erschoepfung.
+   */
+  public async incrementAppViewCount(): Promise<number | null> {
+    const itemUrl = await this.getConfigItemUrl();
+    if (!itemUrl) return null;
+    const MAX_RETRIES = 8;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      let getResp: SPHttpClientResponse;
+      try {
+        getResp = await this.context.spHttpClient.get(itemUrl, SPHttpClient.configurations.v1);
+      } catch { return null; }
+      if (!getResp.ok) return null;
+      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+      if (!etag) return null;
+      let data;
+      try { data = await getResp.json(); } catch { return null; }
+      const raw = data?.AppViewCount ?? data?.d?.AppViewCount;
+      const current = (raw === null || raw === undefined)
+        ? 0
+        : (typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0));
+      const next = current + 1;
+      const patchResp = await this._mergeIfMatch(itemUrl, { 'AppViewCount': next }, etag);
+      if (patchResp.ok) return next;
+      if (patchResp.status !== 412) return null;
+      // 412 = stale ETag → kurzer Backoff + neu lesen
+      await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
+    }
+    return null;
+  }
+
+  /**
+   * v11.47: Helper — URL des _Config-Items in DEX_EmailTemplates ermitteln.
+   * Liefert null, wenn die Liste/Zeile noch nicht existiert.
+   */
+  private async getConfigItemUrl(): Promise<string | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1,
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return null;
+      const id = items[0].Id;
+      return `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${id})`;
+    } catch { return null; }
   }
 
   /**
