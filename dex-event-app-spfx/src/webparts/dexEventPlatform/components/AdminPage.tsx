@@ -358,7 +358,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, getGroupMembers } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
@@ -497,6 +497,19 @@ export default function AdminPage(): React.ReactElement {
   const [inviteBody, setInviteBody] = React.useState('');
   const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
   const [inviteSending, setInviteSending] = React.useState(false);
+  // v11.56: Reminder-an-Nicht-Angemeldete-Modal. Berechnet den Diff zwischen
+  // dem Event-Mailverteiler (audienceFilter, DLs via Graph expandiert) und den
+  // bereits angemeldeten / wartelistenden Personen.
+  type ReminderTarget = { email: string; displayName: string; firstName: string; lastName: string; location: string };
+  const [showReminderModal, setShowReminderModal] = React.useState(false);
+  const [reminderLoading, setReminderLoading] = React.useState(false);
+  const [reminderTargets, setReminderTargets] = React.useState<ReminderTarget[]>([]);
+  const [reminderBlocked, setReminderBlocked] = React.useState<Array<{ email: string; reason: string }>>([]);
+  const [reminderMailOpen, setReminderMailOpen] = React.useState(false);
+  const [reminderSubject, setReminderSubject] = React.useState('');
+  const [reminderHeading, setReminderHeading] = React.useState('');
+  const [reminderBody, setReminderBody] = React.useState('');
+  const [reminderSending, setReminderSending] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // Outlook-Decline-Check (Admin only): zeigt Teilnehmer, die in Outlook
   // abgesagt haben, aber in der Teilnehmerliste noch aktiv gelistet sind.
@@ -2517,6 +2530,95 @@ export default function AdminPage(): React.ReactElement {
                 setInviteBody(defaultBody);
                 setInviteTarget('organizer');
                 setShowInviteModal(true);
+              }}
+            />
+
+            {/* v11.56: 4c. Reminder an Nicht-Angemeldete — Abgleich des
+                Event-Mailverteilers (audienceFilter, DLs via Graph
+                expandiert) gegen die bereits Angemeldeten + Warteliste.
+                Diff = noch nicht angemeldet. Modal zeigt die Liste +
+                Excel + Reminder-Mail-Versand. */}
+            <ActionTile
+              icon={<AlertCircle size={18} />}
+              title={isDe ? 'Reminder an Nicht-Angemeldete' : 'Reminder to non-registered'}
+              desc={isDe
+                ? 'Gleicht den hinterlegten Mailverteiler des Events gegen die bestehenden Anmeldungen + Warteliste ab und zeigt dir, wer noch fehlt — als Excel-Export oder direkt als Reminder-Mail.'
+                : 'Compares the configured mail distribution of the event against the current registrations + waitlist and shows who is still missing — as Excel export or directly as a reminder email.'}
+              badge="organizer"
+              onClick={async () => {
+                if (!selectedEvent) return;
+                setShowReminderModal(true);
+                setReminderLoading(true);
+                setReminderTargets([]);
+                setReminderBlocked([]);
+                try {
+                  const audience = (selectedEvent.audienceFilter || [])
+                    .map(s => (s || '').trim()).filter(Boolean);
+                  // (1) verbotene Adressen (Standort-/All-Verteiler) aus v11.41
+                  //     direkt rausfiltern — die werden gar nicht erst expandiert.
+                  const blocked: Array<{ email: string; reason: string }> = [];
+                  const allowed: string[] = [];
+                  for (const a of audience) {
+                    const reason = getBlockedInviteReason(a);
+                    if (reason) blocked.push({ email: a, reason });
+                    else allowed.push(a);
+                  }
+                  // (2) DLs via Graph expandieren, individuelle E-Mails direkt
+                  //     uebernehmen. Member-Mails landen im inviteeMap.
+                  const inviteeMap: Record<string, ReminderTarget> = {};
+                  for (const entry of allowed) {
+                    if (entry.indexOf('@') < 0) continue;
+                    let added = false;
+                    try {
+                      const grp = await getGroupMembers(entry);
+                      if (grp && grp.members && grp.members.length > 0) {
+                        for (const m of grp.members) {
+                          const e = (m.email || '').toLowerCase();
+                          if (!e) continue;
+                          if (!inviteeMap[e]) {
+                            inviteeMap[e] = {
+                              email: m.email,
+                              displayName: m.displayName || '',
+                              firstName: m.firstName || '',
+                              lastName: m.lastName || '',
+                              location: m.location || '',
+                            };
+                          }
+                        }
+                        added = true;
+                      }
+                    } catch { /* Graph-Fehler → behandle als Individuum */ }
+                    if (!added) {
+                      const e = entry.toLowerCase();
+                      if (!inviteeMap[e]) {
+                        inviteeMap[e] = { email: entry, displayName: '', firstName: '', lastName: '', location: '' };
+                      }
+                    }
+                  }
+                  // (3) Diff: alle, die NICHT in registrations stehen (Status
+                  //     Angemeldet/QR versendet/Eingecheckt/Warteliste zaehlen
+                  //     als 'schon reagiert' — kein Reminder fuer die).
+                  const respondedEmails = new Set(
+                    (registrations || [])
+                      .filter(r =>
+                        r.Status === 'Angemeldet'
+                        || r.Status === 'QR versendet'
+                        || r.Status === 'Eingecheckt'
+                        || r.Status === 'Warteliste')
+                      .map(r => (r.ParticipantEmail || '').toLowerCase())
+                  );
+                  const targets = Object.values(inviteeMap)
+                    .filter(t => !respondedEmails.has((t.email || '').toLowerCase()))
+                    .sort((a, b) => {
+                      const an = (a.lastName || a.email).toLowerCase();
+                      const bn = (b.lastName || b.email).toLowerCase();
+                      return an < bn ? -1 : an > bn ? 1 : 0;
+                    });
+                  setReminderBlocked(blocked);
+                  setReminderTargets(targets);
+                } finally {
+                  setReminderLoading(false);
+                }
               }}
             />
 
@@ -5443,6 +5545,269 @@ export default function AdminPage(): React.ReactElement {
                 || !inviteSubject.trim()
                 || !inviteBody.trim()
                 || targetEmails.length === 0,
+              icon: <Send size={16} />,
+            }}
+          />
+        );
+      })()}
+
+      {/* ===== REMINDER-AN-NICHT-ANGEMELDETE MODAL (v11.56) ===== */}
+      {showReminderModal && selectedEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!reminderSending) setShowReminderModal(false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1900,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, padding: '24px 28px',
+              maxWidth: 720, width: '100%', maxHeight: '85vh',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--dex-gray-800)' }}>
+                {isDe ? 'Reminder an Nicht-Angemeldete' : 'Reminder to non-registered'}: {selectedEvent.title}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowReminderModal(false)}
+                disabled={reminderSending}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--dex-gray-500)' }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Die App expandiert den Mailverteiler des Events (inkl. Verteiler-Gruppen) und gleicht die Mitglieder gegen Anmeldungen und Warteliste ab. Personen, die noch nicht reagiert haben, kannst du als Excel-Liste herunterladen oder direkt als Reminder-Mail anschreiben.'
+                : 'The app expands the event mail distribution (including DL groups) and compares members against active registrations and waitlist. People who have not responded yet can be downloaded as Excel list or directly emailed as a reminder.'}
+            </p>
+            {reminderBlocked.length > 0 && (
+              <div style={{
+                padding: '8px 10px',
+                background: '#fef3f2', border: '1px solid #c9302c',
+                borderRadius: 6, color: '#7a1f1c',
+                fontSize: '0.78rem', lineHeight: 1.4,
+              }}>
+                <strong>{isDe ? '⚠ Aus dem Verteiler ausgeschlossen' : '⚠ Excluded from distribution'}: </strong>
+                {reminderBlocked.map(b => `${b.email} (${b.reason})`).join(', ')}
+              </div>
+            )}
+            {reminderLoading ? (
+              <div style={{ padding: 30, textAlign: 'center', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
+                {isDe ? 'Verteiler wird expandiert und mit Anmeldungen abgeglichen…' : 'Expanding distribution and comparing with registrations…'}
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8,
+                  padding: '10px 12px', background: 'var(--dex-gray-50, #fafafa)',
+                  border: '1px solid var(--dex-gray-200)', borderRadius: 8,
+                }}>
+                  <span style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {reminderTargets.length}
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
+                    {isDe ? 'Personen noch nicht angemeldet' : 'people not yet registered'}
+                  </span>
+                </div>
+                {reminderTargets.length > 0 && (
+                  <div style={{
+                    overflowY: 'auto', maxHeight: 280,
+                    border: '1px solid var(--dex-gray-200)', borderRadius: 8,
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-100, #f3f4f6)' }}>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600 }}>{isDe ? 'Name' : 'Name'}</th>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600 }}>E-Mail</th>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600 }}>{isDe ? 'Standort' : 'Location'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reminderTargets.map(t => (
+                          <tr key={t.email} style={{ borderTop: '1px solid var(--dex-gray-200)' }}>
+                            <td style={{ padding: '6px 10px' }}>{t.displayName || `${t.firstName} ${t.lastName}`.trim() || '—'}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--dex-gray-600)' }}>{t.email}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--dex-gray-500)' }}>{t.location || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={reminderTargets.length === 0}
+                    onClick={() => {
+                      // Excel-Export — verwendet die existierende xlsx-Lib (XLSX)
+                      const rows = reminderTargets.map(t => ({
+                        Vorname: t.firstName || '',
+                        Nachname: t.lastName || '',
+                        Anzeigename: t.displayName || '',
+                        Email: t.email,
+                        Standort: t.location || '',
+                      }));
+                      const ws = XLSX.utils.json_to_sheet(rows);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Nicht-Angemeldete');
+                      const safeTitle = (selectedEvent.title || 'Event').replace(/[^\w\d-]+/g, '_').slice(0, 60);
+                      XLSX.writeFile(wb, `${safeTitle}_NichtAngemeldete.xlsx`);
+                    }}
+                  >
+                    <Download size={14} /> {isDe ? 'Excel herunterladen' : 'Download Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={reminderTargets.length === 0}
+                    onClick={() => {
+                      // Reminder-Mail-Composer oeffnen mit Default-Text.
+                      const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
+                      const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
+                      const orgList = (selectedEvent.organizers || [])
+                        .map(s => (s || '').trim()).filter(Boolean);
+                      const teamLine = isDe
+                        ? `Das ${selectedEvent.title} Orga Team`
+                        : `The ${selectedEvent.title} Organizer Team`;
+                      const signatureNames = orgList.length > 0
+                        ? `${teamLine}<br />${orgList.join('<br />')}`
+                        : teamLine;
+                      const body = isDe
+                        ? `<p>Hallo,</p>
+<p>du hast dich noch nicht für unser Event <strong>${selectedEvent.title}</strong> angemeldet.</p>
+<p>Falls du dabei sein möchtest, geht's hier zur Anmeldung:</p>
+<p>${linkHtml}</p>
+<p>Wenn du nicht teilnehmen kannst, ignoriere diese Mail einfach — wir freuen uns trotzdem, wenn du beim nächsten Mal dabei bist.</p>
+<p>Viele Grüße<br />${signatureNames}</p>`
+                        : `<p>Hello,</p>
+<p>you have not yet registered for our event <strong>${selectedEvent.title}</strong>.</p>
+<p>If you would like to join, here is the registration link:</p>
+<p>${linkHtml}</p>
+<p>If you cannot attend, please ignore this message — we hope to see you at the next event.</p>
+<p>Best regards<br />${signatureNames}</p>`;
+                      setReminderSubject(isDe
+                        ? `Erinnerung: ${selectedEvent.title}`
+                        : `Reminder: ${selectedEvent.title}`);
+                      setReminderHeading(isDe
+                        ? `Erinnerung an ${selectedEvent.title}`
+                        : `Reminder for ${selectedEvent.title}`);
+                      setReminderBody(body);
+                      setReminderMailOpen(true);
+                    }}
+                  >
+                    <Send size={14} /> {isDe ? `Reminder an ${reminderTargets.length} Personen…` : `Reminder to ${reminderTargets.length} people…`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== REMINDER-MAIL-COMPOSER (v11.56) ===== */}
+      {reminderMailOpen && selectedEvent && (() => {
+        const orgEmails = (selectedEvent.organizerEmails || [])
+          .map(s => (s || '').trim()).filter(Boolean);
+        const targetEmails = reminderTargets.map(t => t.email);
+        const customLogo = (() => {
+          try {
+            const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+            return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
+          } catch { return ''; }
+        })();
+        const sendAction = async (): Promise<void> => {
+          if (!eventServiceRef || !selectedEvent) return;
+          if (targetEmails.length === 0) return;
+          const confirmMsg = isDe
+            ? `Reminder-Mail an ${targetEmails.length} noch nicht angemeldete Personen senden?\n\n(BCC an alle Empfänger — die Adressen sehen sich nicht gegenseitig.)`
+            : `Send reminder email to ${targetEmails.length} not-yet-registered people?\n\n(BCC to all — recipients do not see each other.)`;
+          if (!confirm(confirmMsg)) return;
+          setReminderSending(true);
+          const orgNames = (selectedEvent.organizers || []).join(', ');
+          const previewVars: Record<string, string> = {
+            EventTitle: selectedEvent.title, Organizer: orgNames,
+            Link: `${siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          const resolvedSubject = replacePlaceholders(reminderSubject, previewVars);
+          const resolvedHeading = replacePlaceholders(reminderHeading, previewVars);
+          const resolvedBody = replacePlaceholders(reminderBody, previewVars);
+          const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+          // BCC fuer Privatsphaere — Empfaenger sehen sich nicht. TO geht an
+          // den Absender (no_reply.events@deloitte.de wird via Flow gesetzt;
+          // wir tragen hier den ersten Organizer ein, falls vorhanden, sonst
+          // den aktuellen User — sodass DEX_SEND_MAIL ein gueltiges TO hat).
+          const fallbackTo = orgEmails[0] || (currentUser.email || '');
+          try {
+            await eventServiceRef.queueEmail(
+              resolvedSubject, fallbackTo, isDe ? 'Reminder-Empfaenger' : 'Reminder recipients',
+              fullBody, 'Reminder', selectedEvent.title, selectedEvent.id,
+              undefined, // cc
+              targetEmails.join(';'), // bcc
+            );
+            setReminderSending(false);
+            alert(isDe
+              ? `Reminder-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`
+              : `Reminder email queued for ${targetEmails.length} recipient(s).`);
+            setReminderMailOpen(false);
+            setShowReminderModal(false);
+          } catch {
+            setReminderSending(false);
+            alert(isDe ? 'Fehler beim Eintragen der Mail.' : 'Error queueing the mail.');
+          }
+        };
+        return (
+          <HtmlEditorModal
+            open={reminderMailOpen}
+            onClose={() => !reminderSending && setReminderMailOpen(false)}
+            title={isDe
+              ? `Reminder-Mail: ${selectedEvent.title}`
+              : `Reminder email: ${selectedEvent.title}`}
+            value={reminderBody}
+            onChange={setReminderBody}
+            previewMode="email"
+            emailSubject={reminderSubject}
+            onEmailSubjectChange={setReminderSubject}
+            emailHeading={reminderHeading}
+            onEmailHeadingChange={setReminderHeading}
+            emailHeadingColor="#86bc25"
+            insertableVars={[
+              { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },
+              { key: '{{Link}}', label: isDe ? 'Anmelde-Link' : 'Registration link' },
+              { key: '{{Organizer}}', label: 'Organizer' },
+            ]}
+            imageBase64={customLogo}
+            headerExtra={(
+              <div style={{
+                padding: 10, background: 'var(--dex-gray-50, #fafafa)',
+                border: '1px solid var(--dex-gray-200)', borderRadius: 8,
+                fontSize: '0.78rem', color: 'var(--dex-gray-600)',
+              }}>
+                <strong style={{ color: 'var(--dex-gray-700)' }}>BCC: </strong>
+                {targetEmails.length} {isDe ? 'noch nicht angemeldete Empfänger' : 'not-yet-registered recipients'}
+                <span style={{ display: 'block', marginTop: 3, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe
+                    ? 'Versand als BCC — Empfänger sehen sich nicht gegenseitig.'
+                    : 'Sent as BCC — recipients do not see each other.'}
+                </span>
+              </div>
+            )}
+            extraAction={{
+              label: reminderSending
+                ? (isDe ? 'Wird eingetragen…' : 'Queueing…')
+                : (isDe ? `Reminder an ${targetEmails.length} senden` : `Send reminder to ${targetEmails.length}`),
+              onClick: sendAction,
+              disabled: reminderSending || !reminderSubject.trim() || !reminderBody.trim() || targetEmails.length === 0,
               icon: <Send size={16} />,
             }}
           />
