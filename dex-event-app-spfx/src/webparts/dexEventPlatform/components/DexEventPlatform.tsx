@@ -395,12 +395,16 @@ function AppContent(): React.ReactElement {
                   {bootProgress} %
                 </div>
               </div>
-              {/* v11.48/v11.50: KPI-Boxen im Boot-Loader. Skeleton-Punkte
-                  solange Events / Participants-Count laden, danach
-                  ease-out-Count-Up von 0 zum Zielwert. Sobald der Boot-
-                  Loader entfaellt (beide Provider fertig), verschwinden
-                  die Boxen automatisch mit ihm. */}
+              {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader mit
+                  Caption-Zeile dahinter — "So far used for…" als kleiner
+                  Stolz-Marker, was die App bisher abgedeckt hat. */}
               <div style={{ width: 'min(320px, 80%)', marginTop: 18 }}>
+                <div style={{
+                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
+                  textAlign: 'center', marginBottom: 8, fontStyle: 'italic',
+                }}>
+                  So far used for…
+                </div>
                 <KpiRow
                   locale="en"
                   eventsLoading={kpiCache === null}
