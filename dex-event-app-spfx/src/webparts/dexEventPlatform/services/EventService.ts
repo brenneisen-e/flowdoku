@@ -1590,6 +1590,45 @@ export class EventService {
   }
 
   /**
+   * v11.53: KPI-Counter um delta hochzaehlen (Anmeldung +1, Cancel -1,
+   * createEvent +1, deleteEvent -N). ETag-CAS-Retry, race-safe bei 10k+
+   * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.
+   */
+  public async bumpKpiParticipants(delta: number): Promise<number | null> {
+    return this.bumpKpiField('TotalParticipantsCount', delta);
+  }
+  public async bumpKpiEvents(delta: number): Promise<number | null> {
+    return this.bumpKpiField('TotalEventsCount', delta);
+  }
+  private async bumpKpiField(field: string, delta: number): Promise<number | null> {
+    if (!Number.isFinite(delta) || delta === 0) return null;
+    const itemUrl = await this.getConfigItemUrl();
+    if (!itemUrl) return null;
+    const MAX_RETRIES = 8;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      let getResp: SPHttpClientResponse;
+      try {
+        getResp = await this.context.spHttpClient.get(itemUrl, SPHttpClient.configurations.v1);
+      } catch { return null; }
+      if (!getResp.ok) return null;
+      const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+      if (!etag) return null;
+      let data;
+      try { data = await getResp.json(); } catch { return null; }
+      const raw = data?.[field] ?? data?.d?.[field];
+      const current = (raw === null || raw === undefined)
+        ? 0
+        : (typeof raw === 'number' ? raw : (parseInt(String(raw), 10) || 0));
+      const next = Math.max(0, current + delta);
+      const patchResp = await this._mergeIfMatch(itemUrl, { [field]: next }, etag);
+      if (patchResp.ok) return next;
+      if (patchResp.status !== 412) return null;
+      await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
+    }
+    return null;
+  }
+
+  /**
    * v11.52: Gecachte KPI-Werte zurueckschreiben. Wird nach vollem App-Load
    * im Hintergrund aufgerufen (DexEventPlatform), damit der naechste Boot-
    * Loader frische Zahlen sieht. Best-effort, kein ETag-CAS noetig — bei

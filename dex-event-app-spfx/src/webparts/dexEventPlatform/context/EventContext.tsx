@@ -530,6 +530,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventTitle: input.title,
         details: { eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants },
       }).catch(() => { /* */ });
+      // v11.53: KPI-Counter sofort hochzaehlen — nur fuer nicht-fictive Events
+      // (Test-Events zaehlen nicht in der LandingPage-KPI).
+      if (!input.isFictive) {
+        eventService.bumpKpiEvents(1).catch(() => { /* best-effort */ });
+      }
       // v9.41: KEIN Auto-Refresh mehr direkt nach Create. Grund: SharePoint braucht
       // einige Sekunden, bis die frisch angelegte Subsite + Teilnehmerliste +
       // DEX_TeilnehmerCounter-Liste API-seitig konsistent abrufbar sind. Wenn wir
@@ -827,6 +832,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
       }
+      // v11.53: KPI-Counter sofort hochzaehlen, damit der naechste Boot-
+      // Loader die neue Zahl ohne Verzoegerung zeigt. Nur fuer 'Angemeldet'-
+      // Status (Warteliste zaehlt nicht in 'Teilnehmer').
+      if (status === 'Angemeldet') {
+        eventService.bumpKpiParticipants(1).catch(() => { /* best-effort */ });
+      }
       await loadEvents();
     }
     return success;
@@ -843,9 +854,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
     // "Abmeldung fuer andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
     // dort wird eventService.cancelRegistration direkt aufgerufen).
+    // v11.53: vorherigen Status merken, damit wir den KPI-Counter nur dann
+    // dekrementieren, wenn der User tatsaechlich 'Angemeldet' war (Wartelist-
+    // Cancel beruehrt den Teilnehmer-KPI nicht).
+    const wasActive = myReg.Status === 'Angemeldet';
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id, currentUserName, currentUserEmail);
     if (success) {
       const event = events.find(e => e.id === eventId);
+      if (wasActive) {
+        eventService.bumpKpiParticipants(-1).catch(() => { /* best-effort */ });
+      }
       // v9.0: Audit-Log (fire-and-forget)
       eventService.writeChangeLog({
         action: 'ParticipantCancelled',
@@ -990,8 +1008,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         console.warn('[DEX] Child-Event-Delete fehlgeschlagen:', child.id, err);
       }
     }
+    // v11.53: vor dem Loeschen merken, wie viele aktive Anmeldungen wir
+    // vom KPI-Counter abziehen muessen — Parent + alle Children, nur
+    // nicht-fictive Events. Wird im Hintergrund einmalig abgezogen.
+    const ev = events.find(e => e.id === eventId);
+    const childActive = children
+      .filter(c => !c.isFictive)
+      .reduce((s, c) => s + (c.currentParticipants || 0), 0);
+    const parentActive = (ev && !ev.isFictive) ? (ev.currentParticipants || 0) : 0;
+    const childEventsToDecrement = children.filter(c => !c.isFictive).length
+      + ((ev && !ev.isFictive) ? 1 : 0);
     const success = await eventService.deleteEvent(Number(eventId));
     delete subsiteMap.current[eventId];
+    if (success) {
+      if (childEventsToDecrement > 0) {
+        eventService.bumpKpiEvents(-childEventsToDecrement).catch(() => { /* */ });
+      }
+      const totalActive = childActive + parentActive;
+      if (totalActive > 0) {
+        eventService.bumpKpiParticipants(-totalActive).catch(() => { /* */ });
+      }
+    }
     // Events immer neu laden, auch wenn Subsite-Loeschung fehlschlug
     await loadEvents();
     return success;
