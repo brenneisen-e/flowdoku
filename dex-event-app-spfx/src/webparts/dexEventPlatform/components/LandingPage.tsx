@@ -63,6 +63,21 @@ export default function LandingPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // v11.48: KPIs sind nur waehrend der Lade-Phase + Count-Up-Animation
+  // sichtbar — danach fadet die Reihe aus und kollabiert ihre Hoehe, sodass
+  // nur noch der "Entwickelt von ..."-Block uebrig bleibt. Damit fuehlt
+  // es sich wie ein Splash-Effekt beim Start an, anstatt dauerhaft die
+  // Landing zu verlaengern.
+  const kpiDataLoaded = !isEventsLoading && kpiAppViews !== null;
+  const [kpiHidden, setKpiHidden] = React.useState(false);
+  React.useEffect(() => {
+    if (!kpiDataLoaded) return;
+    // Daten da → Count-Up laeuft 1.6s, danach 1.8s Hold, dann ausblenden.
+    const HIDE_DELAY = 1600 + 1800;
+    const timer = setTimeout(() => setKpiHidden(true), HIDE_DELAY);
+    return () => clearTimeout(timer);
+  }, [kpiDataLoaded]);
   const userFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
   const [inquiryName, setInquiryName] = React.useState(userFullName);
   const [inquiryEvent, setInquiryEvent] = React.useState('');
@@ -228,11 +243,11 @@ export default function LandingPage(): React.ReactElement {
                 : 'Want to use the DEX App for your event too? Just reach out to us!'}
             </button>
           </div>
-          {/* v11.47: Drei KPI-Boxen ueber dem "Entwickelt von ..."-Block.
-              Werte werden beim ersten Mount animiert von 0 auf den Zielwert
-              hochgezaehlt (ease-out, ca. 1.6s). Solange Events oder
-              App-View-Counter noch laden, stehen die Werte auf null und
-              die Animation startet erst, wenn die echten Daten da sind. */}
+          {/* v11.47/v11.48: Drei KPI-Boxen ueber dem "Entwickelt von ..."-
+              Block — nur waehrend der initialen Lade-Phase + Count-Up-
+              Animation sichtbar. Nach Hold-Periode fadet die Reihe aus
+              und kollabiert ihre Hoehe, sodass die Landing am Ende
+              schlank bleibt. */}
           <KpiRow
             locale={locale}
             eventsLoading={isEventsLoading}
@@ -240,6 +255,7 @@ export default function LandingPage(): React.ReactElement {
             events={kpiHostedEvents}
             participants={kpiParticipants}
             views={kpiAppViews ?? 0}
+            hidden={kpiHidden}
           />
 
           <div
@@ -382,16 +398,29 @@ function KpiRow(props: {
   events: number;
   participants: number;
   views: number;
+  hidden: boolean;
 }): React.ReactElement {
   const isDe = props.locale === 'de';
   const labels = isDe
     ? { ev: 'Events gehostet', pa: 'Teilnehmer', vi: 'App-Aufrufe' }
     : { ev: 'Events hosted', pa: 'Attendees', vi: 'App views' };
+  // v11.48: aria-hidden, opacity + maxHeight-Collapse fuer sauberes
+  // Ausblenden — ohne Layout-Sprung, alles ueber 'transition'.
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
-      marginTop: 18, marginBottom: 4,
-    }}>
+    <div
+      aria-hidden={props.hidden}
+      style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: props.hidden ? 0 : 10,
+        marginTop: props.hidden ? 0 : 18,
+        marginBottom: props.hidden ? 0 : 4,
+        maxHeight: props.hidden ? 0 : 200,
+        opacity: props.hidden ? 0 : 1,
+        overflow: 'hidden',
+        pointerEvents: props.hidden ? 'none' : 'auto',
+        transition: 'opacity 400ms ease, max-height 500ms ease, margin 500ms ease, gap 500ms ease',
+      }}
+    >
       <KpiBox label={labels.ev} value={props.events} loading={props.eventsLoading} />
       <KpiBox label={labels.pa} value={props.participants} loading={props.eventsLoading} />
       <KpiBox label={labels.vi} value={props.views} loading={props.viewsLoading} />
