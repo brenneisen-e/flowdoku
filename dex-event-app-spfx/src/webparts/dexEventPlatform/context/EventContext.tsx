@@ -130,6 +130,12 @@ interface EventContextType {
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  /** v11.69: Loescht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
+   *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
+   *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
+   *  `DEX_CreateOutlookEvent`-Flow triggert — die alte Subsite mit
+   *  Anmeldungen bleibt erhalten. */
+  deleteEventItemOnly: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
@@ -219,6 +225,15 @@ export interface CreateEventInput {
   attendeeUploadHint?: string;
   attendeeUploadLabel?: string;
   customFields: CustomField[];
+  /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
+   *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
+   *  an die neue DEX_Events-Zeile gekoppelt. Genutzt fuer "Outlook nachtraeglich
+   *  aktivieren ohne Teilnehmer-Verlust" (siehe `deleteEventItemOnly`). */
+  existingSubsiteUrl?: string;
+  /** v11.69: Optional — Listenname der bereits bestehenden Teilnehmerliste in
+   *  der wiederverwendeten Subsite (i.d.R. "Teilnehmer"). Muss zusammen mit
+   *  `existingSubsiteUrl` gesetzt sein, damit der Reuse-Pfad greift. */
+  existingRegistrationListName?: string;
 }
 
 export const EventContext = React.createContext<EventContextType | undefined>(undefined);
@@ -1043,6 +1058,31 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  /**
+   * v11.69: Loescht ausschliesslich das DEX_Events-Listenitem — KEIN Cascade
+   * auf Subsite, Teilnehmerliste oder Outlook-DeleteEvent-Queue.
+   * Wird genutzt, um ein Sub-Event mit `existingSubsiteUrl` an einer neuen
+   * DEX_Events-Zeile wieder anzulegen, damit der `DEX_CreateOutlookEvent`-
+   * Flow (GetOnNewItems-Trigger) triggert — die alte Subsite mit allen
+   * Teilnehmer-Anmeldungen bleibt unangetastet erhalten.
+   */
+  async function deleteEventItemOnly(eventId: string): Promise<boolean> {
+    const success = await eventService.deleteEventItemOnly(eventId);
+    if (success) {
+      delete subsiteMap.current[eventId];
+      eventService.writeChangeLog({
+        action: 'EventItemOnlyDeleted',
+        targetType: 'Event',
+        targetId: eventId,
+        targetName: (events.find(e => e.id === eventId)?.title) || '',
+        eventId: eventId,
+        eventTitle: (events.find(e => e.id === eventId)?.title) || '',
+        details: { reason: 'Outlook-Recreate ohne Subsite-Verlust (v11.69)' },
+      }).catch(() => { /* */ });
+    }
+    return success;
+  }
+
   async function updateMyRegistration(eventId: string, customData: Record<string, string>): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
@@ -1277,7 +1317,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events, topLevelEvents, childEventsOf, isEventsLoading,
         createEvent, registerForEvent, cancelRegistration,
-        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
