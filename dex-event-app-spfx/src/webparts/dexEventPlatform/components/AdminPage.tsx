@@ -883,38 +883,64 @@ export default function AdminPage(): React.ReactElement {
     setIsReorderingIDs(false);
   };
 
-  // v11.36: Erkennt „kaputte" TeilnehmerIDs — die echten Schmerzfälle aus
-  // zeitgleichen Anmeldungen: (a) doppelte ID unter Nicht-Abgemeldeten,
-  // (b) aktive/Warteliste-Eintrag ohne (oder ≤0) TeilnehmerID. Lücken nach
-  // Stornos zählen NICHT als kaputt (das ist normal bis zum nächsten Reorder).
-  // Die TeilnehmerIDs sind durch den DEX_IDReorder-Flow immer durchlaufend —
-  // es gibt also keinen „kaputt"-Zustand zu erkennen. Relevant ist nur: gab
-  // es KÜRZLICH eine Abmeldung? Dann läuft die automatische Batch-Korrektur
-  // (Nachrücken + ID-Neuvergabe per Power Automate) evtl. noch im Hintergrund
-  // und man sollte NICHT parallel manuell „IDs neu vergeben".
-  const RECENT_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 Minuten
+  // v11.70 / v11.71: Hinweis-Box „IDs sind ggf. nicht korrekt" wird jetzt
+  // an die tatsaechliche TeilnehmerID-Sequenz gekoppelt — nicht mehr an
+  // eine 10-Minuten-Zeit-Heuristik nach der letzten Abmeldung.
+  //
+  // Erwartet: alle nicht-abgemeldeten Eintraege (Status in
+  // Angemeldet/QR versendet/Eingecheckt/Warteliste) haben TeilnehmerIDs,
+  // die nach Sortierung lueckenlos 1..N durchlaufen. Sobald
+  //   - eine ID fehlt (Luecke),
+  //   - eine ID doppelt vorkommt,
+  //   - ein nicht-abgemeldeter Eintrag keine (oder ≤0) ID hat,
+  // ist der Zustand „IDs evtl. nicht korrekt". Typischer Trigger: gerade
+  // erfolgte Abmeldung, der DEX_IDReorder-Flow ist noch nicht fertig.
+  // Das gibt einen ehrlichen Status — die Box verschwindet automatisch,
+  // sobald der Flow durch ist (statt nach willkuerlichen 10 Minuten).
   const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
+    const active = regs.filter(r => r.Status !== 'Abgemeldet');
+    if (active.length === 0) return { recent: false, whenIso: '' };
+    const ids: number[] = [];
+    for (const r of active) {
+      const id = Number(r.TeilnehmerID);
+      if (!isFinite(id) || id <= 0) {
+        // Eintrag ohne gueltige ID — IDs sind kaputt, Letzten-Cancel
+        // mitgeben (oder leer wenn keiner).
+        return { recent: true, whenIso: latestCancelIso(regs) };
+      }
+      ids.push(id);
+    }
+    ids.sort((a, b) => a - b);
+    // Lueckenlos 1..N pruefen
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] !== i + 1) {
+        return { recent: true, whenIso: latestCancelIso(regs) };
+      }
+    }
+    return { recent: false, whenIso: '' };
+  };
+  // Hilfsfunktion: jüngste CancellationDate aus der Liste (fuer den
+  // optionalen Zeit-Hinweis in der Box).
+  const latestCancelIso = (regs: SPRegistration[]): string => {
     let latest = 0;
     for (const r of regs) {
       if (r.Status !== 'Abgemeldet') continue;
       const t = new Date(r.CancellationDate || '').getTime();
       if (!isNaN(t) && t > latest) latest = t;
     }
-    if (latest > 0 && (Date.now() - latest) < RECENT_CANCEL_WINDOW_MS) {
-      return { recent: true, whenIso: new Date(latest).toISOString() };
-    }
-    return { recent: false, whenIso: '' };
+    return latest > 0 ? new Date(latest).toISOString() : '';
   };
-  const [showIdFixModal, setShowIdFixModal] = React.useState(false);
   const idFixCheckedForRef = React.useRef<string | null>(null);
 
-  // Beim Öffnen eines Events einmalig prüfen, ob es gerade eine Abmeldung gab
-  // (Batch-Korrektur läuft evtl. noch) → Hinweis-Modal zeigen.
+  // v11.70: kein Modal mehr beim Event-Oeffnen — der Hinweis steht ab
+  // jetzt direkt als Box oben in der Teilnehmerliste, solange die
+  // Bedingung erfuellt ist (siehe Render-Block unten). Der Ref bleibt
+  // erhalten, um in Zukunft ein erneutes „Mount-Trigger"-Verhalten
+  // einbauen zu koennen, ohne den Save-Pfad zu touchen.
   React.useEffect(() => {
     if (!selectedEvent || isLoadingRegs || registrations.length === 0) return;
     if (idFixCheckedForRef.current === selectedEvent.id) return;
     idFixCheckedForRef.current = selectedEvent.id;
-    if (recentCancellation(registrations).recent) setShowIdFixModal(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, registrations, isLoadingRegs]);
 
@@ -3687,6 +3713,35 @@ export default function AdminPage(): React.ReactElement {
           />
         </div>
 
+        {/* v11.70: Inline-Hinweisbox statt Modal — bei einer kürzlich
+            erfolgten Abmeldung läuft die automatische Korrektur evtl. noch
+            (Nachrücken + ID-Neuvergabe per Power-Automate-Batch). Solange
+            sich die IDs evtl. noch verschieben, soll der Organizer nicht
+            parallel manuell „IDs neu vergeben" anstoßen. */}
+        {(() => {
+          if (!selectedEvent) return null;
+          const info = recentCancellation(registrations);
+          if (!info.recent) return null;
+          const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
+          return (
+            <div style={{
+              margin: '0 0 16px',
+              padding: '14px 16px',
+              borderRadius: 8,
+              background: 'rgba(237,139,0,0.10)',
+              border: '1px solid var(--dex-orange, #ed8b00)',
+              color: 'var(--dex-orange-dark, #b35a00)',
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '0.9rem' }}>
+                Achtung — TeilnehmerIDs sind aktuell ggf. nicht korrekt
+              </div>
+              <div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
+                Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig. Bitte ein paar Minuten warten, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Meist musst du gar nichts tun.
+              </div>
+            </div>
+          );
+        })()}
+
         {(() => {
           // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
           // prüfen" markierten Personen (OverbookReview='Pending') mit
@@ -5736,53 +5791,9 @@ export default function AdminPage(): React.ReactElement {
         </div>
       )}
 
-      {/* v11.36: Hinweis-Modal — es gab kürzlich eine Abmeldung, die
-          automatische Batch-Korrektur (Nachrücken + ID-Neuvergabe per
-          Flow) läuft evtl. noch. NICHT parallel manuell korrigieren. */}
-      {showIdFixModal && selectedEvent && (() => {
-        const info = recentCancellation(registrations);
-        const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
-        return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2050,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-            }}
-            onClick={() => { if (!isReorderingIDs) setShowIdFixModal(false); }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{ width: '100%', maxWidth: 520, padding: 26, background: '#fff', borderRadius: 10 }}
-            >
-              <h3 style={{ marginTop: 0, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                Kürzlich abgemeldet — Korrektur läuft evtl. noch
-              </h3>
-              <p style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig.
-              </p>
-              <div style={{ margin: '14px 0', padding: 12, borderRadius: 8, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-                <strong>Bitte ein paar Minuten warten</strong>, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Die IDs sind ohnehin durchlaufend; meist musst du gar nichts tun.
-              </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-                <button className="btn btn-primary" onClick={() => setShowIdFixModal(false)} disabled={isReorderingIDs}>
-                  Verstanden
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  disabled={isReorderingIDs || !selectedEvent.subsiteUrl}
-                  title="Nur nutzen wenn du sicher bist, dass die automatische Korrektur abgeschlossen ist."
-                  onClick={async () => { setShowIdFixModal(false); await runIdReorder(); }}
-                >
-                  {isReorderingIDs ? 'Wird korrigiert…' : 'Trotzdem jetzt korrigieren'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* v11.70: kein Modal mehr — der Hinweis wird inline ueber der
+          Teilnehmerliste angezeigt (siehe Render-Block oberhalb der
+          Teilnehmer-Tabelle). */}
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (

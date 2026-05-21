@@ -923,9 +923,12 @@ export default function RegistrationPage(): React.ReactElement {
             <span
               aria-hidden="true"
               style={{
+                // v11.70: display + box-sizing fix, siehe MyEventsPage.
+                display: 'inline-block',
+                boxSizing: 'border-box',
                 width: 48, height: 48, borderRadius: '50%',
-                border: '4px solid var(--dex-gray-200)',
-                borderTopColor: 'var(--dex-green, #86bc25)',
+                border: '4px solid #e5e5e5',
+                borderTopColor: '#86bc25',
                 animation: 'dex-spin 0.9s linear infinite',
               }}
             />
