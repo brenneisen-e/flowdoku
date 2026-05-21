@@ -934,9 +934,18 @@ export default function MyEventsPage(): React.ReactElement {
           <span
             aria-hidden="true"
             style={{
+              // v11.70: explizit display:inline-block + box-sizing, sonst kann
+              // der <span> als reines inline-Element seine Border-Geometrie
+              // nicht sauber rendern — in Folge zeigte der Spinner einen
+              // duennen vertikalen Strich im Zentrum (CSS-Var-Resolve +
+              // Inline-Renderer-Quirk in SP-Hostpage). Mit explizitem
+              // Inline-Block + festen Farbwerten (statt var-Fallback) zeichnet
+              // der Browser einen sauberen Ring.
+              display: 'inline-block',
+              boxSizing: 'border-box',
               width: 48, height: 48, borderRadius: '50%',
-              border: '4px solid var(--dex-gray-200)',
-              borderTopColor: 'var(--dex-green, #86bc25)',
+              border: '4px solid #e5e5e5',
+              borderTopColor: '#86bc25',
               animation: 'dex-spin 0.9s linear infinite',
             }}
           />
