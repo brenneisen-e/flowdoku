@@ -2208,52 +2208,106 @@ function UserFieldPicker(props: {
   errorStyle: React.CSSProperties;
   hint?: string;
 }): React.ReactElement {
-  const [query, setQuery] = React.useState(props.value);
+  // Parse "Name <email>" aus dem gespeicherten Wert (z.B. nach Remount/Reload),
+  // damit der Chip mit Foto sofort wieder erscheint.
+  const parseValue = (v: string): { name: string; email: string } | null => {
+    const m = (v || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+    if (!m) return null;
+    return { name: m[1].trim(), email: m[2].trim() };
+  };
+  const initialParsed = parseValue(props.value);
+  const [query, setQuery] = React.useState(initialParsed ? '' : (props.value || ''));
   const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string }>>([]);
   const [isSearching, setIsSearching] = React.useState(false);
-  const [hasSelection, setHasSelection] = React.useState(/.+ <.+@.+>/.test(props.value));
+  const [selected, setSelected] = React.useState<{ name: string; email: string } | null>(initialParsed);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
-    setQuery(props.value);
-    setHasSelection(/.+ <.+@.+>/.test(props.value));
+    const parsed = parseValue(props.value);
+    setSelected(parsed);
+    if (parsed) setQuery('');
+    else setQuery(props.value || '');
   }, [props.value]);
+  const hasSelection = !!selected;
+  const clearSelection = (): void => {
+    setSelected(null);
+    setQuery('');
+    props.onChange('');
+    setResults([]);
+  };
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="form-input"
-        value={query}
-        onChange={e => {
-          const val = e.target.value;
-          setQuery(val);
-          // Freitext ist kein gueltiger Wert; erst nach Dropdown-Auswahl.
-          setHasSelection(false);
-          props.onChange('');
-          if (timerRef.current) clearTimeout(timerRef.current);
-          if (val.length >= 2) {
-            timerRef.current = setTimeout(async () => {
-              setIsSearching(true);
-              try { setResults(await props.searchUsers(val)); }
-              catch { setResults([]); }
-              setIsSearching(false);
-            }, 300);
-          } else {
-            setResults([]);
-          }
-        }}
-        onBlur={() => {
-          // Wenn keine gueltige Person ausgewaehlt wurde, Feld leeren.
-          setTimeout(() => {
-            if (!hasSelection) {
-              setQuery('');
-              props.onChange('');
+      {hasSelection && selected ? (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 10,
+          padding: '6px 10px 6px 6px',
+          border: '1px solid var(--dex-gray-200)',
+          borderRadius: 'var(--dex-radius)',
+          background: 'var(--dex-gray-50, #f7f7f7)',
+          maxWidth: '100%',
+        }}>
+          <img
+            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(selected.email)}&size=S`}
+            alt={selected.name}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selected.name}
+            </div>
+            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selected.email}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={clearSelection}
+            title="Auswahl entfernen"
+            style={{
+              background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)',
+              width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+              fontSize: '0.9rem', lineHeight: 1,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >×</button>
+        </div>
+      ) : (
+        <input
+          className="form-input"
+          value={query}
+          onChange={e => {
+            const val = e.target.value;
+            setQuery(val);
+            // Freitext ist kein gültiger Wert; erst nach Dropdown-Auswahl.
+            props.onChange('');
+            if (timerRef.current) clearTimeout(timerRef.current);
+            if (val.length >= 2) {
+              timerRef.current = setTimeout(async () => {
+                setIsSearching(true);
+                try { setResults(await props.searchUsers(val)); }
+                catch { setResults([]); }
+                setIsSearching(false);
+              }, 300);
+            } else {
               setResults([]);
             }
-          }, 150);
-        }}
-        placeholder={props.placeholder}
-        style={props.errorStyle}
-      />
-      {isSearching && (
+          }}
+          onBlur={() => {
+            // Wenn keine gültige Person ausgewählt wurde, Feld leeren.
+            setTimeout(() => {
+              if (!selected) {
+                setQuery('');
+                props.onChange('');
+                setResults([]);
+              }
+            }, 150);
+          }}
+          placeholder={props.placeholder}
+          style={props.errorStyle}
+        />
+      )}
+      {isSearching && !hasSelection && (
         <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
       )}
       {props.hint && (
@@ -2261,12 +2315,12 @@ function UserFieldPicker(props: {
           {props.hint}
         </p>
       )}
-      {results.length > 0 && (
+      {!hasSelection && results.length > 0 && (
         <div style={{
           position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
           background: '#fff', border: '1px solid var(--dex-gray-200)',
           borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          maxHeight: 200, overflowY: 'auto',
+          maxHeight: 280, overflowY: 'auto', marginTop: 2,
         }}>
           {results.map(u => (
             <div
@@ -2274,17 +2328,28 @@ function UserFieldPicker(props: {
               style={{
                 padding: '8px 12px', cursor: 'pointer', fontSize: '0.85rem',
                 borderBottom: '1px solid var(--dex-gray-100)',
+                display: 'flex', alignItems: 'center', gap: 10,
               }}
               onMouseDown={() => {
                 const formatted = `${u.displayName} <${u.email}>`;
-                setQuery(formatted);
+                setSelected({ name: u.displayName, email: u.email });
+                setQuery('');
                 props.onChange(formatted);
-                setHasSelection(true);
                 setResults([]);
               }}
             >
-              <div style={{ fontWeight: 600 }}>{u.displayName}</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{u.email}{u.location ? ` · ${u.location}` : ''}</div>
+              <img
+                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                alt={u.displayName}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600 }}>{u.displayName}</div>
+                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {u.email}{u.location ? ` · ${u.location}` : ''}
+                </div>
+              </div>
             </div>
           ))}
         </div>

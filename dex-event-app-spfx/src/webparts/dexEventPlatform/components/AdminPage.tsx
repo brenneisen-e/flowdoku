@@ -2024,14 +2024,14 @@ export default function AdminPage(): React.ReactElement {
       }
     }
   }
-  const getRoommateInfo = (reg: { ParticipantEmail?: string }): { partnerName: string; mutual: boolean } | null => {
+  const getRoommateInfo = (reg: { ParticipantEmail?: string }): { partnerName: string; partnerEmail: string; mutual: boolean } | null => {
     const email = (reg.ParticipantEmail || '').toLowerCase();
     if (!email) return null;
     const choice = roommateChoice[email];
     if (!choice) return null;
     const reverse = roommateChoice[choice.partnerEmail];
     const mutual = !!reverse && reverse.partnerEmail === email;
-    return { partnerName: choice.partnerName || choice.partnerEmail, mutual };
+    return { partnerName: choice.partnerName || choice.partnerEmail, partnerEmail: choice.partnerEmail, mutual };
   };
 
   return (
@@ -4051,14 +4051,23 @@ export default function AdminPage(): React.ReactElement {
                       {(() => {
                         const info = getRoommateInfo(reg);
                         if (!info) return <span style={{ color: 'var(--dex-gray-300)' }}>-</span>;
+                        const photoEmail = (info.partnerEmail || '').trim();
                         return (
-                          <span>
-                            {info.partnerName}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {photoEmail && (
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(photoEmail)}&size=S`}
+                                alt={info.partnerName}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                              />
+                            )}
+                            <span>{info.partnerName}</span>
                             {info.mutual && (
                               <span
                                 className="badge"
-                                style={{ marginLeft: 6, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
-                                title="Beide haben sich gegenseitig als Zimmerpartner ausgewaehlt"
+                                style={{ marginLeft: 2, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
+                                title="Beide haben sich gegenseitig als Zimmerpartner ausgewählt"
                               >
                                 Match
                               </span>
