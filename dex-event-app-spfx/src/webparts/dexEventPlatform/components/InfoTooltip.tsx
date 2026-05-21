@@ -95,6 +95,11 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
         padding: '12px 16px',
         background: 'rgba(40,40,40,0.96)',
         color: '#fff',
+        // v11.59: explizite Font-Family — durch createPortal landet das Tooltip
+        // an document.body und erbt NICHT mehr die Aptos/Open-Sans-Schrift des
+        // App-Containers. Ohne diesen Override hat der Browser-Default (Times/
+        // System-Sans) gegriffen und das Tooltip sah optisch fremd aus.
+        fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
         fontSize: '0.82rem',
         fontWeight: 400,
         lineHeight: 1.55,

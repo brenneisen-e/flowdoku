@@ -907,6 +907,18 @@ export default function EventCreationPage(): React.ReactElement {
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
   // switchCommTab-Helper weiter unten.
   const [activeCommTabIdx, setActiveCommTabIdx] = React.useState<number>(0);
+  // v11.60: synchroner Spiegel von subEvents fuer Save/Detect-Pfade. React-
+  // State-Updates sind async — wenn flushActiveCommTabToState() per
+  // setSubEvents(prev=>...) den aktiven Tab in die jeweilige Slice
+  // zurueckschreibt, sieht das direkt danach laufende
+  // detectOutlookRelevantChanges() (und auch persistSubEventsForParent
+  // unter handleSubmit) noch die alte Array aus dem Closure. Ergebnis:
+  // Modal kommt nicht, und die Sub-Event-Aenderung wird beim Schreiben
+  // wieder mit dem Original ueberschrieben. Der Ref haelt die jeweils
+  // aktuellste Array synchron — alle Code-Pfade, die nach einem Flush
+  // lesen, gehen ueber `subEventsRef.current`.
+  const subEventsRef = React.useRef<typeof subEvents>(subEvents);
+  React.useEffect(() => { subEventsRef.current = subEvents; }, [subEvents]);
   // Snapshot der beim Edit-Start vorhandenen Sub-Event-DB-IDs, um beim Save
   // entfernte Sub-Events zu löschen.
   const [initialSubEventDbIds] = React.useState<string[]>(() => {
@@ -1737,7 +1749,10 @@ export default function EventCreationPage(): React.ReactElement {
     // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
     // statt pro Iteration, identisch für alle Children.
     const sanitizedOrgPair = sanitizeOrganizerPairs();
-    for (const draft of subEvents) {
+    // v11.60: aus dem Ref iterieren — der React-State ist beim Save evtl.
+    // noch nicht propagiert, weil flushActiveCommTabToState() per setState
+    // erst async wirkt. Der Ref haelt synchron die letzten Tab-Werte.
+    for (const draft of subEventsRef.current) {
       if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
       // v11.57: Pro-Sub-Event Kommunikations-Felder. Wenn der Organizer fuer
       // den Sub-Event eigene Werte in Step 5 gesetzt hat, verwenden wir die;
@@ -1951,7 +1966,8 @@ export default function EventCreationPage(): React.ReactElement {
     // 1) Aktuellen UI-State in das ausgehende Slot schreiben.
     if (activeCommTabIdx > 0) {
       const fromIdx = activeCommTabIdx - 1;
-      setSubEvents(prev => prev.map((s, i) => i === fromIdx ? {
+      // v11.60: synchron in den Ref schreiben (siehe flushActiveCommTabToState).
+      const flushed = subEventsRef.current.map((s, i) => i === fromIdx ? {
         ...s,
         emailLanguage,
         emailLogoBase64: emailLogoPreview,
@@ -1961,7 +1977,9 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
-      } : s));
+      } : s);
+      subEventsRef.current = flushed;
+      setSubEvents(flushed);
     } else {
       // Slot 0 = Top-Level. Der UI-State wird hier direkt vom Top-Level-State
       // gehalten — kein Snapshot noetig, weil setEmailLanguage etc. den Wert
@@ -2024,7 +2042,9 @@ export default function EventCreationPage(): React.ReactElement {
   const flushActiveCommTabToState = (): void => {
     if (activeCommTabIdx > 0) {
       const fromIdx = activeCommTabIdx - 1;
-      setSubEvents(prev => prev.map((s, i) => i === fromIdx ? {
+      // v11.60: synchron in den Ref schreiben — sonst sieht die direkt
+      // anschliessende Detect-/Persist-Logik noch die alte Array.
+      const flushed = subEventsRef.current.map((s, i) => i === fromIdx ? {
         ...s,
         emailLanguage,
         emailLogoBase64: emailLogoPreview,
@@ -2034,7 +2054,9 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
-      } : s));
+      } : s);
+      subEventsRef.current = flushed;
+      setSubEvents(flushed);
     }
     // Slot 0 (Top-Level) wird ohnehin direkt von den State-Variablen gespeist
     // — kein Flush noetig.
@@ -2816,9 +2838,12 @@ export default function EventCreationPage(): React.ReactElement {
       currentStart !== (snap.startDate || '') ||
       currentEnd !== (snap.endDate || '') ||
       currentStripped !== initialStripped;
-    // Sub-Events: pro Sub-Event vergleichen
+    // Sub-Events: pro Sub-Event vergleichen.
+    // v11.60: subEventsRef statt subEvents — der Flush hat die aktuellen
+    // UI-Werte gerade synchron in den Ref geschrieben, der React-State
+    // ist noch nicht propagiert.
     const affectedSubEventIds: string[] = [];
-    for (const s of subEvents) {
+    for (const s of subEventsRef.current) {
       if (!s.dbId) continue;
       const initTitle = s.initialTitle || '';
       const initStart = s.initialStartDate || '';
