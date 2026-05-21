@@ -2906,6 +2906,22 @@ export default function EventCreationPage(): React.ReactElement {
       if (!sameInstant(s.startDate || '', initStart)) subChangedFields.push('startDate');
       if (!sameInstant(s.endDate || '', initEnd)) subChangedFields.push('endDate');
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
+      // v11.66: Debug-Log fuer jeden Sub-Event, damit wir in der Browser-
+      // Konsole nachvollziehen koennen, warum das Modal manchmal nicht
+      // erscheint. Greift im Edit-Modus jedes Mal, wenn der Detect laeuft.
+      // eslint-disable-next-line no-console
+      console.log('[DEX][outlook-detect][sub]', {
+        dbId: s.dbId,
+        title: s.title,
+        subChangedFields,
+        disableOutlook: s.disableOutlook,
+        hasOutlookEvId,
+        initialOutlookEventId: s.initialOutlookEventId,
+        initialCalendarLink: s.initialCalendarLink,
+        bodyLenInitial: (s.initialOutlookBody || '').length,
+        bodyLenCurrent: (s.outlookBody || '').length,
+        bodyLenInitStripped: initBodyStripped.length,
+      });
       if (subChangedFields.length > 0 && !s.disableOutlook && hasOutlookEvId) {
         items.push({
           kind: 'sub',
@@ -2915,6 +2931,8 @@ export default function EventCreationPage(): React.ReactElement {
         });
       }
     }
+    // eslint-disable-next-line no-console
+    console.log('[DEX][outlook-detect][result]', { itemsCount: items.length, items });
     return { items };
   };
 

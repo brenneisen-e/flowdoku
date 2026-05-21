@@ -1989,11 +1989,15 @@ export default function AdminPage(): React.ReactElement {
     ? waitlistRegs.filter(r => !r.PreferredStarterType || (r.PreferredStarterType !== 'Durchstarter' && r.PreferredStarterType !== 'Funstarter'))
     : [];
 
-  // Roommate-Matching: durchsucht CustomData nach user-Type Feldern, extrahiert
+  // Roommate-Matching: durchsucht CustomData nach roommate-Type Feldern, extrahiert
   // Email aus "Name <email>"-Format, baut Map Email -> Partner-Email. Match-Badge,
   // wenn beide sich gegenseitig ausgewaehlt haben.
+  // v11.65: ausschliesslich `roommate`-Felder, nicht mehr `user`. Bei Assistant-
+  // /generischen User-Pickern macht ein „Match"-Badge semantisch keinen Sinn —
+  // der wurde faelschlich auch dort gezeigt, wenn Person A und B sich
+  // gegenseitig als Assistant eingetragen haben.
   const userFieldIds = (selectedEvent?.eventSpecificFields || [])
-    .filter(f => f.type === 'user')
+    .filter(f => f.type === 'roommate')
     .map(f => f.id);
 
   // Render-Funktionen pro Spalte — als eine Map, damit der Header + die Body-Zeilen
