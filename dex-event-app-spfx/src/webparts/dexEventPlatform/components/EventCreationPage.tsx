@@ -975,6 +975,13 @@ export default function EventCreationPage(): React.ReactElement {
     eventId: string;
     title: string;
     changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'>;
+    /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
+     *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
+     *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
+     *  keinen Outlook-Termin, an den die Teilnehmer eine Notification kriegen
+     *  koennten. Im Modal wird das Item statt mit Checkbox als
+     *  Info-Eintrag mit Erklaerung gerendert. */
+    noOutlookYet?: boolean;
   };
   const [outlookConfirmItems, setOutlookConfirmItems] = React.useState<OutlookConfirmItem[]>([]);
   // v11.63: Pro Event-ID, ob die Checkbox im Modal angehakt ist.
@@ -2925,12 +2932,16 @@ export default function EventCreationPage(): React.ReactElement {
         bodyMatch: curBodyStripped === initBodyStripped,
         titleMatch: (s.title || '') === initTitle,
       }));
-      if (subChangedFields.length > 0 && !s.disableOutlook && hasOutlookEvId) {
+      if (subChangedFields.length > 0 && !s.disableOutlook) {
         items.push({
           kind: 'sub',
           eventId: s.dbId,
           title: s.title || '',
           changedFields: subChangedFields,
+          // v11.68: ohne CalendarLink/OutlookEventId existiert kein Outlook-Termin
+          // — Save persistiert den neuen Body in DEX_Events, aber wir koennen
+          // kein UpdateEvent queuen. Modal rendert Info-Eintrag.
+          noOutlookYet: !hasOutlookEvId,
         });
       }
     }
@@ -2997,8 +3008,13 @@ export default function EventCreationPage(): React.ReactElement {
     pendingOutlookUpdateForTopRef.current = topChecked;
     pendingOutlookUpdateForSubEventsRef.current = checkedSubIds;
     // Pro Event-ID den OutlookDirty-Schreibwert vormerken.
+    // v11.68: noOutlookYet-Items (Sub-Events ohne Outlook-Termin) werden NICHT
+    // dirty markiert — sie haben gar keinen Outlook-Termin, der „aus-Sync"
+    // sein koennte. Body-Change wird normal gespeichert, aber kein Hinweis-
+    // Marker auf dem Event.
     const dirtyMap: Record<string, boolean> = {};
     for (const it of outlookConfirmItems) {
+      if (it.noOutlookYet) continue;
       dirtyMap[it.eventId] = !outlookConfirmChecks[it.eventId];
     }
     pendingOutlookDirtyWriteRefs.current = dirtyMap;
@@ -9721,6 +9737,45 @@ export default function EventCreationPage(): React.ReactElement {
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
+                // v11.68: Items ohne Outlook-Termin (noOutlookYet) bekommen
+                // keine Checkbox — der Body-Change wird gespeichert, aber wir
+                // koennen kein UpdateEvent queuen. Info-Eintrag mit Erklaerung.
+                if (it.noOutlookYet) {
+                  return (
+                    <div
+                      key={it.eventId}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 12,
+                        padding: '12px 14px',
+                        borderBottom: isLast ? 'none' : '1px solid var(--dex-gray-200)',
+                        background: 'var(--dex-gray-100, #f0f0f0)',
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 18, height: 18, marginTop: 2, flexShrink: 0,
+                          borderRadius: '50%', background: 'var(--dex-gray-400, #999)',
+                          color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: 'serif',
+                        }}
+                      >i</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-gray-700)', wordBreak: 'break-word' }}>
+                          {isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
+                          {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 6, fontStyle: 'italic', lineHeight: 1.4 }}>
+                          {isDe
+                            ? 'Für dieses Sub-Event existiert noch kein Outlook-Termin. Deine Änderung wird gespeichert und beim nächsten Termin-Anlegen verwendet — es geht aber jetzt keine Update-Mail an Teilnehmer raus (es gibt noch keine).'
+                            : 'No Outlook event exists yet for this sub-event. Your change will be saved and used when the calendar entry is created — no update mail goes out to attendees now (there are none yet).'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <label
                     key={it.eventId}
