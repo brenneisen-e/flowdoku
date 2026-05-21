@@ -159,8 +159,8 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Stelle die E-Mail-Sprache ein (DE oder EN), hinterlege einen optionalen Event-Logo für den Mail-Header, passe die Outlook-Terminbeschreibung an und editiere falls nötig die vier System-Templates: Anmeldung, Warteliste, Abmeldung, Nachrücken. Darunter findest du die Sub-Event-Verwaltung (Trainingssessions etc.).'
-                  : 'Set the email language (DE or EN), upload an optional event logo for the email header, customize the Outlook invite description, and edit the four system templates if needed: Registration, Waitlist, Cancellation, Promotion. Below you find the sub-event (training session) management.'}
+                  ? 'Stelle die E-Mail-Sprache ein (DE oder EN), hinterlege einen optionalen Event-Logo für den Mail-Header, passe die Outlook-Terminbeschreibung an und editiere falls nötig die vier System-Templates: Anmeldung, Warteliste, Abmeldung, Nachrücken. Darunter findest du die Sub-Event-Verwaltung (Trainingssessions etc.). Ab v11.57: hat dein Event Sub-Events, kannst du oben über die Tab-Leiste pro Sub-Event eine eigene Mail-Sprache, eigene Outlook-Termin-Texte und eigene Logos pflegen — ideal z.B. wenn ein Sub-Event auf Deutsch und eines auf Englisch läuft.'
+                  : 'Set the email language (DE or EN), upload an optional event logo for the email header, customize the Outlook invite description, and edit the four system templates if needed: Registration, Waitlist, Cancellation, Promotion. Below you find the sub-event (training session) management. Since v11.57: if the event has sub-events, you can use the tab bar on top to maintain separate language, Outlook texts and logos per sub-event — handy e.g. when one sub-event runs in German and another in English.'}
               </>
             ),
             mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Kommunikation (echte Ansicht)' : 'Wizard step 5: Communication (real view)'),

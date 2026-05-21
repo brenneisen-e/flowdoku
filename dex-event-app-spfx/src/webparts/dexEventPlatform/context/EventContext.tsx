@@ -204,6 +204,7 @@ export interface CreateEventInput {
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
+  outlookDirty?: boolean; // v11.57: Outlook-Update ausstehend nach Bearbeitung
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
   notifyOrgRegisterFromDate?: string;
   notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
@@ -414,6 +415,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
+      // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
+      // als false interpretiert (kein Hinweis anzeigen).
+      outlookDirty: !!e.OutlookDirty,
       notifyOrgRegisterMode: ((): 'never' | 'always' | 'fromDate' => {
         const v = (e.NotifyOrgRegisterMode || '').toLowerCase();
         if (v === 'always') return 'always';
