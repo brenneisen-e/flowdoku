@@ -2908,9 +2908,10 @@ export default function EventCreationPage(): React.ReactElement {
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
       // v11.66: Debug-Log fuer jeden Sub-Event, damit wir in der Browser-
       // Konsole nachvollziehen koennen, warum das Modal manchmal nicht
-      // erscheint. Greift im Edit-Modus jedes Mal, wenn der Detect laeuft.
+      // erscheint. v11.67: JSON.stringify damit der Browser die Werte
+      // direkt anzeigt (statt nur „Object" mit Klick zum Aufklappen).
       // eslint-disable-next-line no-console
-      console.log('[DEX][outlook-detect][sub]', {
+      console.log('[DEX][outlook-detect][sub] ' + JSON.stringify({
         dbId: s.dbId,
         title: s.title,
         subChangedFields,
@@ -2921,7 +2922,9 @@ export default function EventCreationPage(): React.ReactElement {
         bodyLenInitial: (s.initialOutlookBody || '').length,
         bodyLenCurrent: (s.outlookBody || '').length,
         bodyLenInitStripped: initBodyStripped.length,
-      });
+        bodyMatch: curBodyStripped === initBodyStripped,
+        titleMatch: (s.title || '') === initTitle,
+      }));
       if (subChangedFields.length > 0 && !s.disableOutlook && hasOutlookEvId) {
         items.push({
           kind: 'sub',
@@ -2932,7 +2935,14 @@ export default function EventCreationPage(): React.ReactElement {
       }
     }
     // eslint-disable-next-line no-console
-    console.log('[DEX][outlook-detect][result]', { itemsCount: items.length, items });
+    console.log('[DEX][outlook-detect][result] ' + JSON.stringify({
+      itemsCount: items.length,
+      items,
+      activeCommTabIdx,
+      topOutlookBodyLen: (outlookBody || '').length,
+      topInitialOutlookBodyLen: (snap.outlookBody || '').length,
+      topBodyMatch: currentStripped === initialStripped,
+    }));
     return { items };
   };
 

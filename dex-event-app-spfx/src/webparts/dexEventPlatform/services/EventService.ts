@@ -4715,6 +4715,20 @@ export class EventService {
         for (let i = 1; i < dup.entries.length; i++) {
           const candidate = dup.entries[i];
           let isEmpty = false;
+          // v11.67: SP truncated InternalNames auf 32 Zeichen. Wenn die Truncation
+          // mitten in einer `_xXXXX_`-Encoding-Sequenz liegt (z.B.
+          // `ADMIN_x0020__x002d__x0020_Who_x00` — die letzten Zeichen `_x00`
+          // sind eine angeschnittene `_x0020_`-Sequenz), wirft SP HTTP 400 auf
+          // jeden OData-`$filter`-Versuch. Solche Spalten werden hier nicht
+          // geprueft → konservativ als „hat Daten" behandelt (kein Auto-
+          // Loeschen). Der Admin kann sie ueber die SP-Listen-UI manuell
+          // entfernen, wenn sie wirklich leer sind.
+          const looksTruncated = candidate.internalName.length === 32
+            && /_x[0-9a-f]{1,3}$/i.test(candidate.internalName);
+          if (looksTruncated) {
+            if (duplicatesWithData.indexOf(dup.title) < 0) duplicatesWithData.push(dup.title);
+            continue;
+          }
           try {
             const checkUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${candidate.internalName} ne null&$top=1&$select=ID`;
             const checkResp = await this.context.spHttpClient.get(checkUrl, SPHttpClient.configurations.v1);
