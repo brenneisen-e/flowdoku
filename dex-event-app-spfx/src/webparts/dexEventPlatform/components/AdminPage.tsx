@@ -1003,7 +1003,17 @@ export default function AdminPage(): React.ReactElement {
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
-    if (userIds.length > 0) cols.push({ id: 'roommate', label: 'Zimmerpartner' });
+    if (userIds.length > 0) {
+      // v11.56: Label aus dem ersten roommate-/user-Feld ableiten, statt hart
+      // „Zimmerpartner" zu nennen. Wenn ein roommate-Feld existiert, nimm dessen
+      // Label (User-Picker-Pairs); sonst das erste user-Feld; Fallback bleibt
+      // der deutsche Default.
+      const fields = selectedEvent?.eventSpecificFields || [];
+      const firstRoommate = fields.filter(f => f.type === 'roommate' && f.label && f.label.trim())[0];
+      const firstUser = fields.filter(f => f.type === 'user' && f.label && f.label.trim())[0];
+      const roommateLabel = (firstRoommate?.label || firstUser?.label || 'Zimmerpartner').trim();
+      cols.push({ id: 'roommate', label: roommateLabel });
+    }
     for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
       cols.push({ id: `cf-${f.id}`, label: f.label });
     }
@@ -2778,11 +2788,28 @@ export default function AdminPage(): React.ReactElement {
                     }));
                     const result = await eventServiceRef.fixRegistrationListColumns(
                       selectedEvent.subsiteUrl,
-                      { isB2Run, hasQuiz, customFields }
+                      { isB2Run, hasQuiz, customFields },
+                      (count, titles) => {
+                        const preview = titles.slice(0, 8).map(t => `„${t}"`).join(', ');
+                        const more = titles.length > 8 ? ` …und ${titles.length - 8} weitere` : '';
+                        return window.confirm(
+                          `${count} überflüssige (leere) Duplikat-Spalten in der Teilnehmerliste gefunden ` +
+                          `(${titles.length} Titel betroffen: ${preview}${more}).\n\n` +
+                          `Diese werden jetzt gelöscht (irreversibel). Spalten mit Daten bleiben erhalten ` +
+                          `und werden zur manuellen Prüfung gemeldet.\n\nFortfahren?`
+                        );
+                      }
                     );
                     const msgs: string[] = [];
                     if (result.added.length > 0) msgs.push(`Spalten hinzugefügt: ${result.added.join(', ')}`);
                     if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
+                    if (result.duplicatesRemoved && result.duplicatesRemoved.length > 0) {
+                      msgs.push(`${result.duplicatesRemoved.length} leere Duplikate gelöscht`);
+                    }
+                    if (result.duplicatesWithData && result.duplicatesWithData.length > 0) {
+                      const list = result.duplicatesWithData.map(t => `„${t}"`).join(', ');
+                      msgs.push(`${result.duplicatesWithData.length} Duplikate mit Daten — bitte manuell prüfen: ${list}`);
+                    }
                     if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
                     if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3908,9 +3935,14 @@ export default function AdminPage(): React.ReactElement {
                   );
                 }
                 if (id === 'roommate') {
+                  // v11.56: Label dynamisch aus availableColumns nehmen (entstammt dem
+                  // ersten roommate-/user-Feld der Custom-Field-Definition) statt
+                  // hartcodiertem „Zimmerpartner".
+                  const roommateCol = availableColumns.find(c => c.id === 'roommate');
+                  const roommateLabel = roommateCol?.label || 'Zimmerpartner';
                   return (
-                    <th key={id} style={baseStyle} title="Ausgewaehlter Zimmerpartner. Match = beide haben sich gegenseitig ausgewaehlt.">
-                      Zimmerpartner{hideButton(id)}
+                    <th key={id} style={baseStyle} title="Ausgewählter User-Picker-Wert aus diesem Feld. Match = beide haben sich gegenseitig ausgewählt.">
+                      {roommateLabel}{hideButton(id)}
                     </th>
                   );
                 }

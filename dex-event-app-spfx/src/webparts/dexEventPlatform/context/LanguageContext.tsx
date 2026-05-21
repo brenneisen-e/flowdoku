@@ -19,7 +19,11 @@ const LanguageContext = React.createContext<LanguageContextType | undefined>(und
 
 // ==================== Übersetzungen ====================
 
-const translations: Record<Locale, Record<string, string>> = {
+// v11.56: exportiert, damit die RegistrationPage Form-Chrome-Strings nach der
+// Event-Sprache (event.emailLanguage) auswaehlen kann statt nach der User-Locale —
+// englischsprachige Events sollen Englisch zeigen, auch wenn der Browser-User
+// gerade Deutsch eingestellt hat.
+export const translations: Record<Locale, Record<string, string>> = {
   de: {
     // Landing Page
     'landing.welcome': 'Willkommen auf der neuen',

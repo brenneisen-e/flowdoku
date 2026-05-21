@@ -10,7 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
@@ -33,6 +33,16 @@ export default function RegistrationPage(): React.ReactElement {
   const { searchUsers, isAdmin } = useRoles();
   const { t, locale } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
+
+  // v11.56: tEvent() liefert Form-Chrome-Strings (Placeholder, Hints, Sub-Event-
+  // Sektion) in der Event-Sprache statt der User-Locale. Wenn das Event auf
+  // emailLanguage='EN' steht, sehen alle Teilnehmer englische Form-Labels —
+  // auch wenn der eingeloggte User die App auf Deutsch nutzt. App-Chrome
+  // (Header, Navigation, Buttons ausserhalb des Formulars) bleibt bei t().
+  const eventLocale: Locale = (event?.emailLanguage === 'EN') ? 'en' : 'de';
+  const tEvent = React.useCallback((key: string): string => {
+    return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
+  }, [eventLocale, t]);
 
   // Per-Event-Organizer-Check: ist der eingeloggte User in event.organizerEmails?
   // Nur dann darf er a) nach Deadline registrieren und b) "Register for another
@@ -765,14 +775,14 @@ export default function RegistrationPage(): React.ReactElement {
               </label>
             ))}
             <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>
-              {t('reg.multiselect.hint') || 'Mehrere Auswahl möglich'}
+              {tEvent('reg.multiselect.hint') || 'Mehrere Auswahl möglich'}
             </div>
           </div>
         );
       })()
     ) : field.type === 'select' ? (
       <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
-        <option value="">{t('reg.pleaseselect')}</option>
+        <option value="">{tEvent('reg.pleaseselect')}</option>
         {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
     ) : field.type === 'user' || field.type === 'roommate' ? (
@@ -785,9 +795,9 @@ export default function RegistrationPage(): React.ReactElement {
         value={eventSpecific[field.id] || ''}
         onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
         searchUsers={searchUsers}
-        placeholder={t('reg.userfield.placeholder')}
+        placeholder={tEvent('reg.userfield.placeholder')}
         errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
-        hint={field.type === 'roommate' ? t('reg.userfield.notifyhint') : undefined}
+        hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
       />
     ) : field.type === 'checkbox' ? (
       <label
@@ -977,8 +987,13 @@ export default function RegistrationPage(): React.ReactElement {
                 <img
                   src={event.imageUrl}
                   alt={event.title}
+                  // v11.56: Auch im Portrait-Modus 'contain', damit das Bild
+                  // vollstaendig sichtbar bleibt (vorher wurde der obere
+                  // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
+                  // bereits gray-100 — das ergibt einen sauberen, neutralen
+                  // Letterbox-Rahmen statt eines Bildschnitts.
                   style={imgOrientation === 'portrait'
-                    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+                    ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block' }
                     : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
                   }
                 />
@@ -1203,7 +1218,7 @@ export default function RegistrationPage(): React.ReactElement {
                             style={{ marginTop: 2 }}
                           />
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700 }}>{ce.title || t('reg.subevents.untitled')}</div>
+                            <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
                             {ce.description && (
                               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
@@ -1683,9 +1698,9 @@ export default function RegistrationPage(): React.ReactElement {
                 preferredStarterType vom Group-Selection-Block oben. */}
             {childEvents.length > 0 && !registerForOther && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
-                <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
+                <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{tEvent('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                  {t('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
+                  {tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
                 </p>
 
                 {/* Haupt-Event-Checkbox */}
@@ -1704,10 +1719,10 @@ export default function RegistrationPage(): React.ReactElement {
                     style={{ marginTop: 2 }}
                   />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700 }}>{t('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
+                    <div style={{ fontWeight: 700 }}>{tEvent('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
                     {parentAlreadyRegistered && (
                       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                        {t('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
+                        {tEvent('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
                       </div>
                     )}
                   </div>
@@ -1715,7 +1730,7 @@ export default function RegistrationPage(): React.ReactElement {
 
                 {/* Sessions */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{tEvent('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
                     const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
@@ -1762,7 +1777,7 @@ export default function RegistrationPage(): React.ReactElement {
                             style={{ marginTop: 2 }}
                           />
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700 }}>{ce.title || t('reg.subevents.untitled')}</div>
+                            <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
                             {ce.description && (
                               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
@@ -1773,10 +1788,10 @@ export default function RegistrationPage(): React.ReactElement {
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
-                                    {meta.count}/{ce.maxParticipants} {t('reg.subevents.taken')}
+                                    {meta.count}/{ce.maxParticipants} {tEvent('reg.subevents.taken')}
                                   </span>
                                   {!isSessionFull && (
-                                    <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {t('reg.free')}</span>
+                                    <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {tEvent('reg.free')}</span>
                                   )}
                                   </>
                                 );
@@ -1784,12 +1799,12 @@ export default function RegistrationPage(): React.ReactElement {
                             </div>
                             {deadlinePassed && !isSel && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
-                                {t('reg.subevents.deadlinepassed')}
+                                {tEvent('reg.subevents.deadlinepassed')}
                               </div>
                             )}
                             {isSessionFull && !isSel && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-red)', marginTop: 2 }}>
-                                {t('reg.subevents.sessionfull')}
+                                {tEvent('reg.subevents.sessionfull')}
                               </div>
                             )}
                             {/* v11.10: Hardcoded Sub-Event-Gruppen-Radios entfernt.
@@ -1812,7 +1827,7 @@ export default function RegistrationPage(): React.ReactElement {
                     background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
                     color: 'var(--dex-orange)', fontSize: '0.78rem',
                   }}>
-                    {t('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
+                    {tEvent('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
                   </div>
                 )}
               </div>
