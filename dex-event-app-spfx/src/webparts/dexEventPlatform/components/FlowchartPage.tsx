@@ -624,23 +624,23 @@ function EventCreationFlow(): React.ReactElement {
       <FlowNode
         type="decision"
         label="Bearbeitung eines bestehenden Events?"
-        details="Beim Edit prüft der Wizard, ob Outlook-relevante Felder (Titel, Start, Ende, OutlookBody) gegenüber dem Mount-Snapshot verändert wurden. Wenn ja, erscheint vor dem updateEvent-Call ein Confirm-Modal mit der Frage 'Outlook-Termin der Teilnehmer aktualisieren?'."
+        details="Beim Edit prüft der Wizard pro Event (Hauptevent + jedes Sub-Event), ob Outlook-relevante Felder (Titel, Start, Ende, OutlookBody) gegenüber dem Mount-Snapshot verändert wurden. Für jedes betroffene Event mit Outlook-Termin erscheint im Confirm-Modal eine eigene Checkbox — der Organizer entscheidet pro Termin einzeln, ob die Teilnehmer eine 'Aktualisierter Termin'-Benachrichtigung bekommen sollen (v11.63)."
       />
       <BranchContainer>
-        <Branch label="Ja, Haken gesetzt">
+        <Branch label="Pro Event: Haken gesetzt">
           <FlowNode
             type="data"
             color="#fce4ec"
-            label="DEX_Outlook: UpdateEvent + OutlookDirty=false"
-            details="updateEvent → queueOutlookEvent(eventId, 'UpdateEvent') → updateEvent({OutlookDirty:false}). Der DEX_Outlook_Einladungen-Flow PATCHt den Termin im Shared-Mailbox-Kalender; Outlook schickt allen Teilnehmern eine 'Aktualisierter Termin'-Mail. Bei Sub-Events mit eigenen OutlookEventIds gleicher Pfad pro Sub-Event."
+            label="DEX_Outlook: UpdateEvent + OutlookDirty=false (nur dieses Event)"
+            details="Für jedes angehakte Event (Hauptevent ODER Sub-Event): queueOutlookEvent(eventId, 'UpdateEvent') + updateEvent({OutlookDirty:false}). Der DEX_Outlook_Einladungen-Flow PATCHt den Termin im Shared-Mailbox-Kalender; Outlook schickt den Teilnehmern dieses Termins eine 'Aktualisierter Termin'-Mail. Andere Termine im selben Event-Verbund bleiben unangetastet."
           />
         </Branch>
-        <Branch label="Ja, Haken aus">
+        <Branch label="Pro Event: Haken aus">
           <FlowNode
             type="process"
             color="#fff8e1"
-            label="updateEvent + OutlookDirty=true"
-            details="Outlook-Termin wird NICHT angefasst — der Organizer wollte z.B. nur einen Tippfehler korrigieren. Damit beim nächsten Wizard-Lauf der Hinweis 'Outlook-Synchronisation steht aus' erscheint, schreibt die SPFx-App OutlookDirty=true zurück."
+            label="updateEvent + OutlookDirty=true (nur dieses Event)"
+            details="Für jedes nicht angehakte Event (das aber im Detect-Lauf als geändert erkannt wurde): Outlook-Termin wird NICHT angefasst. Damit beim nächsten Wizard-Lauf der Hinweis 'Outlook-Synchronisation steht aus' für dieses Event erscheint, schreibt die SPFx-App OutlookDirty=true zurück. Die Hinweisbox in Schritt 1 nennt Hauptevent und/oder die Anzahl der dirty-Sub-Events explizit."
           />
         </Branch>
         <Branch label="Nein (Create / keine Outlook-Änderung)">
