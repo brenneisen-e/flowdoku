@@ -336,7 +336,10 @@
     }
     .registration-event__card { padding: 16px; }
     .registration-event__image {
-      position: relative; height: 200px; border-radius: var(--dex-radius); overflow: hidden;
+      // v11.58: KEIN hardcoded height mehr — die Hoehe kommt aus dem Inline-Style
+      // der RegistrationPage (Portrait: stretch, Landscape: auto). Hardcoded 200px
+      // hat object-fit:contain ausgehebelt und das Bild oben weggeschnitten.
+      position: relative; border-radius: var(--dex-radius); overflow: hidden;
       display: flex; flex-direction: column; justify-content: flex-end;
     }
     .registration-event__overlay {
