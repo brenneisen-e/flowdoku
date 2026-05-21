@@ -72,6 +72,12 @@ export interface DeloitteEvent {
    *  Erkennung „nachträglich Outlook aktiviert" auf Sub-Events
    *  (`persistSubEventsForParent` in `EventCreationPage.tsx`). */
   outlookEventId?: string;
+  /** CalendarLink (iCalUId) aus DEX_Events. Wird vom DEX_CreateOutlookEvent-Flow
+   *  nach erfolgreichem Anlegen geschrieben — und ist tatsaechlich das einzige
+   *  Feld, das auf Erfolgsbasis gefuellt wird (OutlookEventId nur bei Fehler
+   *  ='FAILED'). Wird in der App genutzt, um zu erkennen, ob ein Event einen
+   *  Outlook-Termin besitzt — wichtig fuer die v11.57-Update-Confirm-Logik. */
+  calendarLink?: string;
   /** v11.57: Marker, dass beim letzten Edit Outlook-relevante Felder (Title,
    *  Start, End, OutlookBody) geändert wurden, ohne dass der Organizer ein
    *  Update an die Teilnehmer-Outlook-Termine ausgelöst hat. Wird im
