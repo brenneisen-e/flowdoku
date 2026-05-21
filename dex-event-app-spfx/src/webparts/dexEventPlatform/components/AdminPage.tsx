@@ -883,27 +883,52 @@ export default function AdminPage(): React.ReactElement {
     setIsReorderingIDs(false);
   };
 
-  // v11.36: Erkennt „kaputte" TeilnehmerIDs — die echten Schmerzfälle aus
-  // zeitgleichen Anmeldungen: (a) doppelte ID unter Nicht-Abgemeldeten,
-  // (b) aktive/Warteliste-Eintrag ohne (oder ≤0) TeilnehmerID. Lücken nach
-  // Stornos zählen NICHT als kaputt (das ist normal bis zum nächsten Reorder).
-  // Die TeilnehmerIDs sind durch den DEX_IDReorder-Flow immer durchlaufend —
-  // es gibt also keinen „kaputt"-Zustand zu erkennen. Relevant ist nur: gab
-  // es KÜRZLICH eine Abmeldung? Dann läuft die automatische Batch-Korrektur
-  // (Nachrücken + ID-Neuvergabe per Power Automate) evtl. noch im Hintergrund
-  // und man sollte NICHT parallel manuell „IDs neu vergeben".
-  const RECENT_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 Minuten
+  // v11.70 / v11.71: Hinweis-Box „IDs sind ggf. nicht korrekt" wird jetzt
+  // an die tatsaechliche TeilnehmerID-Sequenz gekoppelt — nicht mehr an
+  // eine 10-Minuten-Zeit-Heuristik nach der letzten Abmeldung.
+  //
+  // Erwartet: alle nicht-abgemeldeten Eintraege (Status in
+  // Angemeldet/QR versendet/Eingecheckt/Warteliste) haben TeilnehmerIDs,
+  // die nach Sortierung lueckenlos 1..N durchlaufen. Sobald
+  //   - eine ID fehlt (Luecke),
+  //   - eine ID doppelt vorkommt,
+  //   - ein nicht-abgemeldeter Eintrag keine (oder ≤0) ID hat,
+  // ist der Zustand „IDs evtl. nicht korrekt". Typischer Trigger: gerade
+  // erfolgte Abmeldung, der DEX_IDReorder-Flow ist noch nicht fertig.
+  // Das gibt einen ehrlichen Status — die Box verschwindet automatisch,
+  // sobald der Flow durch ist (statt nach willkuerlichen 10 Minuten).
   const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
+    const active = regs.filter(r => r.Status !== 'Abgemeldet');
+    if (active.length === 0) return { recent: false, whenIso: '' };
+    const ids: number[] = [];
+    for (const r of active) {
+      const id = Number(r.TeilnehmerID);
+      if (!isFinite(id) || id <= 0) {
+        // Eintrag ohne gueltige ID — IDs sind kaputt, Letzten-Cancel
+        // mitgeben (oder leer wenn keiner).
+        return { recent: true, whenIso: latestCancelIso(regs) };
+      }
+      ids.push(id);
+    }
+    ids.sort((a, b) => a - b);
+    // Lueckenlos 1..N pruefen
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] !== i + 1) {
+        return { recent: true, whenIso: latestCancelIso(regs) };
+      }
+    }
+    return { recent: false, whenIso: '' };
+  };
+  // Hilfsfunktion: jüngste CancellationDate aus der Liste (fuer den
+  // optionalen Zeit-Hinweis in der Box).
+  const latestCancelIso = (regs: SPRegistration[]): string => {
     let latest = 0;
     for (const r of regs) {
       if (r.Status !== 'Abgemeldet') continue;
       const t = new Date(r.CancellationDate || '').getTime();
       if (!isNaN(t) && t > latest) latest = t;
     }
-    if (latest > 0 && (Date.now() - latest) < RECENT_CANCEL_WINDOW_MS) {
-      return { recent: true, whenIso: new Date(latest).toISOString() };
-    }
-    return { recent: false, whenIso: '' };
+    return latest > 0 ? new Date(latest).toISOString() : '';
   };
   const idFixCheckedForRef = React.useRef<string | null>(null);
 
