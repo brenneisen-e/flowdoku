@@ -146,6 +146,27 @@ Die UI-Schritt-für-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
 „UI-Anleitung 2026-05-21 (v11.57) — OutlookDirty=false nach
 erfolgreichem Create/Update setzen".
 
+**v11.63 — pro-Event-Checkbox.** Das frühere globale „Outlook-Update
+senden ja/nein"-Häkchen wurde durch eine Liste pro betroffenem Event
+ersetzt. `detectOutlookRelevantChanges()` liefert seit v11.63 nicht mehr
+`{ topChanged, affectedSubEventIds }`, sondern
+`{ items: [{ kind: 'top'|'sub', eventId, title, changedFields[] }] }` —
+jedes Item beschreibt ein konkret geändertes Event und listet die
+geänderten Felder (`title` / `startDate` / `endDate` / `outlookBody`).
+Das Modal rendert pro Item eine eigene Checkbox plus den klein-grauen
+„Geändert: …"-Subtext. Angehakte Events lösen ein `UpdateEvent` in
+`DEX_Outlook` aus und bekommen `OutlookDirty=false`, nicht angehakte
+Events werden gespeichert und mit `OutlookDirty=true` markiert — pro
+Event-ID, nicht mehr global. Die Hinweisbox in Schritt 1 (Grundlagen)
+erkennt jetzt auch Sub-Event-Dirty-Marker via `childEventsOf(editEvent.id)`
+und nennt Hauptevent und/oder die Zahl der dirty Sub-Events explizit
+(„Outlook-Synchronisation steht aus: für das Hauptevent UND X
+Sub-Event(s)"). Submit-Pipeline: `pendingOutlookUpdateForTopRef`
+(boolean) + `pendingOutlookUpdateForSubEventsRef` (string[]) entscheiden,
+welche Events ein `queueOutlookEvent('UpdateEvent')` bekommen;
+`pendingOutlookDirtyWriteRefs` (Record<eventId, boolean>) hält die
+OutlookDirty-Schreibwerte pro Event-ID.
+
 ### Sub-Event-Tabs in Schritt 5 (v11.57)
 
 Schritt 5 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
