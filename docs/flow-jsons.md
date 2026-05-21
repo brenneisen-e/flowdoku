@@ -629,6 +629,48 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-05-21 (v11.57) — OutlookDirty=false nach erfolgreichem Create/Update setzen
+
+Mit v11.57 gibt es auf der `DEX_Events`-Liste die neue Boolean-Spalte
+`OutlookDirty`. Die SPFx-App setzt sie auf `true`, wenn der Organizer
+beim Edit Titel/Start/Ende/Outlook-Body geändert hat aber den Outlook-
+Update nicht freigegeben hat — damit der Wizard beim nächsten Aufruf den
+Hinweis „Outlook-Synchronisation steht aus" anzeigt.
+
+**Optionale Optimierung:** sobald der Flow erfolgreich einen Termin
+angelegt hat, sollte er `OutlookDirty=false` zurückschreiben, damit der
+Hinweis selbst bei Race-Conditions zuverlässig zurückgesetzt wird (die
+SPFx-App tut das bereits beim Confirm-„Speichern + Update", aber ein
+zweiter Sicherheitsnetz-Pfad im Flow schadet nicht).
+
+**UI-Schritt-für-Schritt in Power Automate:**
+
+1. Flow **`DEX_CreateOutlookEvent`** im Make.PowerAutomate.com öffnen.
+2. Direkt nach der bestehenden Action **`Update_DEX_Event`** (die
+   CalendarLink + OutlookEventId zurückschreibt) auf das `+`-Plus klicken
+   → **Add an action** → SharePoint → **Update item**.
+3. Action umbenennen zu **`Update_OutlookDirty_False`** (drei Punkte
+   `⋮` → Rename).
+4. Parameter konfigurieren:
+   - **Site Address:** denselben Wert wie bei `Update_DEX_Event` wählen
+     (DEX-Site).
+   - **List Name:** `DEX_Events`.
+   - **Id:** Expression-Tab (fx) → `triggerOutputs()?['body/ID']`.
+   - **OutlookDirty:** im Dropdown auf `No` (= false) setzen.
+5. **Settings** (drei Punkte `⋮` → Settings) → **Run after** → nur
+   `Update_DEX_Event` mit **is successful** aktivieren.
+6. Speichern, Test-Lauf mit einem neuen Event durchklicken: nach
+   erfolgreichem Create steht `OutlookDirty` zuverlässig auf `false`.
+
+Wenn das durchgeklickt und getestet ist, bitte den exportierten Flow-
+JSON in den Abschnitt unten unter „## 3. DEX_CreateOutlookEvent"
+einpflegen, damit der Doku-Stand wieder zur Tenant-Realität passt.
+
+**Analog für `DEX_Outlook_Einladungen`:** im UpdateEvent-Zweig (nicht
+im Einladen/Ausladen) nach erfolgreichem PATCH auf den Outlook-Termin
+eine zusätzliche `Update item`-Action mit `OutlookDirty=No` für das
+DEX_Events-Item anhängen (gleiche Schritte wie oben).
+
 Ablauf: Trigger (neues Event) → Config laden (Logo + Default-Bild) → Compose_Logo → Compose_Image → Platzhalter in OutlookBody ersetzen → Outlook-Termin mit HTML-Body erstellen (UTC-Zeit wird per `convertFromUtc` nach Europe/Berlin konvertiert) → CalendarLink in DEX_Events speichern
 
 **Hinweis:** Der OutlookBody wird bereits in der SPFx-App im Deloitte-HTML-Template gewrappt (mit `{{LOGO_URL}}` und `{{ORB_URL}}` Platzhaltern). Der Flow ersetzt diese Platzhalter durch Base64-Bilder.

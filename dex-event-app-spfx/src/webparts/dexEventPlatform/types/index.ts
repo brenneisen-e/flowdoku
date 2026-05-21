@@ -72,6 +72,13 @@ export interface DeloitteEvent {
    *  Erkennung „nachträglich Outlook aktiviert" auf Sub-Events
    *  (`persistSubEventsForParent` in `EventCreationPage.tsx`). */
   outlookEventId?: string;
+  /** v11.57: Marker, dass beim letzten Edit Outlook-relevante Felder (Title,
+   *  Start, End, OutlookBody) geändert wurden, ohne dass der Organizer ein
+   *  Update an die Teilnehmer-Outlook-Termine ausgelöst hat. Wird im
+   *  Wizard-Schritt 1 (Grundlagen) als Hinweis-Box angezeigt, damit beim
+   *  nächsten Save bewusst entschieden werden kann, ob die Teilnehmer eine
+   *  „Aktualisierter Termin"-Benachrichtigung bekommen. */
+  outlookDirty?: boolean;
   emailLanguage: string; // 'DE' | 'EN'
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung

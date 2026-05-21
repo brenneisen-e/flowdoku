@@ -260,6 +260,7 @@ export interface SPEvent {
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
+  OutlookDirty?: boolean; // v11.57: true = Outlook-relevante Felder geändert, Update an Teilnehmer-Termine noch nicht angestoßen
   AutoSendQRCode?: boolean; // v9.15: true = nach Anmeldung automatisch QR-Code-Mail versenden
   ActiveFrom?: string; // v9.21: ISO-Datum, ab dem ein "Active"-Event tatsaechlich sichtbar wird
   // v8.5: Granulare Organizer-BCC-Modi
@@ -2258,6 +2259,7 @@ export class EventService {
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
+      { title: 'OutlookDirty', type: 8, metaType: 'SP.Field' }, // v11.57 Boolean - Outlook-Update ausstehend nach Bearbeitung
       { title: 'AutoSendQRCode', type: 8, metaType: 'SP.Field' }, // v9.15 Boolean - QR-Code automatisch nach Anmeldung versenden
       { title: 'ActiveFrom', type: 4, metaType: 'SP.Field' }, // v9.21 DateTime - Auto-Aktivierungs-Datum
       { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
@@ -2648,7 +2650,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -4645,21 +4647,106 @@ export class EventService {
       isB2Run?: boolean;  // Event hat Durchstarter/Funstarter Kapazitaet
       hasQuiz?: boolean;  // Event hat Quizfragen
       customFields?: CustomField[]; // Event-spezifische Custom-Fields — fehlende SP-Spalten werden angelegt
-    }
-  ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean; customFieldMap?: Record<string, string> }> {
+    },
+    // v11.56: Optionaler Confirm-Callback. Wird aufgerufen, wenn Duplikat-Spalten
+    // erkannt wurden, BEVOR irgendetwas geloescht wird. Liefert der Callback false,
+    // werden die Duplikate uebersprungen (die Hauptfix-Logik laeuft trotzdem).
+    confirmDeleteDuplicates?: (count: number, titles: string[]) => boolean | Promise<boolean>
+  ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean; customFieldMap?: Record<string, string>; duplicatesRemoved?: string[]; duplicatesWithData?: string[] }> {
     const added: string[] = [];
     const removed: string[] = [];
+    const duplicatesRemoved: string[] = [];
+    const duplicatesWithData: string[] = [];
 
-    // Bestehende Felder laden
+    // Bestehende Felder laden — InternalName + Title beide nehmen, damit wir per Title
+    // dedupen koennen (siehe v11.56: alte Builds haben durch fehlgeschlagene Existenz-
+    // checks beim wiederholten "Spalten fixen" pro Custom-Field 50+ Duplikate angelegt).
     const fieldsResp = await this.context.spHttpClient.get(
-      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=200&$select=InternalName,Title`,
+      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
       SPHttpClient.configurations.v1
     );
     const existingFieldsList: string[] = [];
+    const existingByInternal: Set<string> = new Set();
+    const existingByTitle: Map<string, Array<{ internalName: string }>> = new Map();
     if (fieldsResp.ok) {
       const fieldsData = await fieldsResp.json();
       const fields = fieldsData.value || fieldsData.d?.results || [];
-      for (const f of fields) { existingFieldsList.push(f.InternalName); }
+      for (const f of fields) {
+        const internalName: string = String(f.InternalName || '');
+        const title: string = String(f.Title || '');
+        if (!internalName) continue;
+        existingFieldsList.push(internalName);
+        existingByInternal.add(internalName);
+        if (title) {
+          const arr = existingByTitle.get(title) || [];
+          arr.push({ internalName });
+          existingByTitle.set(title, arr);
+        }
+      }
+    }
+
+    // ===== DEDUPE-PASS (v11.56) =====
+    // Pro Title: wenn mehr als ein Feld diesen Titel hat → die uebrigen Felder loeschen,
+    // sofern sie leer sind (keine Items mit Wert in der Spalte). Erstes Feld bleibt
+    // immer erhalten. Felder mit Daten werden gemeldet (duplicatesWithData) und nicht
+    // automatisch geloescht — der User soll sie manuell pruefen.
+    const duplicateTitles: Array<{ title: string; entries: Array<{ internalName: string }> }> = [];
+    existingByTitle.forEach((entries, title) => {
+      if (entries.length > 1) {
+        duplicateTitles.push({ title, entries });
+      }
+    });
+    if (duplicateTitles.length > 0) {
+      // Vor dem Loeschen den Aufrufer fragen — Operation ist irreversibel.
+      if (confirmDeleteDuplicates) {
+        const count = duplicateTitles.reduce((sum, d) => sum + (d.entries.length - 1), 0);
+        const titles = duplicateTitles.map(d => d.title);
+        const ok = await Promise.resolve(confirmDeleteDuplicates(count, titles));
+        if (!ok) {
+          // Cleanup ueberspringen — nur den Hauptfix laufen lassen
+          duplicateTitles.length = 0;
+        }
+      }
+    }
+    if (duplicateTitles.length > 0) {
+      // Pro Duplikat-Set: den ersten Eintrag behalten, fuer alle weiteren pruefen ob leer.
+      for (const dup of duplicateTitles) {
+        // entries[0] bleibt erhalten
+        for (let i = 1; i < dup.entries.length; i++) {
+          const candidate = dup.entries[i];
+          let isEmpty = false;
+          try {
+            const checkUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${candidate.internalName} ne null&$top=1&$select=ID`;
+            const checkResp = await this.context.spHttpClient.get(checkUrl, SPHttpClient.configurations.v1);
+            if (checkResp.ok) {
+              const data = await checkResp.json();
+              const items = data.value || data.d?.results || [];
+              isEmpty = items.length === 0;
+            }
+          } catch { isEmpty = false; }
+          if (isEmpty) {
+            try {
+              const delResp = await this._post(
+                `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields/getbyinternalnameortitle('${candidate.internalName}')/deleteObject`,
+                {}
+              );
+              if (delResp.ok) {
+                duplicatesRemoved.push(candidate.internalName);
+                // Aus existingByInternal + existingFieldsList rausziehen
+                existingByInternal.delete(candidate.internalName);
+                const idx = existingFieldsList.indexOf(candidate.internalName);
+                if (idx >= 0) existingFieldsList.splice(idx, 1);
+              }
+            } catch { /* loeschen fehlgeschlagen — weiter */ }
+          } else {
+            // Daten vorhanden — Title fuer manuelle Pruefung melden (nur einmal pro Title)
+            if (duplicatesWithData.indexOf(dup.title) < 0) duplicatesWithData.push(dup.title);
+          }
+        }
+        // existingByTitle entsprechend bereinigen: nur die nicht-geloeschten Eintraege behalten
+        const remaining = dup.entries.filter(e => existingByInternal.has(e.internalName));
+        existingByTitle.set(dup.title, remaining);
+      }
     }
 
     // Fehlende Basis-Spalten anlegen. StarterType/Quiz-Felder sind feature-spezifisch:
@@ -4765,6 +4852,17 @@ export class EventService {
           customFieldMap[cf.id] = existingSp;
           continue;
         }
+        // v11.56: Wenn spInternalName fehlt oder nicht zur Liste passt, aber ein
+        // Feld mit demselben Title bereits existiert: dieses InternalName uebernehmen,
+        // statt eine Duplikat-Spalte anzulegen. Das ist die Hauptursache der
+        // 100x-Duplikate-Misere (P/D MEETING0, P/D MEETING1, ...).
+        const titleMatches = existingByTitle.get(cf.label) || [];
+        if (titleMatches.length > 0) {
+          const firstInternal = titleMatches[0].internalName;
+          customFieldMap[cf.id] = firstInternal;
+          if (currentFields.indexOf(firstInternal) < 0) currentFields.push(firstInternal);
+          continue;
+        }
         // Feld-Payload je nach Typ
         let fieldPayload: Record<string, unknown>;
         if (cf.type === 'select' && cf.options && cf.options.length > 0) {
@@ -4790,6 +4888,12 @@ export class EventService {
               customFieldMap[cf.id] = internalName;
               added.push(internalName);
               currentFields = currentFields.concat([internalName]);
+              // Title-Map aktualisieren, damit ein zweites cf mit gleichem Label
+              // im selben Durchlauf (z.B. zwei Custom-Fields mit identischem Title)
+              // das gerade angelegte Feld wiederverwendet, statt erneut zu erzeugen.
+              const arr = existingByTitle.get(cf.label) || [];
+              arr.push({ internalName });
+              existingByTitle.set(cf.label, arr);
             }
           }
         } catch { /* naechstes Feld */ }

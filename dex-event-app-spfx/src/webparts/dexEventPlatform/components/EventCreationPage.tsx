@@ -827,11 +827,39 @@ export default function EventCreationPage(): React.ReactElement {
      *  Wird unabhängig vom Hauptevent-customFields gespeichert; mit dem Button
      *  „Vom Hauptevent kopieren" kann der Organizer die Felder duplizieren. */
     customFields?: CustomFieldInput[];
+    /** v11.57: Pro-Sub-Event Kommunikations-Einstellungen (Step 5 im Wizard).
+     *  Jeder Sub-Event kann eigene Mail-Sprache, Versand-Schalter, Logo-Bilder
+     *  und Outlook-Termin-Texte haben. Wird beim Speichern in das jeweilige
+     *  DEX_Events-Item geschrieben (siehe persistSubEventsForParent). */
+    emailLanguage?: string;
+    emailLogoBase64?: string;
+    outlookLogoBase64?: string;
+    outlookBody?: string;
+    outlookHeading?: string;
+    outlookSubheading?: string;
+    /** v11.57: Snapshot der initialen Outlook-relevanten Felder, um beim Save
+     *  zu erkennen, ob die Teilnehmer einen Update-Termin bekommen sollen. */
+    initialOutlookEventId?: string;
+    initialTitle?: string;
+    initialStartDate?: string;
+    initialEndDate?: string;
+    initialOutlookBody?: string;
   }
   const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
     if (!editEvent) return [];
     const kids = childEventsOf(editEvent.id);
-    return kids.map(k => ({
+    return kids.map(k => {
+      // v11.57: Pro-Sub-Event Logo-Bilder aus EmailTemplateOverrides
+      // (Piggyback-Pattern, gleich wie Top-Level-Event).
+      let emailLogo = '';
+      let outlookLogo = '';
+      try {
+        const ov = JSON.parse(k.emailTemplateOverrides || '{}');
+        emailLogo = ov?._eventLogo || '';
+        outlookLogo = ov?._outlookLogo || '';
+      } catch { /* */ }
+      const parsedHeads = parseOutlookHeadings(k.outlookBody || '');
+      return {
       id: k.id,
       dbId: k.id,
       title: k.title,
@@ -843,6 +871,19 @@ export default function EventCreationPage(): React.ReactElement {
       registrationDeadline: k.registrationDeadline,
       disableEmails: k.disableEmails,
       disableOutlook: k.disableOutlook,
+      // v11.57: pro-Sub-Event Kommunikations-Felder laden
+      emailLanguage: k.emailLanguage || (locale === 'de' ? 'DE' : 'EN'),
+      emailLogoBase64: emailLogo,
+      outlookLogoBase64: outlookLogo,
+      outlookBody: stripOutlookWrapper(k.outlookBody || ''),
+      outlookHeading: parsedHeads.heading || k.title || '',
+      outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
+      // v11.57: Snapshot der initialen Outlook-relevanten Felder
+      initialOutlookEventId: k.outlookEventId || '',
+      initialTitle: k.title || '',
+      initialStartDate: k.startDate || '',
+      initialEndDate: k.endDate || '',
+      initialOutlookBody: k.outlookBody || '',
       customFields: (k.eventSpecificFields || []).map(f => ({
         id: f.id,
         label: f.label,
@@ -858,8 +899,14 @@ export default function EventCreationPage(): React.ReactElement {
         helpText: f.helpText,
         showIf: f.showIf,
       })),
-    }));
+    };
+    });
   });
+  // v11.57: aktiv ausgewaehlter Tab in Step 5 (Kommunikation). 0 = Haupt-Event,
+  // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
+  // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
+  // switchCommTab-Helper weiter unten.
+  const [activeCommTabIdx, setActiveCommTabIdx] = React.useState<number>(0);
   // Snapshot der beim Edit-Start vorhandenen Sub-Event-DB-IDs, um beim Save
   // entfernte Sub-Events zu löschen.
   const [initialSubEventDbIds] = React.useState<string[]>(() => {
@@ -885,6 +932,32 @@ export default function EventCreationPage(): React.ReactElement {
     }
     return acc;
   });
+  // v11.57: Snapshot der initialen Outlook-relevanten Felder des Top-Level-
+  // Events (Title, Start, End, OutlookBody). Wird beim Save mit den aktuellen
+  // Werten verglichen — Aenderung loest das Update-Confirm-Modal aus.
+  // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
+  // neu setzen wollen.
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string }>({
+    title: editEvent?.title || '',
+    startDate: editEvent?.startDate || '',
+    endDate: editEvent?.endDate || '',
+    outlookBody: editEvent?.outlookBody || '',
+  });
+  // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
+  // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
+  // Organizers ("Outlook-Update senden ja/nein"). Submit-Pipeline laeuft erst
+  // nach Confirm weiter — pendingSubmit speichert, dass wir aktiv sind.
+  const [outlookConfirmOpen, setOutlookConfirmOpen] = React.useState(false);
+  const [outlookConfirmChecked, setOutlookConfirmChecked] = React.useState(false);
+  // Information, ob auch Sub-Events Outlook-Aenderungen haben — fuer den
+  // Hinweistext im Modal ("aktualisiert auch alle Sub-Event-Outlook-Termine").
+  const [outlookConfirmSubEventsAffected, setOutlookConfirmSubEventsAffected] = React.useState<string[]>([]);
+  // Schreibwert fuer OutlookDirty in den naechsten updateEvent-Call.
+  // null = nicht setzen (kein Outlook-Relevant-Change), false/true = setzen.
+  const pendingOutlookDirtyWriteRef = React.useRef<boolean | null>(null);
+  // Soll nach erfolgreichem updateEvent ein UpdateEvent in DEX_Outlook gequeued
+  // werden? Wird durch das Modal entschieden.
+  const pendingOutlookUpdateForSubEventsRef = React.useRef<string[]>([]);
   // Bereiche, die per "+ Bereich"-Button angelegt aber noch nicht mit einer
   // Frage belegt wurden. Sobald eine Frage per Drag&Drop reinkommt, ergibt sich
   // der Section-Name aus dem question.section-Feld selbst — pendingSections
@@ -1666,6 +1739,42 @@ export default function EventCreationPage(): React.ReactElement {
     const sanitizedOrgPair = sanitizeOrganizerPairs();
     for (const draft of subEvents) {
       if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
+      // v11.57: Pro-Sub-Event Kommunikations-Felder. Wenn der Organizer fuer
+      // den Sub-Event eigene Werte in Step 5 gesetzt hat, verwenden wir die;
+      // sonst fallback auf die Top-Level-Werte (Backward-Compat fuer
+      // Sub-Events ohne eigene Communication-Einstellungen).
+      const subEmailLang = draft.emailLanguage || emailLanguage;
+      const subOutlookBodyRaw = (typeof draft.outlookBody === 'string' && draft.outlookBody !== '') ? draft.outlookBody : '';
+      const subOutlookHeading = draft.outlookHeading || draft.title || '';
+      const subOutlookSub = draft.outlookSubheading || '';
+      const subEmailLogo = draft.emailLogoBase64 || '';
+      const subOutlookLogo = draft.outlookLogoBase64 || '';
+      // Outlook-Body wrappen, wenn vorhanden — sonst leer lassen, der Flow
+      // bzw. Create-Pfad setzt einen Default-Body.
+      let wrappedSubOutlookBody = '';
+      if (subOutlookBodyRaw) {
+        const vars = {
+          EventTitle: draft.title.trim(),
+          Organizer: organizer,
+          Location: draft.location || '',
+          Address: '',
+          StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        };
+        const resolvedBody = replacePlaceholders(subOutlookBodyRaw, vars);
+        const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
+        const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : undefined;
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2);
+        wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
+      }
+      // Sub-Event-EmailTemplateOverrides: aktuell nur die Logo-Piggybacks
+      // (eigene Templates pro Sub-Event sind in v11.57 noch nicht im UI).
+      const subEmailOverrides = (subEmailLogo || subOutlookLogo)
+        ? JSON.stringify({
+            ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
+            ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
+          })
+        : '';
       const childPayload = {
         title: draft.title.trim(),
         type: 'Other',
@@ -1686,14 +1795,14 @@ export default function EventCreationPage(): React.ReactElement {
         organizer: sanitizedOrgPair.orgString,
         organizerEmail: sanitizedOrgPair.orgEmailString,
         outlookEventId: '',
-        outlookBody: '',
+        outlookBody: wrappedSubOutlookBody,
         agenda: '[]',
         transfers: '[]',
         documents: '[]',
         funZone: '[]',
         quizClusterSize: 1,
-        emailLanguage: emailLanguage,
-        emailTemplateOverrides: '',
+        emailLanguage: subEmailLang,
+        emailTemplateOverrides: subEmailOverrides,
         disableEmails: !!draft.disableEmails,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
@@ -1787,7 +1896,14 @@ export default function EventCreationPage(): React.ReactElement {
               ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
               : {}),
           })));
-        await updateEvent(draft.dbId, {
+        // v11.57: Sub-Event-Kommunikations-Felder mit-persistieren — bisher
+        // wurden Mail-Sprache, Outlook-Body, Logos pro Sub-Event nur am
+        // Top-Level gespeichert. Mit den Tabs in Step 5 kann jeder Sub-Event
+        // jetzt seine eigene Konfiguration haben.
+        // v11.57: Outlook-Update-Flag pro Sub-Event setzen, wenn dieses
+        // Sub-Event als „outlookDirty" markiert wurde (vom Confirm-Modal
+        // entschieden).
+        const subUpdates: Record<string, unknown> = {
           'Title': childPayload.title,
           'Description': childPayload.description,
           'Location': childPayload.location,
@@ -1797,8 +1913,15 @@ export default function EventCreationPage(): React.ReactElement {
           'MaxParticipants': childPayload.maxParticipants,
           'DisableEmails': childPayload.disableEmails,
           'DisableOutlook': childPayload.disableOutlook,
+          'EmailLanguage': childPayload.emailLanguage,
+          'OutlookBody': childPayload.outlookBody,
+          'EmailTemplateOverrides': childPayload.emailTemplateOverrides,
+          'EmailImageBase64': subEmailLogo || '',
           'CustomFields': cfJson,
-        });
+        };
+        // OutlookDirty + Update wird vom Aufrufer (handleSubmit) anhand des
+        // jeweiligen Sub-Event-Snapshots gesteuert — siehe pendingSubUpdates.
+        await updateEvent(draft.dbId, subUpdates);
       } else {
         await createEvent(childPayload);
       }
@@ -1810,6 +1933,111 @@ export default function EventCreationPage(): React.ReactElement {
         try { await deleteEvent(oldId); } catch { /* Delete-Fehler darf Save nicht blockieren */ }
       }
     }
+  };
+
+  /**
+   * v11.57: Tab-Wechsel im Schritt 5 (Kommunikation). Der aktuelle Step-5-
+   * UI-State (emailLanguage, outlookBody, disableEmails, disableOutlook,
+   * Logo-Previews, Outlook-Heading) wird in das ausgehende Tab-Slot
+   * geschrieben, danach werden die Felder aus dem neuen Tab-Slot geladen.
+   *  - Slot 0 = Top-Level-Event-State (die normalen `emailLanguage`,
+   *    `outlookBody` etc. — also der gleiche Speicherort wie heute).
+   *  - Slot N>0 = subEvents[N-1] (die Felder aus SubEventDraft).
+   * Die Step-5-UI bleibt unveraendert an die Top-Level-States gebunden — wir
+   * spiegeln nur beim Tab-Wechsel hin und zurueck.
+   */
+  const switchCommTab = (nextIdx: number): void => {
+    if (nextIdx === activeCommTabIdx) return;
+    // 1) Aktuellen UI-State in das ausgehende Slot schreiben.
+    if (activeCommTabIdx > 0) {
+      const fromIdx = activeCommTabIdx - 1;
+      setSubEvents(prev => prev.map((s, i) => i === fromIdx ? {
+        ...s,
+        emailLanguage,
+        emailLogoBase64: emailLogoPreview,
+        outlookLogoBase64: outlookLogoPreview,
+        outlookBody,
+        outlookHeading,
+        outlookSubheading,
+        disableEmails,
+        disableOutlook,
+      } : s));
+    } else {
+      // Slot 0 = Top-Level. Der UI-State wird hier direkt vom Top-Level-State
+      // gehalten — kein Snapshot noetig, weil setEmailLanguage etc. den Wert
+      // schon dort haelt. Beim Zurueck-Wechsel auf Tab 0 setzen wir die
+      // Top-Level-States aus dem `topLevelCommSnapshot`-Ref (siehe unten).
+      topLevelCommSnapshot.current = {
+        emailLanguage,
+        emailLogoBase64: emailLogoPreview,
+        outlookLogoBase64: outlookLogoPreview,
+        outlookBody,
+        outlookHeading,
+        outlookSubheading,
+        disableEmails,
+        disableOutlook,
+      };
+    }
+    // 2) Werte aus dem Ziel-Slot in die Step-5-UI laden.
+    if (nextIdx === 0) {
+      const snap = topLevelCommSnapshot.current;
+      if (snap) {
+        setEmailLanguage(snap.emailLanguage);
+        setEmailLogoPreview(snap.emailLogoBase64 || '');
+        setOutlookLogoPreview(snap.outlookLogoBase64 || '');
+        setOutlookBody(snap.outlookBody || '');
+        setOutlookHeading(snap.outlookHeading || '');
+        setOutlookSubheading(snap.outlookSubheading || '');
+        setDisableEmails(!!snap.disableEmails);
+        setDisableOutlook(!!snap.disableOutlook);
+      }
+    } else {
+      const sub = subEvents[nextIdx - 1];
+      if (sub) {
+        setEmailLanguage(sub.emailLanguage || (locale === 'de' ? 'DE' : 'EN'));
+        setEmailLogoPreview(sub.emailLogoBase64 || '');
+        setOutlookLogoPreview(sub.outlookLogoBase64 || '');
+        setOutlookBody(sub.outlookBody || '');
+        setOutlookHeading(sub.outlookHeading || sub.title || '');
+        setOutlookSubheading(sub.outlookSubheading || '');
+        setDisableEmails(!!sub.disableEmails);
+        setDisableOutlook(!!sub.disableOutlook);
+      }
+    }
+    setActiveCommTabIdx(nextIdx);
+  };
+  // v11.57: Snapshot des Top-Level-Step-5-States. Wird beim Wechsel auf einen
+  // Sub-Event-Tab gesetzt und beim Zurueckspringen wieder eingespielt.
+  const topLevelCommSnapshot = React.useRef<{
+    emailLanguage: string;
+    emailLogoBase64: string;
+    outlookLogoBase64: string;
+    outlookBody: string;
+    outlookHeading: string;
+    outlookSubheading: string;
+    disableEmails: boolean;
+    disableOutlook: boolean;
+  } | null>(null);
+  // v11.57: Bevor wir submitten, muessen die Werte des aktuell sichtbaren
+  // Tabs ins zugehoerige Slot zurueckgeschrieben werden — sonst gehen die
+  // letzten Aenderungen verloren.
+  const flushActiveCommTabToState = (): void => {
+    if (activeCommTabIdx > 0) {
+      const fromIdx = activeCommTabIdx - 1;
+      setSubEvents(prev => prev.map((s, i) => i === fromIdx ? {
+        ...s,
+        emailLanguage,
+        emailLogoBase64: emailLogoPreview,
+        outlookLogoBase64: outlookLogoPreview,
+        outlookBody,
+        outlookHeading,
+        outlookSubheading,
+        disableEmails,
+        disableOutlook,
+      } : s));
+    }
+    // Slot 0 (Top-Level) wird ohnehin direkt von den State-Variablen gespeist
+    // — kein Flush noetig.
   };
 
   /**
@@ -2016,6 +2244,17 @@ export default function EventCreationPage(): React.ReactElement {
       updates['EmailImageBase64'] = emailLogoPreview || '';
       updates['DisableEmails'] = disableEmails;
       updates['DisableOutlook'] = disableOutlook;
+      // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
+      // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
+      // *nicht* gesetzt hat, bleibt der Flag dirty=true; bei Checkbox=true
+      // (= UpdateEvent wird gequeued) wird dirty wieder auf false gesetzt.
+      // Wenn keine Outlook-relevante Aenderung vorlag (z.B. nur Beschreibung
+      // angepasst), wird dirty NICHT angefasst — der Wert bleibt wie er war.
+      // Den eigentlichen Wert setzen wir aus dem Modal-State unten (siehe
+      // pendingOutlookDirtyWrite).
+      if (pendingOutlookDirtyWriteRef.current !== null) {
+        updates['OutlookDirty'] = pendingOutlookDirtyWriteRef.current;
+      }
       updates['NotifyOrgRegisterMode'] = notifyOrgRegisterMode === 'always' ? 'Always' : notifyOrgRegisterMode === 'fromDate' ? 'FromDate' : 'Never';
       updates['NotifyOrgRegisterFromDate'] = notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : null;
       updates['NotifyOrgCancelMode'] = notifyOrgCancelMode === 'always' ? 'Always' : notifyOrgCancelMode === 'afterDeadline' ? 'AfterDeadline' : 'Never';
@@ -2227,6 +2466,37 @@ export default function EventCreationPage(): React.ReactElement {
               await svc.queueOutlookEvent('', selectedEventId, title, 'UpdateEvent');
             }
           } catch { /* Outlook-Update optional */ }
+          // v11.57: Sub-Event-Outlook-Updates anstossen, wenn der Organizer im
+          // Confirm-Modal die Checkbox gesetzt hat UND die betroffenen
+          // Sub-Events Outlook-relevante Aenderungen hatten.
+          if (pendingOutlookUpdateForSubEventsRef.current.length > 0) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const ctx = (window as any).__dexSpfxContext;
+              if (ctx) {
+                const svc = new EventService(ctx);
+                for (const subId of pendingOutlookUpdateForSubEventsRef.current) {
+                  const subDraft = subEvents.find(s => s.dbId === subId);
+                  const subTitle = subDraft?.title || '';
+                  try {
+                    await svc.queueOutlookEvent('', subId, subTitle, 'UpdateEvent');
+                    // OutlookDirty=false fuer das Sub-Event setzen.
+                    await updateEvent(subId, { 'OutlookDirty': false });
+                  } catch { /* einzelne Sub-Update-Fehler nicht eskalieren */ }
+                }
+              }
+            } catch { /* Sub-Outlook-Updates optional */ }
+          }
+        } else if (pendingOutlookDirtyWriteRef.current === true && outlookConfirmSubEventsAffected.length > 0) {
+          // Modal-Checkbox war UNCHECKED — Sub-Events mit Outlook-relevanten
+          // Aenderungen markieren wir dirty, damit der Hinweis beim naechsten
+          // Wizard-Lauf erscheint.
+          try {
+            for (const subId of outlookConfirmSubEventsAffected) {
+              try { await updateEvent(subId, { 'OutlookDirty': true }); }
+              catch { /* */ }
+            }
+          } catch { /* */ }
           // Sub-Event-Outlook-Updates: das nachträgliche **Aktivieren** der
           // Outlook-Checkbox auf einem bestehenden Sub-Event wird in
           // persistSubEventsForParent als delete+recreate behandelt (sonst
@@ -2523,6 +2793,98 @@ export default function EventCreationPage(): React.ReactElement {
       }
     }
   };
+
+  // v11.57: detect ob beim aktuellen Edit-State Outlook-relevante Aenderungen
+  // anstehen (Title, Start, End oder OutlookBody). Vergleich gegen den
+  // Mount-Snapshot.
+  const detectOutlookRelevantChanges = (): {
+    topChanged: boolean;
+    affectedSubEventIds: string[];
+  } => {
+    if (!editEvent) return { topChanged: false, affectedSubEventIds: [] };
+    const snap = initialOutlookSnapshot.current;
+    const currentTitle = title || '';
+    const currentStart = startDate ? berlinLocalToUtcIso(startDate) : '';
+    const currentEnd = endDate ? berlinLocalToUtcIso(endDate) : '';
+    // Outlook-Body vergleich anhand des „rohen" Body (ohne Wrapper), da der
+    // Wrapper bei jedem Save neu gebaut wird und dadurch immer „aenderbar"
+    // aussehen wuerde. Vergleich gegen den initial gestrippten Wert.
+    const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
+    const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
+    const topChanged =
+      currentTitle !== (snap.title || '') ||
+      currentStart !== (snap.startDate || '') ||
+      currentEnd !== (snap.endDate || '') ||
+      currentStripped !== initialStripped;
+    // Sub-Events: pro Sub-Event vergleichen
+    const affectedSubEventIds: string[] = [];
+    for (const s of subEvents) {
+      if (!s.dbId) continue;
+      const initTitle = s.initialTitle || '';
+      const initStart = s.initialStartDate || '';
+      const initEnd = s.initialEndDate || '';
+      const initBodyStripped = stripOutlookWrapper(s.initialOutlookBody || '');
+      const curBodyStripped = (s.outlookBody || '');
+      const hasOutlookEvId = !!s.initialOutlookEventId;
+      const subChanged =
+        (s.title || '') !== initTitle ||
+        (s.startDate || '') !== initStart ||
+        (s.endDate || '') !== initEnd ||
+        curBodyStripped !== initBodyStripped;
+      if (subChanged && !s.disableOutlook && hasOutlookEvId) {
+        affectedSubEventIds.push(s.dbId);
+      }
+    }
+    return { topChanged, affectedSubEventIds };
+  };
+
+  // v11.57: Wrapper-Funktion fuer den Save-Button. Im Edit-Modus mit
+  // Outlook-relevanter Aenderung wird das Confirm-Modal gezeigt. Sonst
+  // direkt handleSubmit.
+  const attemptSubmit = (): void => {
+    // Aktuelle Tab-Werte zurueck ins jeweilige Slot schreiben, damit
+    // beim handleSubmit nichts verloren geht.
+    flushActiveCommTabToState();
+    if (!isEditMode || !editEvent) {
+      pendingOutlookDirtyWriteRef.current = null;
+      pendingOutlookUpdateForSubEventsRef.current = [];
+      handleSubmit().catch(() => { /* Errors werden in handleSubmit gesetzt */ });
+      return;
+    }
+    const det = detectOutlookRelevantChanges();
+    const topQualifies = det.topChanged && !disableOutlook && !!editEvent.outlookEventId;
+    const subQualifies = det.affectedSubEventIds.length > 0;
+    if (topQualifies || subQualifies) {
+      setOutlookConfirmChecked(false);
+      setOutlookConfirmSubEventsAffected(det.affectedSubEventIds);
+      setOutlookConfirmOpen(true);
+      return;
+    }
+    // Keine Outlook-relevante Aenderung — dirty-Flag nicht anfassen.
+    pendingOutlookDirtyWriteRef.current = null;
+    pendingOutlookUpdateForSubEventsRef.current = [];
+    handleSubmit().catch(() => { /* */ });
+  };
+
+  // v11.57: Confirm-Modal-Handler.
+  const confirmOutlookSave = (sendUpdate: boolean): void => {
+    setOutlookConfirmOpen(false);
+    setTriggerOutlookUpdate(sendUpdate);
+    pendingOutlookDirtyWriteRef.current = sendUpdate ? false : true;
+    pendingOutlookUpdateForSubEventsRef.current = sendUpdate ? [...outlookConfirmSubEventsAffected] : [];
+    handleSubmit().catch(() => { /* */ });
+  };
+  const cancelOutlookSave = (): void => {
+    setOutlookConfirmOpen(false);
+    // Nichts speichern — User bleibt im Wizard.
+  };
+
+  // v11.57: bei Sub-Event-Anzahl-Aenderung Tab sicher in Range halten.
+  React.useEffect(() => {
+    if (activeCommTabIdx > subEvents.length) {
+      setActiveCommTabIdx(0);
+    }
+  }, [subEvents.length, activeCommTabIdx]);
 
   // Templates laden wenn Step 4 (Kommunikation) erreicht wird
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
@@ -3293,6 +3655,30 @@ export default function EventCreationPage(): React.ReactElement {
                   ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung, Bild und die Personen, die das Event verantworten oder testen.'
                   : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
               </p>
+
+              {/* v11.57: Hinweisbox bei ausstehendem Outlook-Sync.
+                  Nur sichtbar bei editEvent, wenn OutlookDirty=true und Outlook
+                  nicht deaktiviert wurde. Auf neuen Events nie. */}
+              {editEvent && editEvent.outlookDirty === true && editEvent.disableOutlook !== true && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  border: '2px solid #e0a800', background: '#fff8e1',
+                  color: '#5a3e00', padding: '12px 16px', fontSize: 14,
+                  borderRadius: 8, marginBottom: 16, lineHeight: 1.55,
+                }}>
+                  <Icon iconName="Warning" style={{ fontSize: 22, color: '#e0a800', flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                      {isDe ? 'Outlook-Synchronisation steht aus' : 'Outlook sync is pending'}
+                    </div>
+                    <div>
+                      {isDe
+                        ? 'Bei der letzten Bearbeitung wurden Titel, Zeit oder Termin-Text geändert, aber der Outlook-Termin der Teilnehmer wurde noch NICHT aktualisiert. Beim nächsten Speichern dieses Events kannst du im Dialog „Outlook-Termin aktualisieren" den Haken setzen, damit alle angemeldeten Teilnehmer eine „Aktualisierter Termin"-Benachrichtigung bekommen.'
+                        : 'During the last edit the title, time or appointment text changed, but the attendees’ Outlook invite has NOT been updated yet. The next time you save this event, the dialog “Update Outlook invite” lets you tick the checkbox so that all registered attendees receive an “updated meeting” notification.'}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {renderStepIntro(
                 [
@@ -6896,6 +7282,103 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
+                {/* v11.57: Tab-Leiste fuer Haupt-Event vs. Sub-Events. Jeder Sub-
+                    Event kann eigene Mail-/Outlook-Einstellungen haben. Wenn keine
+                    Sub-Events existieren, blenden wir die Tabs komplett aus. */}
+                {subEvents.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                    <div
+                      role="tablist"
+                      aria-label={isDe ? 'Event-Tab wechseln (Kommunikations-Einstellungen)' : 'Switch event tab (communication settings)'}
+                      style={{
+                        display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
+                        borderBottom: '1px solid var(--dex-gray-200)',
+                        paddingBottom: 0,
+                      }}
+                    >
+                      {[{ label: `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (s.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))].map((tab, tabIdx) => {
+                        const active = tabIdx === activeCommTabIdx;
+                        return (
+                          <button
+                            key={tabIdx}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => switchCommTab(tabIdx)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 8,
+                              padding: '8px 14px',
+                              border: '1px solid var(--dex-gray-200)',
+                              borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                              borderRadius: '8px 8px 0 0',
+                              background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                              color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                              fontWeight: active ? 700 : 500,
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                              marginBottom: -1,
+                              whiteSpace: 'nowrap',
+                              maxWidth: 280,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                            }}
+                            title={tab.label}
+                          >
+                            {tab.isMain && (
+                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                                {isDe ? 'Haupt' : 'Main'}
+                              </span>
+                            )}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> jeder Sub-Event
+                        darf seine eigenen Kommunikations-Einstellungen haben —
+                        Mail-Sprache, Texte, BCC-Empfänger für Organizer,
+                        eigenes Mail- und Outlook-Logo sowie eine eigene
+                        Outlook-Termin-Konfiguration (Überschrift, Beschreibung,
+                        Ein/Aus-Schalter für den Termin).<br /><br />
+                        <strong>Anzeige in der App:</strong> wechselst du auf
+                        den Tab eines Sub-Events, werden die Felder unten mit
+                        den Werten genau dieses Sub-Events geladen. Speichern
+                        am Ende des Wizards persistiert für jeden Sub-Event
+                        die zugehörigen Werte separat.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> ein
+                        Teilnehmer, der sich für Sub-Event A anmeldet, bekommt
+                        die Bestätigungs-Mail in der Sprache und mit dem Text,
+                        den du auf dem Tab &bdquo;A&ldquo; eingestellt hast. Anmeldungen
+                        zu Sub-Event B verwenden den Tab &bdquo;B&ldquo;. So lassen sich
+                        z.B. ein deutsches und ein englisches Sub-Event
+                        sauber nebeneinander pflegen.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> every sub-event may
+                        have its own communication settings — email language,
+                        copy, BCC recipients for organizers, its own email and
+                        Outlook logo, and its own Outlook invite (heading,
+                        description, on/off toggle).<br /><br />
+                        <strong>Where it shows up:</strong> switching to a
+                        sub-event tab loads the fields below with that
+                        sub-event&apos;s values. Saving at the end of the
+                        wizard persists each sub-event&apos;s values
+                        separately.<br /><br />
+                        <strong>Effect for attendees:</strong> someone who
+                        registers for sub-event A receives the confirmation
+                        email in the language and wording you configured on
+                        tab &ldquo;A&rdquo;. Registrations for sub-event B
+                        use tab &ldquo;B&rdquo;. This lets you cleanly run
+                        e.g. a German and an English sub-event side by side.
+                      </>
+                    )} />
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={20} />
@@ -7854,7 +8337,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <button
                     className="btn btn-primary"
                     disabled={!title}
-                    onClick={handleSubmit}
+                    onClick={attemptSubmit}
                     style={{ opacity: !title ? 0.5 : 1 }}
                     title="Aenderungen sofort speichern, ohne weitere Schritte"
                   >
@@ -7879,7 +8362,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <button
                     className="btn btn-primary"
                     disabled={!title}
-                    onClick={handleSubmit}
+                    onClick={attemptSubmit}
                     style={{ opacity: !title ? 0.5 : 1 }}
                   >
                     <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
@@ -7970,7 +8453,7 @@ export default function EventCreationPage(): React.ReactElement {
               <button
                 className="btn btn-primary"
                 disabled={!title}
-                onClick={() => { setShowPreview(false); handleSubmit(); }}
+                onClick={() => { setShowPreview(false); attemptSubmit(); }}
               >
                 <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
               </button>
@@ -9020,6 +9503,106 @@ export default function EventCreationPage(): React.ReactElement {
                   {isDe ? 'Hinzufügen' : 'Add'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v11.57: Outlook-Update-Confirm-Modal. Erscheint beim Speichern eines
+          bestehenden Events, wenn Title, Start, Ende oder Outlook-Body
+          gegenueber dem initialen Stand veraendert wurden — und das Event
+          einen Outlook-Termin hat. Der Organizer entscheidet bewusst, ob
+          die Teilnehmer eine „Aktualisierter Termin"-Benachrichtigung
+          bekommen sollen. */}
+      {outlookConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="outlook-confirm-title"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '24px 28px',
+            maxWidth: 560, width: '100%',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.25)',
+          }}>
+            <h2 id="outlook-confirm-title" style={{
+              margin: '0 0 12px', fontSize: '1.15rem', fontWeight: 700,
+              color: 'var(--dex-green-dark, #4a7c1f)',
+            }}>
+              {isDe ? 'Outlook-Termin der Teilnehmer aktualisieren?' : 'Update Outlook invite for attendees?'}
+            </h2>
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '10px 12px', marginBottom: 14,
+              background: 'var(--dex-gray-50, #f8f9fa)',
+              border: '1px solid var(--dex-gray-200)',
+              borderRadius: 8, cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={outlookConfirmChecked}
+                onChange={e => setOutlookConfirmChecked(e.target.checked)}
+                style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.92rem', fontWeight: 600 }}>
+                {isDe ? 'Outlook-Termin der Teilnehmer aktualisieren' : 'Update Outlook invite for attendees'}
+              </span>
+            </label>
+            <p style={{ margin: '0 0 12px', fontSize: '0.88rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
+              {isDe ? (
+                <>
+                  Setze diesen Haken nur, wenn du wirklich den Titel, die
+                  Start-/Endzeit oder den Termin-Text geändert hast. Dann
+                  bekommen alle angemeldeten Teilnehmer eine &bdquo;Aktualisierter
+                  Termin&ldquo;-Benachrichtigung von Outlook. Bleibt der Haken aus,
+                  wird Outlook nicht angefasst — praktisch wenn du nur einen
+                  Tippfehler in der Beschreibung korrigierst und den
+                  Teilnehmern damit keine unnötige Update-Mail schicken
+                  willst.
+                </>
+              ) : (
+                <>
+                  Only check this box if you actually changed the title, the
+                  start/end time or the appointment text. All registered
+                  attendees will then receive an &ldquo;updated meeting&rdquo;
+                  notification from Outlook. If you leave it unchecked,
+                  Outlook is left alone — handy when you only fix a typo in
+                  the description and don&apos;t want to spam attendees with
+                  an unnecessary update.
+                </>
+              )}
+            </p>
+            {outlookConfirmSubEventsAffected.length > 0 && (
+              <p style={{
+                margin: '0 0 12px', fontSize: '0.82rem', color: '#5a3e00',
+                background: '#fff8e1', border: '1px solid #e0a800',
+                borderRadius: 6, padding: '8px 12px', lineHeight: 1.5,
+              }}>
+                {isDe
+                  ? `Dies aktualisiert auch alle Sub-Event-Outlook-Termine, die du gerade geändert hast (${outlookConfirmSubEventsAffected.length}).`
+                  : `This also updates all sub-event Outlook invites you just changed (${outlookConfirmSubEventsAffected.length}).`}
+              </p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button
+                className="btn btn-secondary"
+                onClick={cancelOutlookSave}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ background: 'var(--dex-green, #86bc25)', borderColor: 'var(--dex-green, #86bc25)' }}
+                onClick={() => confirmOutlookSave(outlookConfirmChecked)}
+              >
+                {isDe ? 'Speichern' : 'Save'}
+              </button>
             </div>
           </div>
         </div>

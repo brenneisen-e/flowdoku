@@ -107,6 +107,57 @@ Waitlist-Modus respektieren". Sobald die Änderung im Tenant
 durchgeklickt und gespeichert ist, bitte den neuen Flow-JSON in
 `docs/flow-jsons.md` einpflegen.
 
+### OutlookDirty / Update-Confirm (v11.57)
+
+Beim Bearbeiten eines bestehenden Events wird der Wizard-Save um eine
+explizite Entscheidung erweitert, ob die Teilnehmer eine
+„Aktualisierter Termin"-Benachrichtigung von Outlook bekommen sollen.
+Mechanik:
+
+- Neue SP-Spalte `OutlookDirty` (Boolean/Yes-No, Default `false`) auf
+  `DEX_Events`. Wird in `ensureEventsList()` mit angelegt — alte Tenants
+  ohne diese Spalte interpretieren `undefined` als `false`.
+- Beim Mount des Wizards wird ein Snapshot von Titel, Startzeit, Endzeit
+  und Outlook-Body in einem React-Ref festgehalten. Beim Save vergleicht
+  die App den aktuellen Stand mit dem Snapshot.
+- Wenn mindestens ein Outlook-relevantes Feld geändert wurde, der Event
+  einen Outlook-Termin hat (`OutlookEventId` gesetzt) und Outlook nicht
+  deaktiviert wurde, erscheint vor dem Speichern das Modal
+  **„Outlook-Termin der Teilnehmer aktualisieren?"** mit einer Checkbox
+  (Default UNCHECKED) + ausführlichem Erklärtext.
+- Checkbox an + Speichern: `updateEvent` läuft, danach
+  `queueOutlookEvent(eventId, 'UpdateEvent')` + `OutlookDirty=false`.
+- Checkbox aus + Speichern: `updateEvent` läuft, KEIN `queueOutlookEvent`,
+  stattdessen `OutlookDirty=true`. Beim nächsten Wizard-Lauf zeigt
+  Schritt 1 (Grundlagen) eine gelbe Hinweis-Box, dass ein Update aussteht.
+- Abbrechen: nichts wird gespeichert.
+
+Sub-Events werden mit demselben Modal abgehandelt — pro Sub-Event mit
+Outlook-relevanter Änderung läuft ebenfalls `UpdateEvent` (oder es wird
+`OutlookDirty=true` gesetzt). Das Modal trägt einen Zusatzhinweis
+„Dies aktualisiert auch alle Sub-Event-Outlook-Termine".
+
+**Power-Automate-TODO:** der `DEX_CreateOutlookEvent`-Flow soll nach
+erfolgreichem Create + der `DEX_Outlook_Einladungen`-Flow nach
+erfolgreichem UpdateEvent zusätzlich `OutlookDirty=false` zurück auf das
+DEX_Events-Item schreiben. Das ist eine optionale Optimierung — solange
+die SPFx-App den Flag korrekt setzt, bleibt der Mechanismus funktional.
+Die UI-Schritt-für-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
+„UI-Anleitung 2026-05-21 (v11.57) — OutlookDirty=false nach
+erfolgreichem Create/Update setzen".
+
+### Sub-Event-Tabs in Schritt 5 (v11.57)
+
+Schritt 5 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
+Sub-Events hat. Tabs: erster Tab „Haupt-Event: <title>", danach pro
+Sub-Event ein Tab mit dessen Titel. Beim Tab-Wechsel wird der aktuelle
+UI-State zwischen Top-Level-State und der `SubEventDraft`-Slice
+gespiegelt. Persistiert werden pro Sub-Event mindestens: Mail-Sprache,
+Outlook-Body (gewrappt), Mail-/Outlook-Logos (Piggyback in
+EmailTemplateOverrides analog zum Hauptevent), DisableEmails,
+DisableOutlook. Aktive Tab-UI ist konsistent mit dem AdminPage-Tab-Look
+(grüne Unterstreichung).
+
 ### SharePoint REST API — MERGE-Requests (WICHTIG)
 
 Bei allen SharePoint-List-Item-Updates per `this._merge(url, body)`:

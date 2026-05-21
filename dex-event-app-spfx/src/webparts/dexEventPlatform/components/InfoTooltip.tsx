@@ -8,8 +8,14 @@
  * Diese Komponente rendert das gleiche `i`-Icon, blendet beim Hover/Focus aber
  * sofort ein gestyltes Tooltip-Pop unter/ueber dem Icon ein. Funktioniert auch
  * bei Tastatur-Navigation (focus) und Touch (click).
+ *
+ * v11.56: Das Tooltip-Popup wird via React.createPortal direkt an document.body
+ * gehaengt, damit es nicht von uebergeordneten `overflow:hidden`-Containern
+ * (z.B. Karten auf der Registrierungs-Seite) abgeschnitten wird. Die Position
+ * wird aus dem getBoundingClientRect() des Trigger-Icons berechnet (fixed).
  */
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 export interface InfoTooltipProps {
   /** Text oder JSX — bei JSX (z.B. <>...<strong>x</strong>...</>) werden
@@ -21,6 +27,55 @@ export interface InfoTooltipProps {
 
 export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top' }) => {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLSpanElement | null>(null);
+  const [coords, setCoords] = React.useState<{ top: number; left: number; transform: string } | null>(null);
+
+  const computePosition = React.useCallback((): void => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const gap = 8;
+    let top = 0; let left = 0; let transform = '';
+    switch (placement) {
+      case 'bottom':
+        top = rect.bottom + gap;
+        left = cx;
+        transform = 'translateX(-50%)';
+        break;
+      case 'right':
+        top = cy;
+        left = rect.right + gap;
+        transform = 'translateY(-50%)';
+        break;
+      case 'left':
+        top = cy;
+        left = rect.left - gap;
+        transform = 'translate(-100%, -50%)';
+        break;
+      case 'top':
+      default:
+        top = rect.top - gap;
+        left = cx;
+        transform = 'translate(-50%, -100%)';
+        break;
+    }
+    setCoords({ top, left, transform });
+  }, [placement]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    computePosition();
+    const handler = (): void => computePosition();
+    window.addEventListener('scroll', handler, true);
+    window.addEventListener('resize', handler);
+    return () => {
+      window.removeEventListener('scroll', handler, true);
+      window.removeEventListener('resize', handler);
+    };
+  }, [open, computePosition]);
+
   // Touch-Devices: ein Tap toggelt den Tooltip
   const handleClick = (e: React.MouseEvent): void => {
     e.preventDefault();
@@ -28,22 +83,42 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
     setOpen(o => !o);
   };
 
-  const tooltipPos: React.CSSProperties = (() => {
-    switch (placement) {
-      case 'bottom':
-        return { top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' };
-      case 'right':
-        return { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' };
-      case 'left':
-        return { right: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' };
-      case 'top':
-      default:
-        return { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' };
-    }
-  })();
+  const tooltipNode = open && coords && typeof document !== 'undefined' ? createPortal(
+    <span
+      role="tooltip"
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        transform: coords.transform,
+        zIndex: 10000,
+        padding: '12px 16px',
+        background: 'rgba(40,40,40,0.96)',
+        color: '#fff',
+        fontSize: '0.82rem',
+        fontWeight: 400,
+        lineHeight: 1.55,
+        borderRadius: 8,
+        boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
+        // v9.24: breiter als vorher (320 -> 480) damit lange Hilfetexte
+        // — vor allem die ausfuehrlicheren Hints aus v9.17/v9.21 — nicht
+        // mehr in einer schmalen Spalte hochkant umgebrochen werden.
+        width: 'max-content',
+        maxWidth: 480,
+        minWidth: 280,
+        whiteSpace: 'normal',
+        textAlign: 'left',
+        pointerEvents: 'none',
+      }}
+    >
+      {text}
+    </span>,
+    document.body
+  ) : null;
 
   return (
     <span
+      ref={triggerRef}
       style={{ position: 'relative', display: 'inline-flex', marginLeft: 8 }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -69,35 +144,7 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
       >
         i
       </span>
-      {open && (
-        <span
-          role="tooltip"
-          style={{
-            position: 'absolute',
-            zIndex: 1500,
-            padding: '12px 16px',
-            background: 'rgba(40,40,40,0.96)',
-            color: '#fff',
-            fontSize: '0.82rem',
-            fontWeight: 400,
-            lineHeight: 1.55,
-            borderRadius: 8,
-            boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
-            // v9.24: breiter als vorher (320 -> 480) damit lange Hilfetexte
-            // — vor allem die ausfuehrlicheren Hints aus v9.17/v9.21 — nicht
-            // mehr in einer schmalen Spalte hochkant umgebrochen werden.
-            width: 'max-content',
-            maxWidth: 480,
-            minWidth: 280,
-            whiteSpace: 'normal',
-            textAlign: 'left',
-            pointerEvents: 'none',
-            ...tooltipPos,
-          }}
-        >
-          {text}
-        </span>
-      )}
+      {tooltipNode}
     </span>
   );
 };

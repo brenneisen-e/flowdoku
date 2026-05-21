@@ -45,20 +45,20 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
-<tr><td align="center" style="padding:20px 10px;">
+<tr><td align="center" style="padding:20px 10px 20px 10px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 <tr>
-<td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
+<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="{{LOGO_URL}}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 <tr>
-<td style="padding:10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
+<td style="padding:10px 30px 10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
   Deutschland | Event Experience Platform
 </td>
 </tr>
 <tr>
-<td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
+<td style="background-color:#ffffff;text-align:center;padding:30px 30px 30px 30px;">
   <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
@@ -66,18 +66,23 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 <td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
 </tr>
 <tr>
-<td style="padding:30px 30px 10px;">
+<td style="padding:30px 30px 10px 30px;">
   <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
   <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
 </td>
 </tr>
 <tr>
-<td style="padding:0 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
+<td style="padding:0 30px 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
   ${bodyHtml}
 </td>
 </tr>
 <tr>
-<td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
+<td style="padding:0 30px 0 30px;font-size:0;line-height:0;">
+  <div style="border-top:1px solid #e8e8e8;font-size:0;line-height:0;height:1px;">&nbsp;</div>
+</td>
+</tr>
+<tr>
+<td style="padding:20px 30px 20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;">
   <p style="margin:0 0 8px;"><strong>Deloitte GmbH Wirtschaftspr&uuml;fungsgesellschaft</strong><br>
   Rosenheimer Platz 4<br>
   81669 M&uuml;nchen<br>
@@ -102,28 +107,28 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 </head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Aptos,'Open Sans',Arial,Helvetica,sans-serif;color:#333333;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
-<tr><td align="center" style="padding:20px 10px;">
+<tr><td align="center" style="padding:20px 10px 20px 10px;">
 
 <!-- Main Container -->
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;max-width:600px;width:100%;">
 
 <!-- ===== HEADER: Deloitte Logo ===== -->
 <tr>
-<td style="background-color:#000000;padding:20px 30px;border-bottom:2px solid ${GREEN};">
+<td style="background-color:#000000;padding:20px 30px 20px 30px;border-bottom:2px solid ${GREEN};">
   <img src="${cachedLogoBase64 || '{{LOGO_URL}}'}" alt="Deloitte." width="180" style="display:block;max-width:180px;height:auto;" />
 </td>
 </tr>
 
 <!-- ===== SUBHEADER ===== -->
 <tr>
-<td style="padding:10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
+<td style="padding:10px 30px 10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
   Deutschland | Event Experience Platform | ${getDate()}
 </td>
 </tr>
 
 <!-- ===== HERO: DEX Orb ===== -->
 <tr>
-<td style="background-color:#ffffff;text-align:center;padding:30px 30px;">
+<td style="background-color:#ffffff;text-align:center;padding:30px 30px 30px 30px;">
   <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
 </td>
 </tr>
@@ -135,27 +140,34 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 
 <!-- ===== CONTENT ===== -->
 <tr>
-<td style="padding:30px 30px 10px;">
+<td style="padding:30px 30px 10px 30px;">
   <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
   <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
 </td>
 </tr>
 <tr>
-<td style="padding:0 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
+<td style="padding:0 30px 30px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#333333;">
   ${bodyHtml}
 </td>
 </tr>
 
 <!-- ===== "Made with DEX App" ===== -->
 <tr>
-<td style="padding:0 30px 24px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:12px;color:#999999;">
+<td style="padding:0 30px 24px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:12px;color:#999999;">
   <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:${GREEN};text-decoration:none;">Made with DEX App</a>
+</td>
+</tr>
+
+<!-- ===== FOOTER: Separator-Line als eigene Row (Word-HTML Outlook-Kalender Fix) ===== -->
+<tr>
+<td style="padding:0 30px 0 30px;font-size:0;line-height:0;">
+  <div style="border-top:1px solid #e8e8e8;font-size:0;line-height:0;height:1px;">&nbsp;</div>
 </td>
 </tr>
 
 <!-- ===== FOOTER: Legal ===== -->
 <tr>
-<td style="padding:20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;border-top:1px solid #e8e8e8;">
+<td style="padding:20px 30px 20px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:10px;color:#999999;line-height:1.5;">
   <p style="margin:0 0 8px;"><strong>Deloitte GmbH Wirtschaftspr&uuml;fungsgesellschaft</strong><br>
   Rosenheimer Platz 4<br>
   81669 M&uuml;nchen<br>
@@ -492,11 +504,13 @@ export function buildOutlookBody(eventTitle: string, bodyText: string, subheadin
 export function stripOutlookWrapper(html: string): string {
   if (!html) return '';
   if (!/<!doctype|<html/i.test(html)) return html;
-  // wrapTemplate fuegt den Body in <td style="padding:0 30px 30px;...color:#333333;">CONTENT</td>
+  // wrapTemplate fuegt den Body in <td style="padding:0 30px 30px[ 30px];...color:#333333;">CONTENT</td>
   // Non-greedy auf </td> reicht — wir brauchen keine trailing-Constraint (HTML-Kommentare
   // zwischen </tr> und naechstem <tr> wuerden eine engere Pruefung sonst sprengen, wodurch
   // der Strip fehlschlaegt und beim Re-Save der gesamte Wrapper erneut umwickelt wird).
-  const m = html.match(/<td style="padding:0 30px 30px;[^"]*">([\s\S]*?)<\/td>/i);
+  // Seit v11.56 nutzt wrapTemplate 4-value-Paddings ("0 30px 30px 30px"), aber bestehende
+  // gespeicherte Bodies haben noch 3-value ("0 30px 30px") — die Regex muss beide matchen.
+  const m = html.match(/<td style="padding:0 30px 30px(?:\s+30px)?;[^"]*">([\s\S]*?)<\/td>/i);
   if (m && m[1]) return m[1].trim();
   return html;
 }

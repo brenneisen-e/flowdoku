@@ -621,6 +621,33 @@ function EventCreationFlow(): React.ReactElement {
       <Arrow />
       <FlowNode type="data" color="#fce4ec" label="Power Automate Trigger DEX_CreateOutlookEvent: Erstellt initialen Outlook-Termin im Kalender no_reply.events@deloitte.de + speichert CalendarLink (iCalUId) zurück" />
       <Arrow />
+      <FlowNode
+        type="decision"
+        label="Bearbeitung eines bestehenden Events?"
+        details="Beim Edit prüft der Wizard, ob Outlook-relevante Felder (Titel, Start, Ende, OutlookBody) gegenüber dem Mount-Snapshot verändert wurden. Wenn ja, erscheint vor dem updateEvent-Call ein Confirm-Modal mit der Frage 'Outlook-Termin der Teilnehmer aktualisieren?'."
+      />
+      <BranchContainer>
+        <Branch label="Ja, Haken gesetzt">
+          <FlowNode
+            type="data"
+            color="#fce4ec"
+            label="DEX_Outlook: UpdateEvent + OutlookDirty=false"
+            details="updateEvent → queueOutlookEvent(eventId, 'UpdateEvent') → updateEvent({OutlookDirty:false}). Der DEX_Outlook_Einladungen-Flow PATCHt den Termin im Shared-Mailbox-Kalender; Outlook schickt allen Teilnehmern eine 'Aktualisierter Termin'-Mail. Bei Sub-Events mit eigenen OutlookEventIds gleicher Pfad pro Sub-Event."
+          />
+        </Branch>
+        <Branch label="Ja, Haken aus">
+          <FlowNode
+            type="process"
+            color="#fff8e1"
+            label="updateEvent + OutlookDirty=true"
+            details="Outlook-Termin wird NICHT angefasst — der Organizer wollte z.B. nur einen Tippfehler korrigieren. Damit beim nächsten Wizard-Lauf der Hinweis 'Outlook-Synchronisation steht aus' erscheint, schreibt die SPFx-App OutlookDirty=true zurück."
+          />
+        </Branch>
+        <Branch label="Nein (Create / keine Outlook-Änderung)">
+          <FlowNode type="process" color="#f5f5f5" label="Direkter Save ohne Modal" />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
       <FlowNode type="end" label="Event bereit für Registrierungen" />
     </div>
   );

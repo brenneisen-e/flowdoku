@@ -123,6 +123,17 @@
     .form-group { margin-bottom: 20px; }
     .form-label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: var(--dex-gray-800); }
     .form-label .required { color: var(--dex-red); margin-right: 4px; }
+
+    /* v11.56: Im 2-Spalten-Custom-Field-Grid wickeln sich manche Labels auf
+       zwei Zeilen ("Soll deine Mobilnummer hinterlegt werden?") waehrend
+       Geschwister-Labels nur eine Zeile haben — die Inputs in der Zeile
+       saßen vorher vertikal versetzt. min-height auf das Label faengt das
+       ab; in der Mobile-Variante (1-Spalte) ist es egal. */
+    .dex-reg-fields-grid .form-label {
+      min-height: 2.6em;
+      display: flex;
+      align-items: flex-end;
+    }
     .form-input, .form-select, .form-textarea {
       width: 100%; padding: 12px 16px; border: 1.5px solid var(--dex-gray-200);
       border-radius: 12px; font-size: 0.95rem;
@@ -406,6 +417,10 @@
       .registration-actions { flex-direction: column; gap: 8px; }
       /* v11.2: Custom-Field-Grid auf Mobile 1 Spalte. */
       .dex-reg-fields-grid { grid-template-columns: 1fr !important; }
+      /* v11.56: min-height-Hack fuer 2-Spalten-Alignment greift auf Mobile
+         nicht, weil die Felder eh untereinander stehen — Label wieder
+         natuerlich umbrechen lassen, damit kein leerer Block entsteht. */
+      .dex-reg-fields-grid .form-label { min-height: 0; display: block; }
       .registration-actions .btn { width: 100%; justify-content: center; }
 
       /* My Events */
