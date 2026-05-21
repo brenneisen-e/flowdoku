@@ -491,11 +491,32 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
     neuen DEX_Events-Items, **nicht** bei MERGE/PATCH-Updates. Wenn der
     User auf einem bestehenden Sub-Event (oder Top-Level-Event) nachträglich
     `DisableOutlook` von `true` auf `false` umstellt, würde der Flow den
-    Trigger nie sehen — es entstünde nie ein Outlook-Termin. Lösung in der
-    SPFx-App: Sub-Event in diesem Fall delete+recreate (siehe
-    `persistSubEventsForParent` in `EventCreationPage.tsx`); bei
-    vorhandenen Anmeldungen wird der User per `window.confirm` gewarnt,
-    weil `deleteEvent` kaskadierend Subsite + TeilnehmerIDs entfernt.
+    Trigger nie sehen — es entstünde nie ein Outlook-Termin.
+  - **Lösung in der SPFx-App (v11.69, non-destructive):** Sub-Event in
+    diesem Fall delete-and-recreate, ABER ohne die Teilnehmer-Subsite
+    mitzulöschen. `EventService.deleteEventItemOnly(eventId)` entfernt
+    ausschließlich das DEX_Events-Item via REST DELETE — KEIN Cascade auf
+    Subsite, KEIN Outlook-DeleteEvent-Queue, KEIN EventImage-Recycle.
+    Direkt anschließend wird `EventService.createEvent({ ...,
+    existingSubsiteUrl, existingRegistrationListName })` aufgerufen — wenn
+    BEIDE Felder gesetzt sind, überspringt `createEvent` das Anlegen
+    einer neuen Subsite und koppelt stattdessen die mitgegebene Subsite +
+    Teilnehmerliste an die neue DEX_Events-Zeile. Resultat: die alten
+    Teilnehmer-Anmeldungen, TeilnehmerIDs und Custom-Field-Antworten
+    bleiben unangetastet erhalten, das neue DEX_Events-Item triggert den
+    DEX_CreateOutlookEvent-Flow (GetOnNewItems) → Outlook-Termin entsteht.
+    Pfad in `persistSubEventsForParent` (`EventCreationPage.tsx`);
+    Trigger sowohl per Outlook-Update-Modal
+    (`pendingOutlookRecreateForSubEventsRef`, noOutlookYet-Checkbox) als
+    auch beim Legacy-DisableOutlook-Toggle (true → false ohne
+    OutlookEventId).
+  - **Garantien (v11.69):** `deleteEventItemOnly` MUSS strikt
+    non-cascading bleiben (kein `recycle()` auf der Subsite, kein
+    DeleteEvent-Queue-Eintrag, kein DEX_Participants-Cleanup), und
+    `createEvent({ existingSubsiteUrl, existingRegistrationListName })`
+    MUSS strikt nicht-kreativ bleiben (kein neuer
+    `createEventSubsite`-Call, kein neuer `createRegistrationList`-Call).
+    Wenn eine dieser Garantien bricht, gehen Teilnehmer-Daten verloren.
 - DEX_Outlook_Einladungen — Teilnehmer hinzufügen/entfernen, Termin aktualisieren/löschen
 - DEX_OutlookDeclineHandler — Decline-Mails abfangen → Reminder-Mail queuen (inkl. weitergeleitete Declines FW:/WG:)
 - DEX_OutlookForwardHandler — Meeting-Forward-Notifications abfangen → FYI-Mail an Organizer wenn weitergeleiteter Empfänger nicht registriert

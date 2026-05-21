@@ -341,7 +341,7 @@ function LocationMultiSelect({
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, refreshEvents } = useEvents();
+  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
   // Audience-Suche (Personen + Verteiler/Security-Groups)
@@ -937,14 +937,19 @@ export default function EventCreationPage(): React.ReactElement {
   // auf NEUE DEX_Events-Items (GetOnNewItems-Trigger), deshalb muss das
   // betroffene Sub-Event in diesem Fall gelöscht und neu angelegt werden,
   // damit überhaupt ein Outlook-Termin entsteht.
-  const [initialSubEventOutlookMeta] = React.useState<Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string }>>(() => {
+  const [initialSubEventOutlookMeta] = React.useState<Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string; registrationListName: string }>>(() => {
     if (!editEvent) return {};
-    const acc: Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string }> = {};
+    const acc: Record<string, { disableOutlook: boolean; outlookEventId: string; subsiteUrl: string; registrationListName: string }> = {};
     for (const k of childEventsOf(editEvent.id)) {
       acc[k.id] = {
         disableOutlook: !!k.disableOutlook,
         outlookEventId: k.outlookEventId || '',
         subsiteUrl: k.subsiteUrl || '',
+        // v11.69: Subsite-Events nutzen immer die Standard-Teilnehmerliste
+        // "Teilnehmer" (siehe REG_LIST_NAME in EventService). Wird beim
+        // Recreate-Pfad an `createEvent({ existingRegistrationListName })`
+        // mitgegeben, damit der Reuse-Branch in createEvent greift.
+        registrationListName: 'Teilnehmer',
       };
     }
     return acc;
@@ -993,6 +998,16 @@ export default function EventCreationPage(): React.ReactElement {
   const pendingOutlookUpdateForTopRef = React.useRef<boolean>(false);
   // Sub-Event-IDs, fuer die ein DEX_Outlook 'UpdateEvent' angefordert wurde.
   const pendingOutlookUpdateForSubEventsRef = React.useRef<string[]>([]);
+  // v11.69: Sub-Event-IDs, fuer die ein *Recreate* des DEX_Events-Items
+  // angefordert wurde (Outlook-Termin nachtraeglich anlegen ohne Teilnehmer-
+  // Verlust). Werden in `persistSubEventsForParent` aufgegriffen: das alte
+  // DEX_Events-Item wird per `deleteEventItemOnly` entfernt (Subsite +
+  // Teilnehmerliste bleiben unangetastet), dann wird per
+  // `createEvent({ existingSubsiteUrl, existingRegistrationListName })` ein
+  // neues DEX_Events-Item angelegt, das die alte Subsite wiederverwendet.
+  // Der `DEX_CreateOutlookEvent`-Flow triggert auf das neue Item und legt den
+  // Outlook-Termin an.
+  const pendingOutlookRecreateForSubEventsRef = React.useRef<string[]>([]);
   // v11.63: Pro Event-ID der gewuenschte OutlookDirty-Wert.
   // Nur Eventd-IDs, die im Modal waren, werden hier gesetzt — alle anderen
   // bleiben unberuehrt (kein OutlookDirty-Patch).
@@ -1856,65 +1871,112 @@ export default function EventCreationPage(): React.ReactElement {
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
-        // Spezialfall: Outlook nachträglich aktivieren.
-        // Wenn der User auf einem **bestehenden** Sub-Event die "Outlook
-        // erstellen"-Checkbox einschaltet (DisableOutlook: true → false) und
-        // bisher kein Outlook-Termin angelegt wurde (OutlookEventId leer),
-        // muss das Sub-Event neu angelegt werden — der Power-Automate-Flow
+        // v11.69: Recreate-Pfad via Modal-Auswahl. Wenn der Organizer im
+        // Outlook-Confirm-Modal ein Sub-Event mit `noOutlookYet=true`
+        // angehakt hat (es existiert noch kein Outlook-Termin), wird das
+        // bestehende DEX_Events-Item per `deleteEventItemOnly` entfernt und
+        // eine NEUE DEX_Events-Zeile angelegt — wobei die bestehende
+        // Subsite + Teilnehmerliste an die neue Zeile gekoppelt werden.
+        // Damit triggert der `DEX_CreateOutlookEvent`-Flow (GetOnNewItems)
+        // auf dem neuen Item und legt den Outlook-Termin an. Die alte
+        // Subsite mit ALLEN Anmeldungen bleibt unangetastet.
+        const initialMeta = initialSubEventOutlookMeta[draft.dbId];
+        if (pendingOutlookRecreateForSubEventsRef.current.includes(draft.dbId)) {
+          const subsiteUrlForReuse = initialMeta?.subsiteUrl || '';
+          const regListNameForReuse = initialMeta?.registrationListName || 'Teilnehmer';
+          if (subsiteUrlForReuse && regListNameForReuse) {
+            try {
+              // DEX_Events-Item entfernen — Subsite + Teilnehmerliste
+              // bleiben unangetastet (deleteEventItemOnly ist explizit
+              // non-cascading).
+              await deleteEventItemOnly(draft.dbId);
+            } catch { /* Delete-Fehler: trotzdem versuchen, neu anzulegen */ }
+            // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
+            // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
+            // outlookEventId leer, damit der Flow sauber neu schreibt.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reusePayload: any = {
+              ...childPayload,
+              disableOutlook: false,
+              outlookEventId: '',
+              existingSubsiteUrl: subsiteUrlForReuse,
+              existingRegistrationListName: regListNameForReuse,
+            };
+            try {
+              await createEvent(reusePayload);
+            } catch (err) {
+              console.warn('[DEX][v11.69] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen:', draft.dbId, err);
+            }
+            // NICHT zu keptDbIds hinzufuegen — das alte Item wurde geloescht
+            // und die neue Zeile hat eine andere ID.
+            continue;
+          } else {
+            console.warn('[DEX][v11.69] Recreate angefordert aber keine subsiteUrl/registrationListName vorhanden — Sub-Event:', draft.dbId, 'meta:', initialMeta);
+            // Fall durch zum normalen Update-Pfad — wenigstens die Felder
+            // werden persistiert; Outlook-Termin entsteht aber nicht.
+          }
+        }
+        // Spezialfall: Outlook nachträglich aktivieren via DisableOutlook-
+        // Toggle (alter Pfad vor v11.69). Wenn der User auf einem
+        // **bestehenden** Sub-Event die "Outlook erstellen"-Checkbox
+        // einschaltet (DisableOutlook: true → false) und bisher kein
+        // Outlook-Termin angelegt wurde (OutlookEventId leer), muss das
+        // Sub-Event neu angelegt werden — der Power-Automate-Flow
         // `DEX_CreateOutlookEvent` triggert ausschließlich auf NEUE
         // DEX_Events-Items (GetOnNewItems). Ein reines MERGE-Update würde
         // den Flow nie anstoßen → kein Outlook-Termin.
-        const initialMeta = initialSubEventOutlookMeta[draft.dbId];
         const wasOutlookDisabled = !!initialMeta?.disableOutlook;
         const nowOutlookEnabled = !draft.disableOutlook;
         const hadOutlookEventId = !!(initialMeta?.outlookEventId);
         const needsOutlookRecreate = wasOutlookDisabled && nowOutlookEnabled && !hadOutlookEventId;
         if (needsOutlookRecreate) {
-          // Teilnehmerzahl in der Sub-Event-Subsite prüfen — bei vorhandenen
-          // Anmeldungen muss der User explizit bestätigen, weil delete()
-          // kaskadierend Subsite + Teilnehmerliste + TeilnehmerIDs entfernt.
-          let participantCount = 0;
-          if (initialMeta?.subsiteUrl) {
+          // v11.69: Seit dem Subsite-Reuse-Pfad muss hier KEINE destruktive
+          // Loesch-Aktion mehr passieren. Wir entfernen nur die DEX_Events-
+          // Zeile und legen sie mit `existingSubsiteUrl` neu an — alle
+          // Anmeldungen, TeilnehmerIDs und die Subsite bleiben unangetastet.
+          // Daher auch kein window.confirm mehr noetig.
+          const subsiteUrlForReuse = initialMeta?.subsiteUrl || '';
+          const regListNameForReuse = initialMeta?.registrationListName || 'Teilnehmer';
+          if (subsiteUrlForReuse && regListNameForReuse) {
             try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const ctx = (window as any).__dexSpfxContext;
-              if (ctx) {
-                const svc = new EventService(ctx);
-                const counts = await svc.getRegistrationCount(initialMeta.subsiteUrl);
-                participantCount = (counts.registered || 0) + (counts.waitlist || 0);
-              }
-            } catch { /* Count-Fehler: konservativ als „unbekannt > 0" behandeln */ participantCount = -1; }
-          }
-          let confirmed = true;
-          if (participantCount !== 0) {
-            const countStr = participantCount > 0 ? String(participantCount) : (isDe ? 'eventuell vorhandene' : 'possibly existing');
-            const msg = isDe
-              ? `Beim Sub-Event „${draft.title}" wurde „Outlook-Termin erstellen" nachträglich aktiviert.\n\n`
-                + `Damit der Outlook-Termin überhaupt angelegt wird, muss das Sub-Event komplett neu aufgesetzt werden — ein nachträgliches Aktivieren reicht nicht aus.\n\n`
-                + `Dadurch gehen die ${countStr} bestehende(n) Teilnehmer-Anmeldung(en), alle Teilnehmer-IDs sowie die zugehörige Teilnehmer-Subsite verloren (landen 93 Tage im Papierkorb der Site Collection).\n\n`
-                + `Trotzdem fortfahren?`
-              : `On sub-event "${draft.title}" you turned on "Create Outlook event" after the fact.\n\n`
-                + `To actually create the Outlook event, the sub-event must be re-created from scratch — toggling the flag alone is not enough.\n\n`
-                + `This will discard the ${countStr} existing participant registration(s), all participant IDs and the sub-event's participant subsite (recycled for 93 days in the site collection bin).\n\n`
-                + `Continue anyway?`;
-            confirmed = window.confirm(msg);
-          }
-          if (confirmed) {
+              await deleteEventItemOnly(draft.dbId);
+            } catch { /* Delete-Fehler: trotzdem versuchen, neu anzulegen */ }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reusePayload: any = {
+              ...childPayload,
+              disableOutlook: false,
+              outlookEventId: '',
+              existingSubsiteUrl: subsiteUrlForReuse,
+              existingRegistrationListName: regListNameForReuse,
+            };
             try {
-              await deleteEvent(draft.dbId);
-            } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
-            // Achtung: draft.dbId NICHT zu keptDbIds hinzufügen, weil das
-            // Item gerade gelöscht wurde. Stattdessen frisches Item anlegen,
-            // damit DEX_CreateOutlookEvent (GetOnNewItems) triggert.
-            await createEvent(childPayload);
+              await createEvent(reusePayload);
+            } catch (err) {
+              console.warn('[DEX][v11.69] Legacy-Toggle-Recreate fehlgeschlagen:', draft.dbId, err);
+            }
             continue;
           } else {
-            // User hat abgebrochen → DisableOutlook bleibt true, damit der
-            // gespeicherte Zustand konsistent zur Realität bleibt (kein
-            // Outlook-Termin existiert, also auch nicht so tun als wäre einer
-            // gewünscht). Update-Pfad unten schreibt DisableOutlook=true.
-            draft.disableOutlook = true;
-            childPayload.disableOutlook = true;
+            // Edge-Case: kein subsiteUrl auf dem alten Item bekannt (sehr
+            // alte Events). In dem Fall fallen wir auf den destruktiven
+            // Legacy-Pfad zurueck — mit Confirm.
+            const msg = isDe
+              ? `Beim Sub-Event „${draft.title}" wurde „Outlook-Termin erstellen" nachträglich aktiviert, aber es konnte keine bestehende Teilnehmer-Subsite ermittelt werden.\n\n`
+                + `Wenn du jetzt fortfährst, wird das Sub-Event komplett neu aufgesetzt — vorhandene Anmeldungen, Teilnehmer-IDs und die Teilnehmer-Subsite gehen verloren (landen 93 Tage im Papierkorb).\n\n`
+                + `Trotzdem fortfahren?`
+              : `On sub-event "${draft.title}" you turned on "Create Outlook event" after the fact, but no existing participant subsite could be determined.\n\n`
+                + `If you continue, the sub-event will be re-created from scratch — existing registrations, participant IDs and the participant subsite will be lost (recycled for 93 days).\n\n`
+                + `Continue anyway?`;
+            const confirmed = window.confirm(msg);
+            if (confirmed) {
+              try {
+                await deleteEvent(draft.dbId);
+              } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
+              await createEvent(childPayload);
+              continue;
+            } else {
+              draft.disableOutlook = true;
+              childPayload.disableOutlook = true;
+            }
           }
         }
         keptDbIds.add(draft.dbId);
@@ -2969,6 +3031,7 @@ export default function EventCreationPage(): React.ReactElement {
       pendingOutlookDirtyWriteRefs.current = {};
       pendingOutlookUpdateForTopRef.current = false;
       pendingOutlookUpdateForSubEventsRef.current = [];
+      pendingOutlookRecreateForSubEventsRef.current = [];
       handleSubmit().catch(() => { /* Errors werden in handleSubmit gesetzt */ });
       return;
     }
@@ -2990,6 +3053,7 @@ export default function EventCreationPage(): React.ReactElement {
     // wenn die Detect-Heuristik nichts Outlook-relevantes gefunden hat.
     pendingOutlookUpdateForTopRef.current = !!triggerOutlookUpdate;
     pendingOutlookUpdateForSubEventsRef.current = [];
+    pendingOutlookRecreateForSubEventsRef.current = [];
     handleSubmit().catch(() => { /* */ });
   };
 
@@ -3004,14 +3068,25 @@ export default function EventCreationPage(): React.ReactElement {
     const topItem = outlookConfirmItems.find(it => it.kind === 'top');
     const subItems = outlookConfirmItems.filter(it => it.kind === 'sub');
     const topChecked = !!topItem && !!outlookConfirmChecks[topItem.eventId];
-    const checkedSubIds = subItems.filter(it => !!outlookConfirmChecks[it.eventId]).map(it => it.eventId);
+    // v11.69: Angehakte Sub-Events trennen in:
+    //  - `normalUpdateSubIds`: Sub-Event hat bereits einen Outlook-Termin →
+    //    DEX_Outlook 'UpdateEvent' in die Queue schreiben (bestehender Pfad).
+    //  - `recreateSubIds`: Sub-Event hat noch keinen Outlook-Termin
+    //    (`noOutlookYet`) → DEX_Events-Item per `deleteEventItemOnly` loeschen
+    //    und mit `existingSubsiteUrl` neu anlegen, damit der
+    //    DEX_CreateOutlookEvent-Flow triggert. Teilnehmer-Subsite + Liste
+    //    bleiben unangetastet erhalten.
+    const checkedSubItems = subItems.filter(it => !!outlookConfirmChecks[it.eventId]);
+    const normalUpdateSubIds = checkedSubItems.filter(it => !it.noOutlookYet).map(it => it.eventId);
+    const recreateSubIds = checkedSubItems.filter(it => !!it.noOutlookYet).map(it => it.eventId);
     pendingOutlookUpdateForTopRef.current = topChecked;
-    pendingOutlookUpdateForSubEventsRef.current = checkedSubIds;
+    pendingOutlookUpdateForSubEventsRef.current = normalUpdateSubIds;
+    pendingOutlookRecreateForSubEventsRef.current = recreateSubIds;
     // Pro Event-ID den OutlookDirty-Schreibwert vormerken.
-    // v11.68: noOutlookYet-Items (Sub-Events ohne Outlook-Termin) werden NICHT
-    // dirty markiert — sie haben gar keinen Outlook-Termin, der „aus-Sync"
-    // sein koennte. Body-Change wird normal gespeichert, aber kein Hinweis-
-    // Marker auf dem Event.
+    // v11.69: noOutlookYet-Items werden — egal ob angehakt oder nicht — NICHT
+    // dirty markiert. Bei angehakt erfolgt ein Recreate (neues Item hat von
+    // Haus aus OutlookDirty=false), bei nicht angehakt existiert immer noch
+    // kein Outlook-Termin der "aus-Sync" sein koennte → Marker waere falsch.
     const dirtyMap: Record<string, boolean> = {};
     for (const it of outlookConfirmItems) {
       if (it.noOutlookYet) continue;
@@ -3029,7 +3104,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Outlook-Branch ueberhaupt betreten wird. v11.63: nur true wenn das
     // Top-Event angehakt wurde ODER mindestens ein Sub-Event angehakt
     // wurde (damit der Sub-Event-Branch im handleSubmit getroffen wird).
-    setTriggerOutlookUpdate(topChecked || checkedSubIds.length > 0);
+    setTriggerOutlookUpdate(topChecked || normalUpdateSubIds.length > 0 || recreateSubIds.length > 0);
     // Verhindern dass topId als „angehakt" interpretiert wird ohne Modal.
     void topId;
     handleSubmit().catch(() => { /* */ });
@@ -9737,43 +9812,47 @@ export default function EventCreationPage(): React.ReactElement {
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
-                // v11.68: Items ohne Outlook-Termin (noOutlookYet) bekommen
-                // keine Checkbox — der Body-Change wird gespeichert, aber wir
-                // koennen kein UpdateEvent queuen. Info-Eintrag mit Erklaerung.
+                // v11.69: noOutlookYet-Items bekommen wieder eine Checkbox.
+                // Default UNCHECKED. Beim Anhaken wird das Sub-Event in der
+                // Eventverwaltung komplett neu angelegt (DEX_Events-Item
+                // delete + create mit `existingSubsiteUrl`), damit der
+                // Outlook-Termin entsteht. Die bestehende Teilnehmerliste
+                // mit allen Anmeldungen bleibt unangetastet.
                 if (it.noOutlookYet) {
                   return (
-                    <div
+                    <label
                       key={it.eventId}
                       style={{
                         display: 'flex', alignItems: 'flex-start', gap: 12,
                         padding: '12px 14px',
                         borderBottom: isLast ? 'none' : '1px solid var(--dex-gray-200)',
-                        background: 'var(--dex-gray-100, #f0f0f0)',
+                        cursor: 'pointer',
+                        background: '#fffaf0',
                       }}
                     >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          width: 18, height: 18, marginTop: 2, flexShrink: 0,
-                          borderRadius: '50%', background: 'var(--dex-gray-400, #999)',
-                          color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: 'serif',
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => {
+                          const next = e.target.checked;
+                          setOutlookConfirmChecks(prev => ({ ...prev, [it.eventId]: next }));
                         }}
-                      >i</span>
+                        style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer', flexShrink: 0 }}
+                      />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-gray-700)', wordBreak: 'break-word' }}>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--dex-gray-800)', wordBreak: 'break-word' }}>
                           {isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
                           {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
                         </div>
-                        <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 6, fontStyle: 'italic', lineHeight: 1.4 }}>
+                        <div style={{ fontSize: '0.76rem', color: '#8a6d3b', marginTop: 6, lineHeight: 1.45, background: '#fcf8e3', border: '1px solid #faebcc', borderRadius: 4, padding: '6px 8px' }}>
                           {isDe
-                            ? 'Für dieses Sub-Event existiert noch kein Outlook-Termin. Deine Änderung wird gespeichert und beim nächsten Termin-Anlegen verwendet — es geht aber jetzt keine Update-Mail an Teilnehmer raus (es gibt noch keine).'
-                            : 'No Outlook event exists yet for this sub-event. Your change will be saved and used when the calendar entry is created — no update mail goes out to attendees now (there are none yet).'}
+                            ? <>Für dieses Sub-Event gibt es noch keinen Outlook-Termin. Wenn du den Haken setzt, wird das Sub-Event in der Eventverwaltung neu angelegt, damit der Outlook-Termin entsteht. <strong>Die bestehende Teilnehmerliste mit allen Anmeldungen bleibt erhalten</strong> — nur die DEX_Events-Zeile bekommt eine neue ID.</>
+                            : <>This sub-event does not have an Outlook event yet. If you tick the box, the sub-event is re-created in the event admin so the Outlook event can be generated. <strong>The existing participant list with all registrations stays intact</strong> — only the DEX_Events row gets a new ID.</>}
                         </div>
                       </div>
-                    </div>
+                    </label>
                   );
                 }
                 return (

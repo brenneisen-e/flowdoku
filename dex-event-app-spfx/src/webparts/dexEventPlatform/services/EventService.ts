@@ -2807,6 +2807,18 @@ export class EventService {
     attendeeUploadHint?: string;
     attendeeUploadLabel?: string;
     customFields: CustomField[];
+    /** v11.69: Wenn `existingSubsiteUrl` UND `existingRegistrationListName`
+     *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
+     *  liste angelegt — stattdessen werden die mitgegebenen Werte direkt in
+     *  das neue DEX_Events-Item geschrieben. Hintergrund: Outlook-Termin
+     *  nachtraeglich aktivieren ohne Verlust bestehender Anmeldungen — das
+     *  Sub-Event wird mit `deleteEventItemOnly()` aus DEX_Events entfernt
+     *  und hier neu angelegt, wobei die alte Subsite + Teilnehmerliste
+     *  unangetastet bleiben und an die neue Event-Zeile angehaengt werden.
+     *  Damit triggert der `DEX_CreateOutlookEvent`-Flow (GetOnNewItems) auf
+     *  dem neuen Item und legt den Outlook-Termin an. */
+    existingSubsiteUrl?: string;
+    existingRegistrationListName?: string;
   }): Promise<number | null> {
     try {
       // 0. Naechste EventNumber ermitteln
@@ -2824,16 +2836,16 @@ export class EventService {
         }
       } catch { /* Fallback: 1 */ }
 
-      // 1. Subsite fuer das Event erstellen
-      const subsiteUrl = await this.createEventSubsite(event.title, event.description);
-      if (!subsiteUrl) {
-        console.error('[DEX] Subsite konnte nicht erstellt werden');
-        throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
-      }
-
-      // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen.
-      // v9.18: Co-Organizer-Emails aus emailTemplateOverrides._coOrganizers extrahieren
-      // und mit dem Hauptorganizer zusammen Full Control erteilen.
+      // v11.69: Reuse-Pfad — wenn `existingSubsiteUrl` UND
+      // `existingRegistrationListName` mitgegeben wurden, ueberspringen wir
+      // 1) Subsite-Anlegen, 2) Subsite-Permissions, 3) Teilnehmerliste
+      // anlegen. Die mitgegebene Subsite bleibt unangetastet inkl. aller
+      // Teilnehmer-Anmeldungen. Custom-Fields werden ohne spInternalName-
+      // Anreicherung uebernommen — die Felder existieren bereits auf der
+      // alten Teilnehmerliste mit den korrekten Internal-Names.
+      const reuseSubsite = !!(event.existingSubsiteUrl && event.existingRegistrationListName);
+      let subsiteUrl: string;
+      let enrichedCustomFields: CustomField[];
       const coOrgEmailsForPerm: string[] = (() => {
         try {
           const o = JSON.parse(event.emailTemplateOverrides || '{}');
@@ -2845,16 +2857,37 @@ export class EventService {
         return [];
       })();
       const allOrgEmails = [event.organizerEmail || '', ...coOrgEmailsForPerm].filter(Boolean).join(';');
-      await this.setSubsitePermissions(subsiteUrl, allOrgEmails);
+      const regListName = reuseSubsite ? (event.existingRegistrationListName as string) : REG_LIST_NAME;
 
-      // 3. Teilnehmerliste auf der Subsite erstellen
-      const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, allOrgEmails);
+      if (reuseSubsite) {
+        // v11.69: bestehende Subsite + Teilnehmerliste wiederverwenden.
+        subsiteUrl = event.existingSubsiteUrl as string;
+        // Custom-Fields unveraendert uebernehmen — die Liste existiert
+        // bereits, kein neues Schema noetig.
+        enrichedCustomFields = event.customFields.map(cf => ({ ...cf }));
+      } else {
+        // 1. Subsite fuer das Event erstellen
+        const createdSubsite = await this.createEventSubsite(event.title, event.description);
+        if (!createdSubsite) {
+          console.error('[DEX] Subsite konnte nicht erstellt werden');
+          throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
+        }
+        subsiteUrl = createdSubsite;
 
-      // Custom Fields mit SP InternalName anreichern
-      const enrichedCustomFields = event.customFields.map(cf => ({
-        ...cf,
-        spInternalName: fieldMap[cf.id] || '',
-      }));
+        // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen.
+        // v9.18: Co-Organizer-Emails aus emailTemplateOverrides._coOrganizers extrahieren
+        // und mit dem Hauptorganizer zusammen Full Control erteilen.
+        await this.setSubsitePermissions(subsiteUrl, allOrgEmails);
+
+        // 3. Teilnehmerliste auf der Subsite erstellen
+        const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, allOrgEmails);
+
+        // Custom Fields mit SP InternalName anreichern
+        enrichedCustomFields = event.customFields.map(cf => ({
+          ...cf,
+          spInternalName: fieldMap[cf.id] || '',
+        }));
+      }
 
       // 3. Event in DEX_Events eintragen
       const payload = {
@@ -2925,8 +2958,8 @@ export class EventService {
         'FunZone': event.funZone || '[]',
         'QuizClusterSize': typeof event.quizClusterSize === 'number' ? event.quizClusterSize : null,
         'ParentEventId': event.parentEventId || '',
-        'RegistrationListName': REG_LIST_NAME,
-        'RegistrationListUrl': `${subsiteUrl}/Lists/${REG_LIST_NAME}/AllItems.aspx`,
+        'RegistrationListName': regListName,
+        'RegistrationListUrl': `${subsiteUrl}/Lists/${regListName}/AllItems.aspx`,
         'SubsiteUrl': subsiteUrl,
       };
 
@@ -3186,6 +3219,41 @@ export class EventService {
         });
       } catch { /* */ }
 
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v11.69: Loescht NUR das DEX_Events-Listenitem — KEIN Cascade auf Subsite,
+   * KEIN Outlook-DeleteEvent in die Queue, KEIN EventImage-Recycle, KEIN
+   * DEX_Participants-Cleanup. Gegenstueck zu `deleteEvent()`, das alles
+   * mit-aufraeumt.
+   *
+   * Nutzungs-Szenario: Outlook-Termin nachtraeglich auf einem bereits
+   * angelegten Sub-Event aktivieren. Der `DEX_CreateOutlookEvent`-Flow
+   * triggert ausschliesslich auf NEUE DEX_Events-Items (GetOnNewItems) —
+   * ein MERGE-Update reicht nicht aus. Statt das ganze Sub-Event komplett
+   * delete+recreate zu machen (was kaskadierend Subsite + Teilnehmer-
+   * anmeldungen mitloeschen wuerde), wird hier nur die DEX_Events-Zeile
+   * entfernt und gleich darauf eine neue mit `createEvent({ existingSubsiteUrl,
+   * existingRegistrationListName })` angelegt. Die alte Subsite mit allen
+   * Anmeldungen bleibt unangetastet und wird einfach an die neue Zeile
+   * gekoppelt.
+   *
+   * **Garantie:** Diese Methode ruft KEIN `recycle()` auf der Subsite, KEIN
+   * `recycle()` auf der Teilnehmerliste und KEIN `removeParticipantEvent()`.
+   * Nur das DEX_Events-Item wird per REST-DELETE entfernt — alles andere
+   * bleibt 1:1 erhalten.
+   */
+  public async deleteEventItemOnly(eventId: string | number): Promise<boolean> {
+    try {
+      const idNum = typeof eventId === 'string' ? parseInt(eventId, 10) : eventId;
+      if (!idNum || Number.isNaN(idNum)) return false;
+      const response = await this._delete(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${idNum})`
+      );
       return response.ok;
     } catch {
       return false;
