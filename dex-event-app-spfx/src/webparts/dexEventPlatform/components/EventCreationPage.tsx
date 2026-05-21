@@ -2848,6 +2848,21 @@ export default function EventCreationPage(): React.ReactElement {
     const items: OutlookConfirmItem[] = [];
     if (!editEvent) return { items };
     const snap = initialOutlookSnapshot.current;
+    // v11.64: Datetime-Vergleich ueber Date.getTime(), nicht String. Sonst
+    // kippt der Vergleich an Format-Unterschieden (snap kommt roh aus SP
+    // mit „2026-09-24T16:00:00Z", currentStart geht durch
+    // berlinLocalToUtcIso() und wird „2026-09-24T16:00:00.000Z" — gleicher
+    // Zeitpunkt, anderer String). Das hat den Hauptevent in v11.63
+    // faelschlich als „Startzeit, Endzeit geaendert" gemeldet.
+    const sameInstant = (a: string, b: string): boolean => {
+      if (a === b) return true;
+      if (!a && !b) return true;
+      if (!a || !b) return false;
+      const da = new Date(a).getTime();
+      const db = new Date(b).getTime();
+      if (isNaN(da) || isNaN(db)) return a === b;
+      return da === db;
+    };
     const currentTitle = title || '';
     const currentStart = startDate ? berlinLocalToUtcIso(startDate) : '';
     const currentEnd = endDate ? berlinLocalToUtcIso(endDate) : '';
@@ -2858,8 +2873,8 @@ export default function EventCreationPage(): React.ReactElement {
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
     const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
-    if (currentStart !== (snap.startDate || '')) topChangedFields.push('startDate');
-    if (currentEnd !== (snap.endDate || '')) topChangedFields.push('endDate');
+    if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
+    if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
     // v11.61: Beide Pointer pruefen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
@@ -2887,8 +2902,9 @@ export default function EventCreationPage(): React.ReactElement {
       const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
       const subChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'> = [];
       if ((s.title || '') !== initTitle) subChangedFields.push('title');
-      if ((s.startDate || '') !== initStart) subChangedFields.push('startDate');
-      if ((s.endDate || '') !== initEnd) subChangedFields.push('endDate');
+      // v11.64: auch hier semantischer Vergleich — gleiche Falle wie oben.
+      if (!sameInstant(s.startDate || '', initStart)) subChangedFields.push('startDate');
+      if (!sameInstant(s.endDate || '', initEnd)) subChangedFields.push('endDate');
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
       if (subChangedFields.length > 0 && !s.disableOutlook && hasOutlookEvId) {
         items.push({
