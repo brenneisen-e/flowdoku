@@ -411,6 +411,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
       outlookEventId: e.OutlookEventId || '',
+      // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
+      // DEX_CreateOutlookEvent-Flow nur dieses Feld auf Erfolg setzt — die
+      // v11.57-Modal-Erkennung hatte auf OutlookEventId geprueft (immer leer)
+      // und das Outlook-Update-Confirm-Modal kam deshalb nie.
+      calendarLink: e.CalendarLink || '',
       emailLanguage: e.EmailLanguage || 'EN',
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,

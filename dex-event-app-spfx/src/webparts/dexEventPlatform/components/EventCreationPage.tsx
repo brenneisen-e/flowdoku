@@ -840,6 +840,7 @@ export default function EventCreationPage(): React.ReactElement {
     /** v11.57: Snapshot der initialen Outlook-relevanten Felder, um beim Save
      *  zu erkennen, ob die Teilnehmer einen Update-Termin bekommen sollen. */
     initialOutlookEventId?: string;
+    initialCalendarLink?: string;
     initialTitle?: string;
     initialStartDate?: string;
     initialEndDate?: string;
@@ -880,6 +881,10 @@ export default function EventCreationPage(): React.ReactElement {
       outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
       // v11.57: Snapshot der initialen Outlook-relevanten Felder
       initialOutlookEventId: k.outlookEventId || '',
+      // v11.61: CalendarLink (iCalUId) als Outlook-Existenz-Indikator. Der
+      // Flow schreibt OutlookEventId nicht — auf erfolgreichen Sub-Events
+      // ist nur CalendarLink gefuellt.
+      initialCalendarLink: k.calendarLink || '',
       initialTitle: k.title || '',
       initialStartDate: k.startDate || '',
       initialEndDate: k.endDate || '',
@@ -2850,7 +2855,10 @@ export default function EventCreationPage(): React.ReactElement {
       const initEnd = s.initialEndDate || '';
       const initBodyStripped = stripOutlookWrapper(s.initialOutlookBody || '');
       const curBodyStripped = (s.outlookBody || '');
-      const hasOutlookEvId = !!s.initialOutlookEventId;
+      // v11.61: Beide Pointer pruefen — DEX_CreateOutlookEvent setzt nur
+      // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
+      // leer hat, hatte nie einen Outlook-Termin.
+      const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
       const subChanged =
         (s.title || '') !== initTitle ||
         (s.startDate || '') !== initStart ||
@@ -2877,7 +2885,9 @@ export default function EventCreationPage(): React.ReactElement {
       return;
     }
     const det = detectOutlookRelevantChanges();
-    const topQualifies = det.topChanged && !disableOutlook && !!editEvent.outlookEventId;
+    // v11.61: CalendarLink mitpruefen — der Flow schreibt nur ihn auf
+    // Erfolg, OutlookEventId bleibt leer.
+    const topQualifies = det.topChanged && !disableOutlook && (!!editEvent.outlookEventId || !!editEvent.calendarLink);
     const subQualifies = det.affectedSubEventIds.length > 0;
     if (topQualifies || subQualifies) {
       setOutlookConfirmChecked(false);
