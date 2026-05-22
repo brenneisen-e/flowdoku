@@ -10,27 +10,11 @@
  */
 
 .dexApp {
-  // v11.94: Globaler Custom-Cursor — Standard-Pfeil oben links + grüner
-  // Deloitte-Punkt unten rechts. SVG-Inline mit URL-Encoding (kein extra
-  // Asset nötig). Hotspot (2,2) liegt auf der Spitze des Pfeils.
-  // Auf grünen / dunklen Surfaces wird per cursor-light-Override ein weißer
-  // Punkt verwendet, damit er nicht unsichtbar wird (siehe unten).
-  cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M2 2 L2 20 L7 15 L10 23 L13 22 L10 14 L17 14 Z' fill='%23222' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3Ccircle cx='20' cy='22' r='3.4' fill='%2386bc25' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E") 2 2, auto;
-
-  // v11.94: Weißer Deloitte-Punkt — auf grünen / dunklen Hintergründen
-  // ist der grüne Punkt visuell weg, deshalb hier mit weißem Punkt.
-  // Gilt für Primary-Buttons und gehoverte Start-Cards. Andere
-  // colored Surfaces (Card-Header, Bubble) erben den Default-Cursor;
-  // wenn weitere Surfaces dazukommen sollen, ergänzen wir sie hier.
-  // Wrapping in :global, weil die Klassen sonst als CSS-Module-Scope
-  // angesehen werden und der SPFx-Build kebab-case-Warnungen wirft.
-  :global {
-    .btn-primary,
-    .start-card:hover,
-    .landing__bubble {
-      cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M2 2 L2 20 L7 15 L10 23 L13 22 L10 14 L17 14 Z' fill='%23222' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3Ccircle cx='20' cy='22' r='3.4' fill='%23ffffff' stroke='%23222' stroke-width='1'/%3E%3C/svg%3E") 2 2, pointer;
-    }
-  }
+  // v11.97: Custom-Cursor wieder entfernt — der gerenderte SVG-Cursor
+  // wirkte für den User wie „System-Pfeil + grüner Punkt daneben"
+  // (zwei separate Elemente statt eines stimmigen Deloitte-Cursors).
+  // System-Default wird hier wieder eingesetzt, bis ein klareres
+  // Design vorliegt.
 
   // v11.94: Globale Round-Checkbox im Deloitte-Look — leerer Kreis,
   // angeklickt grüner Deloitte-Punkt innen. Ersetzt überall den Default-

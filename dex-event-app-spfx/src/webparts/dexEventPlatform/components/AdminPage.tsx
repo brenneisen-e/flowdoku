@@ -366,6 +366,13 @@ export default function AdminPage(): React.ReactElement {
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
+  // v11.97: bei Events mit Split-Kapazität (zwei Gruppen) wird die Aktiv-
+  // Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt.
+  // Per Toggle kann der Organizer/Admin auf eine zusammengeführte Sicht
+  // umstellen. Default: 'split'. Bei Events ohne Split-Kapazität ohne
+  // Wirkung (Tabelle bleibt single-table).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [splitParticipantsView, setSplitParticipantsView] = React.useState<'split' | 'merged'>('split');
   // v11.0: Bei Events mit Teilnehmer-Upload alle Attachment-Listen
   // einmalig laden, sobald sich registrations oder das ausgewählte
   // Event ändern. Damit zeigt der „Anhang"-Button in der Action-Spalte

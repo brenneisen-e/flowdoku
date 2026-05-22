@@ -50,7 +50,7 @@ export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent, registerTeam, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers, isAdmin } = useRoles();
+  const { searchUsers, searchUser, isAdmin } = useRoles();
   const { t, locale } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
 
@@ -463,6 +463,16 @@ export default function RegistrationPage(): React.ReactElement {
   // Deloitte-Mitarbeitersuche
   const [userSearch, setUserSearch] = React.useState('');
   const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>([]);
+  // v11.97: nach Picker-Auswahl im "Für andere Person registrieren"-Modus
+  // halten wir das volle Profil (Department + Mobile zusätzlich), damit
+  // die Personal-Info-Card die gleichen Read-only-Felder zeigt wie beim
+  // Self-Register-Modus.
+  const [pickedUserProfile, setPickedUserProfile] = React.useState<{
+    jobTitle?: string;
+    department?: string;
+    location?: string;
+    mobilePhone?: string;
+  } | null>(null);
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1317,7 +1327,9 @@ export default function RegistrationPage(): React.ReactElement {
                   oder Email gepflegt sind. */}
               {(event.contactName || event.contactEmail || event.contactInfo) && (
                 <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  {/* v11.97: Gleiche Schriftgröße + Gewicht wie das
+                      ORGANIZER-Label darüber. */}
+                  <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>
                     {locale === 'de' ? 'Ansprechpartner' : 'Contact'}
                   </div>
                   {event.contactName && (
@@ -1515,21 +1527,24 @@ export default function RegistrationPage(): React.ReactElement {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
                             {ce.description && (
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                              // v11.97: gleiche Schriftgröße wie der Titel
+                              // (Standard-Body). Vorher 0.78rem klein.
+                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
                             {/* v11.94: Datum + Ort mit Icons (analog zum
                                 Haupt-Event-Header), damit Sub-Events visuell
                                 konsistent sind und auf einen Blick lesbar. */}
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, color: 'var(--dex-gray-600)' }}>
                               {ce.startDate && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <Icon iconName="Calendar" style={{ fontSize: 13, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                                  {/* v11.97: Icon-Größe an Standard-Body angepasst. */}
+                                  <Icon iconName="Calendar" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
                                   {formatDate(ce.startDate)}
                                 </span>
                               )}
                               {ce.location && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <Icon iconName="POI" style={{ fontSize: 13, color: '#0a3766' }} />
+                                  <Icon iconName="POI" style={{ fontSize: 15, color: '#0a3766' }} />
                                   {ce.location}
                                 </span>
                               )}
@@ -1703,37 +1718,40 @@ export default function RegistrationPage(): React.ReactElement {
 
         {/* Persoenliche Daten */}
         <div className="registration-form">
-          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName="ContactInfo" style={{ fontSize: 16 }} />
-            {t('reg.personalinfo')}
+          {/* v11.97: Section-Header + Register-for-other-Toggle in einer
+              Zeile (grünes Section-Header-Pill links, Toggle als Link
+              rechts daneben). Vorher saß der Toggle unter dem Header
+              im Body — wenig auffällig. „* = Required field"-Legende
+              ist hier weg und sitzt jetzt am Event-Specific-Header. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="ContactInfo" style={{ fontSize: 16 }} />
+              {t('reg.personalinfo')}
+            </div>
+            {canRegisterForOther && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRegisterForOther(!registerForOther);
+                  setThirdPartyCheck(null);
+                  setPickedUserProfile(null);
+                  if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
+                  else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
+                }}
+                style={{
+                  background: 'none', border: 'none', padding: '4px 12px',
+                  color: 'var(--dex-green-dark)', fontSize: '0.85rem',
+                  textDecoration: 'underline', cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                {registerForOther ? t('reg.registerself') : t('reg.registerother')}
+              </button>
+            )}
           </div>
           <div style={{ padding: '24px 20px' }}>
-            <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 12 }}>
-              <span className="required">*</span> = {t('reg.requiredfield')}
-            </p>
-
             {canRegisterForOther && (
               <>
-                {/* v9.17: registerForOther-Toggle als unscheinbarer Text-Link
-                    statt prominentem Button — die Mehrheit registriert sich
-                    selbst, der Link ist nur fuer den Sonderfall gedacht. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRegisterForOther(!registerForOther);
-                    setThirdPartyCheck(null);
-                    if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
-                    else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
-                  }}
-                  style={{
-                    background: 'none', border: 'none', padding: 0,
-                    color: 'var(--dex-green-dark)', fontSize: '0.78rem',
-                    textDecoration: 'underline', cursor: 'pointer',
-                    marginBottom: 16, display: 'inline-block',
-                  }}
-                >
-                  {registerForOther ? t('reg.registerself') : t('reg.registerother')}
-                </button>
                 {registerForOther && isAssistant && !canCreateEvents && (
                   <div style={{
                     padding: '8px 12px', marginBottom: 12, borderRadius: 'var(--dex-radius-md)',
@@ -1745,7 +1763,7 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
                 {registerForOther && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
-                    <label className="form-label">{t('reg.searchemployee') || 'Deloitte Mitarbeiter suchen'}</label>
+                    {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
                     <input
                       className="form-input"
                       value={userSearch}
@@ -1810,6 +1828,22 @@ export default function RegistrationPage(): React.ReactElement {
                                 setEmail(u.email);
                                 setUserSearch(u.displayName);
                                 setUserResults([]);
+                                // v11.97: Profil mit Department + Mobile nachladen
+                                // — searchUsers liefert nur jobTitle+location.
+                                setPickedUserProfile({
+                                  jobTitle: u.jobTitle || '',
+                                  location: u.location || '',
+                                });
+                                searchUser(u.email).then(p => {
+                                  if (p) {
+                                    setPickedUserProfile({
+                                      jobTitle: p.jobTitle || u.jobTitle || '',
+                                      department: p.department || '',
+                                      location: p.location || u.location || '',
+                                      mobilePhone: p.mobilePhone || '',
+                                    });
+                                  }
+                                }).catch(() => { /* silent */ });
                                 // Frueh-Check: bereits angemeldet? Im Verteiler?
                                 setThirdPartyCheck(null);
                                 if (event) {
@@ -1927,57 +1961,67 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
 
+            {/* v11.97: Sternchen entfernt — die Felder Vorname, Nachname,
+                E-Mail werden read-only aus dem SP-Profil befüllt. Der User
+                kann sie ohnehin nicht ändern (außer im „Für andere Person
+                registrieren"-Modus, dort kommen die echten Required-Marker
+                über die Validation). */}
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> {t('reg.firstname')}</label>
+              <label className="form-label">{t('reg.firstname')}</label>
               <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> {t('reg.surname')}</label>
+              <label className="form-label">{t('reg.surname')}</label>
               <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
-              <label className="form-label"><span className="required">*</span> {t('reg.email')}</label>
+              <label className="form-label">{t('reg.email')}</label>
               <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
-            {/* v11.94: Zusätzliche read-only-Profildaten aus dem SP-User-
-                Profil — Job Title, Department, Office, Mobile. Nur wenn
-                der User sich für sich selbst registriert (registerForOther
-                blendet die aus, weil das Profil des Stellvertreters nicht
-                gelesen wird). Werden NICHT mit registriert, sind reine
-                Info — der Eintrag in der Teilnehmerliste enthält wie bisher
-                nur die echten Spalten Vorname/Nachname/Email/Department/
-                Location/JobTitle/Phone. Werte: aus useCurrentUser(). */}
-            {!registerForOther && (currentUser.jobTitle || currentUser.department || currentUser.location || currentUser.mobilePhone) && (
-              <>
-                {currentUser.jobTitle && (
-                  <div className="form-group">
-                    <label className="form-label">{locale === 'de' ? 'Position' : 'Job Title'}</label>
-                    <input className="form-input" value={currentUser.jobTitle} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                  </div>
-                )}
-                {currentUser.department && (
-                  <div className="form-group">
-                    <label className="form-label">{locale === 'de' ? 'Abteilung' : 'Department'}</label>
-                    <input className="form-input" value={currentUser.department} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                  </div>
-                )}
-                {currentUser.location && (
-                  <div className="form-group">
-                    <label className="form-label">{locale === 'de' ? 'Büro' : 'Office'}</label>
-                    <input className="form-input" value={currentUser.location} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                  </div>
-                )}
-                {currentUser.mobilePhone && (
-                  <div className="form-group">
-                    <label className="form-label">{locale === 'de' ? 'Mobil' : 'Mobile'}</label>
-                    <input className="form-input" value={currentUser.mobilePhone} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                  </div>
-                )}
-              </>
-            )}
+            {/* v11.94/v11.97: Zusätzliche read-only-Profildaten aus dem
+                SP-Profil — Job Title, Geschäftsbereich, Büro, Mobil.
+                Self-Register: aus useCurrentUser(). For-other-Register:
+                aus pickedUserProfile (nach Picker-Auswahl gefüllt). */}
+            {(() => {
+              const profile = registerForOther ? pickedUserProfile : currentUser;
+              if (!profile) return null;
+              const jt = (profile as { jobTitle?: string }).jobTitle || '';
+              const dept = (profile as { department?: string }).department || '';
+              const loc = (profile as { location?: string }).location || '';
+              const mob = (profile as { mobilePhone?: string }).mobilePhone || '';
+              if (!jt && !dept && !loc && !mob) return null;
+              return (
+                <>
+                  {jt && (
+                    <div className="form-group">
+                      <label className="form-label">{locale === 'de' ? 'Position' : 'Job Title'}</label>
+                      <input className="form-input" value={jt} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                    </div>
+                  )}
+                  {dept && (
+                    <div className="form-group">
+                      <label className="form-label">{locale === 'de' ? 'Geschäftsbereich' : 'Business Area'}</label>
+                      <input className="form-input" value={dept} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                    </div>
+                  )}
+                  {loc && (
+                    <div className="form-group">
+                      <label className="form-label">{locale === 'de' ? 'Büro' : 'Office'}</label>
+                      <input className="form-input" value={loc} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                    </div>
+                  )}
+                  {mob && (
+                    <div className="form-group">
+                      <label className="form-label">{locale === 'de' ? 'Mobil' : 'Mobile'}</label>
+                      <input className="form-input" value={mob} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* v11.82: Team-Anmeldung-Toggle. Nur sichtbar wenn der Organizer
                 in Schritt 4 die Team-Anmeldung aktiviert hat UND der User sich
@@ -2131,9 +2175,18 @@ export default function RegistrationPage(): React.ReactElement {
             Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
             Event-Karte). */}
         <div className="registration-specific">
-          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName="EditNote" style={{ fontSize: 16 }} />
-            {t('reg.eventinfo')}
+          {/* v11.97: Section-Header + „* = Required field"-Legende in
+              einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
+              in der Erklärung grau, jetzt im Deloitte-Rot wie alle echten
+              Required-Marker). */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="EditNote" style={{ fontSize: 16 }} />
+              {t('reg.eventinfo')}
+            </div>
+            <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', padding: '0 12px' }}>
+              <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
+            </span>
           </div>
           <div style={{ padding: '24px 20px' }}>
             {/* v11.10: Group-Selection ist ein eigener, IMMER sichtbarer
@@ -2363,20 +2416,23 @@ export default function RegistrationPage(): React.ReactElement {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
                             {ce.description && (
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                              // v11.97: gleiche Schriftgröße wie der Titel
+                              // (Standard-Body). Vorher 0.78rem klein.
+                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
                             {/* v11.94: gleiches Icon-Layout wie oben (anderer
                                 Render-Pfad für Team-Modus). */}
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, color: 'var(--dex-gray-600)' }}>
                               {ce.startDate && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <Icon iconName="Calendar" style={{ fontSize: 13, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                                  {/* v11.97: Icon-Größe an Standard-Body angepasst. */}
+                                  <Icon iconName="Calendar" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
                                   {formatDate(ce.startDate)}
                                 </span>
                               )}
                               {ce.location && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <Icon iconName="POI" style={{ fontSize: 13, color: '#0a3766' }} />
+                                  <Icon iconName="POI" style={{ fontSize: 15, color: '#0a3766' }} />
                                   {ce.location}
                                 </span>
                               )}

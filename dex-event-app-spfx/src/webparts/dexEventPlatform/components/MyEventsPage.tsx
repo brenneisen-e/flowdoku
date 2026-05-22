@@ -2050,31 +2050,16 @@ export default function MyEventsPage(): React.ReactElement {
       )}
 
       {cancelledEntries.length > 0 && (
-        <div>
-          <h3 className="mt-24 mb-16" style={{ color: 'var(--dex-gray-400)' }}>{t('myevents.cancelledevents')}</h3>
-          <div className="my-events-list">
-            {cancelledEntries.map(({ event, registration }) => (
-              <div
-                key={event.id}
-                className="card my-event-card"
-                style={{
-                  opacity: 0.6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '8px 16px',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <strong style={{ flex: '1 1 auto', fontSize: '0.95rem', margin: 0 }}>{event.title}</strong>
-                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
-                  {t('myevents.cancelledon')}: {registration.CancellationDate ? formatDate(registration.CancellationDate) : '-'}
-                </span>
-                <span className="badge badge-red">{t('status.cancelled')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        // v11.97: Cancelled-Liste einklappbar — Default eingeklappt, damit
+        // die Liste nicht den ganzen Screen mit abgemeldeten Events flutet.
+        <CancelledEventsCollapsible
+          count={cancelledEntries.length}
+          title={t('myevents.cancelledevents')}
+          locale={t('myevents.cancelledon')}
+          entries={cancelledEntries}
+          formatDate={formatDate}
+          statusLabel={t('status.cancelled')}
+        />
       )}
 
       {/* v11.34: Cascade-Cancel-Modal — ersetzt das frueher genutzte
@@ -2598,6 +2583,66 @@ export default function MyEventsPage(): React.ReactElement {
 // ==================== Datei-Upload ("Meine Events") ====================
 // v11.0: Wenn der Organizer beim Event den Toggle „Teilnehmer-Upload
 // erlauben" gesetzt hat, sieht der Teilnehmer hier einen Upload-Block.
+// v11.97: Einklappbare Liste der abgemeldeten Events. Default eingeklappt,
+// damit lange Cancelled-Listen die Hauptliste nicht überlagern. Header
+// zeigt Count + Chevron, Klick togglt die Liste.
+function CancelledEventsCollapsible(props: {
+  count: number;
+  title: string;
+  locale: string;
+  entries: Array<{ event: { id: string; title: string }; registration: { CancellationDate?: string } }>;
+  formatDate: (iso: string) => string;
+  statusLabel: string;
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="mt-24">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+          color: 'var(--dex-gray-600)', fontSize: '1rem', fontWeight: 600,
+        }}
+        aria-expanded={open}
+      >
+        <span style={{
+          display: 'inline-block', width: 14, textAlign: 'center',
+          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s ease',
+          fontSize: '0.85rem',
+        }}>▶</span>
+        <span>{props.title} ({props.count})</span>
+      </button>
+      {open && (
+        <div className="my-events-list">
+          {props.entries.map(({ event, registration }) => (
+            <div
+              key={event.id}
+              className="card my-event-card"
+              style={{
+                opacity: 0.6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '8px 16px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <strong style={{ flex: '1 1 auto', fontSize: '0.95rem', margin: 0 }}>{event.title}</strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                {props.locale}: {registration.CancellationDate ? props.formatDate(registration.CancellationDate) : '-'}
+              </span>
+              <span className="badge badge-red">{props.statusLabel}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Dateien werden als SP-Item-Attachment direkt an die eigene Teilnehmer-
 // zeile gehängt — der Admin sieht sie im Admin Center.
 function MyEventUpload(props: {
