@@ -745,6 +745,32 @@ UPDATE_EVENT (CalendarLink zurückschreiben):
   "runAfter": { "Create_event_(V4)": ["Succeeded"] }
 }
 
+PATCH_DONOTFORWARD (Stand 2026-05-22):
+Nach Update_DEX_Event laeuft eine PATCH-Action auf Graph, die die
+Extended Property „DoNotForward=true" auf den frisch erzeugten
+Outlook-Termin setzt. Damit ist „Weiterleitung" im Outlook-Client
+deaktiviert (in modernen Outlook-Versionen wird der Forward-Button
+ausgegraut). `sensitivity: "private"` alleine reicht dafuer nicht —
+die Extended Property ist die offizielle Mechanik.
+
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "Uri": "@concat('https://graph.microsoft.com/v1.0/users/no_reply.events@deloitte.de/events/', outputs('Create_event_(V4)')?['body/id'])",
+      "Method": "PATCH",
+      "Body": "{\n  \"singleValueExtendedProperties\": [\n    {\n      \"id\": \"Boolean {00062008-0000-0000-C000-000000000046} Name DoNotForward\",\n      \"value\": \"true\"\n    }\n  ]\n}",
+      "ContentType": "application/json"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "connection": "shared_office365",
+      "operationId": "HttpRequest"
+    }
+  },
+  "runAfter": { "Update_item": ["SUCCEEDED"] }
+}
+
 SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 {
   "type": "OpenApiConnection",
