@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Info, Trash2, Send } from './Icons';
+import { Trash2, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -149,7 +149,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [submitProgressLabel, setSubmitProgressLabel] = React.useState('');
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
-  const [showDescription, setShowDescription] = React.useState(true);
+  // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
   const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean } | null>(null);
 
   // Seit v6.14: integrierte Session-Auswahl direkt auf der Registrierungsseite.
@@ -992,49 +992,60 @@ export default function RegistrationPage(): React.ReactElement {
         hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
       />
     ) : field.type === 'checkbox' ? (
-      <label
-        style={{
-          display: 'flex', alignItems: 'flex-start', gap: 8,
-          cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)',
-          padding: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '6px 8px' : 0,
-          border: showErrors && field.required && eventSpecific[field.id] !== 'true' ? '1px solid var(--dex-red)' : 'none',
-          borderRadius: showErrors && field.required && eventSpecific[field.id] !== 'true' ? 6 : 0,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={eventSpecific[field.id] === 'true'}
-          onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
-          style={{ marginTop: 3, flexShrink: 0 }}
-        />
-        <span>
-          {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4, fontWeight: 700 }}>*</span>}
+      // v11.91: Checkbox bekommt jetzt eine ordentliche Karten-Box mit
+      // gleichem Look wie die Dropdown-Inputs — vorher war die Mini-
+      // Checkbox neben den Dropdowns visuell „verloren". Der Label-Text
+      // sitzt oben (analog zu den anderen Feldern, damit die Zeilen
+      // horizontal aligned sind), drinnen ein deutlich vergrößerter
+      // Checkbox + kurzer „Ja, bestätigen"-Hinweis.
+      <>
+        <label className="form-label">
+          {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
           {field.label}
-          {/* v11.15: konsistenter InfoTooltip auch fuer Checkbox-Felder
-              — vorher nur winziges html-title-i, das User leicht
-              uebersehen. Jetzt gleicher Hover-Popover wie bei anderen
-              Feldtypen. */}
           {field.helpText && <InfoTooltip text={field.helpText} />}
-          {field.externalLinks && field.externalLinks.length > 0 && (
-            <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem' }}>
-              {field.externalLinks.map((l, i) => (
-                <span key={l.url}>
-                  {i > 0 && <span style={{ color: 'var(--dex-gray-300)', margin: '0 6px' }}>|</span>}
-                  <a
-                    href={l.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}
-                  >
-                    {l.label}
-                  </a>
-                </span>
-              ))}
-            </span>
-          )}
-        </span>
-      </label>
+        </label>
+        <label
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            cursor: 'pointer', padding: '12px 14px',
+            border: showErrors && field.required && eventSpecific[field.id] !== 'true'
+              ? '1px solid var(--dex-red)'
+              : '1px solid var(--dex-gray-200)',
+            borderRadius: 8,
+            background: eventSpecific[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : '#fff',
+            minHeight: 44,
+            transition: 'background 0.12s',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={eventSpecific[field.id] === 'true'}
+            onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
+            style={{ width: 22, height: 22, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
+          />
+          <span style={{ fontSize: '0.92rem', color: 'var(--dex-gray-700)' }}>
+            {locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm'}
+          </span>
+        </label>
+        {field.externalLinks && field.externalLinks.length > 0 && (
+          <div style={{ marginTop: 4, fontSize: '0.78rem' }}>
+            {field.externalLinks.map((l, i) => (
+              <span key={l.url}>
+                {i > 0 && <span style={{ color: 'var(--dex-gray-300)', margin: '0 6px' }}>|</span>}
+                <a
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}
+                >
+                  {l.label}
+                </a>
+              </span>
+            ))}
+          </div>
+        )}
+      </>
     ) : (
       <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
     )}
@@ -1174,8 +1185,11 @@ export default function RegistrationPage(): React.ReactElement {
               className="registration-event__image"
               style={{
                 position: 'relative',
+                // v11.91: Hintergrund auf Weiß gesetzt — PNGs mit Transparenz
+                // zeigten vorher den hellgrauen Hintergrund durch, was wie ein
+                // unsauberer „grauer Rand" um Logos aussah.
                 background: event.imageUrl
-                  ? 'var(--dex-gray-100)'
+                  ? '#fff'
                   : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
                 borderRadius: 'var(--dex-radius)',
                 overflow: 'hidden',
@@ -1201,34 +1215,55 @@ export default function RegistrationPage(): React.ReactElement {
                   }
                 />
               )}
-              <button className="event-card__info-btn" aria-label="Event info" onClick={() => setShowDescription(!showDescription)}>
-                <Info size={16} />
-              </button>
+              {/* v11.91: Info-Button entfernt — die Beschreibung ist jetzt
+                  immer ausgeklappt, kein Toggle mehr nötig. */}
             </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 4px 4px 0' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 4px 4px 0' }}>
               <h4 style={{ fontSize: '1rem', margin: 0 }}>{event.title}</h4>
-              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: 0 }}>
-                {formatDate(event.startDate)} {t('reg.until')}<br />
-                {formatDate(event.endDate)}
-              </p>
-              {/* Veranstaltungsort: Name fett + strukturierte Adresse darunter */}
-              {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', margin: '2px 0 0' }}>
-                  {event.location && (
-                    <div style={{ fontWeight: 700, color: 'var(--dex-gray-700)' }}>{event.location}</div>
-                  )}
-                  {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
-                    <div>
-                      {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
-                      {(event.locationAddress.zip || event.locationAddress.city) && <br />}
-                      {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
-                    </div>
-                  )}
+              {/* v11.91: Datum + Ort als prominente Badges mit Icon —
+                  vorher Mini-Text mit 0.78-0.82rem, fast übersehbar. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 12px', borderRadius: 8,
+                  background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)',
+                  fontSize: '0.88rem', fontWeight: 600, alignSelf: 'flex-start',
+                }}>
+                  <Icon iconName="Calendar" style={{ fontSize: 16 }} />
+                  <span>
+                    {formatDate(event.startDate)} {t('reg.until')}<br />
+                    {formatDate(event.endDate)}
+                  </span>
                 </div>
-              )}
+                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'flex-start', gap: 8,
+                    padding: '8px 12px', borderRadius: 8,
+                    background: 'rgba(0,86,166,0.08)', color: '#0a3766',
+                    fontSize: '0.88rem', alignSelf: 'flex-start',
+                  }}>
+                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: 2 }} />
+                    <span>
+                      {event.location && (
+                        <span style={{ fontWeight: 700 }}>{event.location}</span>
+                      )}
+                      {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
+                        <>
+                          <br />
+                          <span style={{ fontWeight: 400 }}>
+                            {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
+                            {(event.locationAddress.zip || event.locationAddress.city) && <br />}
+                            {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
               {(() => {
                 // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
-                // in "Vorname Nachname" normalisiert.
+                // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
                 const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
                   const trimmed = o.trim();
                   const parts = trimmed.split(',').map(s => s.trim());
@@ -1237,8 +1272,8 @@ export default function RegistrationPage(): React.ReactElement {
                 if (orgs.length === 0) return null;
                 return (
                   <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} size="sm" />
+                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
+                    <OrganizerList names={orgs} emails={event.organizerEmails} size="md" />
                   </div>
                 );
               })()}
@@ -1291,7 +1326,8 @@ export default function RegistrationPage(): React.ReactElement {
               })()}
             </div>
           </div>
-          {showDescription && event.description && (
+          {/* v11.91: Beschreibung immer ausgeklappt — kein Toggle mehr. */}
+          {event.description && (
             // v9.25: Beschreibung darf HTML enthalten (RichText-Editor im
             // EventCreation/Edit). Wir rendern als HTML statt Plain-Text,
             // damit Formatierung wie Listen, Links, Fett etc. funktioniert.
@@ -1305,9 +1341,26 @@ export default function RegistrationPage(): React.ReactElement {
                 lineHeight: 1.55,
               }}
               dangerouslySetInnerHTML={{
-                __html: /<[a-z][\s\S]*>/i.test(event.description || '')
-                  ? event.description
-                  : (event.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'),
+                __html: (() => {
+                  // v11.91: Email-Adressen in der Beschreibung automatisch
+                  // in mailto-Links umwandeln. Funktioniert sowohl für
+                  // Plain-Text als auch für HTML — Emails in bereits
+                  // verlinktem Text (innerhalb von href="...") werden
+                  // übersprungen.
+                  const raw = event.description || '';
+                  const isHtml = /<[a-z][\s\S]*>/i.test(raw);
+                  const base = isHtml
+                    ? raw
+                    : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                  const EMAIL_RE = /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g;
+                  // Skip emails that already sit inside href="..." (already linked)
+                  return base.replace(EMAIL_RE, (match, _email, offset, full) => {
+                    const beforeWindow = full.slice(Math.max(0, offset - 80), offset);
+                    if (/href\s*=\s*["'][^"']*$/.test(beforeWindow)) return match;
+                    if (/>$/.test(beforeWindow) && /<a [^>]*$/i.test(beforeWindow)) return match;
+                    return `<a href="mailto:${match}" style="color:#4a7c1f;text-decoration:underline">${match}</a>`;
+                  });
+                })(),
               }}
             />
           )}
@@ -2655,7 +2708,7 @@ export default function RegistrationPage(): React.ReactElement {
 function UserFieldPicker(props: {
   value: string;
   onChange: (v: string) => void;
-  searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string }>>;
+  searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>;
   placeholder: string;
   errorStyle: React.CSSProperties;
   hint?: string;
@@ -2669,9 +2722,11 @@ function UserFieldPicker(props: {
   };
   const initialParsed = parseValue(props.value);
   const [query, setQuery] = React.useState(initialParsed ? '' : (props.value || ''));
-  const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string }>>([]);
+  const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>([]);
   const [isSearching, setIsSearching] = React.useState(false);
-  const [selected, setSelected] = React.useState<{ name: string; email: string } | null>(initialParsed);
+  // v11.91: Selected merkt sich zusätzlich Standort und JobTitle, damit
+  // der Chip dieselben Infos zeigt wie die Dropdown-Treffer.
+  const [selected, setSelected] = React.useState<{ name: string; email: string; location?: string; jobTitle?: string } | null>(initialParsed);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
     const parsed = parseValue(props.value);
@@ -2691,25 +2746,35 @@ function UserFieldPicker(props: {
       {hasSelection && selected ? (
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 10,
-          padding: '6px 10px 6px 6px',
+          padding: '8px 12px 8px 8px',
           border: '1px solid var(--dex-gray-200)',
           borderRadius: 'var(--dex-radius)',
           background: 'var(--dex-gray-50, #f7f7f7)',
           maxWidth: '100%',
         }}>
           <img
-            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(selected.email)}&size=S`}
+            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(selected.email)}&size=L`}
             alt={selected.name}
             onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+            // v11.91: Hover-Zoom auf das Profilfoto — gleiche Geste wie
+            // SettingsPage / AdminPage. size=L statt size=S für saubere
+            // Skalierung beim Zoomen.
+            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s', transformOrigin: 'left center', cursor: 'zoom-in' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
           />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {selected.name}
             </div>
             <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {selected.email}
+              <a href={`mailto:${selected.email}`} onClick={e => e.stopPropagation()} style={{ color: 'inherit', textDecoration: 'none' }}>{selected.email}</a>
             </div>
+            {(selected.jobTitle || selected.location) && (
+              <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {[selected.jobTitle, selected.location].filter(Boolean).join(' · ')}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -2784,23 +2849,30 @@ function UserFieldPicker(props: {
               }}
               onMouseDown={() => {
                 const formatted = `${u.displayName} <${u.email}>`;
-                setSelected({ name: u.displayName, email: u.email });
+                setSelected({ name: u.displayName, email: u.email, location: u.location, jobTitle: u.jobTitle });
                 setQuery('');
                 props.onChange(formatted);
                 setResults([]);
               }}
             >
               <img
-                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`}
+                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=L`}
                 alt={u.displayName}
                 onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s', transformOrigin: 'left center' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{u.displayName}</div>
                 <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {u.email}{u.location ? ` · ${u.location}` : ''}
+                  {u.email}
                 </div>
+                {(u.jobTitle || u.location) && (
+                  <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {[u.jobTitle, u.location].filter(Boolean).join(' · ')}
+                  </div>
+                )}
               </div>
             </div>
           ))}
