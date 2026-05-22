@@ -7,13 +7,19 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Calendar, Pin, Settings } from './Icons';
+import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { canCreateEvents } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  // v12.5: Organizer-Kachel wird jetzt IMMER gerendert. Wer keine Organizer-
+  // Rechte hat sieht sie ausgegraut mit Overlay-Button „Want to become an
+  // organizer?" — Klick öffnet das gleiche Inquiry-Modal wie das
+  // Bubble-CTA auf der Landing-Page.
+  const [showInquiry, setShowInquiry] = React.useState(false);
 
   // v11.38/v11.46: Co-Organizer pro Event (per-Event-Rolle, ohne globale
   // Organizer-Rolle in DEX_Roles) sehen die Organizer-Kachel ebenfalls —
@@ -35,7 +41,10 @@ export default function StartPage(): React.ReactElement {
     if (inOrg) return true;
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
-  const showAdminTile = canCreateEvents || isOrganizerOfAnyEvent;
+  const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent;
+  // v12.5: Grid bleibt immer 3-spaltig — auch User sehen die Organizer-
+  // Kachel (ausgegraut + CTA-Overlay).
+  const showAdminTile = true;
 
   return (
     <div className="page-container">
@@ -77,7 +86,7 @@ export default function StartPage(): React.ReactElement {
           <h2>{t('start.myevents')}</h2>
           <p style={{ whiteSpace: 'nowrap' }}>{t('start.myevents.desc')}</p>
         </div>
-        {showAdminTile && (
+        {isOrganizer ? (
           <div className="card card-clickable start-card start-card--admin" onClick={() => navigate('admin')}>
             <div className="start-card__icon">
               <Settings size={64} strokeWidth={1} />
@@ -85,8 +94,44 @@ export default function StartPage(): React.ReactElement {
             <h2>{t('start.admin')}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
           </div>
+        ) : (
+          // v12.5: Ausgegraute Organizer-Kachel mit CTA-Overlay-Button
+          // — User können so direkt anfragen Organizer zu werden.
+          <div
+            className="card start-card start-card--admin"
+            style={{ position: 'relative', cursor: 'default', opacity: 0.55 }}
+          >
+            <div className="start-card__icon">
+              <Settings size={64} strokeWidth={1} />
+            </div>
+            <h2>{t('start.admin')}</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
+            <div
+              style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.0)',
+                opacity: 1,
+              }}
+            >
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
+                style={{
+                  background: 'var(--dex-green, #86bc25)', color: '#fff',
+                  border: 'none', borderRadius: 999,
+                  padding: '10px 18px', fontWeight: 700,
+                  cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                  fontSize: '0.85rem', whiteSpace: 'nowrap',
+                }}
+              >
+                {locale === 'de' ? 'Organizer werden?' : 'Want to become an organizer?'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </div>
   );
 }
