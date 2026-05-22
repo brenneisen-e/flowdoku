@@ -829,17 +829,33 @@ export class SharePointService {
         const data = await response.json();
         const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
         const results = JSON.parse(resultsStr);
+        // eslint-disable-next-line no-console
+        console.log(`[DEX][perf][searchUsers] variant="${variant}" raw=${results.length}`);
 
+        // v11.75: vor allem Variante 1 — SP-Picker liefert manchmal Treffer
+        // mit leerem EntityData.Email (z.B. wenn der User noch keine SP-
+        // Personalwand hat / Profil noch nicht angelegt). Frueher wurde der
+        // Treffer mit `filter(x => x.EntityData?.Email)` rausgeworfen — Namens-
+        // Suchen wie „Inga Fuhr" kamen dann mit 0 Vorschlaegen zurueck.
+        // Fallback: Email aus `Key` (z.B. „i:0#.f|membership|email@domain")
+        // oder `Description` ziehen.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const r of results.filter((x: any) => x.EntityData?.Email)) {
-          const email = (r.EntityData.Email || '').toLowerCase();
-          if (!email || seen.has(email)) continue;
+        for (const r of results as any[]) {
+          let email = String(r.EntityData?.Email || '').toLowerCase();
+          if (!email) {
+            const candidates: string[] = [String(r.Key || ''), String(r.Description || '')];
+            for (const c of candidates) {
+              const m = c.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+              if (m) { email = m[0].toLowerCase(); break; }
+            }
+          }
+          if (!email || !email.includes('@') || seen.has(email)) continue;
           seen.add(email);
           all.push({
-            email: r.EntityData.Email || '',
-            displayName: r.DisplayText || r.EntityData.Title || '',
+            email,
+            displayName: r.DisplayText || r.EntityData?.Title || '',
             location: '',
-            jobTitle: r.EntityData.Title || '',
+            jobTitle: r.EntityData?.Title || '',
           });
           if (all.length >= 10) break;
         }

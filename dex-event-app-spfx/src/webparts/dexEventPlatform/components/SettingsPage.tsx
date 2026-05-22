@@ -368,6 +368,18 @@ export default function SettingsPage(): React.ReactElement {
                           Suche...
                         </span>
                       )}
+                      {/* v11.75: explizite „Keine Treffer"-Box wenn die Suche
+                          fertig ist und 0 Treffer hat — sonst wirkt der Picker
+                          stumm und der Admin weiss nicht, ob die Suche lief. */}
+                      {!isSearching && newEmail && newEmail.length >= 2 && suggestions.length === 0 && (
+                        <div style={{
+                          marginTop: 6, padding: '8px 12px', borderRadius: 'var(--dex-radius)',
+                          border: '1px dashed var(--dex-gray-300)', background: 'var(--dex-gray-50)',
+                          color: 'var(--dex-gray-600)', fontSize: '0.78rem',
+                        }}>
+                          Keine Treffer für &bdquo;{newEmail}&ldquo;. Versuche es mit dem vollen Namen oder der E-Mail-Adresse.
+                        </div>
+                      )}
                       {showSuggestions && suggestions.length > 0 && (
                         <div style={{
                           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
