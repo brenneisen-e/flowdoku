@@ -10,6 +10,7 @@ import OrganizerList from './OrganizerList';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
+import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
@@ -627,7 +628,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, refreshEvents } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, refreshEvents } = useEvents();
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
   // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
   // nicht — nur fuer Events mit gesetzter TeamId im eigenen Eintrag.
@@ -649,6 +650,110 @@ export default function MyEventsPage(): React.ReactElement {
     if (isRefreshingEvents) return;
     setIsRefreshingEvents(true);
     try { await refreshEvents(); } finally { setIsRefreshingEvents(false); }
+  };
+
+  // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
+  // searchUsers wird fuer den Add-Member-Picker gebraucht (gleiche API wie
+  // im Registrierungs-Formular).
+  const { searchUsers } = useRoles();
+  const [addMemberDialog, setAddMemberDialog] = React.useState<{
+    eventId: string;
+    teamId: string;
+    teamName: string;
+    freeSlots: number;
+  } | null>(null);
+  const [addMemberPick, setAddMemberPick] = React.useState<{ email: string; displayName: string } | null>(null);
+  const [addMemberQuery, setAddMemberQuery] = React.useState('');
+  const [addMemberResults, setAddMemberResults] = React.useState<Array<{ email: string; displayName: string }>>([]);
+  const [addMemberSearching, setAddMemberSearching] = React.useState(false);
+  const [addMemberConsent, setAddMemberConsent] = React.useState(false);
+  const [addMemberBusy, setAddMemberBusy] = React.useState(false);
+  const [addMemberError, setAddMemberError] = React.useState('');
+  const addMemberQueryTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeAddMemberDialog = (): void => {
+    setAddMemberDialog(null);
+    setAddMemberPick(null);
+    setAddMemberQuery('');
+    setAddMemberResults([]);
+    setAddMemberConsent(false);
+    setAddMemberError('');
+    setAddMemberBusy(false);
+  };
+  const submitAddMember = async (): Promise<void> => {
+    if (!addMemberDialog || !addMemberPick || !addMemberConsent || addMemberBusy) return;
+    setAddMemberBusy(true);
+    setAddMemberError('');
+    try {
+      const res = await addTeamMember(
+        addMemberDialog.eventId,
+        addMemberDialog.teamId,
+        addMemberDialog.teamName || undefined,
+        addMemberPick
+      );
+      if (!res.ok) {
+        if (res.reason && res.reason.startsWith('already-registered')) {
+          setAddMemberError(isDe
+            ? 'Diese Person ist bereits beim Event angemeldet — bitte abmelden lassen, bevor du sie zum Team hinzufuegst.'
+            : 'This person is already registered for the event — please have them cancel first before adding to the team.');
+        } else if (res.reason === 'team-full') {
+          setAddMemberError(isDe ? 'Das Team ist bereits voll.' : 'The team is already full.');
+        } else {
+          setAddMemberError(isDe ? 'Hinzufuegen fehlgeschlagen.' : 'Adding failed.');
+        }
+        setAddMemberBusy(false);
+        return;
+      }
+      // Team-Cache invalidieren, damit das Badge neu lädt.
+      const key = `${addMemberDialog.eventId}|${addMemberDialog.teamId}`;
+      teamCacheKeyRef.current.delete(key);
+      setTeamMembersCache(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      closeAddMemberDialog();
+    } catch {
+      setAddMemberError(isDe ? 'Hinzufuegen fehlgeschlagen.' : 'Adding failed.');
+      setAddMemberBusy(false);
+    }
+  };
+
+  // Join-Request-Cache pro (eventId|teamId). Nur fuer Leads relevant.
+  const [joinRequestsCache, setJoinRequestsCache] = React.useState<Record<string, Array<{ Id: number; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>>>({});
+  const joinReqKeyRef = React.useRef<Set<string>>(new Set());
+  const enqueueJoinReqFetch = React.useCallback((eventId: string, teamId: string): void => {
+    if (!eventId || !teamId) return;
+    const key = `${eventId}|${teamId}`;
+    if (joinReqKeyRef.current.has(key)) return;
+    joinReqKeyRef.current.add(key);
+    listTeamJoinRequestsForEvent(eventId, teamId).then(list => {
+      setJoinRequestsCache(prev => ({ ...prev, [key]: list }));
+    }).catch(() => {
+      setJoinRequestsCache(prev => ({ ...prev, [key]: [] }));
+    });
+  }, [listTeamJoinRequestsForEvent]);
+  const [joinReqBusyId, setJoinReqBusyId] = React.useState<number | null>(null);
+  const handleDecideJoinRequest = async (eventId: string, teamId: string, requestId: number, decision: 'Approved' | 'Rejected'): Promise<void> => {
+    if (joinReqBusyId !== null) return;
+    setJoinReqBusyId(requestId);
+    try {
+      await decideTeamJoinRequest(requestId, decision);
+      const key = `${eventId}|${teamId}`;
+      joinReqKeyRef.current.delete(key);
+      teamCacheKeyRef.current.delete(key);
+      setJoinRequestsCache(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setTeamMembersCache(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } finally {
+      setJoinReqBusyId(null);
+    }
   };
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
@@ -1252,6 +1357,88 @@ export default function MyEventsPage(): React.ReactElement {
                               {isDe ? 'Mitglieder' : 'Members'}: {memberNames.join(', ')}
                             </div>
                           )}
+                          {/* v11.83: Add-Member-Button — nur fuer Leads bei freien Slots. */}
+                          {isLead && total < teamSizeCfg && (
+                            <div style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                  setAddMemberDialog({
+                                    eventId: event.id,
+                                    teamId: registration.TeamId!,
+                                    teamName: tn || '',
+                                    freeSlots: teamSizeCfg - total,
+                                  });
+                                  setAddMemberPick(null);
+                                  setAddMemberQuery('');
+                                  setAddMemberResults([]);
+                                  setAddMemberConsent(false);
+                                  setAddMemberError('');
+                                }}
+                                style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                              >
+                                <Icon iconName="AddFriend" style={{ fontSize: 12, marginRight: 6 }} />
+                                {isDe
+                                  ? `Mitglied hinzufuegen (${teamSizeCfg - total} Slot${(teamSizeCfg - total) === 1 ? '' : 's'} frei)`
+                                  : `Add member (${teamSizeCfg - total} slot${(teamSizeCfg - total) === 1 ? '' : 's'} free)`}
+                              </button>
+                            </div>
+                          )}
+                          {/* v11.83: Beitritts-Anfragen-Block — nur fuer Leads, wenn das
+                              Event Approval aktiviert hat UND es Pending-Anfragen gibt. */}
+                          {isLead && event.teamJoinRequiresApproval && (() => {
+                            const jKey = `${event.id}|${registration.TeamId}`;
+                            const jReqs = joinRequestsCache[jKey];
+                            if (jReqs === undefined) {
+                              enqueueJoinReqFetch(event.id, registration.TeamId!);
+                              return null;
+                            }
+                            if (jReqs.length === 0) return null;
+                            return (
+                              <div style={{
+                                marginTop: 10,
+                                padding: '8px 12px',
+                                borderRadius: 6,
+                                background: 'rgba(237,139,0,0.10)',
+                                border: '1px solid var(--dex-orange, #ed8b00)',
+                                color: '#7a4a00',
+                              }}>
+                                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                                  {isDe ? 'Beitritts-Anfragen' : 'Join requests'} ({jReqs.length})
+                                </div>
+                                {jReqs.map(r => {
+                                  const busy = joinReqBusyId === r.Id;
+                                  return (
+                                    <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid rgba(237,139,0,0.25)' }}>
+                                      <div style={{ flex: 1, fontSize: '0.82rem' }}>
+                                        <div style={{ fontWeight: 600 }}>{r.RequesterDisplayName || r.RequesterEmail}</div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>{r.RequesterEmail}</div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        disabled={busy}
+                                        onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Approved')}
+                                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                      >
+                                        {isDe ? 'Bestaetigen' : 'Approve'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        disabled={busy}
+                                        onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Rejected')}
+                                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                                      >
+                                        {isDe ? 'Ablehnen' : 'Reject'}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })()}
@@ -1735,6 +1922,203 @@ export default function MyEventsPage(): React.ReactElement {
       {/* v11.34: Cascade-Cancel-Modal — ersetzt das frueher genutzte
           window.confirm. Drei klare Aktionen: alles abmelden, nur
           Hauptevent, Abbrechen. */}
+      {/* v11.83: Add-Member-Modal (Team-Lead fuegt nachtraeglich ein
+          Mitglied hinzu). Layout-Logik analog zum cascadeDialog. */}
+      {addMemberDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!addMemberBusy) closeAddMemberDialog(); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12, padding: '28px 32px',
+              maxWidth: 540, width: '100%',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+              display: 'flex', flexDirection: 'column', gap: 14,
+              maxHeight: '90vh', overflowY: 'auto',
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Mitglied zum Team hinzufuegen' : 'Add member to team'}
+            </h3>
+            {/* Pflicht-Hinweisbox — orange, analog zur Initial-Team-Anmeldung. */}
+            <div style={{
+              padding: '14px 16px',
+              background: 'rgba(237,139,0,0.10)',
+              border: '2px solid var(--dex-orange, #ed8b00)',
+              borderRadius: 8,
+              color: '#7a4a00',
+              fontSize: '0.88rem',
+              lineHeight: 1.5,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                {isDe ? 'Vorab Zustimmung einholen' : 'Get consent up front'}
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                {isDe
+                  ? 'Die ausgewaehlte Person wird sofort und ohne weitere Rueckfrage zum Team hinzugefuegt. Sie bekommt automatisch:'
+                  : 'The selected person is added to the team immediately, without further confirmation. They automatically receive:'}
+              </div>
+              <ul style={{ margin: '0 0 4px 18px', padding: 0 }}>
+                <li>{isDe ? 'eine Anmeldebestaetigung per Mail' : 'a confirmation email'}</li>
+                <li>{isDe ? 'einen Outlook-Termin im Kalender' : 'an Outlook calendar invite'}</li>
+                <li>{isDe ? 'den Event in „Meine Events"' : 'the event in „My Events"'}</li>
+              </ul>
+              <div style={{ marginTop: 4 }}>
+                {isDe
+                  ? <>Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>vorher zugestimmt</strong> hat.</>
+                  : <>Make sure the person has <strong>consented up front</strong>.</>}
+              </div>
+            </div>
+            {/* People-Picker — simple Inline-Variante mit der searchUsers-API. */}
+            <div>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
+                <span style={{ color: 'var(--dex-red)' }}>*</span> {isDe ? 'Person auswaehlen' : 'Pick a person'}
+              </label>
+              {addMemberPick ? (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 10,
+                  padding: '6px 10px 6px 6px',
+                  border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 'var(--dex-radius)',
+                  background: 'var(--dex-gray-50, #f7f7f7)',
+                  maxWidth: '100%',
+                }}>
+                  <img
+                    src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(addMemberPick.email)}&size=S`}
+                    alt={addMemberPick.displayName}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                    style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{addMemberPick.displayName}</div>
+                    <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{addMemberPick.email}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setAddMemberPick(null); setAddMemberQuery(''); setAddMemberResults([]); }}
+                    title={isDe ? 'Auswahl entfernen' : 'Remove selection'}
+                    style={{
+                      background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)',
+                      width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+                      fontSize: '0.9rem', lineHeight: 1,
+                    }}
+                  >×</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="form-input"
+                    value={addMemberQuery}
+                    placeholder={isDe ? 'Name oder E-Mail eingeben…' : 'Type a name or email…'}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setAddMemberQuery(val);
+                      if (addMemberQueryTimer.current) clearTimeout(addMemberQueryTimer.current);
+                      if (val.length >= 2) {
+                        addMemberQueryTimer.current = setTimeout(async () => {
+                          setAddMemberSearching(true);
+                          try {
+                            const res = await searchUsers(val);
+                            setAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
+                          } catch { setAddMemberResults([]); }
+                          setAddMemberSearching(false);
+                        }, 300);
+                      } else {
+                        setAddMemberResults([]);
+                      }
+                    }}
+                  />
+                  {(addMemberResults.length > 0 || addMemberSearching) && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                      background: '#fff', border: '1px solid var(--dex-gray-200)',
+                      borderRadius: 6, marginTop: 4, maxHeight: 220, overflowY: 'auto',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                    }}>
+                      {addMemberSearching && (
+                        <div style={{ padding: 10, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                          {isDe ? 'Suche…' : 'Searching…'}
+                        </div>
+                      )}
+                      {addMemberResults.map(r => (
+                        <button
+                          key={r.email}
+                          type="button"
+                          onClick={() => { setAddMemberPick(r); setAddMemberResults([]); setAddMemberQuery(''); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            width: '100%', padding: '6px 10px', border: 'none',
+                            background: '#fff', cursor: 'pointer', textAlign: 'left',
+                          }}
+                        >
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.email)}&size=S`}
+                            alt={r.displayName}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            style={{ width: 28, height: 28, borderRadius: '50%' }}
+                          />
+                          <div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{r.displayName}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{r.email}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+              <input
+                type="checkbox"
+                checked={addMemberConsent}
+                onChange={e => setAddMemberConsent(e.target.checked)}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                {isDe
+                  ? 'Ich bestaetige, dass die ausgewaehlte Person ihrer Anmeldung zugestimmt hat.'
+                  : 'I confirm that the selected person has consented to this registration.'}
+              </span>
+            </label>
+            {addMemberError && (
+              <div style={{ padding: 10, borderRadius: 6, background: 'rgba(220,38,38,0.10)', color: '#b91c1c', fontSize: '0.85rem' }}>
+                {addMemberError}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeAddMemberDialog}
+                disabled={addMemberBusy}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={submitAddMember}
+                disabled={!addMemberPick || !addMemberConsent || addMemberBusy}
+              >
+                {addMemberBusy
+                  ? (isDe ? 'Wird hinzugefuegt…' : 'Adding…')
+                  : (isDe ? 'Hinzufuegen' : 'Add')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {cascadeDialog && (() => {
         const dlg = cascadeDialog;
         const choose = (c: 'cascade' | 'parent-only' | 'abort'): void => dlg.resolve(c);

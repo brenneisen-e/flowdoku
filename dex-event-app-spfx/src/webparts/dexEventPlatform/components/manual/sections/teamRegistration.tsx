@@ -76,6 +76,38 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
               'If a member was registered by mistake, they can cancel themselves any time via „My Events" — independent of the team lead. The confirmation email explicitly states this. As lead you see the list of active members in the badge — anyone who cancelled disappears from there.'
             ),
           },
+          {
+            number: 7,
+            title: isDe ? 'Mitglied meldet sich ab — was passiert? (v11.83)' : 'A member cancels — what happens? (v11.83)',
+            description: D(
+              'Sobald sich ein Team-Mitglied über „Meine Events" abmeldet, bekommen alle verbleibenden Mitglieder automatisch eine Info-Mail im Deloitte-Layout. Sie listet den Abgemeldeten, zeigt die aktuelle Belegung (z.B. „2/4") und beschreibt drei Optionen: nichts tun (Platz bleibt erstmal für das Team reserviert), als Team-Lead jemand Neues nachträglich hinzufügen, oder andere Teilnehmer der Event-Anmeldeseite den Slot belegen lassen (sofern der Organizer „Offene Slots öffentlich" aktiviert hat). Wenn der Abgemeldete der Team-Lead war, wird automatisch das früheste verbleibende Mitglied (kleinste TeilnehmerID, sonst früheste Registration-Date) zum neuen Lead promotet — er bekommt in seiner Info-Mail einen extra Hinweis.',
+              'When a team member cancels via „My Events", all remaining members automatically receive an info email in the Deloitte layout. It lists who left, shows the current occupancy (e.g. „2/4") and describes three options: do nothing (the seat stays reserved for the team for now), the team lead adds a replacement, or other people fill the slot via the registration page (if the organizer enabled „Public open slots"). If the cancelling person was the team lead, the earliest remaining member (smallest TeilnehmerID, otherwise earliest registration date) is auto-promoted to the new lead — they receive an extra note in their info email.'
+            ),
+          },
+          {
+            number: 8,
+            title: isDe ? 'Mitglied nachträglich hinzufügen — als Team-Lead (v11.83)' : 'Add a member afterwards — as team lead (v11.83)',
+            description: D(
+              'Wenn du Team-Lead bist und das Team noch nicht voll ist, siehst du im Team-Badge auf „Meine Events" einen Button „+ Mitglied hinzufügen (N Slot frei)". Klick öffnet ein Modal mit derselben orange Pflicht-Hinweisbox wie die Initial-Team-Anmeldung (Zustimmung des neuen Mitglieds vorher einholen!), einem People-Picker und einer Pflicht-Bestätigungs-Checkbox. Beim Klick auf „Hinzufügen" wird die Person sofort zum Team eingetragen — Anmeldebestätigung, Outlook-Einladung und automatische Info-Mail an die anderen Team-Mitglieder („X ist eurem Team beigetreten") gehen direkt raus. Doppel-Anmelde-Schutz: ist die Person bereits beim Event angemeldet, kommt eine klare Fehlermeldung statt eines Inserts.',
+              'If you are team lead and the team is not yet full, the team badge on „My Events" shows a button „+ Add member (N slots free)". Clicking it opens a modal with the same orange consent box as the initial team registration (get the new member\'s consent up front!), a people picker and a required confirmation checkbox. On „Add" the person is immediately joined to the team — confirmation email, Outlook invite and an info mail to all other team members („X joined your team") are queued right away. Duplicate protection: if the person is already registered for the event, you see a clear error message instead of an insert.'
+            ),
+          },
+          {
+            number: 9,
+            title: isDe ? 'Offenen Team beitreten — als anderer Teilnehmer (v11.83)' : 'Join an open team — as another participant (v11.83)',
+            description: D(
+              'Wenn der Organizer „Offene Slots öffentlich sichtbar" aktiviert hat, siehst du auf der Event-Anmeldeseite oberhalb des Formulars eine Box „Offene Teams". Sie listet pro Team den Team-Namen (falls vorhanden) und die Belegung (z.B. „2/4 belegt — 2 Slots frei"). Mitgliedernamen werden bewusst NICHT angezeigt (Datenschutz). Klick auf „Beitreten" meldet dich direkt für das Team an — du bekommst Anmeldebestätigung + Outlook-Einladung. Hat der Organizer „Beitritt erfordert Bestätigung durch Team-Kapitän" aktiviert, steht der Button stattdessen auf „Beitritt anfragen": deine Anfrage landet in einer Approve-Queue beim Team-Lead, der entscheidet, und du bekommst eine Mail mit Ergebnis.',
+              'When the organizer enabled „Public open slots", the registration page shows a box „Open teams" above the form. Each team is listed with its name (if any) and occupancy (e.g. „2/4 taken — 2 slots free"). Member names are intentionally NOT shown (privacy). Click „Join" to register straight into the team — you receive a confirmation email + Outlook invite. If the organizer enabled „Joining requires approval by team captain", the button reads „Request to join" instead: your request lands in an approve queue with the team lead, they decide, and you receive a result mail.'
+            ),
+          },
+          {
+            number: 10,
+            title: isDe ? 'Beitritts-Anfragen bearbeiten — als Team-Lead (v11.83)' : 'Handle join requests — as team lead (v11.83)',
+            description: D(
+              'Wenn dein Event Approval-Pflicht hat, siehst du auf „Meine Events" im Team-Badge einen orange Block „Beitritts-Anfragen (N)" mit einer Liste der offenen Anfragen (Name + E-Mail des Anfragenden). Pro Eintrag stehen zwei Buttons: „Bestätigen" und „Ablehnen". Bestätigen führt sofort die Aufnahme durch (Mail + Outlook für den Beigetretenen, Info-Mail an die anderen Mitglieder). Ablehnen schickt eine kurze Absage-Mail an den Anfragenden mit dem Hinweis, sich einzeln anzumelden oder einem anderen Team beizutreten.',
+              'If your event requires approval, „My Events" shows an orange block „Join requests (N)" inside the team badge, listing all open requests (name + email of the requester). Each row has two buttons: „Approve" and „Reject". Approve immediately adds the requester (mail + Outlook for them, info mail to other team members). Reject sends a short decline mail to the requester suggesting they register individually or join another team.'
+            ),
+          },
         ],
       },
       {

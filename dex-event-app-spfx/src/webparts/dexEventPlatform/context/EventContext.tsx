@@ -138,6 +138,31 @@ interface EventContextType {
   /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — fuer das
    *  Team-Badge in „Meine Events". */
   getTeamMembers: (eventId: string, teamId: string) => Promise<SPRegistration[]>;
+  /** v11.83: Ein Team-Lead kann nachtraeglich ein einzelnes Mitglied
+   *  zum bereits angemeldeten Team hinzufuegen (Plus-Button in MyEvents).
+   *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
+   *  Bestaetigungs-Mail + Outlook-Termin queuen. */
+  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
+   *  Organizer "Beitritt erfordert Bestaetigung" NICHT aktiviert hat).
+   *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
+   *  selbst als neuem Member. */
+  joinTeam: (eventId: string, teamId: string, teamName: string | undefined) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — fuer
+   *  Events bei denen der Organizer Approval aktiviert hat. */
+  createTeamJoinRequest: (eventId: string, teamId: string) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
+  /** v11.83: Pending-Beitritts-Anfragen abrufen (nur fuer den
+   *  eingeloggten User als Team-Lead — Filter auf TeamId, das er selber
+   *  fuehrt). */
+  listTeamJoinRequestsForEvent: (eventId: string, teamId: string) => Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>>;
+  /** v11.83: Approval-/Reject-Entscheidung eines Leads — bei „Approved"
+   *  legt die App die Member-Anmeldung an und queued Mails; bei
+   *  „Rejected" eine kurze Absage-Mail an den Anfragenden. */
+  decideTeamJoinRequest: (requestId: number, decision: 'Approved' | 'Rejected') => Promise<boolean>;
+  /** v11.83: Liste der Teams (gruppiert nach TeamId) eines Events fuer
+   *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
+   *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
+  listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
@@ -350,6 +375,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureEmailTemplatesList', () => eventService.ensureEmailTemplatesList(), parallelMarks),
         safeRun('ensureIDReorderList', () => eventService.ensureIDReorderList(), parallelMarks),
         safeRun('ensureChangeLogList', () => eventService.ensureChangeLogList(), parallelMarks),
+        safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -1025,12 +1051,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (!event) return { ok: false, reason: 'event-not-found' };
 
     // Doppel-Anmelde-Pruefung: weder der Lead noch ein Member darf bereits
-    // (aktiv) angemeldet sein. Sequentiell — die Liste ist kurz und der
-    // Pfad laeuft nicht im Performance-kritischen Boot.
+    // (aktiv) angemeldet sein. v11.83: konsolidiert auf den zentralen Helper
+    // `isUserAlreadyOnEvent`, der genau die blockierenden Status-Werte
+    // beruecksichtigt (Angemeldet/QR versendet/Eingecheckt/Warteliste). Pfad
+    // ist nicht performance-kritisch — sequentiell ist OK bei N ≤ 20.
     const allEmails = [leadData.email, ...members.map(m => m.email)];
     for (const em of allEmails) {
-      const existing = await eventService.getMyRegistration(subsiteUrl, em);
-      if (existing && existing.Status !== 'Abgemeldet') {
+      const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, em);
+      if (blocked) {
         return { ok: false, reason: `already-registered:${em}` };
       }
     }
@@ -1227,6 +1255,396 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return { ok: true, teamId, status };
   }
 
+  /**
+   * v11.83: Einzelnes Mitglied zu einem bestehenden Team hinzufuegen.
+   * Wird vom „+ Mitglied"-Button im MyEvents-Team-Badge benutzt — nur fuer
+   * Leads sichtbar, daher hier keine separate Lead-Authorisierung; die
+   * UI versteckt den Button.
+   *
+   * Schritte:
+   *   1) Doppel-Anmelde-Check via `isUserAlreadyOnEvent`. Wenn die Person
+   *      schon angemeldet ist, brechen wir mit klarem Reason ab.
+   *   2) Atomar 1 Sitzplatz reservieren — split-aware. Bei Vollbelegung
+   *      landet das neue Mitglied auf der Warteliste (kein Hard-Fail).
+   *   3) `registerTeamMember` mit identischer TeamId, `teamLead=false`.
+   *   4) Bestaetigungs-Mail + Outlook-Termin queuen.
+   *   5) Optional: Info-Mail an die anderen Mitglieder „X ist eurem Team
+   *      beigetreten" (best-effort).
+   */
+  async function addTeamMember(
+    eventId: string,
+    teamId: string,
+    teamName: string | undefined,
+    member: { email: string; displayName: string }
+  ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { ok: false, reason: 'event-not-found' };
+    if (!teamId) return { ok: false, reason: 'invalid-team-id' };
+
+    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, member.email);
+    if (blocked) return { ok: false, reason: `already-registered:${member.email}` };
+
+    // Vorhandene Mitglieder laden — um die richtige Gruppe (Split) und
+    // die existierenden Custom-Field-Antworten als Vorlage zu erben.
+    const existingMembers = await eventService.getTeamMembers(subsiteUrl, teamId);
+    const activeMembers = existingMembers.filter(m => m.Status !== 'Abgemeldet');
+    const teamSizeCfg = event.teamSize || (activeMembers.length + 1);
+    if (activeMembers.length >= teamSizeCfg) {
+      return { ok: false, reason: 'team-full' };
+    }
+    const inheritedStarterType = activeMembers.find(m => !!m.PreferredStarterType)?.PreferredStarterType || '';
+
+    let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
+    let effectiveStarterType: string | undefined = inheritedStarterType || undefined;
+    const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+      && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    if (isSplitGroup && inheritedStarterType) {
+      const cap = inheritedStarterType === 'Durchstarter'
+        ? (event.durchstarterCapacity || 0)
+        : (event.funstarterCapacity || 0);
+      const seat = await eventService.reserveSeat(subsiteUrl, inheritedStarterType as 'Durchstarter' | 'Funstarter', cap, 1);
+      if (seat !== 'reserved') {
+        status = 'Warteliste';
+        effectiveStarterType = undefined;
+      }
+    } else if (event.maxParticipants > 0) {
+      const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, 1);
+      if (seat !== 'reserved') status = 'Warteliste';
+    }
+
+    // Profil laden + DisplayName parsen.
+    const profile = await eventService.getUserProfileByEmail(member.email);
+    const parseDisplayName = (raw: string): { firstName: string; lastName: string } => {
+      const dn = (raw || '').trim();
+      if (!dn) return { firstName: '', lastName: '' };
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        return { firstName: parts[1] || '', lastName: parts[0] || '' };
+      }
+      const parts = dn.split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return { firstName: '', lastName: '' };
+      if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+      return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+    };
+    const parsed = parseDisplayName(member.displayName);
+
+    const r = await eventService.registerTeamMember(subsiteUrl, {
+      firstName: parsed.firstName,
+      lastName: parsed.lastName,
+      email: member.email,
+      profile,
+      status,
+      teamId,
+      teamLead: false,
+      teamName,
+      customData: {},
+      starterType: effectiveStarterType,
+      preferredStarterType: inheritedStarterType || undefined,
+      registeredByName: currentUserName,
+      registeredByEmail: currentUserEmail,
+      salutation: '',
+    });
+    if (!r.ok) return { ok: false, reason: 'insert-failed' };
+
+    // Bestaetigungs-Mail + Outlook + DEX_Participants — same pattern as
+    // registerTeam aber fuer EINEN Member.
+    const lang = event.emailLanguage || 'EN';
+    const isDe = (lang || 'EN').toUpperCase() === 'DE';
+    const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
+    const vars = {
+      Name: parsed.firstName,
+      EventTitle: event.title,
+      Organizer: formatOrganizerList(event.organizers, lang),
+      AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      WaitlistPosition: '',
+    };
+    let emailData: { subject: string; body: string };
+    const spTplRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+    const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, templateType);
+    if (spTpl) {
+      emailData = buildEmailFromTemplate(spTpl, vars);
+    } else {
+      emailData = status === 'Warteliste'
+        ? waitlistEmail(parsed.firstName, event.title, 0)
+        : registrationEmail(parsed.firstName, event.title);
+    }
+    const teamNoteHtml = isDe
+      ? `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
+        + `<strong>Du wurdest als Teil eines Teams angemeldet.</strong><br>`
+        + `Der Team-Lead <strong>${currentUserName}</strong> hat dich nachtraeglich zum Team${teamName ? ` „${teamName}"` : ''} hinzugefuegt. `
+        + `Falls du dieser Anmeldung NICHT zugestimmt hast, kannst du dich ueber „Meine Events" eigenstaendig abmelden.`
+        + `</div>`
+      : `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
+        + `<strong>You were added to a team.</strong><br>`
+        + `Team lead <strong>${currentUserName}</strong> added you to the team${teamName ? ` „${teamName}"` : ''} after the fact. `
+        + `If you did not consent, you can cancel yourself via „My Events".`
+        + `</div>`;
+    const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamNoteHtml}`);
+    if (!event.disableEmails) {
+      const fullName = `${parsed.firstName} ${parsed.lastName}`.trim() || member.email;
+      eventService.queueEmail(
+        emailData.subject, member.email, fullName, bodyWithHint,
+        templateType, event.title, eventId
+      ).catch(err => console.warn('[DEX] addTeamMember queueEmail failed:', err));
+    }
+    if (status !== 'Warteliste' && !event.disableOutlook) {
+      eventService.queueOutlookEvent(
+        member.email, eventId, event.title, 'Einladen'
+      ).catch(err => console.warn('[DEX] addTeamMember queueOutlookEvent failed:', err));
+    }
+    if (event.eventNumber) {
+      eventService.upsertParticipant(
+        parsed.firstName, parsed.lastName, member.email, event.eventNumber, status
+      ).catch(err => console.warn('[DEX] addTeamMember upsertParticipant failed:', err));
+    }
+
+    // Info-Mail an die anderen aktiven Mitglieder — knapp, im Layout
+    // gewrappt. Best-effort.
+    if (!event.disableEmails) {
+      for (const other of activeMembers) {
+        const otherFirst = other.Vorname || '';
+        const subject = isDe
+          ? `Neues Team-Mitglied bei Event ${event.title}`
+          : `New team member for event ${event.title}`;
+        const inner = isDe
+          ? `<p>Hallo ${otherFirst},</p>`
+            + `<p><strong>${parsed.firstName} ${parsed.lastName}</strong> ist eurem Team${teamName ? ` „${teamName}"` : ''} beigetreten.</p>`
+            + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
+          : `<p>Hello ${otherFirst},</p>`
+            + `<p><strong>${parsed.firstName} ${parsed.lastName}</strong> joined your team${teamName ? ` „${teamName}"` : ''}.</p>`
+            + `<p>Best regards,<br>Your event team</p>`;
+        const html = wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner);
+        eventService.queueEmail(
+          subject, other.ParticipantEmail,
+          `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail,
+          html, 'Info', event.title, eventId
+        ).catch(() => { /* best-effort */ });
+      }
+    }
+
+    if (status === 'Angemeldet') {
+      eventService.bumpKpiParticipants(1).catch(() => { /* best-effort */ });
+    }
+    eventService.writeChangeLog({
+      action: 'TeamMemberAdded',
+      targetType: 'Participant',
+      targetId: member.email,
+      targetName: `${parsed.firstName} ${parsed.lastName}`.trim(),
+      eventId,
+      eventTitle: event.title,
+      details: { teamId, addedBy: currentUserEmail, status },
+    }).catch(() => { /* */ });
+
+    await loadEvents();
+    return { ok: true, status };
+  }
+
+  /**
+   * v11.83: Direkter Team-Beitritt aus der Anmeldeseite (ohne Approval).
+   * Funktional identisch zu `addTeamMember`, aber laeuft mit dem
+   * eingeloggten User als Member. Der Submit-Pfad in RegistrationPage
+   * unterscheidet zwischen `joinTeam` (Approval OFF) und
+   * `createTeamJoinRequest` (Approval ON).
+   */
+  async function joinTeam(
+    eventId: string,
+    teamId: string,
+    teamName: string | undefined
+  ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
+    return addTeamMember(eventId, teamId, teamName, {
+      email: currentUserEmail,
+      displayName: currentUserName,
+    });
+  }
+
+  /**
+   * v11.83: Eine Beitritts-Anfrage in DEX_TeamJoinRequests anlegen +
+   * Lead-Notification queuen. Die App liest die TeamId vom UI, holt sich
+   * den Lead aus der Subsite-Teilnehmerliste (TeamId-Match,
+   * TeamLead=true) und schreibt dann eine Mail an die Lead-Email.
+   */
+  async function createTeamJoinRequest(
+    eventId: string,
+    teamId: string
+  ): Promise<{ ok: boolean; itemId?: number; reason?: string }> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { ok: false, reason: 'event-not-found' };
+
+    const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, currentUserEmail);
+    if (blocked) return { ok: false, reason: 'already-registered' };
+
+    // Lead finden — die Mail-Notification soll an ihn gehen.
+    const members = await eventService.getTeamMembers(subsiteUrl, teamId);
+    const lead = members.find(m => !!m.TeamLead && m.Status !== 'Abgemeldet');
+    if (!lead) return { ok: false, reason: 'team-has-no-lead' };
+
+    const teamNameFromMembers = members.find(m => !!m.TeamName)?.TeamName || '';
+    const result = await eventService.createTeamJoinRequest({
+      eventId,
+      eventTitle: event.title,
+      teamId,
+      requesterEmail: currentUserEmail,
+      requesterDisplayName: currentUserName,
+    });
+    if (!result.ok) return { ok: false, reason: 'queue-failed' };
+
+    // Lead-Notification-Mail.
+    if (!event.disableEmails) {
+      const lang = (event.emailLanguage || 'EN').toUpperCase();
+      const isDe = lang === 'DE';
+      const leadFirst = lead.Vorname || '';
+      const subject = isDe
+        ? `Team-Beitritts-Anfrage fuer Event ${event.title}`
+        : `Team join request for event ${event.title}`;
+      const appUrl = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=teamjoin&request=${result.itemId || 0}`;
+      const inner = isDe
+        ? `<p>Hallo ${leadFirst},</p>`
+          + `<p><strong>${currentUserName}</strong> moechte deinem Team${teamNameFromMembers ? ` „${teamNameFromMembers}"` : ''} beim Event „${event.title}" beitreten. Bitte entscheide:</p>`
+          + `<p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestaetigen</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>`
+          + `<p style="font-size:0.85rem;color:#666;">Hinweis: die Buttons fuehren dich auf die App; dort findest du den Beitritts-Anfragen-Block in „Meine Events".</p>`
+          + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
+        : `<p>Hello ${leadFirst},</p>`
+          + `<p><strong>${currentUserName}</strong> would like to join your team${teamNameFromMembers ? ` „${teamNameFromMembers}"` : ''} for event „${event.title}". Please decide:</p>`
+          + `<p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>`
+          + `<p style="font-size:0.85rem;color:#666;">Note: the buttons lead you to the app; the request block lives in „My Events".</p>`
+          + `<p>Best regards,<br>Your event team</p>`;
+      const html = wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner);
+      eventService.queueEmail(
+        subject, lead.ParticipantEmail,
+        `${lead.Vorname || ''} ${lead.Nachname || ''}`.trim() || lead.ParticipantEmail,
+        html, 'Info', event.title, eventId
+      ).catch(() => { /* best-effort */ });
+    }
+
+    return { ok: true, itemId: result.itemId };
+  }
+
+  /**
+   * v11.83: Pending-Anfragen fuer ein bestimmtes Team eines Events
+   * abrufen — wird in der „Beitritts-Anfragen"-Box im MyEvents-Team-
+   * Badge angezeigt (nur Leads sehen sie).
+   */
+  async function listTeamJoinRequestsForEvent(
+    eventId: string,
+    teamId: string
+  ): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>> {
+    if (!eventId || !teamId) return [];
+    const items = await eventService.listTeamJoinRequests({ eventId, teamId, status: 'Pending' });
+    return items;
+  }
+
+  /**
+   * v11.83: Approve/Reject einer Beitritts-Anfrage durch den Team-Lead.
+   * Bei Approve: Member-Anmeldung via `addTeamMember`-Logik + Mail an
+   * Anfragenden „du wurdest aufgenommen". Bei Reject: kurze Absage-Mail.
+   * Beide Pfade setzen anschliessend den Status der DEX_TeamJoinRequests-
+   * Zeile auf Approved/Rejected.
+   */
+  async function decideTeamJoinRequest(
+    requestId: number,
+    decision: 'Approved' | 'Rejected'
+  ): Promise<boolean> {
+    // Erst die Request-Zeile holen, damit wir Event-/Team-Kontext kennen.
+    const all = await eventService.listTeamJoinRequests({ status: 'Pending' });
+    const req = all.find(r => r.Id === requestId);
+    if (!req) return false;
+    const event = events.find(e => e.id === req.EventId);
+    if (!event) return false;
+    const subsiteUrl = subsiteMap.current[req.EventId];
+    if (!subsiteUrl) return false;
+
+    if (decision === 'Approved') {
+      // Bestehenden Team-Namen ableiten.
+      const members = await eventService.getTeamMembers(subsiteUrl, req.TeamId);
+      const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+      const addRes = await addTeamMember(req.EventId, req.TeamId, teamName || undefined, {
+        email: req.RequesterEmail,
+        displayName: req.RequesterDisplayName,
+      });
+      if (!addRes.ok) {
+        // Wir markieren die Anfrage trotzdem als Approved, wenn der Add
+        // fehlschlug — der Lead bekommt ein UI-Feedback und kann manuell
+        // nachsetzen. Status bleibt Pending nur bei System-Fehlern auf der
+        // List-Selbst.
+        return false;
+      }
+      await eventService.decideTeamJoinRequest(requestId, 'Approved', currentUserEmail);
+      // „Du wurdest aufgenommen"-Mail wurde bereits durch addTeamMember
+      // gequeued (Bestaetigungs-Mail), daher hier keine doppelte Mail.
+      return true;
+    }
+
+    // Reject
+    const ok = await eventService.decideTeamJoinRequest(requestId, 'Rejected', currentUserEmail);
+    if (!event.disableEmails) {
+      const lang = (event.emailLanguage || 'EN').toUpperCase();
+      const isDe = lang === 'DE';
+      const subject = isDe
+        ? `Team-Beitritts-Anfrage abgelehnt — Event ${event.title}`
+        : `Team join request declined — event ${event.title}`;
+      const inner = isDe
+        ? `<p>Hallo ${req.RequesterDisplayName.split(',').pop()?.trim() || req.RequesterDisplayName},</p>`
+          + `<p>deine Beitritts-Anfrage zum Team beim Event „${event.title}" wurde vom Team-Lead abgelehnt.</p>`
+          + `<p>Du kannst dich gerne einzeln anmelden, falls die Kapazitaet noch reicht — oder einem anderen offenen Team beitreten.</p>`
+          + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
+        : `<p>Hello ${req.RequesterDisplayName.split(',').pop()?.trim() || req.RequesterDisplayName},</p>`
+          + `<p>your join request for the team at event „${event.title}" was declined by the team lead.</p>`
+          + `<p>You can register individually if capacity allows — or join another open team.</p>`
+          + `<p>Best regards,<br>Your event team</p>`;
+      const html = wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner);
+      eventService.queueEmail(
+        subject, req.RequesterEmail, req.RequesterDisplayName,
+        html, 'Info', event.title, req.EventId
+      ).catch(() => { /* best-effort */ });
+    }
+    return ok;
+  }
+
+  /**
+   * v11.83: Aktive Teams eines Events fuer die „Offene Teams"-Box.
+   * Filter: nur Teams mit aktivem Mitglied-Count < event.teamSize.
+   * Mitgliedernamen werden bewusst NICHT zurueckgegeben (Privatsphaere) —
+   * nur Belegungs-Anzahl, TeamName und LeadEmail (LeadEmail wird ohnehin
+   * gebraucht, weil der Beitritts-Pfad eine Lead-Notification queued).
+   */
+  async function listOpenTeamsForEvent(eventId: string): Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return [];
+    const event = events.find(e => e.id === eventId);
+    if (!event || !event.teamRegistrationEnabled) return [];
+    const teamSizeCfg = event.teamSize || 0;
+    if (teamSizeCfg < 2) return [];
+
+    const all = await eventService.getAllRegistrations(subsiteUrl);
+    // Gruppieren nach TeamId.
+    const byTeam: Record<string, SPRegistration[]> = {};
+    for (const r of all) {
+      if (!r.TeamId) continue;
+      if (r.Status === 'Abgemeldet') continue;
+      if (!byTeam[r.TeamId]) byTeam[r.TeamId] = [];
+      byTeam[r.TeamId].push(r);
+    }
+    const open: Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }> = [];
+    for (const tid of Object.keys(byTeam)) {
+      const list = byTeam[tid];
+      if (list.length >= teamSizeCfg) continue;
+      const lead = list.find(m => !!m.TeamLead) || list[0];
+      open.push({
+        teamId: tid,
+        teamName: list.find(m => !!m.TeamName)?.TeamName || '',
+        activeCount: list.length,
+        teamSize: teamSizeCfg,
+        leadEmail: lead?.ParticipantEmail || '',
+        leadDisplayName: `${lead?.Vorname || ''} ${lead?.Nachname || ''}`.trim() || lead?.ParticipantEmail || '',
+      });
+    }
+    return open;
+  }
+
   async function cancelRegistration(eventId: string): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
@@ -1242,6 +1660,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // dekrementieren, wenn der User tatsaechlich 'Angemeldet' war (Wartelist-
     // Cancel beruehrt den Teilnehmer-KPI nicht).
     const wasActive = myReg.Status === 'Angemeldet';
+    // v11.83: Team-Anmeldungs-Kontext snapshotten, BEVOR der eigene Status
+    // auf 'Abgemeldet' kippt — danach liefert getTeamMembers den eigenen
+    // Eintrag schon mit dem alten Lead-Flag aus und der Promote-Pfad
+    // verlaesst sich nicht mehr darauf. Wir speichern hier den eigenen
+    // TeamId/TeamLead/TeamName-Stand und filtern nach dem Cancel die
+    // verbleibenden Mitglieder.
+    const wasTeamCancel = !!myReg.TeamId;
+    const wasTeamLead = wasTeamCancel && !!myReg.TeamLead;
+    const teamId = myReg.TeamId || '';
+    const teamName = myReg.TeamName || '';
     const success = await eventService.cancelRegistration(subsiteUrl, myReg.Id, currentUserName, currentUserEmail);
     if (success) {
       const event = events.find(e => e.id === eventId);
@@ -1332,9 +1760,146 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       } else {
         console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);
       }
+      // v11.83: Team-Cancel-Nachlauf — Auto-Promote des frueheren Members
+      // zum neuen Lead (falls Self-Cancel der Lead war), Info-Mails an die
+      // verbleibenden Mitglieder, Hinweis welche Optionen ihnen offenstehen.
+      // Der Sitzplatz-Counter wird im normalen Reconcile oben schon
+      // dekrementiert — der frei werdende Platz darf von anderen Teilnehmern
+      // belegt werden (oder vom Team-Lead nachbesetzt werden, siehe
+      // addTeamMember). Die App entscheidet hier bewusst NICHT, ob der
+      // Slot fuer das Team reserviert bleibt — das passt zur Beschreibung
+      // im Spec, weil der frei werdende Sitz neutral ist: der Team-Lead
+      // kann ihn ueber "Mitglied hinzufuegen" wieder fuellen, ansonsten
+      // landet er in der normalen Sitzplatz-Verwaltung.
+      if (wasTeamCancel && event) {
+        await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, wasTeamLead, myReg).catch(err => {
+          console.warn('[DEX] team-cancel post-step failed:', err);
+        });
+      }
       await loadEvents();
     }
     return success;
+  }
+
+  /**
+   * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
+   * Routine:
+   *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
+   *      Abgemeldeten, der jetzt 'Abgemeldet' ist).
+   *   2) Falls die abgemeldete Person Lead war UND mindestens ein Member
+   *      uebrig ist, das frueheste aktive Mitglied per MERGE-Patch zum
+   *      neuen Lead promoten.
+   *   3) Pro verbleibendem Mitglied eine Info-Mail in DEX_Emails queuen,
+   *      die den Cancel ankuendigt und die naechsten Schritte erklaert.
+   *
+   * Fail-safe: alle Sub-Operationen sind best-effort und schlucken Fehler
+   * still — das Cancel selbst hat oben schon erfolgreich auf dem Item
+   * geschrieben, ein Mail-/Promote-Fehler darf den User-Flow nicht
+   * blockieren.
+   */
+  async function handleTeamCancelPostStep(
+    event: DeloitteEvent,
+    eventId: string,
+    subsiteUrl: string,
+    teamId: string,
+    teamName: string,
+    wasTeamLead: boolean,
+    cancelledReg: SPRegistration
+  ): Promise<void> {
+    const members = await eventService.getTeamMembers(subsiteUrl, teamId);
+    // Verbleibende = aktive (NICHT 'Abgemeldet') und NICHT der gerade
+    // abgemeldete Eintrag (Id-Vergleich, weil ein parallel-Member denselben
+    // Vor-/Nachnamen haben koennte).
+    const remaining = members.filter(m => m.Status !== 'Abgemeldet' && m.Id !== cancelledReg.Id);
+    if (remaining.length === 0) {
+      // Team aufgeloest — kein Promote, keine Info-Mails noetig.
+      return;
+    }
+
+    // Auto-Promote: wenn der Cancel ein Lead war, das frueheste aktive
+    // Member zum neuen Lead machen. Sortier-Kriterium: kleinste
+    // TeilnehmerID, sonst frueheste RegistrationDate, sonst kleinste Id.
+    let newLeadId: number | null = null;
+    if (wasTeamLead) {
+      const sorted = [...remaining].sort((a, b) => {
+        const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+        const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+        if (aTid !== bTid) return aTid - bTid;
+        const aRd = new Date(a.RegistrationDate || 0).getTime();
+        const bRd = new Date(b.RegistrationDate || 0).getTime();
+        if (aRd !== bRd) return aRd - bRd;
+        return a.Id - b.Id;
+      });
+      const promoteTarget = sorted[0];
+      if (promoteTarget) {
+        try {
+          await eventService.promoteToTeamLead(subsiteUrl, promoteTarget.Id);
+          newLeadId = promoteTarget.Id;
+        } catch (err) {
+          console.warn('[DEX] promoteToTeamLead failed:', err);
+        }
+      }
+    }
+
+    // Info-Mails an die verbleibenden Mitglieder.
+    if (event.disableEmails) return;
+    const lang = (event.emailLanguage || 'EN').toUpperCase();
+    const isDe = lang === 'DE';
+    const teamSizeCfg = event.teamSize || (remaining.length + 1);
+    const cancelledFullName = `${cancelledReg.Vorname || ''} ${cancelledReg.Nachname || ''}`.trim() || cancelledReg.ParticipantEmail;
+    const subject = isDe
+      ? `Team-Update fuer Event ${event.title}`
+      : `Team update for event ${event.title}`;
+    const heading = isDe ? 'Team-Update' : 'Team update';
+    const subheading = `Event ${event.title}`;
+
+    for (const m of remaining) {
+      const mFirst = m.Vorname || (m.ParticipantName || '').split(/[ ,]+/)[0] || '';
+      const isNewLead = newLeadId !== null && m.Id === newLeadId;
+      const greeting = isDe ? `Hallo ${mFirst},` : `Hello ${mFirst},`;
+      const intro = isDe
+        ? `<p>ein Mitglied deines Teams${teamName ? ` „${teamName}"` : ''} hat sich vom Event abgemeldet:</p>`
+          + `<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">${cancelledFullName}</p>`
+        : `<p>a member of your team${teamName ? ` „${teamName}"` : ''} has cancelled their registration:</p>`
+          + `<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">${cancelledFullName}</p>`;
+      const occupancy = isDe
+        ? `<p>Aktuelle Team-Belegung: <strong>${remaining.length}/${teamSizeCfg}</strong></p>`
+        : `<p>Current team occupancy: <strong>${remaining.length}/${teamSizeCfg}</strong></p>`;
+      const leadPromote = isNewLead
+        ? (isDe
+          ? `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>Du bist jetzt der neue Team-Lead.</strong> Du kannst ueber „Meine Events" eine neue Person hinzufuegen, falls der frei gewordene Platz wieder gefuellt werden soll.</p>`
+          : `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>You are the new team lead now.</strong> You can add a replacement member via „My Events" if you want to fill the freed slot.</p>`)
+        : '';
+      const options = isDe
+        ? `<p>Was du jetzt machen kannst:</p>`
+          + `<ul>`
+          + `<li>Nichts tun — euer Platz bleibt erstmal fuer das Team reserviert.</li>`
+          + `<li>Als Team-Lead: ueber „Meine Events" eine andere Person nachtraeglich hinzufuegen.</li>`
+          + `<li>Andere Teilnehmer koennen ggf. den freien Slot ueber die Event-Anmeldeseite belegen (sofern der Organizer „Unvollstaendige Teams oeffentlich sichtbar" aktiviert hat).</li>`
+          + `</ul>`
+        : `<p>What you can do now:</p>`
+          + `<ul>`
+          + `<li>Do nothing — your seat stays reserved for the team for now.</li>`
+          + `<li>As team lead: add a replacement person via „My Events".</li>`
+          + `<li>Other participants can join the open slot via the registration page (if the organizer enabled „Public open slots").</li>`
+          + `</ul>`;
+      const closing = isDe ? `<p>Beste Gruesse,<br>Dein Event-Team</p>` : `<p>Best regards,<br>Your event team</p>`;
+      const innerHtml = `<p>${greeting}</p>${intro}${occupancy}${leadPromote}${options}${closing}`;
+      const html = wrapTemplate('#86bc25', heading, subheading, innerHtml);
+      try {
+        await eventService.queueEmail(
+          subject,
+          m.ParticipantEmail,
+          `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail,
+          html,
+          'Info',
+          event.title,
+          eventId
+        );
+      } catch (err) {
+        console.warn('[DEX] team-cancel info mail failed:', err);
+      }
+    }
   }
 
   async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
@@ -1682,6 +2247,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           if (!subsiteUrl) return [];
           return eventService.getTeamMembers(subsiteUrl, teamId);
         },
+        addTeamMember,
+        joinTeam,
+        createTeamJoinRequest,
+        listTeamJoinRequestsForEvent,
+        decideTeamJoinRequest,
+        listOpenTeamsForEvent,
         cancelRegistration,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,

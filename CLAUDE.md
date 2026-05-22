@@ -225,6 +225,76 @@ Schema-Seite:
   noch nicht über den Wizard-Pfad zugewiesen — Pro-Sub-Event-
   Team-Anmeldung + Beitritts-/Approve-Flows kommen in v11.83+.
 
+### Team-Anmeldung — Phase 3 (v11.83): Cancel-Promote, Add-Member, Open-Teams, Approve
+
+Aufbauend auf v11.82 ergänzt v11.83 den vollständigen Lebenszyklus
+einer Team-Anmeldung:
+
+- **Cancel-Logik für Team-Mitglieder.** `EventContext.cancelRegistration`
+  snapshottet vor dem MERGE die Felder `TeamId`, `TeamLead`, `TeamName`
+  der eigenen Registrierung. Nach dem Cancel führt
+  `handleTeamCancelPostStep` (in `EventContext.tsx`) drei Schritte aus:
+  (1) verbleibende aktive Team-Mitglieder via `getTeamMembers` laden,
+  (2) wenn die abgemeldete Person Lead war UND ≥1 Member übrig ist, das
+  früheste verbleibende Mitglied per `EventService.promoteToTeamLead`
+  zum neuen Lead promoten (Kriterium: kleinste `TeilnehmerID`, sonst
+  früheste `RegistrationDate`, sonst kleinste Item-Id), (3) pro Member
+  eine Info-Mail im Deloitte-Wrap-Layout in `DEX_Emails` queuen mit
+  Abgemeldete-Person, aktuelle Belegung `N/TeamSize` und drei
+  Handlungs-Optionen. Der Sitzplatz-Counter wird dabei NICHT
+  zurückgerollt — die App folgt dem Standard-Reconcile
+  (`syncSeatsToActiveCount`), der frei werdende Slot ist neutral und
+  darf später vom Lead per Add-Member oder von Dritten via Open-Teams-
+  Box belegt werden.
+
+- **Add-Member-Modal in MyEvents.** Der Team-Badge zeigt jedem Lead bei
+  freien Slots einen Button `[+ Mitglied hinzufügen (N Slots frei)]`,
+  der ein Modal öffnet (orange Pflicht-Hinweisbox, People-Picker via
+  `useRoles().searchUsers`, Pflicht-Bestätigungs-Checkbox).
+  `EventContext.addTeamMember(eventId, teamId, teamName, member)`
+  prüft per `isUserAlreadyOnEvent` auf Doppel-Anmeldungen, reserviert
+  atomar einen Sitzplatz (split-aware, mit `PreferredStarterType`-
+  Vererbung aus vorhandenen Team-Mitgliedern), legt das Mitglied via
+  `registerTeamMember` an und queued Bestätigungs-Mail + Outlook +
+  Info-Mails an die anderen Mitglieder. Bei Doppel-Anmeldung gibt's
+  einen klaren Fehler-Toast statt eines Inserts.
+
+- **Open-Teams-Box auf der Register-Page.** Wenn
+  `event.teamOpenSlotsVisible` aktiv ist und der User selbst noch nicht
+  beim Event angemeldet ist, lädt `RegistrationPage` via
+  `EventContext.listOpenTeamsForEvent` alle Teams mit Aktiv-Count <
+  TeamSize und zeigt sie als Card oberhalb des Formulars. Pro Team:
+  Team-Name (falls vorhanden), Belegungs-Anzahl, Beitritts-Button. **Die
+  App rendert bewusst KEINE Mitglieder-Namen** (Privatsphäre — nur
+  Anzahl). Klick-Verhalten je nach `event.teamJoinRequiresApproval`:
+  Direkter Beitritt via `EventContext.joinTeam(eventId, teamId,
+  teamName)` (gleicher Pfad wie Add-Member, nur mit dem eingeloggten
+  User selbst) ODER `EventContext.createTeamJoinRequest(eventId,
+  teamId)` legt eine Pending-Zeile in `DEX_TeamJoinRequests` an und
+  queued eine Notification-Mail an den Lead.
+
+- **Approve-Queue `DEX_TeamJoinRequests`.** Neue globale SP-Liste auf der
+  Site Collection (nicht pro Subsite) mit Spalten `EventId`, `TeamId`,
+  `RequesterEmail`, `RequesterDisplayName`, `Status` (Choice
+  `Pending`/`Approved`/`Rejected`), `Created` (Default), `DecidedDate`,
+  `DecidedByEmail`. Angelegt durch
+  `EventService.ensureTeamJoinRequestsList` in `initEvents`.
+  Schreibrechte über `setQueueListPermissions` (analog DEX_Emails). Die
+  Notification-Mail an den Lead enthält Approve-/Reject-Buttons als
+  HTML-Links auf die App mit Query-Parametern
+  `?action=teamjoin&request=<id>&decision=approve|reject` — aktuell
+  NICHT hart als URL-Handler verdrahtet, der Lead nutzt stattdessen den
+  UI-Block in MyEvents (orange Box „Beitritts-Anfragen (N)").
+  `EventContext.decideTeamJoinRequest` Approve-Pfad: lädt die Request-
+  Zeile, ruft `addTeamMember`-Logik auf, setzt Request-Status='Approved'.
+  Reject-Pfad: Status='Rejected' + kurze Absage-Mail.
+
+- **Doppel-Anmelde-Prävention.** Neuer Helper
+  `EventService.isUserAlreadyOnEvent(subsiteUrl, email)` filtert auf
+  Status in `Angemeldet | QR versendet | Eingecheckt | Warteliste`.
+  Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
+  `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event

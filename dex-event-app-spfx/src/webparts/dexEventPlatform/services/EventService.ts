@@ -4039,6 +4039,203 @@ export class EventService {
   }
 
   /**
+   * v11.83: Auf einer existierenden Teilnehmer-Zeile das Feld TeamLead
+   * auf true setzen (Auto-Promote nach Lead-Cancel). MERGE auf der
+   * Teilnehmerliste — die Subsite kennt das Item ueber `itemId`.
+   */
+  public async promoteToTeamLead(subsiteUrl: string, itemId: number): Promise<boolean> {
+    try {
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+      const resp = await this._merge(url, { TeamLead: true });
+      return !!resp.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v11.83: Pruefen, ob eine bestimmte Email-Adresse bereits aktiv beim
+   * Event angemeldet ist (Status in Angemeldet/QR versendet/Eingecheckt/
+   * Warteliste). Wird vor jedem Team-Add (Initial, Add-Member, Beitritt)
+   * benutzt, um Doppel-Anmeldungen sauber abzuweisen, bevor ein Sitzplatz
+   * reserviert wird.
+   *
+   * Rueckgabe: true = blockieren, false = frei (auch bei SP-Fehlern, weil
+   * der Aufrufer dann auf die strikteren Stellen-internen Checks zurueck-
+   * faellt; ein lauter Throw wuerde den Pfad unnoetig abbrechen).
+   */
+  public async isUserAlreadyOnEvent(subsiteUrl: string, email: string): Promise<boolean> {
+    if (!subsiteUrl || !email) return false;
+    try {
+      const emEsc = email.trim().replace(/'/g, "''");
+      const blockingStatuses = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+      const statusClause = blockingStatuses.map(s => `Status eq '${s}'`).join(' or ');
+      const filter = `(ParticipantEmail eq '${emEsc}') and (${statusClause})`;
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$top=1&$select=Id,Status,ParticipantEmail`;
+      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!response.ok) return false;
+      const data = await response.json();
+      const items = data.value || data.d?.results || [];
+      return items.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // ==================== DEX_TeamJoinRequests (v11.83) ====================
+
+  /**
+   * v11.83: Globale Liste fuer Team-Beitritts-Anfragen (Approve-Queue).
+   * Liegt auf der Site-Collection-Ebene (nicht pro Subsite), damit alle
+   * Events darauf zugreifen koennen und der Team-Lead alle ausstehenden
+   * Anfragen in einer einzigen Query findet.
+   *
+   * Spalten:
+   * - Title: Anzeige-Zusammenfassung "RequesterName -> Event-Title"
+   * - EventId: ID des Events in DEX_Events
+   * - TeamId: UUID der Team-Anmeldung
+   * - RequesterEmail: Email des Anfragenden
+   * - RequesterDisplayName: Anzeigename des Anfragenden
+   * - Status: Pending / Approved / Rejected
+   * - DecidedDate: Wann hat der Team-Lead entschieden
+   * - DecidedByEmail: Email des entscheidenden Leads
+   */
+  public async ensureTeamJoinRequestsList(): Promise<void> {
+    const listName = 'DEX_TeamJoinRequests';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Approve-Queue fuer Team-Beitritts-Anfragen (v11.83+).',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'EventId', type: 2 },
+      { title: 'TeamId', type: 2 },
+      { title: 'RequesterEmail', type: 2 },
+      { title: 'RequesterDisplayName', type: 2 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
+      { title: 'DecidedDate', type: 4 },
+      { title: 'DecidedByEmail', type: 2 },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) payload['Choices'] = { 'results': f.choices };
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'EventId', 'TeamId', 'RequesterEmail', 'RequesterDisplayName',
+      'Status', 'Created', 'DecidedDate', 'DecidedByEmail',
+    ]);
+
+    // Schreibrechte fuer alle Authentifizierten (analog zu DEX_Emails-Queue):
+    // jeder darf eine Anfrage erstellen, aber Item-Level-Security greift
+    // sowieso ueber den Lead-Check beim Approve-Pfad.
+    try {
+      await this.setQueueListPermissions(listName);
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * v11.83: Neue Team-Beitritts-Anfrage anlegen.
+   */
+  public async createTeamJoinRequest(args: {
+    eventId: string;
+    eventTitle: string;
+    teamId: string;
+    requesterEmail: string;
+    requesterDisplayName: string;
+  }): Promise<{ ok: boolean; itemId?: number }> {
+    try {
+      const payload = {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_TeamJoinRequestsListItem' },
+        'Title': `${args.requesterDisplayName} -> ${args.eventTitle}`.slice(0, 250),
+        'EventId': args.eventId,
+        'TeamId': args.teamId,
+        'RequesterEmail': args.requesterEmail,
+        'RequesterDisplayName': args.requesterDisplayName,
+        'Status': 'Pending',
+      };
+      const resp = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items`,
+        payload
+      );
+      if (!resp.ok) return { ok: false };
+      try {
+        const j = await resp.json();
+        const id: number = j?.d?.Id || j?.Id || 0;
+        return { ok: true, itemId: id };
+      } catch {
+        return { ok: true };
+      }
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /**
+   * v11.83: Alle Pending-Beitritts-Anfragen — optional gefiltert nach
+   * Event und/oder Team. Wird fuer die "Beitritts-Anfragen"-Box im
+   * Team-Lead-UI in MyEventsPage aufgerufen.
+   */
+  public async listTeamJoinRequests(args: {
+    eventId?: string;
+    teamId?: string;
+    status?: 'Pending' | 'Approved' | 'Rejected';
+  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string }>> {
+    try {
+      const clauses: string[] = [];
+      if (args.eventId) clauses.push(`EventId eq '${args.eventId.replace(/'/g, "''")}'`);
+      if (args.teamId) clauses.push(`TeamId eq '${args.teamId.replace(/'/g, "''")}'`);
+      clauses.push(`Status eq '${args.status || 'Pending'}'`);
+      const filter = clauses.join(' and ');
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items?$filter=${encodeURIComponent(filter)}&$top=200&$orderby=Created asc`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return data.value || data.d?.results || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * v11.83: Approve/Reject einer Beitritts-Anfrage — schreibt Status,
+   * DecidedDate und DecidedByEmail. Die Folge-Logik (Member-Insert,
+   * Mails) liegt im EventContext, weil dort die Subsite-/Event-Lookups
+   * verfuegbar sind.
+   */
+  public async decideTeamJoinRequest(
+    requestId: number,
+    decision: 'Approved' | 'Rejected',
+    decidedByEmail: string
+  ): Promise<boolean> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items(${requestId})`;
+      const body = {
+        'Status': decision,
+        'DecidedDate': new Date().toISOString(),
+        'DecidedByEmail': decidedByEmail || '',
+      };
+      const resp = await this._merge(url, body);
+      return !!resp.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Bestehende abgemeldete Registrierung reaktivieren.
    * Setzt Status zurueck auf Angemeldet/Warteliste, loescht CancellationDate,
    * aktualisiert RegistrationDate und CustomData.

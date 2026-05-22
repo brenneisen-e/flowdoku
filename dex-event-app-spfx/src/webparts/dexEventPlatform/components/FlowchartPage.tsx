@@ -392,6 +392,50 @@ function CancellationFlow(): React.ReactElement {
       <Arrow />
       <FlowNode
         type="decision"
+        label="War es eine Team-Anmeldung? (v11.83)"
+        details="Wenn die abgemeldete Registrierung eine TeamId hat, läuft parallel zum Standard-Cancel-Pfad ein Team-Nachlauf: verbleibende Mitglieder werden ermittelt, ggf. der frühere Lead durch das früheste verbleibende Mitglied ersetzt (Promote), und alle bekommen eine Info-Mail."
+      />
+      <BranchContainer>
+        <Branch label="Ja — Team-Cancel">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="Verbleibende Mitglieder laden"
+            details="getTeamMembers(subsiteUrl, TeamId) liefert alle Einträge derselben Team-Id. Davon filtert die App den gerade abgemeldeten Eintrag und alle Status='Abgemeldet'-Einträge heraus."
+          />
+          <Arrow />
+          <FlowNode
+            type="decision"
+            label="War der Abgemeldete Team-Lead UND gibt es verbleibende Mitglieder?"
+            details="Beide Bedingungen müssen wahr sein. Bei genau einer 1-Person-Anmeldung (Cancel des Solo-Leads) löst sich das Team einfach auf — kein Promote, keine Info-Mails."
+          />
+          <BranchContainer>
+            <Branch label="Ja">
+              <FlowNode
+                type="subprocess"
+                color="#e8f5e9"
+                label="Auto-Promote des neuen Leads"
+                details={'Sortier-Kriterium: kleinste TeilnehmerID, sonst früheste RegistrationDate, sonst kleinste Item-Id. Der Treffer bekommt per MERGE TeamLead=true. In der Info-Mail an diesen Member steht ein extra Hinweis „Du bist jetzt der neue Team-Lead".'}
+              />
+            </Branch>
+            <Branch label="Nein">
+              <FlowNode type="process" color="#f5f5f5" label="Kein Promote nötig" />
+            </Branch>
+          </BranchContainer>
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="DEX_Emails: Info-Mail pro Mitglied"
+            details={'Pro verbleibendem Member wird eine Info-Mail im Deloitte-Layout in die Queue gelegt. Inhalt: Name der abgemeldeten Person, aktuelle Belegung „N/Team-Size", drei Handlungs-Optionen (nichts tun, Lead fügt neu hinzu, andere belegen den Slot via Anmelde-Seite). Best-effort — Fehler beim Queueing brechen den Cancel nicht ab.'}
+          />
+        </Branch>
+        <Branch label="Nein — Solo-Cancel">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Team-Nachlauf" />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="decision"
         label="Event hat 'E-Mails versenden' aktiv?"
         details="Pro Event kann der Organizer die automatischen Mails unterdrücken (z.B. für manuell verwaltete Events)."
       />
@@ -721,6 +765,103 @@ function IDReorderManualFlow(): React.ReactElement {
   );
 }
 
+function TeamJoinFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode
+        type="start"
+        label="Beitritts-Wunsch ausgelöst (v11.83)"
+        details={'Einstieg: ein User klickt auf der Event-Anmeldeseite auf einen \'Beitreten\'-/ \'Beitritt anfragen\'-Button in der \'Offene Teams\'-Box. Voraussetzung: Organizer hat „Offene Slots öffentlich sichtbar" aktiviert und der User ist noch nicht beim Event angemeldet.'}
+      />
+      <Arrow />
+      <FlowNode
+        type="subprocess"
+        label="Doppel-Anmelde-Schutz"
+        details="isUserAlreadyOnEvent(subsiteUrl, email) prüft per OData-Filter (ParticipantEmail + Status in Angemeldet/QR versendet/Eingecheckt/Warteliste). Treffer = Abbruch mit klarer Fehlermeldung."
+      />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Approval erforderlich? (event.teamJoinRequiresApproval)"
+        details="Der Organizer setzt diesen Toggle in Schritt 4 (Team-Anmeldung). Nur aktivierbar wenn 'Offene Slots öffentlich sichtbar' an ist."
+      />
+      <BranchContainer>
+        <Branch label="Nein — direkter Beitritt">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="reserveSeat() atomisch"
+            details="Split-aware: bei aktivem PreferredStarterType wird die entsprechende Gruppe inkrementiert. Bei Vollbelegung landet der User auf der Warteliste (kein Hard-Fail)."
+          />
+          <Arrow />
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="registerTeamMember() — neuer Eintrag"
+            details="Inserts ein Teilnehmer-Item mit gleicher TeamId wie das offene Team, TeamLead=false, TeamName geerbt."
+          />
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="DEX_Emails + DEX_Outlook + Info-Mails"
+            details="Bestätigungs-Mail an den Beitretenden, Outlook-Einladung in seine Queue, Info-Mail an die anderen aktiven Mitglieder '<Name> ist eurem Team beigetreten'."
+          />
+        </Branch>
+        <Branch label="Ja — Approval-Queue">
+          <FlowNode
+            type="data"
+            color="#ffebee"
+            label="DEX_TeamJoinRequests: neuer Pending-Eintrag"
+            details="Eine Zeile mit EventId, TeamId, RequesterEmail, RequesterDisplayName, Status='Pending'. Liegt global auf der Site-Collection-Ebene, nicht pro Subsite."
+          />
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="Notification-Mail an den Team-Lead"
+            details="Mail mit Approve-/Reject-Buttons (HTML-Links auf die App mit Query-Parametern ?action=teamjoin&request=<id>&decision=approve|reject). Die App-UI in MyEvents zeigt aber sowieso den 'Beitritts-Anfragen (N)'-Block."
+          />
+          <Arrow />
+          <FlowNode
+            type="decision"
+            label="Team-Lead entscheidet (in MyEvents)"
+            details="Im 'Beitritts-Anfragen'-Block klickt der Lead pro Anfrage auf 'Bestätigen' oder 'Ablehnen'."
+          />
+          <BranchContainer>
+            <Branch label="Bestätigen">
+              <FlowNode
+                type="subprocess"
+                color="#e8f5e9"
+                label="addTeamMember()-Pfad"
+                details="reserveSeat + registerTeamMember + Bestätigungs-Mail + Outlook + Info-Mails an alle, identisch zum Direkt-Beitritts-Pfad."
+              />
+              <Arrow />
+              <FlowNode
+                type="data"
+                label="DEX_TeamJoinRequests: Status='Approved'"
+                details="DecidedDate + DecidedByEmail werden gesetzt — Audit-Spur, wer wann genehmigt hat."
+              />
+            </Branch>
+            <Branch label="Ablehnen">
+              <FlowNode
+                type="data"
+                color="#ffebee"
+                label="DEX_TeamJoinRequests: Status='Rejected'"
+                details="Plus kurze Absage-Mail im Deloitte-Layout an den Anfragenden: 'Deine Anfrage wurde abgelehnt — du kannst dich gerne einzeln anmelden, falls die Kapazität reicht.'"
+              />
+            </Branch>
+          </BranchContainer>
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="end"
+        label="Fertig"
+        details="Im Direkt-Pfad sieht der User sofort die Erfolgs-Box auf der Anmeldeseite und das Event in 'Meine Events'. Im Approval-Pfad bekommt er eine Mail mit Ergebnis, sobald der Lead entschieden hat."
+      />
+    </div>
+  );
+}
+
 function ColumnFixFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -756,6 +897,7 @@ export default function FlowchartPage(): React.ReactElement {
     { id: 'reorder', label: 'ID-Korrektur (Power Automate)', icon: '↻' },
     { id: 'creation', label: 'Event-Erstellung', icon: '+' },
     { id: 'massemail', label: 'Massenmail', icon: '✉' },
+    { id: 'teamjoin', label: 'Team-Beitritt (v11.83)', icon: '+' },
     { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
     { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
   ];
@@ -767,6 +909,7 @@ export default function FlowchartPage(): React.ReactElement {
       case 'reorder': return <IDReorderFlow />;
       case 'creation': return <EventCreationFlow />;
       case 'massemail': return <MassEmailFlow />;
+      case 'teamjoin': return <TeamJoinFlow />;
       case 'idmanual': return <IDReorderManualFlow />;
       case 'columnfix': return <ColumnFixFlow />;
       default: return <RegistrationFlow />;
