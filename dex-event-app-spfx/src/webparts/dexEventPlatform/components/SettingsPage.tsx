@@ -323,7 +323,7 @@ export default function SettingsPage(): React.ReactElement {
                       maxWidth: '100%',
                     }}>
                       <img
-                        src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(newEmail)}&size=S`}
+                        src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(newEmail)}&size=L`}
                         alt={newName}
                         onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                         style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
@@ -387,7 +387,7 @@ export default function SettingsPage(): React.ReactElement {
                               onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#fff'; }}
                             >
                               <img
-                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(s.email)}&size=S`}
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(s.email)}&size=L`}
                                 alt={s.displayName}
                                 onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                                 style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
@@ -476,18 +476,18 @@ export default function SettingsPage(): React.ReactElement {
                         <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             <img
-                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.userEmail)}&size=S`}
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.userEmail)}&size=L`}
                               alt={r.userName}
                               onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                               style={{
-                                width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
+                                width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
                                 background: 'var(--dex-gray-100)',
                                 transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                                 transformOrigin: 'left center',
                                 cursor: 'zoom-in',
                               }}
                               onMouseEnter={e => {
-                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)';
+                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
                                 (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
                                 (e.currentTarget as HTMLImageElement).style.zIndex = '50';
                                 (e.currentTarget as HTMLImageElement).style.position = 'relative';
@@ -602,18 +602,18 @@ export default function SettingsPage(): React.ReactElement {
                             <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <img
-                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=S`}
+                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=L`}
                                   alt={co.name}
                                   onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                                   style={{
-                                    width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
+                                    width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
                                     background: 'var(--dex-gray-100)',
                                     transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                                     transformOrigin: 'left center',
                                     cursor: 'zoom-in',
                                   }}
                                   onMouseEnter={e => {
-                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)';
+                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
                                     (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
                                     (e.currentTarget as HTMLImageElement).style.zIndex = '50';
                                     (e.currentTarget as HTMLImageElement).style.position = 'relative';
