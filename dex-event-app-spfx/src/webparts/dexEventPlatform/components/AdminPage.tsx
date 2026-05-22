@@ -376,6 +376,50 @@ function SplitMergeToggle(props: {
   );
 }
 
+// v12.6: Sammel-Card für alle Aktionen + Quick-Actions unter „Currently
+// registered". Default eingeklappt, Header zeigt „Aktionen / Actions".
+// Inhalt wird als Collapsible-Body gerendert (kein eigenes Modal).
+function ActionsCollapsibleCard(props: {
+  isDe: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="card" style={{ padding: 0, marginTop: 16, marginBottom: 16, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', textAlign: 'left',
+          padding: '16px 24px', border: 'none', background: 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, fontSize: '1.05rem', fontWeight: 700, color: 'var(--dex-gray-800)',
+          cursor: 'pointer',
+        }}
+        aria-expanded={open}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            display: 'inline-block', width: 14, textAlign: 'center',
+            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.15s ease', fontSize: '0.9rem',
+            color: 'var(--dex-green, #86bc25)',
+          }}>▶</span>
+          {props.isDe ? 'Aktionen' : 'Actions'}
+        </span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
+          {props.isDe ? 'alle Event-Aktionen' : 'all event actions'}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 24px 24px' }}>
+          {props.children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
@@ -2215,15 +2259,19 @@ export default function AdminPage(): React.ReactElement {
           {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
               unabhaengig vom Bildformat (cover-Crop sorgt fuer den Kreis). */}
           <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            {/* v12.6: Event-Bild jetzt prominent als großes Rechteck-
+                Format (wie auf der Registrierungs-Seite) statt kleinem
+                Avatar-Kreis. Hintergrund weiß für saubere Darstellung
+                transparenter PNG-Logos. */}
             {selectedEvent.imageUrl && (
               <div
                 style={{
                   flex: '0 0 auto',
-                  width: 110,
-                  height: 110,
-                  borderRadius: '50%',
+                  width: 260,
+                  maxWidth: '38%',
+                  background: '#fff',
+                  borderRadius: 'var(--dex-radius, 12px)',
                   overflow: 'hidden',
-                  background: 'var(--dex-gray-50, #fafafa)',
                   border: '1px solid var(--dex-gray-200, #e5e7eb)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
@@ -2234,8 +2282,9 @@ export default function AdminPage(): React.ReactElement {
                   style={{
                     display: 'block',
                     width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
+                    height: 'auto',
+                    maxHeight: 240,
+                    objectFit: 'contain',
                   }}
                 />
               </div>
@@ -2399,8 +2448,7 @@ export default function AdminPage(): React.ReactElement {
             relevanten Aktionen an einem Ort. QR-Scanner sehen den ganzen Block
             nicht. */}
         {!isQRScannerOnlyForSelected && (
-        <div className="card" style={{ padding: 24 }}>
-          <h3 className="mb-16">Aktionen</h3>
+        <ActionsCollapsibleCard isDe={isDe}>
           <div className="admin-actions-grid" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
@@ -3392,7 +3440,7 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
           </div>
-        </div>
+        </ActionsCollapsibleCard>
         )}
       </div>
 
