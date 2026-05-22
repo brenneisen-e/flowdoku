@@ -530,9 +530,9 @@
          Display kompakter. */
       .landing__actions .landing__bubble { display: none; }
 
-      /* v12.2: Mobile-Override für .event-grid entfernt (User-Feedback —
-         „mobil ist fehler"). Die Standard-3-Spalten-Layout bleibt auch
-         unterhalb 768px. */
+      /* v12.3: Mobile-Override wieder aktiv — auf Mobile (<768px) nur
+         eine Karte pro Zeile. */
+      .event-grid { grid-template-columns: 1fr; gap: 16px; }
       .event-card__image { height: 180px; }
 
       /* Registration */
