@@ -2441,7 +2441,12 @@ export default function AdminPage(): React.ReactElement {
               return (
                 <ActionTile
                   icon={isDraft ? <Check size={18} /> : <X size={18} />}
-                  title={isDraft ? 'Event live schalten' : 'Auf Entwurf setzen'}
+                  // v12.4: Aktueller Status immer im Titel sichtbar, damit
+                  // der Admin/Organizer auf einen Blick weiß, in welchem
+                  // Zustand das Event gerade ist — und was der Klick bewirkt.
+                  title={isDraft
+                    ? 'Aktuell: Entwurf — Event live schalten'
+                    : 'Aktuell: Live — Auf Entwurf setzen'}
                   desc={isDraft
                     ? 'Schaltet das Event live — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'
                     : 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder live schalten.'}

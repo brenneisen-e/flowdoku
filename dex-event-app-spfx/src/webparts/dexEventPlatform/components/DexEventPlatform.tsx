@@ -396,15 +396,15 @@ function AppContent(): React.ReactElement {
                   {bootProgress} %
                 </div>
               </div>
-              {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader mit
-                  Caption-Zeile dahinter — "So far used for…" als kleiner
-                  Stolz-Marker, was die App bisher abgedeckt hat.
-                  v12.2: Container breiter (520 statt 320), KpiBox-
-                  Padding + Schriftgrößen größer für mehr Präsenz. */}
-              <div style={{ width: 'min(520px, 90%)', marginTop: 24 }}>
+              {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader.
+                  v12.2/v12.4: Container breiter (520 statt 320), Caption
+                  größer (0.95 statt 0.78rem), Block weiter nach oben
+                  (marginTop 8 statt 24). */}
+              <div style={{ width: 'min(520px, 90%)', marginTop: 8 }}>
                 <div style={{
-                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
-                  textAlign: 'center', marginBottom: 8, fontStyle: 'italic',
+                  fontSize: '0.95rem', color: 'var(--dex-gray-600)',
+                  textAlign: 'center', marginBottom: 12, fontStyle: 'italic',
+                  fontWeight: 500,
                 }}>
                   So far used for…
                 </div>

@@ -37,6 +37,13 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const gap = 8;
+    // v12.4: Auf schmalen Screens (Mobile) wurde das Tooltip mit
+    // translate(-50%) links abgeschnitten. Tooltip-Breite (max 480 /
+    // viewport-Width-bezogen) berücksichtigen und so positionieren, dass
+    // es nicht über den linken/rechten Rand hinausragt.
+    const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const sideMargin = 12;
+    const tooltipMaxW = Math.min(480, viewportW - sideMargin * 2);
     let top = 0; let left = 0; let transform = '';
     switch (placement) {
       case 'bottom':
@@ -60,6 +67,18 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
         left = cx;
         transform = 'translate(-50%, -100%)';
         break;
+    }
+    // Clamp links/rechts: wenn die effektive Tooltip-Box (zentriert auf
+    // left, breite tooltipMaxW) den Viewport überschreitet, left auf die
+    // Bandgrenze ziehen und die Transform-X-Komponente entsprechend
+    // korrigieren, damit das Tooltip im sichtbaren Bereich bleibt.
+    if (placement === 'top' || placement === 'bottom') {
+      const halfW = tooltipMaxW / 2;
+      if (left - halfW < sideMargin) {
+        left = sideMargin + halfW;
+      } else if (left + halfW > viewportW - sideMargin) {
+        left = viewportW - sideMargin - halfW;
+      }
     }
     setCoords({ top, left, transform });
   }, [placement]);
@@ -109,8 +128,8 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
         // — vor allem die ausfuehrlicheren Hints aus v9.17/v9.21 — nicht
         // mehr in einer schmalen Spalte hochkant umgebrochen werden.
         width: 'max-content',
-        maxWidth: 480,
-        minWidth: 280,
+        maxWidth: 'min(480px, calc(100vw - 24px))',
+        minWidth: 'min(280px, calc(100vw - 24px))',
         whiteSpace: 'normal',
         textAlign: 'left',
         pointerEvents: 'none',
