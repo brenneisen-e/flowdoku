@@ -295,6 +295,49 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Team-Anmeldung — Phase 5 (v11.86): Lead bearbeitet sein Team aus MyEvents
+
+Mit v11.86 bekommt der Team-Lead in „Meine Events" einen
+vollständigen Edit-Pfad direkt auf seiner eigenen Event-Karte —
+ohne Umweg über das Admin Center.
+
+- **Mitglieder-Karten im Team-Badge.** Statt der Inline-Komma-Liste
+  „Mitglieder: …" rendert der Team-Badge jetzt pro Mitglied eine
+  eigene Karte mit Profilfoto (40×40, Hover-Zoom scale 2.4× analog
+  SettingsPage), Name, E-Mail und Standort (mit „ · "-Trenner).
+  Aktive Mitglieder mit `TeamLead=true` bekommen einen grünen
+  Lead-Pill rechts, abgemeldete Mitglieder werden ausgegraut mit
+  einem grauen „abgemeldet"-Badge gerendert. Sortierung: Lead
+  zuerst, danach nach `TeilnehmerID`, sonst nach Id.
+- **Button „Team bearbeiten".** Sichtbar nur für Leads, sitzt
+  neben dem bestehenden „+ Mitglied hinzufügen"-Button. Klick
+  öffnet das Modal **„Team verwalten"**: Headline mit Team-Namen,
+  Sub-Headline mit Belegung `N/TeamSize`, alle Mitglieder als
+  Karten (gleicher Stil wie im Badge). Pro aktivem Mitglied außer
+  dem Lead selbst rendert ein roter Trash-Button mit
+  Title-Tooltip. Klick öffnet eine zweite Confirm-Modal-Ebene mit
+  dem Namen der Person und einem Hinweis, dass die Abmeldung
+  stellvertretend passiert und die Person eine eigene
+  Bestätigungs-Mail bekommt.
+- **`EventContext.cancelTeamMember(eventId, memberRegistration)`**:
+  ruft `EventService.cancelRegistration` mit dem eingeloggten Lead
+  als Audit-Akteur auf, schreibt den ChangeLog mit `asActor:
+  'teamLead'`, queued die Standard-Abmelde-Mail an die abgemeldete
+  Person, queued den `Ausladen`-Outlook-Event, den IDReorder,
+  synct den Sitzplatz-Counter und ruft anschließend
+  `handleTeamCancelPostStep(..., wasTeamLead=false, ...)` für die
+  Info-Mails an die übrigen Mitglieder. Auto-Promote läuft hier
+  nicht, weil der Lead sich nicht selbst löscht — Self-Schutz im
+  Context wirft einen Warn-Log, falls jemand das versucht. Der
+  Lead-Self-Cancel läuft weiterhin über den normalen Abmelden-Button
+  via `cancelRegistration` und nutzt die bestehende Auto-Promote-
+  Logik aus v11.83.
+- **Schema.** Die SP-Spalte `Location` ist bereits in der
+  Teilnehmerliste vorhanden (seit jeher), wurde nur als optionales
+  Feld in `SPRegistration` nachgezogen, damit `getTeamMembers`
+  sie typesafe ausliefert. Keine `fixRegistrationListColumns`-
+  Änderung nötig.
+
 ### Team-Anmeldung — Phase 4 (v11.84): Admin-Center-Team-Management
 
 Mit v11.84 bekommen Admins und Organizer eigener Events einen
@@ -579,6 +622,32 @@ import { Icon } from '@fluentui/react/lib/Icon';
 In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 6 (Kommunikation)" statt „Schritt 5 (Kommunikation)").
 
 Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-green-dark, #4a7c1f)`) im Format `Schritt N — Name` mit einem kurzen ein-Satz-Lead darunter, was in diesem Schritt eingestellt wird.
+
+### Demo-Daten laden im Wizard (v11.88)
+
+In Schritt 1 (Grundlagen) sitzt oben rechts ein „Demo"-Button. Vor v11.88 hat
+er das Formular direkt mit einer fixen Test-Vorlage gefüllt — seit v11.88
+öffnet er stattdessen ein Auswahl-Modal mit vier Varianten-Karten. Klick auf
+eine Karte schließt das Modal sofort, füllt das Formular vollständig (inkl.
+Reset von Team-, Split- und Sub-Event-Feldern) und springt auf Schritt 1
+zurück. Keine Submit-Buttons — die Karte selbst ist der Submit.
+
+Die vier Varianten in `EventCreationPage.tsx` (Map `DEMO_VARIANTS`):
+
+| Key            | Vorlage                                | Kerneigenschaften                                                                                                  |
+|----------------|----------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `standard`     | Einfaches Meeting / Lunch              | 50 Plätze, keine Gruppen, keine Sub-Events, Custom-Field „Essenspräferenz" (select, Pflicht)                       |
+| `groups`       | Workshop mit zwei Gruppen              | Split Capacity 25 + 25, Gruppen „Vormittag" + „Nachmittag", gemeinsame Warteliste, keine Sub-Events                |
+| `subevent`     | Conference mit Networking-Dinner       | 100 Plätze, ein Sub-Event („Networking-Dinner", 60 Plätze), Custom-Field „Hotel-Buchung" (select, optional)        |
+| `subeventTeam` | Quizabend mit Team-Anmeldung           | 80 Plätze (= 20 Teams à 4), Team-Anmeldung aktiv (TeamSize 4, Team-Name abfragen, Teil-Teams + offene Slots), ein Sub-Event („Vorbereitungs-Briefing", 10 Plätze), Custom-Field „Essenspräferenz" |
+
+Der Reset-Helper `resetDemoVariantBaseState()` setzt vor jedem Variant-Laden
+alle Variant-spezifischen Felder (Split, Team, Sub-Events, Custom-Fields,
+Agenda, Transferzeiten, Audience, Bild, Ansprechpartner) auf neutrale
+Defaults zurück, damit Reste vorheriger Varianten nicht im Formular hängen
+bleiben. Die alte `fillDemo`-Funktion mit der `Test_<datum>`-Vorlage bleibt
+als interner Helfer im Code, wird aber von keinem Button mehr direkt
+angesprochen.
 
 ### Tooltip-Stil (ab v9.32)
 

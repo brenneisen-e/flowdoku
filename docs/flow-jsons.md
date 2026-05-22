@@ -710,8 +710,11 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "item/start": "@convertFromUtc(triggerBody()?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/end": "@convertFromUtc(triggerBody()?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
-      "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
-      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
+      "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/showAs": "busy",
+      "item/responseRequested": false,
+      "item/sensitivity": "private"
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -719,7 +722,7 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "operationId": "V4CalendarPostItem"
     }
   },
-  "runAfter": { "Compose_Image": ["SUCCEEDED"] }
+  "runAfter": { "Compose_Image": ["Succeeded"] }
 }
 
 UPDATE_EVENT (CalendarLink zurückschreiben):
@@ -850,9 +853,50 @@ HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
     "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
+  "showAs": "busy",
+  "responseRequested": false,
+  "sensitivity": "private",
   "body": {
     "contentType": "html",
     "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+  }
+}
+```
+
+**Stand 2026-05-22 (v11.88):** der Body schreibt zusaetzlich `showAs: busy`
++ `responseRequested: false` + `sensitivity: private`. Damit landet der
+Termin direkt im Kalender der Teilnehmer (kein Akzeptieren-Klick noetig),
+ist als Beschaeftigt markiert UND kann nicht an Dritte weitergeleitet
+werden (Outlook deaktiviert den Forward-Button bei privater
+Vertraulichkeitsstufe). Im `DEX_CreateOutlookEvent`-Flow sind die gleichen
+drei Parameter in der `Create_event_(V4)`-Action gesetzt.
+
+**Hinweis fuer Teilnehmer:** „Privat" beschraenkt nur Weiterleitung und
+Free/Busy-Anzeige fuer Dritte (Kollegen sehen nur „Privat — Beschaeftigt",
+keine Titel). Der eingeladene Teilnehmer selbst sieht den Termin ganz
+normal mit allen Details.
+
+**Vollstaendiger Stand der Compose-Action `Build_Update_Body` (Code-View 2026-05-22):**
+```json
+{
+  "type": "Compose",
+  "inputs": {
+    "subject": "@{first(outputs('Get_Event_Details')?['body/value'])?['Title']}",
+    "start": {
+      "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "end": {
+      "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "showAs": "busy",
+    "responseRequested": false,
+    "sensitivity": "private",
+    "body": {
+      "contentType": "html",
+      "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+    }
   }
 }
 ```

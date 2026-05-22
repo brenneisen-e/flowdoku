@@ -352,20 +352,20 @@ function CancellationFlow(): React.ReactElement {
       <FlowNode
         type="start"
         label="Abmeldung ausgelöst"
-        details="Einstiegspunkt. Die Abmeldung kann von zwei Seiten kommen: der Teilnehmer selbst (Self-Cancel aus My-Events) oder ein Admin/Organizer (aus dem Admin-Center). Beide Pfade sind fast identisch, unterscheiden sich aber im UX und beim Nachrücker-Timing."
+        details={'Einstiegspunkt. Die Abmeldung kann von drei Seiten kommen: der Teilnehmer selbst (Self-Cancel aus My-Events), ein Admin/Organizer (aus dem Admin-Center) oder ein Team-Lead, der stellvertretend ein Team-Mitglied aus dem Modal „Team verwalten" entfernt (v11.86). Alle drei Pfade konvergieren auf denselben Cancel-Step in der Teilnehmerliste — unterscheiden sich aber im UX und in den Audit-Spalten CancelledByName/CancelledByEmail.'}
       />
       <Arrow />
       <FlowNode
         type="decision"
         label="Wer meldet ab?"
-        details="Die App unterscheidet den Pfad, weil der Admin sofortiges Feedback über den Nachrücker braucht (damit er den nächsten Schritt planen kann), während ein einzelner User nur seinen eigenen Eintrag sieht und die kurze Verzögerung durch den Flow nicht wahrnimmt."
+        details="Die App unterscheidet den Pfad, weil der Admin sofortiges Feedback über den Nachrücker braucht (damit er den nächsten Schritt planen kann), während ein einzelner User nur seinen eigenen Eintrag sieht und die kurze Verzögerung durch den Flow nicht wahrnimmt. Der Team-Lead-Pfad (v11.86) ähnelt dem User-Pfad, schreibt aber den Lead in die Audit-Felder."
       />
       <BranchContainer>
         <Branch label="User (Self-Cancel)">
           <FlowNode
             type="process"
             label="User klickt in My-Events auf 'Abmelden'"
-            details="Zwei-Klick-Bestätigung (erster Klick zeigt 'Wirklich abmelden?', zweiter führt aus). Das verhindert versehentliche Abmeldungen. Item-Level-Security sorgt dafür dass der User eh nur seinen Eintrag sieht — kein Info-Toast über den Nachrücker nötig."
+            details="Zwei-Klick-Bestätigung (erster Klick zeigt 'Wirklich abmelden?', zweiter führt aus). Das verhindert versehentliche Abmeldungen. Item-Level-Security sorgt dafür dass der User eh nur seinen Eintrag sieht — kein Info-Toast über den Nachrücker nötig. CancelledByName/CancelledByEmail = der eingeloggte User."
           />
         </Branch>
         <Branch label="Admin/Organizer">
@@ -373,7 +373,15 @@ function CancellationFlow(): React.ReactElement {
             type="process"
             color="#fff3e0"
             label="Admin klickt im Admin-Center auf 'Abmelden'"
-            details="Single-Click mit Confirm-Dialog. Nach Bestätigung erscheint sofort ein orange Toast oben rechts mit Spinner: 'Abmeldung von X wird verarbeitet…'. Nachrücker wird direkt client-seitig promoted (siehe unten). Admin sieht am Ende den Erfolgs-Toast mit Namen des Nachrückers."
+            details="Single-Click mit Confirm-Dialog. Nach Bestätigung erscheint sofort ein orange Toast oben rechts mit Spinner: 'Abmeldung von X wird verarbeitet…'. Nachrücker wird direkt client-seitig promoted (siehe unten). Admin sieht am Ende den Erfolgs-Toast mit Namen des Nachrückers. CancelledByName/CancelledByEmail = der Admin/Organizer."
+          />
+        </Branch>
+        <Branch label="Team-Lead löscht Team-Mitglied (v11.86)">
+          <FlowNode
+            type="process"
+            color="#e8f5e9"
+            label="Lead klickt im Team-verwalten-Modal auf den Trash-Button"
+            details={'In „Meine Events" öffnet der Team-Lead über „Team bearbeiten" das Modal „Team verwalten". Pro aktivem Mitglied (außer ihm selbst) gibt es einen roten Trash-Button. Klick öffnet eine zweite Confirm-Ebene mit dem Namen der Person und dem Hinweis, dass die Abmeldung stellvertretend erfolgt. Bestätigung ruft cancelTeamMember im EventContext auf. CancelledByName/CancelledByEmail = der eingeloggte Lead — die abgemeldete Person sieht im Audit also den Lead, nicht sich selbst. Der Rest des Cancel-Pfads (Status auf Abgemeldet, DEX_Participants, Team-Nachlauf, Mail, Outlook, IDReorder) ist identisch zum Self-Cancel.'}
           />
         </Branch>
       </BranchContainer>

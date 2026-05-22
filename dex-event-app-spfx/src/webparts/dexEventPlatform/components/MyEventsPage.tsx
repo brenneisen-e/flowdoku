@@ -11,6 +11,7 @@ import OrganizerList from './OrganizerList';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
+import { useCurrentUser } from '../context/UserContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
@@ -628,7 +629,9 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, refreshEvents } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, refreshEvents } = useEvents();
+  const { currentUser } = useCurrentUser();
+  const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
   // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
   // nicht — nur fuer Events mit gesetzter TeamId im eigenen Eintrag.
@@ -755,6 +758,55 @@ export default function MyEventsPage(): React.ReactElement {
       setJoinReqBusyId(null);
     }
   };
+  // v11.86: „Team verwalten"-Modal. Lead kann pro Mitglied einen
+  // Trash-Button anklicken — ein zweites Confirm-Modal fordert die
+  // Bestaetigung an und ruft anschliessend cancelTeamMember auf.
+  const [manageTeamDialog, setManageTeamDialog] = React.useState<{
+    eventId: string;
+    teamId: string;
+    teamName: string;
+    teamSize: number;
+  } | null>(null);
+  const [manageTeamMembers, setManageTeamMembers] = React.useState<SPRegistration[]>([]);
+  const [manageTeamConfirm, setManageTeamConfirm] = React.useState<SPRegistration | null>(null);
+  const [manageTeamBusyId, setManageTeamBusyId] = React.useState<number | null>(null);
+  const closeManageTeamDialog = (): void => {
+    setManageTeamDialog(null);
+    setManageTeamMembers([]);
+    setManageTeamConfirm(null);
+    setManageTeamBusyId(null);
+  };
+  const openManageTeamDialog = (eventId: string, teamId: string, teamName: string, teamSize: number, members: SPRegistration[]): void => {
+    setManageTeamDialog({ eventId, teamId, teamName, teamSize });
+    setManageTeamMembers(members);
+  };
+  const performManageTeamCancel = async (member: SPRegistration): Promise<void> => {
+    if (!manageTeamDialog || manageTeamBusyId !== null) return;
+    setManageTeamBusyId(member.Id);
+    try {
+      const ok = await cancelTeamMember(manageTeamDialog.eventId, member);
+      if (ok) {
+        // Cache invalidieren, damit das Team-Badge neu laedt.
+        const key = `${manageTeamDialog.eventId}|${manageTeamDialog.teamId}`;
+        teamCacheKeyRef.current.delete(key);
+        setTeamMembersCache(prev => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        // Aktualisierte Mitgliederliste neu laden.
+        try {
+          const fresh = await getTeamMembers(manageTeamDialog.eventId, manageTeamDialog.teamId);
+          setTeamMembersCache(prev => ({ ...prev, [key]: fresh }));
+          setManageTeamMembers(fresh);
+        } catch { /* */ }
+        setManageTeamConfirm(null);
+      }
+    } finally {
+      setManageTeamBusyId(null);
+    }
+  };
+
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
@@ -1324,14 +1376,22 @@ export default function MyEventsPage(): React.ReactElement {
                       const total = activeMembers.length;
                       const teamSizeCfg = event.teamSize || total;
                       const tn = registration.TeamName || (cached.find(m => m.TeamName)?.TeamName) || '';
-                      const memberNames = activeMembers.map(m => {
-                        const nm = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
-                        return nm;
-                      });
                       const isLead = !!registration.TeamLead;
+                      // v11.86: Sortierung — Lead zuerst, dann nach TeilnehmerID,
+                      // dann nach Id. Abgemeldete Mitglieder werden ausgegraut
+                      // mit eigenem Badge weiter unten gerendert.
+                      const sortedAll = [...cached].sort((a, b) => {
+                        const aLead = a.TeamLead ? 0 : 1;
+                        const bLead = b.TeamLead ? 0 : 1;
+                        if (aLead !== bLead) return aLead - bLead;
+                        const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+                        const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+                        if (aTid !== bTid) return aTid - bTid;
+                        return a.Id - b.Id;
+                      });
                       return (
                         <div style={{
-                          marginTop: 8, padding: '8px 12px', borderRadius: 6,
+                          marginTop: 8, padding: '10px 14px', borderRadius: 6,
                           background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
                           color: 'var(--dex-green-dark, #3f5f10)', fontSize: '0.82rem', lineHeight: 1.45,
                         }}>
@@ -1352,37 +1412,135 @@ export default function MyEventsPage(): React.ReactElement {
                               </span>
                             )}
                           </div>
-                          {memberNames.length > 0 && (
-                            <div style={{ marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
-                              {isDe ? 'Mitglieder' : 'Members'}: {memberNames.join(', ')}
+                          {/* v11.86: Mitglieder-Karten — pro Person Foto + Name + Email + Standort. */}
+                          {sortedAll.length > 0 && (
+                            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {sortedAll.map(m => {
+                                const isCancelled = m.Status === 'Abgemeldet';
+                                const isMemberLead = !!m.TeamLead && !isCancelled;
+                                const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
+                                const loc = (m.Location || '').trim();
+                                return (
+                                  <div
+                                    key={m.Id}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: 12,
+                                      padding: '6px 8px', borderRadius: 6,
+                                      background: isCancelled ? 'rgba(0,0,0,0.04)' : '#fff',
+                                      border: '1px solid var(--dex-gray-200)',
+                                      opacity: isCancelled ? 0.55 : 1,
+                                      position: 'relative',
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        width: 40, height: 40, borderRadius: '50%',
+                                        overflow: 'visible', flexShrink: 0,
+                                        position: 'relative',
+                                      }}
+                                    >
+                                      <img
+                                        src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                                        alt={fullName}
+                                        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                        style={{
+                                          width: 40, height: 40, borderRadius: '50%',
+                                          objectFit: 'cover', background: 'var(--dex-gray-100)',
+                                          transition: 'transform 160ms ease, box-shadow 160ms ease',
+                                          transformOrigin: 'left center',
+                                          cursor: isCancelled ? 'default' : 'zoom-in',
+                                        }}
+                                        onMouseEnter={e => {
+                                          if (isCancelled) return;
+                                          const img = e.currentTarget as HTMLImageElement;
+                                          img.style.transform = 'scale(2.4)';
+                                          img.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
+                                          img.style.zIndex = '50';
+                                          img.style.position = 'relative';
+                                        }}
+                                        onMouseLeave={e => {
+                                          const img = e.currentTarget as HTMLImageElement;
+                                          img.style.transform = 'scale(1)';
+                                          img.style.boxShadow = 'none';
+                                          img.style.zIndex = '';
+                                          img.style.position = '';
+                                        }}
+                                      />
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.85rem' }}>
+                                        {fullName}
+                                      </div>
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                                        {m.ParticipantEmail}{loc ? ` · ${loc}` : ''}
+                                      </div>
+                                    </div>
+                                    {isCancelled ? (
+                                      <span style={{
+                                        padding: '2px 8px', borderRadius: 999,
+                                        background: 'var(--dex-gray-300, #c8c8c8)', color: '#fff',
+                                        fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                                      }}>
+                                        {isDe ? 'abgemeldet' : 'cancelled'}
+                                      </span>
+                                    ) : isMemberLead && (
+                                      <span style={{
+                                        padding: '2px 8px', borderRadius: 999,
+                                        background: 'var(--dex-green, #86bc25)', color: '#fff',
+                                        fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                                      }}>
+                                        Lead
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
-                          {/* v11.83: Add-Member-Button — nur fuer Leads bei freien Slots. */}
-                          {isLead && total < teamSizeCfg && (
-                            <div style={{ marginTop: 8 }}>
+                          {/* v11.83/v11.86: Aktion-Buttons — Edit (alle Leads) +
+                              Add (nur bei freien Slots). */}
+                          {isLead && (
+                            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <button
                                 type="button"
                                 className="btn btn-secondary"
-                                onClick={() => {
-                                  setAddMemberDialog({
-                                    eventId: event.id,
-                                    teamId: registration.TeamId!,
-                                    teamName: tn || '',
-                                    freeSlots: teamSizeCfg - total,
-                                  });
-                                  setAddMemberPick(null);
-                                  setAddMemberQuery('');
-                                  setAddMemberResults([]);
-                                  setAddMemberConsent(false);
-                                  setAddMemberError('');
-                                }}
+                                onClick={() => openManageTeamDialog(
+                                  event.id,
+                                  registration.TeamId!,
+                                  tn || '',
+                                  teamSizeCfg,
+                                  cached
+                                )}
                                 style={{ fontSize: '0.78rem', padding: '4px 10px' }}
                               >
-                                <Icon iconName="AddFriend" style={{ fontSize: 12, marginRight: 6 }} />
-                                {isDe
-                                  ? `Mitglied hinzufuegen (${teamSizeCfg - total} Slot${(teamSizeCfg - total) === 1 ? '' : 's'} frei)`
-                                  : `Add member (${teamSizeCfg - total} slot${(teamSizeCfg - total) === 1 ? '' : 's'} free)`}
+                                <Icon iconName="Edit" style={{ fontSize: 12, marginRight: 6 }} />
+                                {isDe ? 'Team bearbeiten' : 'Edit team'}
                               </button>
+                              {total < teamSizeCfg && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() => {
+                                    setAddMemberDialog({
+                                      eventId: event.id,
+                                      teamId: registration.TeamId!,
+                                      teamName: tn || '',
+                                      freeSlots: teamSizeCfg - total,
+                                    });
+                                    setAddMemberPick(null);
+                                    setAddMemberQuery('');
+                                    setAddMemberResults([]);
+                                    setAddMemberConsent(false);
+                                    setAddMemberError('');
+                                  }}
+                                  style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                                >
+                                  <Icon iconName="AddFriend" style={{ fontSize: 12, marginRight: 6 }} />
+                                  {isDe
+                                    ? `Mitglied hinzufügen (${teamSizeCfg - total} Slot${(teamSizeCfg - total) === 1 ? '' : 's'} frei)`
+                                    : `Add member (${teamSizeCfg - total} slot${(teamSizeCfg - total) === 1 ? '' : 's'} free)`}
+                                </button>
+                              )}
                             </div>
                           )}
                           {/* v11.83: Beitritts-Anfragen-Block — nur fuer Leads, wenn das
@@ -2119,6 +2277,243 @@ export default function MyEventsPage(): React.ReactElement {
           </div>
         </div>
       )}
+      {/* v11.86: Manage-Team-Modal — Lead bearbeitet sein Team
+          (Mitglieder abmelden). Pflicht-Confirm vor dem eigentlichen
+          Cancel; der Cancel selbst laeuft ueber cancelTeamMember im
+          EventContext. */}
+      {manageTeamDialog && (() => {
+        const activeMembers = manageTeamMembers.filter(m => m.Status !== 'Abgemeldet');
+        const sortedAll = [...manageTeamMembers].sort((a, b) => {
+          const aLead = a.TeamLead ? 0 : 1;
+          const bLead = b.TeamLead ? 0 : 1;
+          if (aLead !== bLead) return aLead - bLead;
+          const aTid = typeof a.TeilnehmerID === 'number' ? a.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+          const bTid = typeof b.TeilnehmerID === 'number' ? b.TeilnehmerID : Number.MAX_SAFE_INTEGER;
+          if (aTid !== bTid) return aTid - bTid;
+          return a.Id - b.Id;
+        });
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => { if (manageTeamBusyId === null) closeManageTeamDialog(); }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2000,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: 12, padding: '24px 28px',
+                maxWidth: 620, width: '100%',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+                display: 'flex', flexDirection: 'column', gap: 14,
+                maxHeight: '90vh', overflowY: 'auto',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+                  {isDe
+                    ? `Team „${manageTeamDialog.teamName || 'Unbenannt'}" verwalten`
+                    : `Manage team „${manageTeamDialog.teamName || 'Unnamed'}"`}
+                </h3>
+                <div style={{ marginTop: 4, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? `Belegung: ${activeMembers.length}/${manageTeamDialog.teamSize}`
+                    : `Occupancy: ${activeMembers.length}/${manageTeamDialog.teamSize}`}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {sortedAll.map(m => {
+                  const isCancelled = m.Status === 'Abgemeldet';
+                  const isMemberLead = !!m.TeamLead && !isCancelled;
+                  const isSelf = (m.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase();
+                  const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
+                  const loc = (m.Location || '').trim();
+                  const busy = manageTeamBusyId === m.Id;
+                  return (
+                    <div
+                      key={m.Id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '8px 10px', borderRadius: 6,
+                        background: isCancelled ? 'rgba(0,0,0,0.04)' : '#fff',
+                        border: '1px solid var(--dex-gray-200)',
+                        opacity: isCancelled ? 0.55 : 1,
+                      }}
+                    >
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, position: 'relative' }}>
+                        <img
+                          src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                          alt={fullName}
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                          style={{
+                            width: 40, height: 40, borderRadius: '50%',
+                            objectFit: 'cover', background: 'var(--dex-gray-100)',
+                            transition: 'transform 160ms ease, box-shadow 160ms ease',
+                            transformOrigin: 'left center',
+                            cursor: isCancelled ? 'default' : 'zoom-in',
+                          }}
+                          onMouseEnter={e => {
+                            if (isCancelled) return;
+                            const img = e.currentTarget as HTMLImageElement;
+                            img.style.transform = 'scale(2.4)';
+                            img.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
+                            img.style.zIndex = '50';
+                            img.style.position = 'relative';
+                          }}
+                          onMouseLeave={e => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            img.style.transform = 'scale(1)';
+                            img.style.boxShadow = 'none';
+                            img.style.zIndex = '';
+                            img.style.position = '';
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.9rem' }}>
+                          {fullName}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                          {m.ParticipantEmail}{loc ? ` · ${loc}` : ''}
+                        </div>
+                      </div>
+                      {isCancelled ? (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 999,
+                          background: 'var(--dex-gray-300, #c8c8c8)', color: '#fff',
+                          fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                        }}>
+                          {isDe ? 'abgemeldet' : 'cancelled'}
+                        </span>
+                      ) : isMemberLead ? (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 999,
+                          background: 'var(--dex-green, #86bc25)', color: '#fff',
+                          fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                        }}>
+                          Lead
+                        </span>
+                      ) : null}
+                      {/* Trash-Button — nur fuer aktive Nicht-Lead-Nicht-Self-Mitglieder. */}
+                      {!isCancelled && !isMemberLead && !isSelf && (
+                        <button
+                          type="button"
+                          onClick={() => setManageTeamConfirm(m)}
+                          disabled={busy || manageTeamBusyId !== null}
+                          title={isDe ? 'Diese Person aus dem Team abmelden' : 'Remove this person from the team'}
+                          style={{
+                            background: 'var(--dex-red, #d62828)', color: '#fff', border: 'none',
+                            width: 32, height: 32, borderRadius: 6, cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0, opacity: busy ? 0.6 : 1,
+                          }}
+                        >
+                          <Icon iconName="Delete" style={{ fontSize: 14 }} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.45 }}>
+                {isDe
+                  ? <>{'Du als Team-Lead kannst dich nicht selbst über diesen Pfad abmelden — nutze dafür den normalen „Abmelden"-Button auf deiner Event-Karte. Dort übernimmt die App automatisch den Lead-Wechsel an das früheste verbleibende Team-Mitglied.'}</>
+                  : <>{'As team lead you cannot cancel yourself via this dialog — use the normal „Cancel" button on your event card instead. The app then automatically transfers the lead role to the earliest remaining team member.'}</>}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeManageTeamDialog}
+                  disabled={manageTeamBusyId !== null}
+                >
+                  {isDe ? 'Schließen' : 'Close'}
+                </button>
+              </div>
+            </div>
+            {/* Confirm-Modal (zweite Ebene) — sitzt auf demselben z-index-Layer. */}
+            {manageTeamConfirm && (() => {
+              const cm = manageTeamConfirm;
+              const fullName = `${cm.Vorname || ''} ${cm.Nachname || ''}`.trim() || cm.ParticipantEmail;
+              const busy = manageTeamBusyId === cm.Id;
+              return (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  onClick={() => { if (!busy) setManageTeamConfirm(null); }}
+                  style={{
+                    position: 'fixed', inset: 0, zIndex: 2100,
+                    background: 'rgba(0,0,0,0.55)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 16,
+                  }}
+                >
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      background: '#fff', borderRadius: 12, padding: '24px 28px',
+                      maxWidth: 480, width: '100%',
+                      boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
+                      display: 'flex', flexDirection: 'column', gap: 14,
+                    }}
+                  >
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--dex-gray-800)' }}>
+                      {isDe ? 'Person aus dem Team abmelden?' : 'Cancel this team member?'}
+                    </h3>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                      {isDe ? (
+                        <>
+                          <p style={{ marginTop: 0 }}>
+                            <strong>{fullName}</strong> wird vom Event abgemeldet. Die Person bekommt eine Abmelde-Bestätigungs-Mail und (falls Outlook aktiv) eine Termin-Absage.
+                          </p>
+                          <p style={{ marginBottom: 0, color: 'var(--dex-gray-600)' }}>
+                            {'Hinweis: die Person könnte sich auch selbst über „Meine Events" abmelden — du machst das nur stellvertretend.'}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ marginTop: 0 }}>
+                            <strong>{fullName}</strong> will be cancelled from the event. They will receive a cancellation confirmation email and (if Outlook is active) a calendar removal.
+                          </p>
+                          <p style={{ marginBottom: 0, color: 'var(--dex-gray-600)' }}>
+                            {'Note: this person could also cancel themselves via „My Events" — you are doing it on their behalf.'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setManageTeamConfirm(null)}
+                        disabled={busy}
+                      >
+                        {isDe ? 'Abbrechen' : 'Cancel'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => performManageTeamCancel(cm)}
+                        disabled={busy}
+                        style={{ background: 'var(--dex-red, #d62828)', borderColor: 'var(--dex-red, #d62828)' }}
+                      >
+                        {busy
+                          ? (isDe ? 'Wird abgemeldet…' : 'Cancelling…')
+                          : (isDe ? 'Person abmelden' : 'Cancel member')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
       {cascadeDialog && (() => {
         const dlg = cascadeDialog;
         const choose = (c: 'cascade' | 'parent-only' | 'abort'): void => dlg.resolve(c);

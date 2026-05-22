@@ -12,7 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
 
@@ -169,6 +169,16 @@ interface EventContextType {
    *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
+  /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
+   *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
+   *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
+   *  Team-Post-Step wie beim Self-Cancel (Info-Mails an die uebrigen
+   *  Mitglieder; Auto-Promote nicht relevant, weil der Lead sich nicht
+   *  selbst loescht). */
+  cancelTeamMember: (
+    eventId: string,
+    memberRegistration: SPRegistration
+  ) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -291,6 +301,21 @@ export interface CreateEventInput {
    *  der wiederverwendeten Subsite (i.d.R. "Teilnehmer"). Muss zusammen mit
    *  `existingSubsiteUrl` gesetzt sein, damit der Reuse-Pfad greift. */
   existingRegistrationListName?: string;
+  /** v11.87: Optionaler Progress-Callback. Wird zu Beginn jeder Teil-
+   *  Operation aufgerufen, sodass die UI den Fortschrittsbalken und die
+   *  Unter-Caption sichtbar bewegen kann. Stages decken die langsamen
+   *  SP-Operationen ab (Subsite-Create, Teilnehmer-Liste, Permissions,
+   *  Item-Insert). */
+  onProgress?: (stage:
+    | 'start'
+    | 'subsite-creating'
+    | 'subsite-done'
+    | 'permissions'
+    | 'list-creating'
+    | 'list-done'
+    | 'item-insert'
+    | 'done'
+  ) => void;
 }
 
 export const EventContext = React.createContext<EventContextType | undefined>(undefined);
@@ -1189,17 +1214,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Pro erfolgreiche Anmeldung: Bestaetigungs-Mail + Outlook-Termin queuen.
     const lang = event.emailLanguage || 'EN';
     const isDe = lang.toUpperCase() === 'DE';
-    const teamNoteHtml = isDe
-      ? `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
-        + `<strong>Du wurdest als Teil eines Teams angemeldet.</strong><br>`
-        + `Diese Anmeldung wurde von <strong>${currentUserName}</strong> für dich und das gesamte Team durchgeführt${teamName ? ` (Team „${teamName}")` : ''}. `
-        + `Falls du dieser Anmeldung NICHT zugestimmt hast, melde dich bitte beim Organizer — du kannst dich auch über „Meine Events" eigenständig abmelden.`
-        + `</div>`
-      : `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
-        + `<strong>You were registered as part of a team.</strong><br>`
-        + `This registration was performed by <strong>${currentUserName}</strong> on behalf of you and the whole team${teamName ? ` (Team „${teamName}")` : ''}. `
-        + `If you did not consent to this registration, please reach out to the organizer — you can also cancel it yourself from „My Events".`
-        + `</div>`;
+    // v11.87: Team-Info-Block — Mitglieder-Liste, Belegung, Cancel-Hinweis.
+    // Baue die Mitglieder-Liste aus den erfolgreichen Inserts auf — Reihenfolge
+    // entspricht dem Insert-Pfad (Lead zuerst, dann Members in der Eingabe-
+    // Reihenfolge). TeamSize aus dem Event-Config, Fallback auf die Anzahl
+    // der tatsächlich angemeldeten Personen.
+    const successResults = results.filter(r => r.ok);
+    const teamMembersForBlock = successResults.map((r, i) => ({
+      firstName: r.firstName,
+      lastName: r.lastName,
+      isLead: i === 0,
+    }));
+    const teamSizeForBlock = (typeof event.teamSize === 'number' && event.teamSize > 0)
+      ? event.teamSize
+      : successResults.length;
 
     for (const r of results) {
       if (!r.ok) continue;
@@ -1221,8 +1249,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           ? waitlistEmail(r.firstName, event.title, 0)
           : registrationEmail(r.firstName, event.title);
       }
-      // Team-Hinweis in den Body injecten — direkt nach <body>.
-      const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamNoteHtml}`);
+      // v11.87: Team-Info-Block + Consent-Hinweis nach <body> injecten.
+      const teamInfoHtml = teamInfoBlockHtml({
+        teamName,
+        members: teamMembersForBlock,
+        teamSize: teamSizeForBlock,
+        isDe,
+        registeredByName: currentUserName,
+        consentRequired: true,
+      });
+      const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
       if (!event.disableEmails) {
         const fullName = `${r.firstName} ${r.lastName}`.trim();
         eventService.queueEmail(
@@ -1375,18 +1411,32 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         ? waitlistEmail(parsed.firstName, event.title, 0)
         : registrationEmail(parsed.firstName, event.title);
     }
-    const teamNoteHtml = isDe
-      ? `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
-        + `<strong>Du wurdest als Teil eines Teams angemeldet.</strong><br>`
-        + `Der Team-Lead <strong>${currentUserName}</strong> hat dich nachtraeglich zum Team${teamName ? ` „${teamName}"` : ''} hinzugefuegt. `
-        + `Falls du dieser Anmeldung NICHT zugestimmt hast, kannst du dich ueber „Meine Events" eigenstaendig abmelden.`
-        + `</div>`
-      : `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
-        + `<strong>You were added to a team.</strong><br>`
-        + `Team lead <strong>${currentUserName}</strong> added you to the team${teamName ? ` „${teamName}"` : ''} after the fact. `
-        + `If you did not consent, you can cancel yourself via „My Events".`
-        + `</div>`;
-    const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamNoteHtml}`);
+    // v11.87: Team-Info-Block mit allen aktiven Mitgliedern inkl. dem neuen.
+    // activeMembers wurde vor dem Insert geladen — wir hängen den frisch
+    // angemeldeten User vorne dran als Nicht-Lead an. Den Lead identifizieren
+    // wir per TeamLead-Flag.
+    const allActiveForBlock: Array<{ firstName: string; lastName: string; isLead: boolean }> = [
+      ...activeMembers.map(m => ({
+        firstName: m.Vorname || '',
+        lastName: m.Nachname || '',
+        isLead: !!m.TeamLead,
+      })),
+      { firstName: parsed.firstName, lastName: parsed.lastName, isLead: false },
+    ];
+    // Lead zuerst sortieren, danach in Insert-Reihenfolge belassen.
+    allActiveForBlock.sort((a, b) => (a.isLead === b.isLead) ? 0 : (a.isLead ? -1 : 1));
+    const teamSizeForBlock = (typeof event.teamSize === 'number' && event.teamSize > 0)
+      ? event.teamSize
+      : allActiveForBlock.length;
+    const teamInfoHtml = teamInfoBlockHtml({
+      teamName,
+      members: allActiveForBlock,
+      teamSize: teamSizeForBlock,
+      isDe,
+      registeredByName: currentUserName,
+      consentRequired: true,
+    });
+    const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
     if (!event.disableEmails) {
       const fullName = `${parsed.firstName} ${parsed.lastName}`.trim() || member.email;
       eventService.queueEmail(
@@ -1863,6 +1913,124 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v11.86: Team-Lead meldet stellvertretend ein Team-Mitglied vom Event
+   * ab — ausgeloest aus dem „Team verwalten"-Modal in MyEvents. Audit
+   * wird auf den eingeloggten Lead geschrieben (CancelledByName/Email),
+   * danach laeuft derselbe Team-Post-Step wie beim Self-Cancel:
+   * Sitzplatz-Reconcile, IDReorder-Queue, Outlook-Ausladung,
+   * Abmelde-Bestaetigung an die abgemeldete Person und Info-Mails an die
+   * uebrigen Team-Mitglieder. Der Lead darf sich ueber diesen Pfad
+   * NICHT selbst loeschen — das uebernimmt der normale Self-Cancel ueber
+   * `cancelRegistration` (inkl. Auto-Promote des fruehesten Members).
+   */
+  async function cancelTeamMember(
+    eventId: string,
+    memberRegistration: SPRegistration
+  ): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !memberRegistration?.Id) return false;
+    if (!memberRegistration.TeamId) return false;
+    // Self-Schutz: der Lead loescht sich nicht ueber diesen Pfad — sein
+    // eigener Cancel laeuft via cancelRegistration mit Auto-Promote.
+    if ((memberRegistration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
+      console.warn('[DEX] cancelTeamMember: Lead cannot cancel itself via this path');
+      return false;
+    }
+    const wasActive = memberRegistration.Status === 'Angemeldet';
+    const teamId = memberRegistration.TeamId;
+    const teamName = memberRegistration.TeamName || '';
+    // Audit = der eingeloggte Lead (stellvertretender Cancel).
+    const ok = await eventService.cancelRegistration(
+      subsiteUrl, memberRegistration.Id, currentUserName, currentUserEmail
+    );
+    if (!ok) return false;
+    const event = events.find(e => e.id === eventId);
+    if (wasActive) {
+      eventService.bumpKpiParticipants(-1).catch(() => { /* */ });
+    }
+    eventService.writeChangeLog({
+      action: 'ParticipantCancelled',
+      targetType: 'Participant',
+      targetId: memberRegistration.ParticipantEmail,
+      targetName: `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
+      eventId: eventId,
+      eventTitle: event?.title || '',
+      details: { participantId: memberRegistration.Id, asActor: 'teamLead', actorEmail: currentUserEmail },
+    }).catch(() => { /* */ });
+    if (event) {
+      // Dual-Write: DEX_Participants aktualisieren
+      if (event.eventNumber) {
+        try {
+          await eventService.removeParticipantEvent(memberRegistration.ParticipantEmail, event.eventNumber);
+        } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
+      }
+      // Abmelde-Mail an die abgemeldete Person.
+      if (!event.disableEmails) {
+        try {
+          const lang = event.emailLanguage || 'EN';
+          const cancelledFirst = memberRegistration.Vorname
+            || (memberRegistration.ParticipantName || '').split(/[ ,]+/)[0]
+            || '';
+          const cancelVars = {
+            Name: cancelledFirst,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let emailData: { subject: string; body: string };
+          const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+          if (spTpl) {
+            emailData = buildEmailFromTemplate(spTpl, cancelVars);
+          } else {
+            emailData = cancellationEmail(cancelledFirst, event.title);
+          }
+          let bcc: string | undefined;
+          const mode = event.notifyOrgCancelMode || 'never';
+          if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
+            const orgEmails = (event.organizerEmails || []).filter(Boolean);
+            if (orgEmails.length > 0) bcc = orgEmails.join(';');
+          }
+          await eventService.queueEmail(
+            emailData.subject,
+            memberRegistration.ParticipantEmail,
+            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
+            emailData.body,
+            'Abmeldung', event.title, eventId, undefined, bcc
+          );
+        } catch (err) { console.warn('[DEX] queueEmail for team-lead cancel failed:', err); }
+      }
+      // Outlook-Ausladung.
+      if (!event.disableOutlook) {
+        try {
+          await eventService.queueOutlookEvent(
+            memberRegistration.ParticipantEmail, eventId, event.title, 'Ausladen'
+          );
+        } catch (err) { console.warn('[DEX] queueOutlookEvent (team-lead cancel) failed:', err); }
+      }
+      // ID-Reorder + Sitzplatz-Sync.
+      if (subsiteUrl) {
+        try {
+          await eventService.queueIDReorder(
+            eventId, event.eventNumber || 0, subsiteUrl, event.title
+          );
+        } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
+        try {
+          const isSplit = typeof event.durchstarterCapacity === 'number'
+            && typeof event.funstarterCapacity === 'number'
+            && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+          await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+        } catch { /* best-effort */ }
+      }
+      // Info-Mails an die uebrigen Team-Mitglieder. Wir loeschen NICHT
+      // den Lead, daher `wasTeamLead = false` → kein Auto-Promote.
+      await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, false, memberRegistration)
+        .catch(err => { console.warn('[DEX] team-cancel post-step (lead-initiated) failed:', err); });
+    }
+    await loadEvents();
+    return true;
+  }
+
+  /**
    * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
    * Routine:
    *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
@@ -2336,6 +2504,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         decideTeamJoinRequest,
         listOpenTeamsForEvent,
         cancelRegistration,
+        cancelTeamMember,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,

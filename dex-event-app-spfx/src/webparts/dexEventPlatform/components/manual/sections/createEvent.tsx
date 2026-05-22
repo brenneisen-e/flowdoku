@@ -39,9 +39,16 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
         perspective: 'organizer',
         intro: (
           <>
-            {isDe
-              ? 'Die Event-Erstellung führt dich durch sieben Schritte. Nur Pflichtfelder (mit *) sind zum Weiterklicken erforderlich — den Rest kannst du jederzeit später ergänzen. Jeder Schritt unten hat unter "Vorschau der echten App" einen Button, der dir den jeweiligen Wizard-Step direkt öffnet.'
-              : 'Event creation walks you through seven stages. Only required fields (marked *) need to be filled before advancing — everything else can be added later. Each step below has a "Real app preview" button that opens the matching wizard step.'}
+            <p style={{ margin: '0 0 8px 0' }}>
+              {isDe
+                ? 'Die Event-Erstellung führt dich durch sieben Schritte. Nur Pflichtfelder (mit *) sind zum Weiterklicken erforderlich — den Rest kannst du jederzeit später ergänzen. Jeder Schritt unten hat unter "Vorschau der echten App" einen Button, der dir den jeweiligen Wizard-Step direkt öffnet.'
+                : 'Event creation walks you through seven stages. Only required fields (marked *) need to be filled before advancing — everything else can be added later. Each step below has a "Real app preview" button that opens the matching wizard step.'}
+            </p>
+            <p style={{ margin: 0 }}>
+              {isDe
+                ? 'Tipp — Demo-Daten laden (v11.88): Auf Schritt 1 (Grundlagen) findest du oben rechts den Button „Demo". Ein Klick öffnet ein Auswahl-Modal mit vier Vorlagen: (1) „Standard" — einfaches Meeting / Lunch ohne Gruppen und ohne Sub-Events; (2) „Mit Gruppen" — Event mit zwei Teilnehmer-Gruppen (z.B. Vormittag / Nachmittag) und gemeinsamer Warteliste; (3) „Mit Sub-Event" — Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung; (4) „Mit Sub-Event + Team" — Quizabend mit Team-Anmeldung (Teams à 4 Personen) plus Sub-Event für Helfer. Klick auf eine Karte überschreibt deine aktuellen Eingaben und springt zurück auf Schritt 1.'
+                : 'Tip — load demo data (v11.88): On step 1 (Basics) you\'ll find a "Demo" button in the top-right. Clicking it opens a picker modal with four templates: (1) "Standard" — simple meeting / lunch without groups or sub-events; (2) "With groups" — event with two attendee groups (e.g. morning / afternoon) and a shared waitlist; (3) "With sub-event" — main conference + evening dinner as a separate sub-event with its own registration; (4) "With sub-event + team" — quiz night with team registration (teams of 4) plus a sub-event for helpers. Clicking a card overrides your current input and jumps back to step 1.'}
+            </p>
           </>
         ),
         steps: [

@@ -354,6 +354,11 @@ export interface SPRegistration {
   TeamId?: string;
   TeamLead?: boolean;
   TeamName?: string;
+  /** v11.86: Standort des Teilnehmers (aus Anmeldeformular ableiten oder vom
+   *  Profil uebernommen). Wird im Team-Badge in „Meine Events" zur
+   *  Mitglieder-Identifikation angezeigt. Auf der SP-Liste seit jeher
+   *  vorhanden — hier nur als TypeScript-Property nachgezogen. */
+  Location?: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
 
@@ -2853,8 +2858,37 @@ export class EventService {
      *  dem neuen Item und legt den Outlook-Termin an. */
     existingSubsiteUrl?: string;
     existingRegistrationListName?: string;
+    /** v11.87: Optionaler Progress-Callback. Wird zu Beginn jeder Teil-
+     *  Operation aufgerufen — die UI kann darauf den Fortschrittsbalken
+     *  und die Unter-Caption sichtbar bewegen, statt minutenlang auf
+     *  „Event wird vorbereitet..." stehen zu bleiben. Stages decken
+     *  die langsamen SP-Operationen ab (Subsite-Create, Listen-Create,
+     *  Permissions, Counter, Views). */
+    onProgress?: (stage:
+      | 'start'
+      | 'subsite-creating'
+      | 'subsite-done'
+      | 'permissions'
+      | 'list-creating'
+      | 'list-done'
+      | 'item-insert'
+      | 'done'
+    ) => void;
   }): Promise<number | null> {
+    const reportProgress = (stage:
+      | 'start'
+      | 'subsite-creating'
+      | 'subsite-done'
+      | 'permissions'
+      | 'list-creating'
+      | 'list-done'
+      | 'item-insert'
+      | 'done'
+    ): void => {
+      try { event.onProgress?.(stage); } catch { /* */ }
+    };
     try {
+      reportProgress('start');
       // 0. Naechste EventNumber ermitteln
       let nextEventNumber = 1;
       try {
@@ -2901,20 +2935,25 @@ export class EventService {
         enrichedCustomFields = event.customFields.map(cf => ({ ...cf }));
       } else {
         // 1. Subsite fuer das Event erstellen
+        reportProgress('subsite-creating');
         const createdSubsite = await this.createEventSubsite(event.title, event.description);
         if (!createdSubsite) {
           console.error('[DEX] Subsite konnte nicht erstellt werden');
           throw new Error('Subsite konnte nicht erstellt werden. Fehlende Berechtigung? Bitte wende dich an einen Site-Administrator.');
         }
         subsiteUrl = createdSubsite;
+        reportProgress('subsite-done');
 
         // 2. Subsite-Berechtigungen: Members der Parent-Site auf der Subsite berechtigen.
         // v9.18: Co-Organizer-Emails aus emailTemplateOverrides._coOrganizers extrahieren
         // und mit dem Hauptorganizer zusammen Full Control erteilen.
+        reportProgress('permissions');
         await this.setSubsitePermissions(subsiteUrl, allOrgEmails);
 
         // 3. Teilnehmerliste auf der Subsite erstellen
+        reportProgress('list-creating');
         const fieldMap: Record<string, string> = await this.createRegistrationList(subsiteUrl, event.customFields, allOrgEmails);
+        reportProgress('list-done');
 
         // Custom Fields mit SP InternalName anreichern
         enrichedCustomFields = event.customFields.map(cf => ({
@@ -3004,6 +3043,7 @@ export class EventService {
         'SubsiteUrl': subsiteUrl,
       };
 
+      reportProgress('item-insert');
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items`,
         payload
@@ -3011,6 +3051,7 @@ export class EventService {
 
       if (!response.ok) return null;
       const result = await response.json();
+      reportProgress('done');
       return result.d?.Id || result.Id;
     } catch (err) {
       if (err instanceof Error) throw err;
