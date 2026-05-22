@@ -920,18 +920,26 @@ export default function RegistrationPage(): React.ReactElement {
             boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
           }}>
-            <span
+            {/* v11.79: Border-Ring-Spinner (v11.70) durch indeterminierte
+                Progress-Bar ersetzt — siehe MyEventsPage. Der eigentliche
+                Submit-Progress (0-100%) bleibt darunter sichtbar; diese
+                Top-Bar liefert den endlosen "läuft gerade etwas"-Pulse. */}
+            <div
               aria-hidden="true"
               style={{
-                // v11.70: display + box-sizing fix, siehe MyEventsPage.
-                display: 'inline-block',
-                boxSizing: 'border-box',
-                width: 48, height: 48, borderRadius: '50%',
-                border: '4px solid #e5e5e5',
-                borderTopColor: '#86bc25',
-                animation: 'dex-spin 0.9s linear infinite',
+                width: '100%', height: 6, borderRadius: 3,
+                background: '#e5e5e5',
+                overflow: 'hidden', position: 'relative',
               }}
-            />
+            >
+              <div style={{
+                position: 'absolute', top: 0, bottom: 0,
+                width: '40%',
+                background: '#86bc25',
+                borderRadius: 3,
+                animation: 'dexProgressSlide 1.2s ease-in-out infinite',
+              }} />
+            </div>
             <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
               {locale === 'de' ? 'Anmeldung läuft …' : 'Submitting registration …'}
             </div>
@@ -950,7 +958,7 @@ export default function RegistrationPage(): React.ReactElement {
               {submitProgress}%
             </div>
           </div>
-          <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
         </div>
       )}
       <div className="registration-layout">

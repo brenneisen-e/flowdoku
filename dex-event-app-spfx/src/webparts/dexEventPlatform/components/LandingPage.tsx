@@ -389,7 +389,10 @@ function SkeletonDots(): React.ReactElement {
  *  ersetzt (requestAnimationFrame + AbortFlag). */
 function AnimatedCounter(props: { value: number; durationMs?: number }): React.ReactElement {
   const target = Math.max(0, Math.floor(props.value || 0));
-  const duration = props.durationMs ?? 1600;
+  // v11.79: Default-Dauer von 1600 ms → 600 ms reduziert. Seit der App-Boot
+  // unter ~1.6 s liegt, wirkte das laengere Count-Up-Tempo traege; die Zahl
+  // tickt jetzt knackiger hoch ohne hektisch zu wirken.
+  const duration = props.durationMs ?? 600;
   const [shown, setShown] = React.useState<number>(0);
   const startRef = React.useRef<number>(0);
   const fromRef = React.useRef<number>(0);
