@@ -398,8 +398,10 @@ function AppContent(): React.ReactElement {
               </div>
               {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader mit
                   Caption-Zeile dahinter — "So far used for…" als kleiner
-                  Stolz-Marker, was die App bisher abgedeckt hat. */}
-              <div style={{ width: 'min(320px, 80%)', marginTop: 18 }}>
+                  Stolz-Marker, was die App bisher abgedeckt hat.
+                  v12.2: Container breiter (520 statt 320), KpiBox-
+                  Padding + Schriftgrößen größer für mehr Präsenz. */}
+              <div style={{ width: 'min(520px, 90%)', marginTop: 24 }}>
                 <div style={{
                   fontSize: '0.78rem', color: 'var(--dex-gray-500)',
                   textAlign: 'center', marginBottom: 8, fontStyle: 'italic',
