@@ -392,7 +392,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 - Schritt 1 = **Grundlagen** (Entwurf, Title, Datum, Beschreibung, Bild, Organizer, Test-Team, Check-In Team)
 - Schritt 2 = **Ort & Programm** (Veranstaltungsort, Adresse, Agenda, Transferzeiten)
 - Schritt 3 = **Kapazität & Sichtbarkeit** (Standortfilter, Mailverteiler, Filterverknüpfung, Deadlines, Teilnehmerzahl & Warteliste)
-- Schritt 4 = **Team-Anmeldung** (v11.80 — Toggle „Team-Anmeldung erlauben", Team-Größe, Toggle „Team-Namen abfragen". Konfiguration wird persistiert; die tatsächliche Multi-Person-Anmelde-Logik folgt mit v11.81+.)
+- Schritt 4 = **Team-Anmeldung** (v11.80 + erweitert v11.81 — Basis-Settings: Toggle „Team-Anmeldung erlauben", Team-Größe, Toggle „Team-Namen abfragen". Beitritts-Modus (v11.81, Sub-Box): Radio „Nur komplette Teams" vs. „Auch Teil-Teams erlaubt" (Default: komplette Teams), Checkbox „Unvollständige Teams öffentlich für Beitritt sichtbar" (Default aus — wenn aktiv sehen andere Teilnehmer offene Slots als „Team mit X freien Plätzen" ohne Namen der bereits angemeldeten Mitglieder), Checkbox „Beitritt erfordert Bestätigung durch Team-Kapitän" (Default aus, nur aktivierbar wenn vorige Option an — wenn aktiv landen Beitritte in einer Approve-Queue beim Team-Lead). Konfiguration wird persistiert; die tatsächliche Multi-Person-Anmelde-Logik folgt mit v11.82+. Persistierte SP-Spalten: `TeamRegistrationEnabled`, `TeamSize`, `AskTeamName`, `TeamPartialAllowed`, `TeamOpenSlotsVisible`, `TeamJoinRequiresApproval`.)
 - Schritt 5 = **Felder** (Template, eigene Abfragen, ab v11.80 Toggle „Anrede abfragen?")
 - Schritt 6 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
 - Schritt 7 = **Dokumente** (PDFs für Teilnehmer)

@@ -176,7 +176,7 @@ export interface DeloitteEvent {
   askSalutation?: boolean;
   /** v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
    *  Default false. Die tatsächliche Multi-Person-Anmelde-Logik folgt
-   *  in v11.81+; aktuell wird die Konfiguration nur persistiert. */
+   *  mit v11.82+; aktuell wird die Konfiguration nur persistiert. */
   teamRegistrationEnabled?: boolean;
   /** v11.80: Maximale Teamgröße (Default 0 = nicht gesetzt; UI-Default
    *  beim Aktivieren = 4). Nur relevant wenn teamRegistrationEnabled. */
@@ -184,6 +184,20 @@ export interface DeloitteEvent {
   /** v11.80: Wenn true, fragt das Anmeldeformular bei einer Team-
    *  Anmeldung zusaetzlich nach einem Team-Namen (frei waehlbar). */
   askTeamName?: boolean;
+  /** v11.81: Beitritts-Modus. Wenn true, kann der Team-Lead unvollständige
+   *  Teams anmelden (z.B. 2 von 4 Slots). Wenn false (Default), müssen
+   *  immer komplette Teams angemeldet werden. */
+  teamPartialAllowed?: boolean;
+  /** v11.81: Wenn true, sehen andere Teilnehmer offene Slots in der
+   *  Registrierungsseite als „Team mit X freien Plätzen" und können dem
+   *  Team beitreten. Die Namen der bereits angemeldeten Mitglieder bleiben
+   *  privat. Default false. */
+  teamOpenSlotsVisible?: boolean;
+  /** v11.81: Wenn true, geht jeder Beitritt zu einem offenen Team erst in
+   *  eine Approve-Queue — der Team-Lead bekommt eine Mail mit Bestätigen/
+   *  Ablehnen-Buttons. Default false (Beitritt sofort gültig). Nur sinnvoll
+   *  wenn teamOpenSlotsVisible aktiv ist. */
+  teamJoinRequiresApproval?: boolean;
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

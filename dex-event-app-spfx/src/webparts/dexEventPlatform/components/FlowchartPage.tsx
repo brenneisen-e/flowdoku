@@ -594,13 +594,13 @@ function EventCreationFlow(): React.ReactElement {
       <FlowNode
         type="start"
         label="Organizer/Admin erstellt Event (8 Schritte: Grundlagen → Zeit&Ort → Kapazität → Team-Anmeldung → Felder → Kommunikation → Dokumente → Quiz)"
-        details="v11.80: Zwischen Schritt 3 (Kapazität) und dem bisherigen Schritt 4 (Felder) ist ein neuer Schritt 4 'Team-Anmeldung' eingezogen — Toggle 'Team-Anmeldung erlauben' (Default aus), Team-Größe (Default 4, Min 2, Max 20), Toggle 'Team-Name abfragen' (Default aus). Aktuell wird nur die Konfiguration persistiert; die tatsächliche Multi-Person-Anmelde-Logik (Multi-Person-Form, automatische Mails an Mitglieder, Outlook-Einladungen, Slot-Beitritt) folgt mit v11.81+."
+        details="v11.80 + erweitert v11.81: Zwischen Schritt 3 (Kapazität) und dem bisherigen Schritt 4 (Felder) ist ein neuer Schritt 4 'Team-Anmeldung' eingezogen — Basis-Settings: Toggle 'Team-Anmeldung erlauben' (Default aus), Team-Größe (Default 4, Min 2, Max 20), Toggle 'Team-Name abfragen' (Default aus). Beitritts-Modus (v11.81): Radio 'Nur komplette Teams' vs. 'Auch Teil-Teams erlaubt', Checkbox 'Unvollständige Teams öffentlich sichtbar', Checkbox 'Beitritt erfordert Lead-Bestätigung'. Aktuell wird nur die Konfiguration persistiert; die tatsächliche Multi-Person-Anmelde-Logik (Multi-Person-Form, automatische Mails an Mitglieder, Outlook-Einladungen, Slot-Beitritt, Approve-Queue) folgt mit v11.82+."
       />
       <Arrow />
       <FlowNode
         type="process"
-        label="Schritt 4 — Team-Anmeldung konfigurieren (v11.80)"
-        details="TeamRegistrationEnabled, TeamSize und AskTeamName werden in DEX_Events persistiert. Der neue Schritt rendert direkt nach 'Kapazität & Sichtbarkeit' und vor 'Felder'. Die alten Steps Felder/Kommunikation/Dokumente/Fun-Zone rücken in der UI je um eins nach hinten — alle Step-Headlines, alle Tooltip-Verweise und das Handbuch sind entsprechend renumbered."
+        label="Schritt 4 — Team-Anmeldung konfigurieren (v11.80 + v11.81)"
+        details="TeamRegistrationEnabled, TeamSize, AskTeamName (v11.80) sowie TeamPartialAllowed, TeamOpenSlotsVisible, TeamJoinRequiresApproval (v11.81) werden in DEX_Events persistiert. Die UI gruppiert die sechs Settings in zwei Sub-Boxen: Basis (Toggle, Größe, Team-Name) + Beitritts-Modus (Radio komplett/teilweise + Sichtbarkeit + Approval). Der gesamte Schritt rendert direkt nach 'Kapazität & Sichtbarkeit' und vor 'Felder'. Die alten Steps Felder/Kommunikation/Dokumente/Fun-Zone rücken in der UI je um eins nach hinten — alle Step-Headlines, alle Tooltip-Verweise und das Handbuch sind entsprechend renumbered."
       />
       <Arrow />
       <FlowNode type="process" label="Nächste EventNumber ermitteln (max + 1)" />

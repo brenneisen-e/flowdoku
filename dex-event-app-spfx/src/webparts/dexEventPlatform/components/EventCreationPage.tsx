@@ -1097,6 +1097,18 @@ export default function EventCreationPage(): React.ReactElement {
   const [askTeamName, setAskTeamName] = React.useState<boolean>(
     !!editEvent?.askTeamName
   );
+  // v11.81: Erweiterte Team-Konfiguration — Beitritts-Modus, Sichtbarkeit
+  // offener Slots, Lead-Approval. Die tatsächliche Team-Anmelde-Logik
+  // (Multi-Person-Form, Mails, Outlook) folgt mit v11.82+.
+  const [teamPartialAllowed, setTeamPartialAllowed] = React.useState<boolean>(
+    !!editEvent?.teamPartialAllowed
+  );
+  const [teamOpenSlotsVisible, setTeamOpenSlotsVisible] = React.useState<boolean>(
+    !!editEvent?.teamOpenSlotsVisible
+  );
+  const [teamJoinRequiresApproval, setTeamJoinRequiresApproval] = React.useState<boolean>(
+    !!editEvent?.teamJoinRequiresApproval
+  );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
     editEvent?.durchstarterStartblock || ''
@@ -2420,6 +2432,10 @@ export default function EventCreationPage(): React.ReactElement {
       updates['TeamRegistrationEnabled'] = !!teamRegistrationEnabled;
       updates['TeamSize'] = teamRegistrationEnabled && teamSize > 0 ? teamSize : null;
       updates['AskTeamName'] = !!askTeamName;
+      // v11.81: Erweiterte Team-Konfiguration mit-persistieren.
+      updates['TeamPartialAllowed'] = !!(teamRegistrationEnabled && teamPartialAllowed);
+      updates['TeamOpenSlotsVisible'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible);
+      updates['TeamJoinRequiresApproval'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval);
 
       // v11.22: feinere Progress-Stufen waehrend Edit-Save. Vorher
       // sprang es bei 50% sehr lange auf der Stelle, weil zwischen
@@ -2805,6 +2821,10 @@ export default function EventCreationPage(): React.ReactElement {
         teamRegistrationEnabled: !!teamRegistrationEnabled,
         teamSize: teamRegistrationEnabled && teamSize > 0 ? teamSize : undefined,
         askTeamName: !!askTeamName,
+        // v11.81: Erweiterte Team-Konfiguration mit-durchreichen.
+        teamPartialAllowed: !!(teamRegistrationEnabled && teamPartialAllowed),
+        teamOpenSlotsVisible: !!(teamRegistrationEnabled && teamOpenSlotsVisible),
+        teamJoinRequiresApproval: !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval),
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -6694,7 +6714,131 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              {/* Hinweis-Box: tatsächliche Logik folgt mit v11.81+ */}
+              {/* v11.81: Beitritts-Modus — Sub-Box mit Modus + Sichtbarkeit + Approval */}
+              <div style={{
+                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
+                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+                opacity: teamRegistrationEnabled ? 1 : 0.55,
+                transition: 'opacity 0.2s ease',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
+                  {isDe ? 'Beitritts-Modus' : 'Join mode'}
+                </div>
+
+                {/* Radio-Group: komplette vs. Teil-Teams */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                    <input
+                      type="radio"
+                      name="teamPartialMode"
+                      checked={!teamPartialAllowed}
+                      disabled={!teamRegistrationEnabled}
+                      onChange={() => setTeamPartialAllowed(false)}
+                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Nur komplette Teams' : 'Only complete teams'}</strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Der Team-Lead muss alle N Mitglieder beim Anmelden eintragen. Halbe Teams sind nicht möglich.'
+                          : 'The team lead must enter all N members during registration. Partial teams are not possible.'}
+                      </span>
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                    <input
+                      type="radio"
+                      name="teamPartialMode"
+                      checked={teamPartialAllowed}
+                      disabled={!teamRegistrationEnabled}
+                      onChange={() => setTeamPartialAllowed(true)}
+                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Auch Teil-Teams erlaubt' : 'Partial teams allowed'}</strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Der Team-Lead kann z.B. 2 von 4 Mitgliedern anmelden, die restlichen 2 Slots bleiben offen — andere Personen können später beitreten (siehe nächste Option).'
+                          : 'The team lead can register e.g. 2 of 4 members; the remaining 2 slots stay open — others can join later (see next option).'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {/* Checkbox: Sichtbarkeit offener Slots */}
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                  <input
+                    type="checkbox"
+                    checked={teamOpenSlotsVisible}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => {
+                      const v = e.target.checked;
+                      setTeamOpenSlotsVisible(v);
+                      if (!v) setTeamJoinRequiresApproval(false);
+                    }}
+                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Unvollständige Teams öffentlich für Beitritt sichtbar' : 'Open teams publicly visible for joining'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob andere Teilnehmer Teams mit offenen Slots in der Anmeldeseite sehen und beitreten können.<br /><br />
+                          <strong>Anzeige in der App:</strong> auf der Anmeldeseite erscheint eine Liste &bdquo;Teams mit freien Plätzen&ldquo; — pro Team mit der Anzahl freier Slots und (falls aktiviert) dem Team-Namen, aber <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wer noch in keinem Team ist, kann mit einem Klick einem offenen Slot beitreten — entweder sofort gültig oder erst nach Bestätigung durch den Team-Lead (siehe nächste Option).
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether other attendees see and can join teams with open slots on the registration page.<br /><br />
+                          <strong>Where you see it:</strong> the registration page shows a list &ldquo;teams with free seats&rdquo; — per team with the count of free slots and (if enabled) the team name, but <strong>without</strong> the names of already-registered members (privacy).<br /><br />
+                          <strong>For attendees:</strong> anyone not yet in a team can join an open slot with one click — either immediately or only after lead approval (see next option).
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? <>Wenn aktiv: andere Teilnehmer sehen offene Slots in der Registrierungsseite als &bdquo;Team mit X freien Plätzen&ldquo; — <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).</>
+                        : <>When active: other attendees see open slots on the registration page as &ldquo;team with X free seats&rdquo; — <strong>without</strong> the names of already-registered members (privacy).</>}
+                    </span>
+                  </span>
+                </label>
+
+                {/* Checkbox: Approval-Pflicht durch Team-Lead */}
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed',
+                  opacity: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 1 : 0.55,
+                  transition: 'opacity 0.2s ease',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={teamJoinRequiresApproval}
+                    disabled={!teamRegistrationEnabled || !teamOpenSlotsVisible}
+                    onChange={e => setTeamJoinRequiresApproval(e.target.checked)}
+                    style={{ marginTop: 3, cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Beitritt erfordert Bestätigung durch Team-Kapitän' : 'Joining requires team captain approval'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob jede Beitrittsanfrage zu einem offenen Team-Slot erst vom Team-Lead bestätigt werden muss.<br /><br />
+                          <strong>Anzeige in der App:</strong> der Team-Lead bekommt eine Mail mit <strong>&bdquo;Bestätigen&ldquo;</strong>- und <strong>&bdquo;Ablehnen&ldquo;</strong>-Buttons pro Anfrage. Bis zur Bestätigung steht der Beitretende in einer Approve-Queue und ist noch nicht offiziell im Team.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, wird der Beitritt erst nach Bestätigung gültig — und der Beitretende bekommt erst dann seine Bestätigungsmail und (falls Outlook aktiv) den Kalendertermin. Wenn aus: Beitritt ist sofort gültig.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether every join request to an open team slot has to be confirmed by the team lead first.<br /><br />
+                          <strong>Where you see it:</strong> the team lead receives an email with <strong>&ldquo;Confirm&rdquo;</strong> and <strong>&ldquo;Reject&rdquo;</strong> buttons per request. Until confirmed, the joiner sits in an approve queue and is not yet officially in the team.<br /><br />
+                          <strong>For attendees:</strong> if active, the join only becomes valid after confirmation — and the joiner receives their confirmation mail and (if Outlook is enabled) the calendar invite only at that point. If off: join is immediately valid.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Wenn aktiv: jeder Beitritt zu einem offenen Team geht erst in eine Approve-Queue. Der Team-Lead bekommt eine Mail mit „Bestätigen / Ablehnen"-Buttons. Erst nach Bestätigung ist die Person im Team. Wenn aus: Beitritt ist sofort gültig.'
+                        : 'When active: every join to an open team enters an approve queue. The team lead gets an email with "Confirm / Reject" buttons. Only after confirmation is the person in the team. When off: joins are immediately valid.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Hinweis-Box: tatsächliche Logik folgt mit v11.82+ */}
               <div style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10,
                 padding: '12px 14px', marginBottom: 16,
@@ -6707,8 +6851,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
                 <div>
                   {isDe
-                    ? <><strong>Hinweis:</strong> Die tatsächliche Team-Anmelde-Logik (Multi-Person-Form, automatische Mails, Outlook-Einladungen, Slot-Beitritt) folgt mit dem nächsten Release. Aktuell wird diese Konfiguration nur gespeichert — die Auswirkung auf die Anmeldeseite kommt mit <strong>v11.81+</strong>.</>
-                    : <><strong>Note:</strong> The actual team registration logic (multi-person form, automatic emails, Outlook invites, slot join) will follow with the next release. Currently this configuration is only stored — the impact on the registration page comes with <strong>v11.81+</strong>.</>}
+                    ? <><strong>Hinweis:</strong> Die tatsächliche Team-Anmelde-Logik (Multi-Person-Form, automatische Mails, Outlook-Einladungen, Slot-Beitritt) folgt mit dem nächsten Release. Aktuell wird diese Konfiguration nur gespeichert — die Auswirkung auf die Anmeldeseite kommt mit <strong>v11.82+</strong>.</>
+                    : <><strong>Note:</strong> The actual team registration logic (multi-person form, automatic emails, Outlook invites, slot join) will follow with the next release. Currently this configuration is only stored — the impact on the registration page comes with <strong>v11.82+</strong>.</>}
                 </div>
               </div>
 

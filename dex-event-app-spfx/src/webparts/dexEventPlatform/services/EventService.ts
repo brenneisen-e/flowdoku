@@ -281,6 +281,9 @@ export interface SPEvent {
   TeamRegistrationEnabled?: boolean; // v11.80: Team-Anmeldung erlauben
   TeamSize?: number;             // v11.80: Maximale Teamgröße
   AskTeamName?: boolean;         // v11.80: Team-Namen abfragen
+  TeamPartialAllowed?: boolean;       // v11.81: Auch Teil-Teams erlauben (statt nur komplette)
+  TeamOpenSlotsVisible?: boolean;     // v11.81: Offene Slots öffentlich sichtbar für Beitritt
+  TeamJoinRequiresApproval?: boolean; // v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -2283,6 +2286,9 @@ export class EventService {
       { title: 'TeamRegistrationEnabled', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Anmeldung erlauben
       { title: 'TeamSize', type: 9 }, // v11.80: Number - Maximale Teamgröße (0 = nicht gesetzt)
       { title: 'AskTeamName', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Name abfragen
+      { title: 'TeamPartialAllowed', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Auch Teil-Teams erlauben
+      { title: 'TeamOpenSlotsVisible', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - offene Slots öffentlich sichtbar
+      { title: 'TeamJoinRequiresApproval', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Lead muss Beitritt bestätigen
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2658,7 +2664,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2822,6 +2828,12 @@ export class EventService {
     teamSize?: number;
     /** v11.80: Team-Name abfragen (Default false). */
     askTeamName?: boolean;
+    /** v11.81: Auch Teil-Teams zulassen (Default false = nur komplette Teams). */
+    teamPartialAllowed?: boolean;
+    /** v11.81: Offene Slots öffentlich für Beitritt sichtbar (Default false). */
+    teamOpenSlotsVisible?: boolean;
+    /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
+    teamJoinRequiresApproval?: boolean;
     customFields: CustomField[];
     /** v11.69: Wenn `existingSubsiteUrl` UND `existingRegistrationListName`
      *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
@@ -2971,6 +2983,9 @@ export class EventService {
         'TeamRegistrationEnabled': !!event.teamRegistrationEnabled,
         'TeamSize': typeof event.teamSize === 'number' && event.teamSize > 0 ? event.teamSize : null,
         'AskTeamName': !!event.askTeamName,
+        'TeamPartialAllowed': !!event.teamPartialAllowed,
+        'TeamOpenSlotsVisible': !!event.teamOpenSlotsVisible,
+        'TeamJoinRequiresApproval': !!event.teamJoinRequiresApproval,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',

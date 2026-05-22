@@ -233,6 +233,12 @@ export interface CreateEventInput {
   teamSize?: number;
   /** v11.80: Team-Namen abfragen (Default false). */
   askTeamName?: boolean;
+  /** v11.81: Auch Teil-Teams erlauben (Default false = nur komplette Teams). */
+  teamPartialAllowed?: boolean;
+  /** v11.81: Offene Slots öffentlich für Beitritt sichtbar (Default false). */
+  teamOpenSlotsVisible?: boolean;
+  /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
+  teamJoinRequiresApproval?: boolean;
   customFields: CustomField[];
   /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
    *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
@@ -557,6 +563,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamRegistrationEnabled: !!e.TeamRegistrationEnabled,
       teamSize: typeof e.TeamSize === 'number' ? e.TeamSize : 0,
       askTeamName: !!e.AskTeamName,
+      // v11.81: Erweiterte Team-Anmelde-Konfiguration (Beitritts-Modus).
+      // Alte Tenants ohne diese Spalten interpretieren undefined als false
+      // — das deckt sich mit dem konservativen Default „Nur komplette Teams,
+      // keine offenen Slots, keine Approval-Queue".
+      teamPartialAllowed: !!e.TeamPartialAllowed,
+      teamOpenSlotsVisible: !!e.TeamOpenSlotsVisible,
+      teamJoinRequiresApproval: !!e.TeamJoinRequiresApproval,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
