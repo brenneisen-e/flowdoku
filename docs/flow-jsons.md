@@ -713,7 +713,8 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
       "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
       "item/showAs": "busy",
-      "item/responseRequested": false
+      "item/responseRequested": false,
+      "item/sensitivity": "private"
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -854,6 +855,7 @@ HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
   },
   "showAs": "busy",
   "responseRequested": false,
+  "sensitivity": "private",
   "body": {
     "contentType": "html",
     "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
@@ -862,10 +864,17 @@ HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
 ```
 
 **Stand 2026-05-22 (v11.88):** der Body schreibt zusaetzlich `showAs: busy`
-+ `responseRequested: false`. Damit landet der Termin direkt im Kalender
-der Teilnehmer (kein Akzeptieren-Klick noetig) und ist als Beschaeftigt
-markiert. Im `DEX_CreateOutlookEvent`-Flow sind die gleichen zwei
-Parameter in der `Create_event_(V4)`-Action gesetzt.
++ `responseRequested: false` + `sensitivity: private`. Damit landet der
+Termin direkt im Kalender der Teilnehmer (kein Akzeptieren-Klick noetig),
+ist als Beschaeftigt markiert UND kann nicht an Dritte weitergeleitet
+werden (Outlook deaktiviert den Forward-Button bei privater
+Vertraulichkeitsstufe). Im `DEX_CreateOutlookEvent`-Flow sind die gleichen
+drei Parameter in der `Create_event_(V4)`-Action gesetzt.
+
+**Hinweis fuer Teilnehmer:** „Privat" beschraenkt nur Weiterleitung und
+Free/Busy-Anzeige fuer Dritte (Kollegen sehen nur „Privat — Beschaeftigt",
+keine Titel). Der eingeladene Teilnehmer selbst sieht den Termin ganz
+normal mit allen Details.
 
 **`Send_an_HTTP_request`-Body** (PATCH zur Graph API):
 ```
