@@ -354,6 +354,11 @@ export interface SPRegistration {
   TeamId?: string;
   TeamLead?: boolean;
   TeamName?: string;
+  /** v11.86: Standort des Teilnehmers (aus Anmeldeformular ableiten oder vom
+   *  Profil uebernommen). Wird im Team-Badge in „Meine Events" zur
+   *  Mitglieder-Identifikation angezeigt. Auf der SP-Liste seit jeher
+   *  vorhanden — hier nur als TypeScript-Property nachgezogen. */
+  Location?: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
 

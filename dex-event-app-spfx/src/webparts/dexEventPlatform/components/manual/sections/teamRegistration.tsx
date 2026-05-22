@@ -108,6 +108,14 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
               'If your event requires approval, „My Events" shows an orange block „Join requests (N)" inside the team badge, listing all open requests (name + email of the requester). Each row has two buttons: „Approve" and „Reject". Approve immediately adds the requester (mail + Outlook for them, info mail to other team members). Reject sends a short decline mail to the requester suggesting they register individually or join another team.'
             ),
           },
+          {
+            number: 11,
+            title: isDe ? 'Team-Lead bearbeitet sein Team von „Meine Events" aus (v11.86)' : 'Team lead manages the team from „My Events" (v11.86)',
+            description: D(
+              'Ab v11.86 sieht der Team-Lead im Team-Badge der eigenen Event-Karte neben dem „+ Mitglied hinzufügen"-Button einen zweiten Button „Team bearbeiten". Klick öffnet das Modal „Team verwalten" mit allen Mitgliedern als Karten (Profilfoto, Name, E-Mail, Standort, Lead-Badge oder Abgemeldet-Badge). Pro Mitglied außer dem Lead selbst gibt es einen roten Trash-Button. Klick auf den Trash-Button öffnet ein Confirm-Modal mit dem Namen der Person und einem Hinweis, dass die Abmeldung stellvertretend passiert und die Person auch eine eigene Abmelde-Bestätigungs-Mail bekommt. Bestätigen meldet die Person sofort vom Event ab — Abmelde-Mail, Outlook-Termin-Absage, ID-Neuvergabe und Info-Mail an die verbleibenden Mitglieder laufen automatisch. Der Lead selbst sieht keinen Trash-Button — wer sich als Lead abmelden will, nimmt den normalen „Abmelden"-Button auf der Event-Karte; die App promotet dann automatisch das früheste verbleibende Mitglied zum neuen Lead.',
+              'From v11.86 onwards the team badge on the lead\'s own event card shows a second button „Edit team" next to „+ Add member". Clicking it opens the „Manage team" modal with all members shown as cards (profile picture, name, email, location, lead badge or cancelled badge). Every member except the lead has a red trash button. Clicking it opens a confirm modal naming the person and pointing out that the cancellation happens on their behalf and that they also receive their own cancellation confirmation email. Confirming cancels the person from the event immediately — cancellation mail, Outlook removal, ID renumbering and info mail to the remaining members all run automatically. The lead has no trash button — to cancel as lead, use the normal „Cancel" button on the event card; the app then auto-promotes the earliest remaining member to the new lead.'
+            ),
+          },
         ],
       },
       {

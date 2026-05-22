@@ -169,6 +169,16 @@ interface EventContextType {
    *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
+  /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
+   *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
+   *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
+   *  Team-Post-Step wie beim Self-Cancel (Info-Mails an die uebrigen
+   *  Mitglieder; Auto-Promote nicht relevant, weil der Lead sich nicht
+   *  selbst loescht). */
+  cancelTeamMember: (
+    eventId: string,
+    memberRegistration: SPRegistration
+  ) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
@@ -1863,6 +1873,124 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v11.86: Team-Lead meldet stellvertretend ein Team-Mitglied vom Event
+   * ab — ausgeloest aus dem „Team verwalten"-Modal in MyEvents. Audit
+   * wird auf den eingeloggten Lead geschrieben (CancelledByName/Email),
+   * danach laeuft derselbe Team-Post-Step wie beim Self-Cancel:
+   * Sitzplatz-Reconcile, IDReorder-Queue, Outlook-Ausladung,
+   * Abmelde-Bestaetigung an die abgemeldete Person und Info-Mails an die
+   * uebrigen Team-Mitglieder. Der Lead darf sich ueber diesen Pfad
+   * NICHT selbst loeschen — das uebernimmt der normale Self-Cancel ueber
+   * `cancelRegistration` (inkl. Auto-Promote des fruehesten Members).
+   */
+  async function cancelTeamMember(
+    eventId: string,
+    memberRegistration: SPRegistration
+  ): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !memberRegistration?.Id) return false;
+    if (!memberRegistration.TeamId) return false;
+    // Self-Schutz: der Lead loescht sich nicht ueber diesen Pfad — sein
+    // eigener Cancel laeuft via cancelRegistration mit Auto-Promote.
+    if ((memberRegistration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
+      console.warn('[DEX] cancelTeamMember: Lead cannot cancel itself via this path');
+      return false;
+    }
+    const wasActive = memberRegistration.Status === 'Angemeldet';
+    const teamId = memberRegistration.TeamId;
+    const teamName = memberRegistration.TeamName || '';
+    // Audit = der eingeloggte Lead (stellvertretender Cancel).
+    const ok = await eventService.cancelRegistration(
+      subsiteUrl, memberRegistration.Id, currentUserName, currentUserEmail
+    );
+    if (!ok) return false;
+    const event = events.find(e => e.id === eventId);
+    if (wasActive) {
+      eventService.bumpKpiParticipants(-1).catch(() => { /* */ });
+    }
+    eventService.writeChangeLog({
+      action: 'ParticipantCancelled',
+      targetType: 'Participant',
+      targetId: memberRegistration.ParticipantEmail,
+      targetName: `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
+      eventId: eventId,
+      eventTitle: event?.title || '',
+      details: { participantId: memberRegistration.Id, asActor: 'teamLead', actorEmail: currentUserEmail },
+    }).catch(() => { /* */ });
+    if (event) {
+      // Dual-Write: DEX_Participants aktualisieren
+      if (event.eventNumber) {
+        try {
+          await eventService.removeParticipantEvent(memberRegistration.ParticipantEmail, event.eventNumber);
+        } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
+      }
+      // Abmelde-Mail an die abgemeldete Person.
+      if (!event.disableEmails) {
+        try {
+          const lang = event.emailLanguage || 'EN';
+          const cancelledFirst = memberRegistration.Vorname
+            || (memberRegistration.ParticipantName || '').split(/[ ,]+/)[0]
+            || '';
+          const cancelVars = {
+            Name: cancelledFirst,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let emailData: { subject: string; body: string };
+          const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+          if (spTpl) {
+            emailData = buildEmailFromTemplate(spTpl, cancelVars);
+          } else {
+            emailData = cancellationEmail(cancelledFirst, event.title);
+          }
+          let bcc: string | undefined;
+          const mode = event.notifyOrgCancelMode || 'never';
+          if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
+            const orgEmails = (event.organizerEmails || []).filter(Boolean);
+            if (orgEmails.length > 0) bcc = orgEmails.join(';');
+          }
+          await eventService.queueEmail(
+            emailData.subject,
+            memberRegistration.ParticipantEmail,
+            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
+            emailData.body,
+            'Abmeldung', event.title, eventId, undefined, bcc
+          );
+        } catch (err) { console.warn('[DEX] queueEmail for team-lead cancel failed:', err); }
+      }
+      // Outlook-Ausladung.
+      if (!event.disableOutlook) {
+        try {
+          await eventService.queueOutlookEvent(
+            memberRegistration.ParticipantEmail, eventId, event.title, 'Ausladen'
+          );
+        } catch (err) { console.warn('[DEX] queueOutlookEvent (team-lead cancel) failed:', err); }
+      }
+      // ID-Reorder + Sitzplatz-Sync.
+      if (subsiteUrl) {
+        try {
+          await eventService.queueIDReorder(
+            eventId, event.eventNumber || 0, subsiteUrl, event.title
+          );
+        } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
+        try {
+          const isSplit = typeof event.durchstarterCapacity === 'number'
+            && typeof event.funstarterCapacity === 'number'
+            && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+          await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+        } catch { /* best-effort */ }
+      }
+      // Info-Mails an die uebrigen Team-Mitglieder. Wir loeschen NICHT
+      // den Lead, daher `wasTeamLead = false` → kein Auto-Promote.
+      await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, false, memberRegistration)
+        .catch(err => { console.warn('[DEX] team-cancel post-step (lead-initiated) failed:', err); });
+    }
+    await loadEvents();
+    return true;
+  }
+
+  /**
    * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
    * Routine:
    *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
@@ -2336,6 +2464,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         decideTeamJoinRequest,
         listOpenTeamsForEvent,
         cancelRegistration,
+        cancelTeamMember,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,
