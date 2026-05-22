@@ -256,6 +256,63 @@ export function buildEmailFromTemplate(
 /**
  * Anmeldebestätigung
  */
+/**
+ * v11.87: Team-Info-Block für Bestätigungs-Mails von Team-Anmeldungen.
+ *
+ * Wird in allen 4 Add-Pfaden injiziert (registerTeam, addTeamMember,
+ * joinTeam-Result, decideTeamJoinRequest-Approve). Der Aufrufer lädt
+ * vorher die aktiven Team-Mitglieder via `getTeamMembers` und übergibt
+ * Lead + Member-Liste, plus den konfigurierten TeamSize-Maximalwert.
+ *
+ * Output: kleines HTML-Karten-Snippet zum Einsetzen direkt nach <body>
+ * via .replace(/<body[^>]*>/, '<body$1>' + html). Format folgt dem
+ * existierenden grünen Hinweisbox-Stil.
+ */
+export function teamInfoBlockHtml(opts: {
+  teamName?: string;
+  members: Array<{ firstName: string; lastName: string; isLead: boolean }>;
+  teamSize: number;
+  isDe: boolean;
+  registeredByName?: string;
+  consentRequired?: boolean;
+}): string {
+  const { teamName, members, teamSize, isDe, registeredByName, consentRequired } = opts;
+  const activeCount = members.length;
+  const memberLines = members.map(m => {
+    const full = `${m.firstName} ${m.lastName}`.trim();
+    return m.isLead
+      ? `<li style="margin:4px 0;"><strong>${full}</strong> ${isDe ? '(Team-Lead)' : '(team lead)'}</li>`
+      : `<li style="margin:4px 0;">${full}</li>`;
+  }).join('');
+  const heading = isDe ? 'Team-Info' : 'Team info';
+  const teamLine = teamName
+    ? (isDe
+      ? `Du bist Teil des Teams <strong>„${teamName}"</strong> mit folgenden Mitgliedern:`
+      : `You are part of team <strong>"${teamName}"</strong> with the following members:`)
+    : (isDe
+      ? `Du bist Teil eines Teams mit folgenden Mitgliedern:`
+      : `You are part of a team with the following members:`);
+  const occupancy = isDe
+    ? `Gesamt-Belegung: <strong>${activeCount} / ${teamSize}</strong>`
+    : `Total occupancy: <strong>${activeCount} / ${teamSize}</strong>`;
+  const cancelHint = isDe
+    ? `Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über <strong>„Meine Events"</strong> ab. Dein Team-Lead und die anderen Mitglieder werden über deine Abmeldung informiert.`
+    : `If you cannot attend, please cancel in time via <strong>"My Events"</strong>. Your team lead and the other members will be notified.`;
+  const consentHint = consentRequired && registeredByName
+    ? (isDe
+      ? `<p style="margin:6px 0 0;"><em>Diese Anmeldung wurde von <strong>${registeredByName}</strong> für dich durchgeführt. Falls du NICHT zugestimmt hast, kannst du dich über „Meine Events" eigenständig abmelden.</em></p>`
+      : `<p style="margin:6px 0 0;"><em>This registration was performed by <strong>${registeredByName}</strong> on your behalf. If you did not consent, you can cancel yourself via "My Events".</em></p>`)
+    : '';
+  return `<div style="margin:0 0 16px;padding:14px 18px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
+    + `<div style="font-weight:700;font-size:14px;color:#3f5f10;margin-bottom:8px;">${heading}</div>`
+    + `<p style="margin:0 0 6px;">${teamLine}</p>`
+    + `<ul style="margin:0 0 10px 18px;padding:0;list-style:disc;">${memberLines}</ul>`
+    + `<p style="margin:0 0 6px;">${occupancy}</p>`
+    + `<p style="margin:6px 0 0;">${cancelHint}</p>`
+    + consentHint
+    + `</div>`;
+}
+
 export function registrationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
   return {
     subject: `Anmeldebest\u00E4tigung: ${eventTitle}`,

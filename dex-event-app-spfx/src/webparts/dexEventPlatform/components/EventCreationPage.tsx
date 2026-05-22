@@ -1703,7 +1703,7 @@ export default function EventCreationPage(): React.ReactElement {
     // v10.26: Demo-Agenda mit drei Programmpunkten am ersten Tag
     const dateIso = toDate(eventStart);
     setAgenda([
-      { id: `ag-${Date.now()}`, date: dateIso, time: '09:00', endTime: '10:00', icon: 'Hello', title: 'Begrüßung & Kennenlernen', description: 'Kurzer Auftakt mit Vorstellung der Tagesziele.' },
+      { id: `ag-${Date.now()}`, date: dateIso, time: '09:00', endTime: '10:00', icon: 'Handshake', title: 'Begrüßung & Kennenlernen', description: 'Kurzer Auftakt mit Vorstellung der Tagesziele.' },
       { id: `ag-${Date.now() + 1}`, date: dateIso, time: '10:15', endTime: '12:00', icon: 'Lightbulb', title: 'Workshop-Block', description: 'Interaktive Sessions in Kleingruppen.' },
       { id: `ag-${Date.now() + 2}`, date: dateIso, time: '12:00', endTime: '13:30', icon: 'EatDrink', title: 'Mittagessen', description: 'Stärkung und Networking.' },
     ]);
@@ -1823,6 +1823,16 @@ export default function EventCreationPage(): React.ReactElement {
    */
   const persistSubEventsForParent = async (parentEventId: string): Promise<void> => {
     const keptDbIds = new Set<string>();
+    // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
+    // einspeisen. Der Caller setzt window.__dexSubEventProgress vor dem
+    // Aufruf und entfernt es danach. Wenn nicht gesetzt: no-op.
+    const subOnProgress = (stage: string): void => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cb = (window as any).__dexSubEventProgress;
+        if (typeof cb === 'function') cb(stage);
+      } catch { /* */ }
+    };
     // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
     // statt pro Iteration, identisch für alle Children.
     const sanitizedOrgPair = sanitizeOrganizerPairs();
@@ -1932,6 +1942,7 @@ export default function EventCreationPage(): React.ReactElement {
               outlookEventId: '',
               existingSubsiteUrl: subsiteUrlForReuse,
               existingRegistrationListName: regListNameForReuse,
+              onProgress: subOnProgress,
             };
             try {
               await createEvent(reusePayload);
@@ -1979,6 +1990,7 @@ export default function EventCreationPage(): React.ReactElement {
               outlookEventId: '',
               existingSubsiteUrl: subsiteUrlForReuse,
               existingRegistrationListName: regListNameForReuse,
+              onProgress: subOnProgress,
             };
             try {
               await createEvent(reusePayload);
@@ -2002,7 +2014,7 @@ export default function EventCreationPage(): React.ReactElement {
               try {
                 await deleteEvent(draft.dbId);
               } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
-              await createEvent(childPayload);
+              await createEvent({ ...childPayload, onProgress: subOnProgress });
               continue;
             } else {
               draft.disableOutlook = true;
@@ -2062,7 +2074,7 @@ export default function EventCreationPage(): React.ReactElement {
         // jeweiligen Sub-Event-Snapshots gesteuert — siehe pendingSubUpdates.
         await updateEvent(draft.dbId, subUpdates);
       } else {
-        await createEvent(childPayload);
+        await createEvent({ ...childPayload, onProgress: subOnProgress });
       }
     }
     // Entfernte Sub-Events aufräumen: deleteEvent löscht kaskadierend auch
@@ -2676,25 +2688,65 @@ export default function EventCreationPage(): React.ReactElement {
         setError('Event konnte nicht aktualisiert werden.');
       }
     } else {
-      // Neues Event erstellen – Progress-Animation parallel laufen lassen
+      // Neues Event erstellen — v11.87: Progress wird per Callback-Stage vom
+      // EventService getrieben, damit der Balken sich tatsaechlich an die
+      // laufende SP-Operation koppelt und nicht stumm bei 92 % stehen bleibt.
       try {
-      setProgressLabel('Subsite wird erstellt...');
-      const progressSteps = [
-        { at: 20, label: 'Subsite wird erstellt...' },
-        { at: 35, label: 'Teilnehmerliste wird angelegt...' },
-        { at: 50, label: 'Spalten werden konfiguriert...' },
-        { at: 65, label: 'Berechtigungen werden gesetzt...' },
-        { at: 80, label: 'Event wird gespeichert...' },
-        { at: 90, label: 'Fast fertig...' },
-      ];
-      let stepIdx = 0;
-      const progressTimer = setInterval(() => {
-        if (stepIdx < progressSteps.length) {
-          setProgress(progressSteps[stepIdx].at);
-          setProgressLabel(progressSteps[stepIdx].label);
-          stepIdx++;
+      // Sub-Event-Anzahl bestimmt die Aufteilung des Bereichs 30 % - 90 %.
+      // Bei N Sub-Events haben wir (1 Top + N Sub) Anlagen, die diesen
+      // Bereich gleichmaessig fuellen. Ohne Sub-Events bleibt das Hauptevent
+      // den ganzen Bereich fuer sich.
+      const subEventDraftsCount = subEventsRef.current.filter(d => d.title && d.title.trim()).length;
+      const totalAnlagen = 1 + subEventDraftsCount;
+      const topStart = 30;
+      const topEnd = topStart + (90 - topStart) / totalAnlagen;
+      // Innerhalb des Top-Event-Slots (topStart..topEnd) werden die Stages
+      // verteilt: subsite-creating, permissions, list-creating, list-done,
+      // item-insert, done.
+      const reportCreateStage = (stage: string): void => {
+        const slot = topEnd - topStart;
+        switch (stage) {
+          case 'start':
+            setProgress(Math.round(topStart));
+            setProgressLabel('Event-Daten gespeichert — Teilnehmer-Subsite wird angelegt...');
+            break;
+          case 'subsite-creating':
+            setProgress(Math.round(topStart + slot * 0.05));
+            setProgressLabel('Teilnehmer-Subsite wird angelegt...');
+            break;
+          case 'subsite-done':
+            setProgress(Math.round(topStart + slot * 0.35));
+            setProgressLabel('Subsite angelegt — Berechtigungen werden gesetzt...');
+            break;
+          case 'permissions':
+            setProgress(Math.round(topStart + slot * 0.45));
+            setProgressLabel('Berechtigungen werden gesetzt...');
+            break;
+          case 'list-creating':
+            setProgress(Math.round(topStart + slot * 0.55));
+            setProgressLabel('Teilnehmerliste wird angelegt...');
+            break;
+          case 'list-done':
+            setProgress(Math.round(topStart + slot * 0.80));
+            setProgressLabel('Teilnehmerliste fertig — Views werden konfiguriert...');
+            break;
+          case 'item-insert':
+            setProgress(Math.round(topStart + slot * 0.90));
+            setProgressLabel('Event-Daten werden gespeichert...');
+            break;
+          case 'done':
+            setProgress(Math.round(topEnd));
+            setProgressLabel(subEventDraftsCount > 0
+              ? `Haupt-Event angelegt — Sub-Event 1 wird angelegt...`
+              : 'Haupt-Event angelegt — Berechtigungen und Aufräumarbeiten...');
+            break;
+          default:
+            break;
         }
-      }, 2000);
+      };
+
+      setProgress(10);
+      setProgressLabel('Event-Daten werden vorbereitet...');
 
       const sanitizedOrgPairCreate = sanitizeOrganizerPairs();
       const eventId = await createEvent({
@@ -2842,20 +2894,74 @@ export default function EventCreationPage(): React.ReactElement {
               ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
               : {}),
           })),
+        onProgress: reportCreateStage,
       });
 
-      clearInterval(progressTimer);
       if (eventId) {
-        // v11.4: nicht direkt auf 100% — der ganze Block darunter
-        // (Sub-Events, Dokumente, Event-Bild, Organizer-Mails) läuft noch.
-        // Progress wird Schritt für Schritt erhöht und bei 2288 final auf
-        // 100% gesetzt.
-        setProgress(92);
-        setProgressLabel(isDe ? 'Sub-Events werden angelegt...' : 'Creating sub-events...');
+        // v11.87: Sub-Events bekommen den Bereich (topEnd..90) gleichmäßig
+        // aufgeteilt — pro Sub-Event ein eigener Stage-Slot. persistSubEventsForParent
+        // erhält einen Sub-Progress-Callback über ein Window-Event-Bus-ähnliches
+        // Setup ist hier nicht nötig, weil wir die Schleife per index zählen.
+        if (subEventDraftsCount > 0) {
+          const subSlotSize = (90 - topEnd) / subEventDraftsCount;
+          // Wir setzen pro Sub-Event-Start manuell den Progress und übergeben
+          // optional einen onProgress-Callback an persistSubEventsForParent, um
+          // den Sub-Site-Anlage-Fortschritt fein abzubilden. Da
+          // persistSubEventsForParent intern über sequenzielle createEvent
+          // läuft, koppeln wir den Sub-Progress an einen externen Counter.
+          let processedSubIdx = 0;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).__dexSubEventProgress = (stage: string): void => {
+            const base = topEnd + subSlotSize * processedSubIdx;
+            const slot = subSlotSize;
+            switch (stage) {
+              case 'start':
+                setProgress(Math.round(base));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} wird vorbereitet...`);
+                break;
+              case 'subsite-creating':
+                setProgress(Math.round(base + slot * 0.10));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} — Subsite wird angelegt...`);
+                break;
+              case 'subsite-done':
+                setProgress(Math.round(base + slot * 0.45));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} — Berechtigungen werden gesetzt...`);
+                break;
+              case 'list-creating':
+                setProgress(Math.round(base + slot * 0.60));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} — Teilnehmerliste wird angelegt...`);
+                break;
+              case 'list-done':
+                setProgress(Math.round(base + slot * 0.80));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} — Views werden konfiguriert...`);
+                break;
+              case 'item-insert':
+                setProgress(Math.round(base + slot * 0.90));
+                setProgressLabel(`Sub-Event ${processedSubIdx + 1} von ${subEventDraftsCount} — Event-Daten werden gespeichert...`);
+                break;
+              case 'done':
+                processedSubIdx += 1;
+                setProgress(Math.round(topEnd + subSlotSize * processedSubIdx));
+                setProgressLabel(processedSubIdx >= subEventDraftsCount
+                  ? 'Sub-Events fertig — Aufräumarbeiten...'
+                  : `Sub-Event ${processedSubIdx} fertig — Sub-Event ${processedSubIdx + 1} wird angelegt...`);
+                break;
+              default:
+                break;
+            }
+          };
+          setProgress(Math.round(topEnd));
+          setProgressLabel(`Sub-Event 1 von ${subEventDraftsCount} wird angelegt...`);
+        } else {
+          setProgress(Math.round(topEnd));
+          setProgressLabel('Haupt-Event angelegt — Aufräumarbeiten...');
+        }
         try { await persistSubEventsForParent(String(eventId)); }
         catch (err) { console.warn('[DEX] Sub-Events beim Create persistieren fehlgeschlagen:', err); }
-        setProgress(95);
-        setProgressLabel(isDe ? 'Dokumente und Bild werden hochgeladen...' : 'Uploading documents and image...');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        try { delete (window as any).__dexSubEventProgress; } catch { /* */ }
+        setProgress(92);
+        setProgressLabel('Dokumente und Bild werden hochgeladen...');
         // E-Mail an Organisator senden
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
