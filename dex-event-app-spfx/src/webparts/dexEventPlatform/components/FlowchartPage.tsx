@@ -334,6 +334,14 @@ function RegistrationFlow(): React.ReactElement {
         label="Registrierung abgeschlossen"
         details="Der User sieht die Erfolgs-Seite. Bei Events mit Sub-Events (z.B. B2Run-Trainingssessions): Seit v6.14 wählt der User auf der Registrierungsseite direkt per Checkbox aus, wofür er sich anmelden möchte — Haupt-Event und/oder einzelne Sessions. Pro ausgewählter Session wird eine eigene Registrierung angelegt (separate Bestätigungsmail + Outlook-Termin). Bei B2Run-Parents kommt pro Session eine Durchstarter-/Funstarter-Auswahl hinzu; meldet sich der User gleichzeitig für das Haupt-Event an, wird der dort gewählte Starter-Typ automatisch auf die Session-TN-Listen übernommen. Wenn der User nur Sessions wählt (Haupt-Event abgehakt), zeigt der Success-Screen einen Sessions-Only-Hinweis und in 'My Events' erscheint der Parent-Eintrag mit dem orangefarbenen Badge 'Nur Sessions'."
       />
+      <Arrow />
+      {/* v11.82: Team-Anmeldung als paralleler Branch zur Solo-Anmeldung */}
+      <FlowNode
+        type="subprocess"
+        color="#f3f8ec"
+        label="Alternativ: Team-Anmeldung (v11.82)"
+        details={'Wenn der Organizer in Schritt 4 die Team-Anmeldung aktiviert hat und der User den Toggle „Ich melde mich + mein Team an" setzt, läuft ein paralleler Submit-Pfad: Der Lead wählt N-1 weitere Teilnehmer per People-Picker aus und bestätigt vorab schriftlich, dass alle Mitglieder zugestimmt haben. Beim Submit reserviert die App atomar N Plätze auf einmal (reserveSeat mit count=N — entweder alle N oder das gesamte Team landet gemeinsam auf der Warteliste; kein Teil-Anmelden). Danach werden N parallele Teilnehmer-Items mit identischer TeamId (UUID) angelegt — genau ein Eintrag (Lead) hat TeamLead=true. Jedes Mitglied bekommt eine eigene Bestätigungs-Mail (inkl. „Du wurdest als Teil eines Teams angemeldet"-Hinweis-Box plus klarem Hinweis, falls kein Einverständnis vorlag, sich beim Organizer zu melden oder selbst über „Meine Events" abzumelden) und einen eigenen Outlook-Termin. In „Meine Events" sieht jedes Mitglied ein Team-Badge mit Belegungs-Anzahl, Lead-Markierung und Namen der anderen Mitglieder. Beitritts-/Approve-Flows für offene Team-Slots folgen in einer späteren Iteration.'}
+      />
     </div>
   );
 }

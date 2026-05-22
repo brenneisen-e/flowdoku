@@ -28,7 +28,7 @@ function formatDate(iso: string): string {
 
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, isAdmin } = useRoles();
   const { t, locale } = useLanguage();
@@ -175,6 +175,67 @@ export default function RegistrationPage(): React.ReactElement {
   const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number; wasRegistered: boolean }>>({});
   const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
+
+  // v11.82: Team-Anmeldung — UI-State.
+  // - isTeamMode: User hat den Toggle „Ich melde mich + mein Team an" angehakt.
+  // - teamName: optionaler Team-Name (nur sichtbar wenn event.askTeamName).
+  // - teamMembers: N-1 People-Picker-Slots, jeder „<DisplayName> <email>".
+  // - teamConsentConfirmed: Pflicht-Checkbox „alle Mitglieder haben zugestimmt".
+  const isTeamCapable = !!event?.teamRegistrationEnabled && (event?.teamSize || 0) >= 2;
+  const teamSize = event?.teamSize || 0;
+  const teamPartialAllowed = !!event?.teamPartialAllowed;
+  const [isTeamMode, setIsTeamMode] = React.useState(false);
+  const [teamName, setTeamName] = React.useState('');
+  const [teamMembers, setTeamMembers] = React.useState<string[]>([]);
+  const [teamConsentConfirmed, setTeamConsentConfirmed] = React.useState(false);
+  // Beim Aktivieren des Team-Modus: Member-Slots initialisieren (teamSize-1 Slots).
+  React.useEffect(() => {
+    if (isTeamMode && teamMembers.length !== Math.max(0, teamSize - 1)) {
+      setTeamMembers(Array.from({ length: Math.max(0, teamSize - 1) }, () => ''));
+    }
+    if (!isTeamMode) {
+      setTeamMembers([]);
+      setTeamName('');
+      setTeamConsentConfirmed(false);
+    }
+  }, [isTeamMode, teamSize]);
+  // Parser fuer People-Picker-Values im Format „DisplayName <email>".
+  const parseTeamMember = (v: string): { displayName: string; email: string } | null => {
+    const m = (v || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+    if (!m) return null;
+    return { displayName: m[1].trim(), email: m[2].trim().toLowerCase() };
+  };
+  const teamMembersParsed = teamMembers.map(parseTeamMember);
+  // Validation des Team-Submits — Lead-Email darf nicht in der Member-Liste
+  // sein, Member-Emails muessen untereinander disjunkt sein, im Pflicht-Modus
+  // muessen alle Slots gefuellt sein.
+  const teamValidation = ((): { ok: boolean; reason?: string } => {
+    if (!isTeamMode) return { ok: true };
+    const leadEmail = (email || '').trim().toLowerCase();
+    const filled = teamMembersParsed.filter(m => !!m);
+    if (!teamPartialAllowed && filled.length < (teamSize - 1)) {
+      return { ok: false, reason: locale === 'de' ? `Bitte alle ${teamSize - 1} Team-Mitglieder auswählen.` : `Please pick all ${teamSize - 1} team members.` };
+    }
+    const seen = new Set<string>();
+    if (leadEmail) seen.add(leadEmail);
+    for (const m of filled) {
+      if (!m) continue;
+      if (seen.has(m.email)) {
+        return { ok: false, reason: locale === 'de' ? `„${m.displayName}" ist doppelt im Team.` : `„${m.displayName}" appears twice in the team.` };
+      }
+      seen.add(m.email);
+    }
+    if (event?.askTeamName && !teamName.trim()) {
+      return { ok: false, reason: locale === 'de' ? 'Bitte Team-Name angeben.' : 'Please enter a team name.' };
+    }
+    if (teamName.trim().length > 60) {
+      return { ok: false, reason: locale === 'de' ? 'Team-Name max. 60 Zeichen.' : 'Team name must be 60 characters or fewer.' };
+    }
+    if (!teamConsentConfirmed) {
+      return { ok: false, reason: locale === 'de' ? 'Bitte bestätige, dass alle Mitglieder zugestimmt haben.' : 'Please confirm that all members have consented.' };
+    }
+    return { ok: true };
+  })();
 
   // Vorbelegen: Parent-Reg prüfen + Sessions-Meta laden (bereits-registrierte
   // Sessions werden als angehakt voreingestellt).
@@ -526,7 +587,75 @@ export default function RegistrationPage(): React.ReactElement {
       }
     }
 
+    // v11.82: Team-Anmeldung — separater Submit-Pfad.
+    if (isTeamMode) {
+      if (!teamValidation.ok) {
+        setError(teamValidation.reason || (locale === 'de' ? 'Team-Anmeldung unvollständig.' : 'Team registration incomplete.'));
+        return;
+      }
+      await performTeamRegistration(preferredStarterType);
+      return;
+    }
+
     await performRegistration(preferredStarterType);
+  };
+
+  // v11.82: Team-Anmeldung absenden — Lead + N-1 Mitglieder per registerTeam.
+  // Sub-Events werden im Team-Modus NICHT mitangemeldet — das ist Phase 2
+  // (siehe Manual). Lead und Member bekommen jeweils nur den Hauptevent.
+  const performTeamRegistration = async (starterTypeToUse: string): Promise<void> => {
+    setError('');
+    setIsSubmitting(true);
+    setSubmitProgress(5);
+    setSubmitProgressLabel(locale === 'de' ? 'Team-Anmeldung wird vorbereitet…' : 'Preparing team registration…');
+    try {
+      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      const leadEmail = email.trim();
+      const leadFirstName = firstName.trim();
+      const leadLastName = surname.trim();
+      const members = teamMembersParsed
+        .filter((m): m is { displayName: string; email: string } => !!m)
+        .map(m => ({ email: m.email, displayName: m.displayName }));
+      setSubmitProgress(30);
+      setSubmitProgressLabel(locale === 'de'
+        ? `Team wird angemeldet (${1 + members.length} Personen)…`
+        : `Registering team (${1 + members.length} people)…`);
+      const result = await registerTeam(
+        selectedEventId!,
+        {
+          firstName: leadFirstName,
+          lastName: leadLastName,
+          email: leadEmail,
+          salutation,
+          customData,
+          preferredStarterType: starterTypeToUse || undefined,
+        },
+        members,
+        event?.askTeamName ? (teamName.trim() || undefined) : undefined
+      );
+      setSubmitProgress(90);
+      if (!result.ok) {
+        if (result.reason && result.reason.indexOf('already-registered:') === 0) {
+          const dupEmail = result.reason.substring('already-registered:'.length);
+          setError(locale === 'de'
+            ? `Person bereits angemeldet: ${dupEmail}. Bitte aus dem Team entfernen und erneut versuchen.`
+            : `Person already registered: ${dupEmail}. Please remove from the team and try again.`);
+        } else {
+          setError(t('reg.error') || (locale === 'de' ? 'Fehler bei der Team-Anmeldung.' : 'Team registration failed.'));
+        }
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setError(t('reg.genericerror') || (locale === 'de' ? 'Unerwarteter Fehler.' : 'Unexpected error.'));
+    } finally {
+      setSubmitProgress(100);
+      setTimeout(() => {
+        setIsSubmitting(false);
+        setSubmitProgress(0);
+        setSubmitProgressLabel('');
+      }, 250);
+    }
   };
 
   // Eigentliche Registrierung — entkoppelt vom Validation/Submit-Trigger,
@@ -1559,8 +1688,152 @@ export default function RegistrationPage(): React.ReactElement {
               <label className="form-label"><span className="required">*</span> {t('reg.email')}</label>
               <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
+
+            {/* v11.82: Team-Anmeldung-Toggle. Nur sichtbar wenn der Organizer
+                in Schritt 4 die Team-Anmeldung aktiviert hat UND der User sich
+                NICHT für eine andere Person registriert (Team-fuer-Andere wird
+                nicht unterstuetzt — der Stellvertreter-Pfad ist auf eine
+                Einzel-Person ausgelegt). */}
+            {isTeamCapable && !registerForOther && (
+              <div className="form-group" style={{ marginTop: 16, marginBottom: 0 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isTeamMode}
+                    onChange={e => setIsTeamMode(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>
+                      {locale === 'de'
+                        ? `Ich melde mich + mein Team an (Team-Anmeldung)`
+                        : 'Register me + my team (team registration)'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4, lineHeight: 1.4 }}>
+                      {locale === 'de'
+                        ? `Belegt bis zu ${teamSize} Plätze auf einmal. Jedes Mitglied bekommt automatisch Bestätigungsmail, Outlook-Termin und sieht das Event in „Meine Events".`
+                        : `Books up to ${teamSize} seats at once. Each member automatically receives a confirmation email, an Outlook invite, and sees the event in „My Events".`}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* v11.82: Team-Anmeldung-Card — separat unter „Persönliche Daten",
+            nur sichtbar wenn der Toggle aktiv ist. */}
+        {isTeamCapable && isTeamMode && !registerForOther && (
+          <div className="registration-form" style={{ marginTop: 24 }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="People" style={{ fontSize: 16 }} />
+              {locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}
+            </div>
+            <div style={{ padding: '24px 20px' }}>
+              {/* Pflicht-Hinweis-Box ganz oben — auffällig orange. */}
+              <div style={{
+                marginBottom: 20,
+                padding: '14px 16px',
+                background: 'rgba(237,139,0,0.10)',
+                border: '2px solid var(--dex-orange, #ed8b00)',
+                borderRadius: 'var(--dex-radius-md)',
+                color: '#7a4a00',
+                fontSize: '0.88rem',
+                lineHeight: 1.55,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '0.95rem' }}>
+                  {locale === 'de'
+                    ? 'Vorab die Zustimmung jedes Teammitglieds einholen'
+                    : 'Get every team member\'s consent up front'}
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  {locale === 'de'
+                    ? 'Mit dem Absenden meldest du nicht nur dich selbst an, sondern auch alle weiter unten eingetragenen Personen. Jedes Teammitglied erhält automatisch:'
+                    : 'By submitting you register yourself AND every person you add below. Each team member automatically receives:'}
+                </div>
+                <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>
+                  <li>{locale === 'de' ? 'eine Anmeldebestätigung per Mail' : 'a confirmation email'}</li>
+                  <li>{locale === 'de' ? 'einen Outlook-Termin im Kalender' : 'an Outlook calendar invite'}</li>
+                  <li>{locale === 'de' ? 'den Event in „Meine Events"' : 'the event in „My Events"'}</li>
+                </ul>
+                <div style={{ marginTop: 4 }}>
+                  {locale === 'de'
+                    ? <>Bitte stelle sicher, dass alle Teilnehmer ihrer Anmeldung <strong>VORHER zugestimmt</strong> haben — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                    : <>Please make sure every participant has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                </div>
+              </div>
+
+              {event?.askTeamName && (
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="required">*</span> {locale === 'de' ? 'Team-Name' : 'Team name'}
+                  </label>
+                  <input
+                    className="form-input"
+                    value={teamName}
+                    onChange={e => setTeamName(e.target.value.slice(0, 60))}
+                    placeholder={locale === 'de' ? 'z.B. „Die Schnellen"' : 'e.g. „The Quick Ones"'}
+                    style={showErrors && isTeamMode && event?.askTeamName && !teamName.trim() ? errorBorder : {}}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+                    {locale === 'de' ? 'Max. 60 Zeichen — wird in der Teilnehmerliste mitgespeichert.' : 'Max 60 characters — stored on the participant list.'}
+                  </div>
+                </div>
+              )}
+
+              {/* Member-Slots */}
+              <div style={{ marginTop: 8 }}>
+                {teamMembers.map((mv, idx) => {
+                  const slotRequired = !teamPartialAllowed;
+                  const parsed = parseTeamMember(mv);
+                  const isErr = showErrors && isTeamMode && slotRequired && !parsed;
+                  return (
+                    <div className="form-group" key={`team-slot-${idx}`}>
+                      <label className="form-label">
+                        {slotRequired && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
+                        {locale === 'de'
+                          ? `Mitglied ${idx + 2}${slotRequired ? '' : ' (optional)'}`
+                          : `Member ${idx + 2}${slotRequired ? '' : ' (optional)'}`}
+                      </label>
+                      <UserFieldPicker
+                        value={mv}
+                        onChange={v => {
+                          const next = [...teamMembers];
+                          next[idx] = v;
+                          setTeamMembers(next);
+                        }}
+                        searchUsers={async (q) => {
+                          const results = await searchUsers(q);
+                          return results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location }));
+                        }}
+                        placeholder={locale === 'de' ? 'Name oder E-Mail eingeben...' : 'Type a name or email...'}
+                        errorStyle={isErr ? errorBorder : {}}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pflicht-Bestätigungs-Checkbox */}
+              <div className="form-group" style={{ marginTop: 18, marginBottom: 0 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={teamConsentConfirmed}
+                    onChange={e => setTeamConsentConfirmed(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ flex: 1, fontSize: '0.88rem', color: 'var(--dex-gray-800)', lineHeight: 1.5 }}>
+                    <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                    {locale === 'de'
+                      ? 'Ich bestätige, dass alle eingetragenen Teammitglieder ihrer Anmeldung zugestimmt haben.'
+                      : 'I confirm that every listed team member has consented to this registration.'}
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Eventspezifische Felder (inkl. Split-Capacity Starter-Typ-Auswahl wenn
             beide Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser
@@ -1906,9 +2179,21 @@ export default function RegistrationPage(): React.ReactElement {
       {/* Buttons */}
       <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
         <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
-        <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
+        <button
+          className="btn btn-primary"
+          onClick={handleSubmit}
+          disabled={isSubmitting || (isTeamMode && !teamValidation.ok)}
+          title={isTeamMode && !teamValidation.ok ? (teamValidation.reason || '') : ''}
+        >
           <Send size={16} /> {(() => {
             if (isSubmitting) return t('reg.submitting');
+            // v11.82: Team-Modus — eigener Button-Text mit Personen-Zahl.
+            if (isTeamMode) {
+              const n = 1 + teamMembersParsed.filter(Boolean).length;
+              return locale === 'de'
+                ? `Team anmelden (${n} ${n === 1 ? 'Person' : 'Personen'})`
+                : `Register team (${n} ${n === 1 ? 'person' : 'people'})`;
+            }
             if (registerForOther) return t('reg.register');
             // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
             // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir

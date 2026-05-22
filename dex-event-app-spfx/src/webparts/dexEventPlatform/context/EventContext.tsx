@@ -126,6 +126,18 @@ interface EventContextType {
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string) => Promise<boolean>;
+  /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
+   *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
+   *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
+  registerTeam: (
+    eventId: string,
+    leadData: { firstName: string; lastName: string; email: string; salutation?: string; customData: Record<string, string>; preferredStarterType?: string },
+    members: Array<{ email: string; displayName: string }>,
+    teamName: string | undefined
+  ) => Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — fuer das
+   *  Team-Badge in „Meine Events". */
+  getTeamMembers: (eventId: string, teamId: string) => Promise<SPRegistration[]>;
   cancelRegistration: (eventId: string) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
@@ -976,6 +988,245 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  /**
+   * v11.82: Team-Anmeldung — eine Person meldet sich + N-1 Mitglieder
+   * gleichzeitig an. N Plaetze werden atomar reserviert (per `reserveSeat`
+   * mit count=N). Sind nicht genug Plaetze frei, geht das gesamte Team
+   * auf die Warteliste — kein Teil-Anmelden eines vollen Events.
+   *
+   * Jedes Mitglied bekommt einen eigenen Eintrag in der Subsite-Teilnehmer-
+   * liste mit identischer `TeamId`. Genau ein Eintrag (der Lead, also der
+   * Submitter) ist `TeamLead=true`. Jeder Mitglied bekommt eine eigene
+   * Bestaetigungs-Mail (mit Hinweis dass er als Teil eines Teams angemeldet
+   * wurde) und einen eigenen Outlook-Termin (sofern aktiviert).
+   *
+   * Die Member-Eintraege bekommen leere Custom-Field-Antworten — nur der
+   * Lead beantwortet event-spezifische Fragen. Pflicht-Custom-Fields sollten
+   * organisatorisch nicht mit Team-Anmeldung kombiniert werden; die App
+   * setzt das nicht hart durch, der Wizard sollte den Organizer im Manual
+   * darauf hinweisen.
+   */
+  async function registerTeam(
+    eventId: string,
+    leadData: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      salutation?: string;
+      customData: Record<string, string>;
+      preferredStarterType?: string;
+    },
+    members: Array<{ email: string; displayName: string }>,
+    teamName: string | undefined
+  ): Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { ok: false, reason: 'event-not-found' };
+
+    // Doppel-Anmelde-Pruefung: weder der Lead noch ein Member darf bereits
+    // (aktiv) angemeldet sein. Sequentiell — die Liste ist kurz und der
+    // Pfad laeuft nicht im Performance-kritischen Boot.
+    const allEmails = [leadData.email, ...members.map(m => m.email)];
+    for (const em of allEmails) {
+      const existing = await eventService.getMyRegistration(subsiteUrl, em);
+      if (existing && existing.Status !== 'Abgemeldet') {
+        return { ok: false, reason: `already-registered:${em}` };
+      }
+    }
+
+    // TeamId generieren — bevorzugt crypto.randomUUID, sonst Fallback.
+    let teamId: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c: any = (typeof crypto !== 'undefined') ? crypto : null;
+    if (c && typeof c.randomUUID === 'function') {
+      teamId = c.randomUUID();
+    } else {
+      teamId = `team-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    const teamCount = 1 + members.length;
+    let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
+    let effectiveStarterType: string | undefined = leadData.preferredStarterType;
+
+    // Atomar N Plaetze reservieren — Split-Group oder klassisch.
+    const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
+      && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
+    if (isSplitGroup && leadData.preferredStarterType) {
+      const cap = leadData.preferredStarterType === 'Durchstarter'
+        ? (event.durchstarterCapacity || 0)
+        : (event.funstarterCapacity || 0);
+      const seat = await eventService.reserveSeat(subsiteUrl, leadData.preferredStarterType as 'Durchstarter' | 'Funstarter', cap, teamCount);
+      if (seat !== 'reserved') {
+        status = 'Warteliste';
+        effectiveStarterType = undefined;
+      }
+    } else if (event.maxParticipants > 0) {
+      const seat = await eventService.reserveSeat(subsiteUrl, '', event.maxParticipants, teamCount);
+      if (seat !== 'reserved') status = 'Warteliste';
+    }
+
+    // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
+    const fieldMap: Record<string, string> = {};
+    for (const f of event.eventSpecificFields) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const spName = (f as any).spInternalName;
+      if (spName) fieldMap[f.id] = spName;
+    }
+
+    const actorName = currentUserName;
+    const actorEmail = currentUserEmail;
+
+    // Lead-Profil + Member-Profile parallel laden.
+    const leadProfilePromise = leadData.email.toLowerCase() === currentUserEmail.toLowerCase()
+      ? eventService.getCurrentUserProfile()
+      : eventService.getUserProfileByEmail(leadData.email);
+    const memberProfilePromises = members.map(m => eventService.getUserProfileByEmail(m.email));
+    const [leadProfile, ...memberProfiles] = await Promise.all([leadProfilePromise, ...memberProfilePromises]);
+
+    // Parse "Lastname, Firstname" → { firstName, lastName }. Deloitte-AD-Format.
+    const parseDisplayName = (raw: string): { firstName: string; lastName: string } => {
+      const dn = (raw || '').trim();
+      if (!dn) return { firstName: '', lastName: '' };
+      if (dn.indexOf(',') >= 0) {
+        const parts = dn.split(',').map(s => s.trim());
+        return { firstName: parts[1] || '', lastName: parts[0] || '' };
+      }
+      const parts = dn.split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return { firstName: '', lastName: '' };
+      if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+      return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+    };
+
+    // Alle Team-Insert-Calls parallel — Counter-CAS in getNextTeilnehmerId
+    // garantiert eindeutige TeilnehmerIDs auch bei N parallelen Inserts.
+    const insertPromises: Array<Promise<{ ok: boolean; email: string; firstName: string; lastName: string }>> = [];
+    // Lead
+    insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
+      const r = await eventService.registerTeamMember(subsiteUrl, {
+        firstName: leadData.firstName,
+        lastName: leadData.lastName,
+        email: leadData.email,
+        profile: leadProfile,
+        status,
+        teamId,
+        teamLead: true,
+        teamName,
+        customData: leadData.customData,
+        customFieldMap: fieldMap,
+        starterType: effectiveStarterType,
+        preferredStarterType: leadData.preferredStarterType,
+        registeredByName: actorName,
+        registeredByEmail: actorEmail,
+        salutation: leadData.salutation,
+      });
+      return { ok: r.ok, email: leadData.email, firstName: leadData.firstName, lastName: leadData.lastName };
+    })());
+    // Members
+    members.forEach((m, idx) => {
+      const profile = memberProfiles[idx] || { department: '', location: '', jobTitle: '', phone: '' };
+      const parsed = parseDisplayName(m.displayName);
+      insertPromises.push((async (): Promise<{ ok: boolean; email: string; firstName: string; lastName: string }> => {
+        const r = await eventService.registerTeamMember(subsiteUrl, {
+          firstName: parsed.firstName,
+          lastName: parsed.lastName,
+          email: m.email,
+          profile,
+          status,
+          teamId,
+          teamLead: false,
+          teamName,
+          customData: {},
+          customFieldMap: fieldMap,
+          starterType: effectiveStarterType,
+          preferredStarterType: leadData.preferredStarterType,
+          registeredByName: actorName,
+          registeredByEmail: actorEmail,
+          // Anrede der Mitglieder bleibt leer — kein Picker fuer Member-Anreden.
+          salutation: '',
+        });
+        return { ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName };
+      })());
+    });
+
+    const results = await Promise.all(insertPromises);
+    const anyOk = results.some(r => r.ok);
+    if (!anyOk) return { ok: false, reason: 'insert-failed' };
+
+    // Pro erfolgreiche Anmeldung: Bestaetigungs-Mail + Outlook-Termin queuen.
+    const lang = event.emailLanguage || 'EN';
+    const isDe = lang.toUpperCase() === 'DE';
+    const teamNoteHtml = isDe
+      ? `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
+        + `<strong>Du wurdest als Teil eines Teams angemeldet.</strong><br>`
+        + `Diese Anmeldung wurde von <strong>${currentUserName}</strong> für dich und das gesamte Team durchgeführt${teamName ? ` (Team „${teamName}")` : ''}. `
+        + `Falls du dieser Anmeldung NICHT zugestimmt hast, melde dich bitte beim Organizer — du kannst dich auch über „Meine Events" eigenständig abmelden.`
+        + `</div>`
+      : `<div style="margin:0 0 16px;padding:12px 16px;background:#f3f8ec;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3f5f10;">`
+        + `<strong>You were registered as part of a team.</strong><br>`
+        + `This registration was performed by <strong>${currentUserName}</strong> on behalf of you and the whole team${teamName ? ` (Team „${teamName}")` : ''}. `
+        + `If you did not consent to this registration, please reach out to the organizer — you can also cancel it yourself from „My Events".`
+        + `</div>`;
+
+    for (const r of results) {
+      if (!r.ok) continue;
+      const templateType: string = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
+      const vars = {
+        Name: r.firstName,
+        EventTitle: event.title,
+        Organizer: formatOrganizerList(event.organizers, lang),
+        AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+        WaitlistPosition: '',
+      };
+      let emailData: { subject: string; body: string };
+      const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
+      if (spTemplate) {
+        emailData = buildEmailFromTemplate(spTemplate, vars);
+      } else {
+        emailData = status === 'Warteliste'
+          ? waitlistEmail(r.firstName, event.title, 0)
+          : registrationEmail(r.firstName, event.title);
+      }
+      // Team-Hinweis in den Body injecten — direkt nach <body>.
+      const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamNoteHtml}`);
+      if (!event.disableEmails) {
+        const fullName = `${r.firstName} ${r.lastName}`.trim();
+        eventService.queueEmail(
+          emailData.subject, r.email, fullName, bodyWithHint,
+          templateType, event.title, eventId
+        ).catch(err => console.warn('[DEX] team queueEmail failed:', err));
+      }
+      if (status !== 'Warteliste' && !event.disableOutlook) {
+        eventService.queueOutlookEvent(
+          r.email, eventId, event.title, 'Einladen'
+        ).catch(err => console.warn('[DEX] team queueOutlookEvent failed:', err));
+      }
+      if (event.eventNumber) {
+        eventService.upsertParticipant(
+          r.firstName, r.lastName, r.email, event.eventNumber, status
+        ).catch(err => console.warn('[DEX] team upsertParticipant failed:', err));
+      }
+    }
+
+    // Audit-Log (fire-and-forget).
+    eventService.writeChangeLog({
+      action: 'TeamRegistered',
+      targetType: 'Participant',
+      targetId: leadData.email,
+      targetName: `${leadData.firstName} ${leadData.lastName}`.trim(),
+      eventId,
+      eventTitle: event.title,
+      details: { teamId, teamSize: teamCount, status, members: members.map(m => m.email) },
+    }).catch(() => { /* */ });
+
+    if (status === 'Angemeldet') {
+      eventService.bumpKpiParticipants(teamCount).catch(() => { /* best-effort */ });
+    }
+    await loadEvents();
+    return { ok: true, teamId, status };
+  }
+
   async function cancelRegistration(eventId: string): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
@@ -1425,7 +1676,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     {
       value: {
         events, topLevelEvents, childEventsOf, isEventsLoading,
-        createEvent, registerForEvent, cancelRegistration,
+        createEvent, registerForEvent, registerTeam,
+        getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
+          const subsiteUrl = subsiteMap.current[eventId];
+          if (!subsiteUrl) return [];
+          return eventService.getTeamMembers(subsiteUrl, teamId);
+        },
+        cancelRegistration,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         sendOrganizerOnboarding,

@@ -627,7 +627,23 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, refreshEvents } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, refreshEvents } = useEvents();
+  // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
+  // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
+  // nicht — nur fuer Events mit gesetzter TeamId im eigenen Eintrag.
+  const [teamMembersCache, setTeamMembersCache] = React.useState<Record<string, SPRegistration[]>>({});
+  const teamCacheKeyRef = React.useRef<Set<string>>(new Set());
+  const enqueueTeamFetch = React.useCallback((eventId: string, teamId: string): void => {
+    if (!eventId || !teamId) return;
+    const key = `${eventId}|${teamId}`;
+    if (teamCacheKeyRef.current.has(key)) return;
+    teamCacheKeyRef.current.add(key);
+    getTeamMembers(eventId, teamId).then(list => {
+      setTeamMembersCache(prev => ({ ...prev, [key]: list }));
+    }).catch(() => {
+      setTeamMembersCache(prev => ({ ...prev, [key]: [] }));
+    });
+  }, [getTeamMembers]);
   const [isRefreshingEvents, setIsRefreshingEvents] = React.useState(false);
   const handleRefreshMyEvents = async (): Promise<void> => {
     if (isRefreshingEvents) return;
@@ -1183,6 +1199,59 @@ export default function MyEventsPage(): React.ReactElement {
                           color: 'var(--dex-orange)', fontSize: '0.78rem',
                         }}>
                           {t('myevents.sessionsonly.hint')}{subList}.
+                        </div>
+                      );
+                    })()}
+
+                    {/* v11.82: Team-Badge — sichtbar wenn die eigene Anmeldung
+                        eine TeamId hat. Lazy-Load der anderen Mitglieder via
+                        getTeamMembers. Zeigt: Team-Name (falls vorhanden),
+                        Belegungs-Anzahl, Liste der Mitglieder (Lead zuerst). */}
+                    {registration.TeamId && (() => {
+                      const cacheKey = `${event.id}|${registration.TeamId}`;
+                      const cached = teamMembersCache[cacheKey];
+                      if (!cached) {
+                        // Async laden (nur einmal pro Karte, idempotent ueber ref-Set).
+                        enqueueTeamFetch(event.id, registration.TeamId);
+                        return null;
+                      }
+                      const activeMembers = cached.filter(m => m.Status !== 'Abgemeldet');
+                      const total = activeMembers.length;
+                      const teamSizeCfg = event.teamSize || total;
+                      const tn = registration.TeamName || (cached.find(m => m.TeamName)?.TeamName) || '';
+                      const memberNames = activeMembers.map(m => {
+                        const nm = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
+                        return nm;
+                      });
+                      const isLead = !!registration.TeamLead;
+                      return (
+                        <div style={{
+                          marginTop: 8, padding: '8px 12px', borderRadius: 6,
+                          background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
+                          color: 'var(--dex-green-dark, #3f5f10)', fontSize: '0.82rem', lineHeight: 1.45,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <Icon iconName="People" style={{ fontSize: 14 }} />
+                            <strong>
+                              {isDe
+                                ? `Team „${tn || 'Unbenannt'}" — ${total}/${teamSizeCfg} belegt`
+                                : `Team „${tn || 'Unnamed'}" — ${total}/${teamSizeCfg} taken`}
+                            </strong>
+                            {isLead && (
+                              <span style={{
+                                padding: '1px 8px', borderRadius: 999,
+                                background: 'var(--dex-green, #86bc25)', color: '#fff',
+                                fontSize: '0.7rem', fontWeight: 600,
+                              }}>
+                                {isDe ? 'du bist Team-Lead' : 'you are team lead'}
+                              </span>
+                            )}
+                          </div>
+                          {memberNames.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+                              {isDe ? 'Mitglieder' : 'Members'}: {memberNames.join(', ')}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

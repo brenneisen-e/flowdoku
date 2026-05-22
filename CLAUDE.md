@@ -167,6 +167,64 @@ welche Events ein `queueOutlookEvent('UpdateEvent')` bekommen;
 `pendingOutlookDirtyWriteRefs` (Record<eventId, boolean>) hält die
 OutlookDirty-Schreibwerte pro Event-ID.
 
+### Team-Anmeldung — Phase 2 Registration-Flow (v11.82)
+
+Mit v11.82 wird aus der Konfiguration aus v11.80/v11.81 ein
+funktionierender Multi-Person-Anmelde-Flow. Der Stand zur App- und
+Schema-Seite:
+
+- **Schema-Erweiterung Subsite-Teilnehmerliste:** Drei neue Spalten
+  `TeamId` (Text), `TeamLead` (Boolean), `TeamName` (Text) — angelegt
+  sowohl in `createRegistrationList()` (neue Events) als auch in
+  `fixRegistrationListColumns()` (bestehende Events; Admin per
+  „Spalten fixen" nachrüstbar). In der Default-View landen die drei
+  Spalten **am Ende**, nach allen Custom-Fields, damit die View bei
+  Nicht-Team-Events unauffällig bleibt.
+- **Atomare N-Sitz-Reservierung:** `EventService.reserveSeat(...,
+  count?: number)` akzeptiert seit v11.82 einen optionalen
+  `count`-Parameter (Default 1). Bei `count > 1` wird der
+  Sitzplatz-Counter um `count` per ETag-CAS inkrementiert — entweder
+  alle N Plätze gehen gleichzeitig in die Gruppe, oder das gesamte
+  Team landet auf der Warteliste (`current + N > cap` → 'full').
+  Kein Teil-Anmelden bei Engpässen.
+- **`EventService.registerTeamMember(...)`**: ein einzelner Insert
+  mit Team-Feldern (`TeamId`, `TeamLead`, `TeamName`). Wird vom
+  Team-Submit pro Mitglied einmal aufgerufen, ohne den schweren
+  Permission-/Dedup-Pfad von `registerForEvent` zu durchlaufen.
+- **`EventContext.registerTeam(eventId, leadData, members,
+  teamName)`**: orchestriert den ganzen Submit — Doppel-Anmelde-
+  Prüfung pro Member, `TeamId` via `crypto.randomUUID()` (Fallback
+  `Date.now()+random`), Sitzplatz-Reservierung, parallele
+  `Promise.all`-Inserts pro Person, dann pro erfolgreichem Eintrag
+  Bestätigungs-Mail (mit „Du wurdest als Teil eines Teams
+  angemeldet"-Hinweis-Box plus Klartext-Verweis auf Self-Cancel
+  über „Meine Events" falls keine Zustimmung) und
+  Outlook-Einladung, plus KPI-Bump um N.
+- **UI im Anmeldeformular:** `RegistrationPage` zeigt unter
+  „Persönliche Daten" einen Toggle „Ich melde mich + mein Team an"
+  nur wenn `event.teamRegistrationEnabled && teamSize >= 2 &&
+  !registerForOther`. Aktiver Toggle blendet eine eigene Card auf
+  mit (1) auffällig orange Pflicht-Hinweis-Box zur Zustimmung jedes
+  Mitglieds, (2) optionalem Team-Name-Pflichtfeld (nur wenn
+  `event.askTeamName`), (3) N-1 People-Picker-Slots (Pflicht im
+  Modus „Nur komplette Teams", optional bei „Auch Teil-Teams") und
+  (4) einer Pflicht-Bestätigungs-Checkbox. Der Submit-Button heißt
+  in dem Modus „Team anmelden (N Personen)" und bleibt deaktiviert
+  bis die Validation grün ist (keine Duplikate, alle Pflicht-Slots
+  gefüllt, Checkbox angehakt).
+- **„Meine Events"-Team-Badge:** Jede Registrierung mit `TeamId`
+  rendert unter dem Event-Titel ein grünes Badge „Team „<Name>" —
+  N/M belegt" plus eine Komma-Liste der aktiven
+  Mitglieder-Namen. Wenn der eingeloggte User Lead ist, kommt
+  zusätzlich ein kleines „du bist Team-Lead"-Chip dazu. Die andere
+  Team-Mitgliederliste wird lazy via
+  `EventContext.getTeamMembers(eventId, teamId)` geladen und im
+  React-State gecached.
+- **Sub-Events:** Für v11.82 ist Team-Anmeldung **auf das Haupt-
+  Event beschränkt**. Sub-Event-Subsites bekommen die Team-Spalten
+  noch nicht über den Wizard-Pfad zugewiesen — Pro-Sub-Event-
+  Team-Anmeldung + Beitritts-/Approve-Flows kommen in v11.83+.
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event

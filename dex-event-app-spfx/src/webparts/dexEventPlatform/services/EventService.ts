@@ -348,6 +348,12 @@ export interface SPRegistration {
   CheckedInDate?: string;      // ISO-DateTime, wann der Teilnehmer eingecheckt wurde
   CheckedInByName?: string;    // Name des Helfers, der den Check-In ausgeloest hat
   CheckedInByEmail?: string;   // E-Mail des Helfers, der den Check-In ausgeloest hat
+  /** v11.82: Team-Anmeldung — TeamId ist die UUID, die alle Mitglieder eines
+   *  gemeinsam angemeldeten Teams gruppiert. TeamLead=true nur fuer die
+   *  anmeldende Person. TeamName ist optional (nur wenn AskTeamName aktiv). */
+  TeamId?: string;
+  TeamLead?: boolean;
+  TeamName?: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
 
@@ -3422,6 +3428,14 @@ export class EventService {
       // „Überbuchung prüfen"-Lauf als über Kapazität erkannt; der Admin
       // entscheidet pro Person (auf Warteliste / Platz behalten).
       { title: 'OverbookReview', type: 2 },
+      // v11.82: Team-Anmeldung — drei Spalten gruppieren Mitglieder eines
+      // gemeinsam angemeldeten Teams. TeamId = UUID (gleicher Wert fuer alle
+      // Mitglieder), TeamLead = true nur fuer die anmeldende Person, TeamName
+      // = optionaler frei waehlbarer Name (nur wenn das Event AskTeamName an
+      // hat). Bei Nicht-Team-Anmeldungen bleiben alle drei Felder leer.
+      { title: 'TeamId', type: 2 },
+      { title: 'TeamLead', type: 8 },
+      { title: 'TeamName', type: 2 },
       { title: 'CustomData', type: 3 },
     ];
 
@@ -3500,6 +3514,11 @@ export class EventService {
     await this.configureDefaultView(REG_LIST_NAME, [
       'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
+      // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
+      // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffaellig
+      // und bei Team-Events sieht der Organizer auf einen Blick, wer mit wem
+      // angemeldet ist.
+      'TeamId', 'TeamLead', 'TeamName',
     ], subsiteUrl, { rebuild: true });
 
     // Item-Level Permissions
@@ -3913,6 +3932,109 @@ export class EventService {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * v11.82: Ein einzelnes Teilnehmer-Item im Team-Modus anlegen.
+   *
+   * Unterschied zu `registerForEvent`: kein eigener Permission-Check (der
+   * Aufrufer hat schon im Team-Submit alle Mitglieder validiert), kein
+   * Post-Insert Dedup-Loop (der ist im Team-Pfad ueberfluessig — wenn ein
+   * Member mit Kollision verliert, fixt es der Folge-IDReorder). Nimmt
+   * Profil-Daten und Anzeige-Namen direkt entgegen, weil der Lead-Submit
+   * pro Member ohnehin schon das Graph-Profil geladen hat.
+   */
+  public async registerTeamMember(
+    subsiteUrl: string,
+    args: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      profile: { department: string; location: string; jobTitle: string; phone: string };
+      status: 'Angemeldet' | 'Warteliste';
+      teamId: string;
+      teamLead: boolean;
+      teamName?: string;
+      customData?: Record<string, string>;
+      customFieldMap?: Record<string, string>;
+      starterType?: string;
+      preferredStarterType?: string;
+      registeredByName?: string;
+      registeredByEmail?: string;
+      salutation?: string;
+    }
+  ): Promise<{ ok: boolean; teilnehmerId?: number; itemId?: number }> {
+    try {
+      const nextId = await this.getNextTeilnehmerId(subsiteUrl);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'Title': args.email,
+        ...(typeof nextId === 'number' ? { 'TeilnehmerID': nextId } : {}),
+        'Anrede': args.salutation || '',
+        'Vorname': args.firstName,
+        'Nachname': args.lastName,
+        'ParticipantName': `${args.firstName} ${args.lastName}`.trim(),
+        'ParticipantEmail': args.email,
+        'Department': args.profile.department,
+        'Location': args.profile.location,
+        'JobTitle': args.profile.jobTitle,
+        'Phone': args.profile.phone,
+        'Status': args.status,
+        'RegistrationDate': new Date().toISOString(),
+        'TeamId': args.teamId,
+        'TeamLead': !!args.teamLead,
+        'TeamName': args.teamName || '',
+        'CustomData': JSON.stringify(args.customData || {}),
+      };
+      if (args.registeredByName) payload['RegisteredByName'] = args.registeredByName;
+      if (args.registeredByEmail) payload['RegisteredByEmail'] = args.registeredByEmail;
+      if (args.starterType) payload['StarterType'] = args.starterType;
+      if (args.preferredStarterType) payload['PreferredStarterType'] = args.preferredStarterType;
+      if (args.customFieldMap && args.customData) {
+        for (const cfId of Object.keys(args.customData)) {
+          if (cfId === 'salutation') continue;
+          const v = args.customData[cfId];
+          if (!v) continue;
+          const spName = args.customFieldMap[cfId];
+          if (spName) payload[spName] = v;
+        }
+      }
+      const response = await this._post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
+        payload
+      );
+      if (!response.ok) return { ok: false };
+      try {
+        const respJson = await response.json();
+        const itemId: number = respJson?.d?.Id || respJson?.Id || 0;
+        return { ok: true, teilnehmerId: typeof nextId === 'number' ? nextId : undefined, itemId };
+      } catch {
+        return { ok: true, teilnehmerId: typeof nextId === 'number' ? nextId : undefined };
+      }
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /**
+   * v11.82: Alle Mitglieder eines Teams (per TeamId) zu einer Registrierung
+   * laden — wird in „Meine Events" zum Rendern des Team-Badges genutzt.
+   */
+  public async getTeamMembers(subsiteUrl: string, teamId: string): Promise<SPRegistration[]> {
+    if (!teamId) return [];
+    try {
+      const tidEsc = teamId.replace(/'/g, "''");
+      const response = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=TeamId eq '${tidEsc}'&$top=100&$orderby=TeamLead desc,Id asc`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.value || data.d?.results || [];
+    } catch {
+      return [];
     }
   }
 
@@ -4457,10 +4579,12 @@ export class EventService {
   public async reserveSeat(
     subsiteUrl: string,
     group: '' | 'Durchstarter' | 'Funstarter',
-    cap: number
+    cap: number,
+    count: number = 1
   ): Promise<'reserved' | 'full' | 'error'> {
     // cap <= 0 = unbegrenzt → kein Reservieren nötig.
     if (!cap || cap <= 0) return 'reserved';
+    const inc = Math.max(1, Math.floor(count));
     const field = this.seatFieldFor(group);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     const MAX_RETRIES = 40;
@@ -4498,8 +4622,12 @@ export class EventService {
       } else {
         current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
       }
-      if (current >= cap) return 'full';
-      const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: current + 1 }, etag);
+      // v11.82: Team-Anmeldungen reservieren N Plaetze atomar. Wenn nicht alle
+      // N in dieselbe Gruppe passen, schlaegt die Reservierung als „full" fehl —
+      // der Aufrufer setzt das gesamte Team auf Warteliste (kein Teil-Team
+      // aktivieren). Bei count=1 (Solo) ist das Verhalten identisch zu vorher.
+      if (current + inc > cap) return 'full';
+      const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: current + inc }, etag);
       if (patchResp.ok) return 'reserved';
       if (patchResp.status !== 412) return 'error';
       const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
@@ -4882,6 +5010,9 @@ export class EventService {
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
       { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
+      { title: 'TeamId', type: 2 },            // v11.82: UUID einer Team-Anmeldung (leer = Solo)
+      { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true fuer die anmeldende Person
+      { title: 'TeamName', type: 2 },          // v11.82: optionaler frei waehlbarer Team-Name
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(
@@ -5069,12 +5200,25 @@ export class EventService {
       ]);
       // Bereits zur View hinzugefuegt — nicht doppelt anfassen
       const alreadyAdded = new Set(viewFields);
+      // v11.82: Team-Spalten kommen ans Ende der View — nach allen
+      // Custom-Fields, damit sie nicht zwischen den event-spezifischen
+      // Antwortspalten landen. Hier merken und im Post-Loop ueberspringen.
+      const teamTailFields = ['TeamId', 'TeamLead', 'TeamName'];
+      const teamTailSet = new Set(teamTailFields);
       // Kompletter Feld-Stand NACH dem Fix (bestehende + neu angelegte),
       // damit neu angelegte Custom-Fields auch in die View kommen.
       for (const fn of postFixFields) {
         if (alreadyAdded.has(fn)) continue;
         if (systemBlocklist.has(fn)) continue;
         if (fn.charAt(0) === '_') continue;
+        if (teamTailSet.has(fn)) continue; // ans Ende
+        viewFields.push(fn);
+        alreadyAdded.add(fn);
+      }
+      // Team-Spalten jetzt am Ende anhaengen (nur die, die tatsaechlich existieren).
+      for (const fn of teamTailFields) {
+        if (alreadyAdded.has(fn)) continue;
+        if (postFixFields.indexOf(fn) < 0) continue;
         viewFields.push(fn);
         alreadyAdded.add(fn);
       }
