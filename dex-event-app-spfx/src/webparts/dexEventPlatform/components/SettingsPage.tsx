@@ -496,7 +496,7 @@ export default function SettingsPage(): React.ReactElement {
                                 background: 'var(--dex-gray-100)',
                                 transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                                 transformOrigin: 'left center',
-                                cursor: 'zoom-in',
+                                /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
                               }}
                               onMouseEnter={e => {
                                 (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
@@ -622,7 +622,7 @@ export default function SettingsPage(): React.ReactElement {
                                     background: 'var(--dex-gray-100)',
                                     transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                                     transformOrigin: 'left center',
-                                    cursor: 'zoom-in',
+                                    /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
                                   }}
                                   onMouseEnter={e => {
                                     (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';

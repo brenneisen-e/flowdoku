@@ -27,6 +27,25 @@ function formatDate(iso: string): string {
   );
 }
 
+// v11.94: Kompakt-Format für die Datum-Badge in der Event-Card —
+// wenn Start- und End-Tag identisch sind, nur einmal das Datum +
+// "HH:MM - HH:MM". Sonst beide voll mit "-" dazwischen.
+function formatDateRange(startIso: string, endIso: string): string {
+  if (!startIso) return '';
+  const start = new Date(startIso);
+  const end = endIso ? new Date(endIso) : null;
+  const dayFmt = { day: '2-digit', month: '2-digit', year: 'numeric' } as const;
+  const timeFmt = { hour: '2-digit', minute: '2-digit' } as const;
+  if (!end || isNaN(end.getTime())) {
+    return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)}`;
+  }
+  const sameDay = start.toDateString() === end.toDateString();
+  if (sameDay) {
+    return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleTimeString('de-DE', timeFmt)}`;
+  }
+  return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleDateString('de-DE', dayFmt)} ${end.toLocaleTimeString('de-DE', timeFmt)}`;
+}
+
 export default function RegistrationPage(): React.ReactElement {
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent, registerTeam, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
@@ -1027,7 +1046,10 @@ export default function RegistrationPage(): React.ReactElement {
             style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
           />
           <span style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-            {locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm'}
+            {/* v11.94: Organizer kann den Text neben der Checkbox im Wizard
+                pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen". */}
+            {(field.confirmLabel && field.confirmLabel.trim())
+              || (locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
           </span>
         </label>
         {field.externalLinks && field.externalLinks.length > 0 && (
@@ -1229,17 +1251,22 @@ export default function RegistrationPage(): React.ReactElement {
                   dieselbe Breite, damit beide Boxen visuell aligniert
                   sind. inline-flex + alignItems:stretch sorgt für gleiche
                   Breite ohne festen Wert. */}
-              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, alignSelf: 'flex-start' }}>
+              {/* v11.94: alignSelf:stretch + maxWidth:100% damit die Box
+                  nicht über den Card-Rand rausragt; gleichzeitig wächst
+                  sie auf die natürliche Breite des längeren Inhalts und
+                  beide Boxen sind gleich breit. */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, maxWidth: '100%' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px', borderRadius: 8,
                   background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)',
                   fontSize: '0.88rem', fontWeight: 600,
-                  whiteSpace: 'nowrap',
                 }}>
                   <Icon iconName="Calendar" style={{ fontSize: 16, flexShrink: 0 }} />
                   <span>
-                    {formatDate(event.startDate)} {t('reg.until')} {formatDate(event.endDate)}
+                    {/* v11.94: kompaktes Range-Format („–" statt „until"),
+                        bei gleichem Tag nur einmal Datum + „HH:MM - HH:MM". */}
+                    {formatDateRange(event.startDate, event.endDate)}
                   </span>
                 </div>
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
@@ -1488,9 +1515,24 @@ export default function RegistrationPage(): React.ReactElement {
                             {ce.description && (
                               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
+                            {/* v11.94: Datum + Ort mit Icons (analog zum
+                                Haupt-Event-Header), damit Sub-Events visuell
+                                konsistent sind und auf einen Blick lesbar. */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                              {ce.startDate && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <Icon iconName="Calendar" style={{ fontSize: 13, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                                  {formatDate(ce.startDate)}
+                                </span>
+                              )}
+                              {ce.location && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <Icon iconName="POI" style={{ fontSize: 13, color: '#0a3766' }} />
+                                  {ce.location}
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                              {ce.startDate && <>{formatDate(ce.startDate)}</>}
-                              {ce.location && <> · {ce.location}</>}
                               {hasCap && (() => {
                                 // v9.8: Klartext-Anzeige damit der User auf einen Blick
                                 // sieht, wie viele Plaetze noch frei sind. Vorher stand
@@ -1898,6 +1940,43 @@ export default function RegistrationPage(): React.ReactElement {
               <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
+            {/* v11.94: Zusätzliche read-only-Profildaten aus dem SP-User-
+                Profil — Job Title, Department, Office, Mobile. Nur wenn
+                der User sich für sich selbst registriert (registerForOther
+                blendet die aus, weil das Profil des Stellvertreters nicht
+                gelesen wird). Werden NICHT mit registriert, sind reine
+                Info — der Eintrag in der Teilnehmerliste enthält wie bisher
+                nur die echten Spalten Vorname/Nachname/Email/Department/
+                Location/JobTitle/Phone. Werte: aus useCurrentUser(). */}
+            {!registerForOther && (currentUser.jobTitle || currentUser.department || currentUser.location || currentUser.mobilePhone) && (
+              <>
+                {currentUser.jobTitle && (
+                  <div className="form-group">
+                    <label className="form-label">{locale === 'de' ? 'Position' : 'Job Title'}</label>
+                    <input className="form-input" value={currentUser.jobTitle} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                  </div>
+                )}
+                {currentUser.department && (
+                  <div className="form-group">
+                    <label className="form-label">{locale === 'de' ? 'Abteilung' : 'Department'}</label>
+                    <input className="form-input" value={currentUser.department} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                  </div>
+                )}
+                {currentUser.location && (
+                  <div className="form-group">
+                    <label className="form-label">{locale === 'de' ? 'Büro' : 'Office'}</label>
+                    <input className="form-input" value={currentUser.location} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                  </div>
+                )}
+                {currentUser.mobilePhone && (
+                  <div className="form-group">
+                    <label className="form-label">{locale === 'de' ? 'Mobil' : 'Mobile'}</label>
+                    <input className="form-input" value={currentUser.mobilePhone} disabled style={{ background: 'var(--dex-gray-100)' }} />
+                  </div>
+                )}
+              </>
+            )}
+
             {/* v11.82: Team-Anmeldung-Toggle. Nur sichtbar wenn der Organizer
                 in Schritt 4 die Team-Anmeldung aktiviert hat UND der User sich
                 NICHT für eine andere Person registriert (Team-fuer-Andere wird
@@ -2284,9 +2363,23 @@ export default function RegistrationPage(): React.ReactElement {
                             {ce.description && (
                               <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
                             )}
+                            {/* v11.94: gleiches Icon-Layout wie oben (anderer
+                                Render-Pfad für Team-Modus). */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                              {ce.startDate && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <Icon iconName="Calendar" style={{ fontSize: 13, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                                  {formatDate(ce.startDate)}
+                                </span>
+                              )}
+                              {ce.location && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <Icon iconName="POI" style={{ fontSize: 13, color: '#0a3766' }} />
+                                  {ce.location}
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                              {ce.startDate && <>{formatDate(ce.startDate)}</>}
-                              {ce.location && <> · {ce.location}</>}
                               {hasCap && (() => {
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
@@ -2775,7 +2868,7 @@ function UserFieldPicker(props: {
             // v11.91: Hover-Zoom auf das Profilfoto — gleiche Geste wie
             // SettingsPage / AdminPage. size=L statt size=S für saubere
             // Skalierung beim Zoomen.
-            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s', transformOrigin: 'left center', cursor: 'zoom-in' }}
+            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s', transformOrigin: 'left center' }}
             onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
           />

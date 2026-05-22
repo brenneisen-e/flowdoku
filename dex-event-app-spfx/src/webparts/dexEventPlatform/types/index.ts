@@ -281,6 +281,10 @@ export interface EventSpecificField {
    *  Gruppen. Beispiel: Pflicht-Checkbox „Leistungsnachweis vorhanden" nur
    *  für Gruppe A einblenden. Bei Events ohne Split-Capacity wirkungslos. */
   onlyForGroup?: 'all' | 'A' | 'B';
+  /** v11.94: Nur bei `type === 'checkbox'` — Text, der NEBEN der Checkbox
+   *  als klickbarer Bestätigungs-Hinweis angezeigt wird. Default-Fallback:
+   *  „Ja, bestätigen" (DE) bzw. „Yes, confirm" (EN). Wird leer = Default. */
+  confirmLabel?: string;
 }
 
 export interface Registration {
@@ -309,6 +313,10 @@ export interface User {
   role: UserRole;
   location: string;
   jobTitle?: string; // z.B. "Assistant", "Senior Assistant", "Director", "Partner"
+  // v11.94: Personal-Info-Card auf der Registration-Page zeigt zusätzlich
+  // Department + Mobile (statt Festnetz) read-only aus dem SP-User-Profil.
+  department?: string;
+  mobilePhone?: string;
 }
 
 export interface RoleAssignment {

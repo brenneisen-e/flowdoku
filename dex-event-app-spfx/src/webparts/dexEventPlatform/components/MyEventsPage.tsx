@@ -1448,7 +1448,7 @@ export default function MyEventsPage(): React.ReactElement {
                                           objectFit: 'cover', background: 'var(--dex-gray-100)',
                                           transition: 'transform 160ms ease, box-shadow 160ms ease',
                                           transformOrigin: 'left center',
-                                          cursor: isCancelled ? 'default' : 'zoom-in',
+                                          /* v11.94: kein zoom-in-Cursor */
                                         }}
                                         onMouseEnter={e => {
                                           if (isCancelled) return;
@@ -2355,7 +2355,7 @@ export default function MyEventsPage(): React.ReactElement {
                             objectFit: 'cover', background: 'var(--dex-gray-100)',
                             transition: 'transform 160ms ease, box-shadow 160ms ease',
                             transformOrigin: 'left center',
-                            cursor: isCancelled ? 'default' : 'zoom-in',
+                            /* v11.94: kein zoom-in-Cursor */
                           }}
                           onMouseEnter={e => {
                             if (isCancelled) return;
