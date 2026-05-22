@@ -770,8 +770,8 @@ function TeamJoinFlow(): React.ReactElement {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <FlowNode
         type="start"
-        label="Beitritts-Wunsch ausgelöst (v11.83)"
-        details={'Einstieg: ein User klickt auf der Event-Anmeldeseite auf einen \'Beitreten\'-/ \'Beitritt anfragen\'-Button in der \'Offene Teams\'-Box. Voraussetzung: Organizer hat „Offene Slots öffentlich sichtbar" aktiviert und der User ist noch nicht beim Event angemeldet.'}
+        label="Beitritts-Wunsch ausgelöst (v11.83 / v11.84)"
+        details={'Drei Einstiege: (1) User klickt auf der Event-Anmeldeseite einen \'Beitreten\'-/ \'Beitritt anfragen\'-Button in der \'Offene Teams\'-Box (User-Pfad, v11.83). (2) Team-Lead klickt in „Meine Events" auf „+ Mitglied hinzufügen" am Team-Badge (Lead-Pfad, v11.83). (3) Organizer/Admin klickt im Admin Center in der Teams-Sektion auf „Person hinzufügen" (Admin-Pfad, v11.84). Alle drei Pfade laufen anschliessend durch denselben Doppel-Anmelde-Schutz.'}
       />
       <Arrow />
       <FlowNode
@@ -782,11 +782,19 @@ function TeamJoinFlow(): React.ReactElement {
       <Arrow />
       <FlowNode
         type="decision"
-        label="Approval erforderlich? (event.teamJoinRequiresApproval)"
-        details="Der Organizer setzt diesen Toggle in Schritt 4 (Team-Anmeldung). Nur aktivierbar wenn 'Offene Slots öffentlich sichtbar' an ist."
+        label="Welcher Pfad?"
+        details="Selbst-Beitritt vs. Lead-Add vs. Admin-Center-Add. Bei Selbst-Beitritt: prüfe ob Approval erforderlich ist. Bei Lead-Add und Admin-Center-Add: kein Approval — die hinzufügende Person trägt die Verantwortung der Zustimmung (Pflicht-Checkbox)."
       />
       <BranchContainer>
-        <Branch label="Nein — direkter Beitritt">
+        <Branch label="Lead-Add (MyEvents) oder Admin-Center-Add">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="addTeamMember()-Pfad direkt"
+            details="reserveSeat + registerTeamMember + Bestätigungs-Mail + Outlook + Info-Mail an alle Mitglieder. Kein Approval-Detour. Im Admin-Center-Pfad ist das die einzige Möglichkeit, im MyEvents-Pfad bedient sich nur der Lead daran (UI versteckt den Button für Nicht-Leads)."
+          />
+        </Branch>
+        <Branch label="Selbst-Beitritt (Anmelde-Seite) — direkt (kein Approval)">
           <FlowNode
             type="subprocess"
             color="#e8f5e9"
@@ -807,7 +815,7 @@ function TeamJoinFlow(): React.ReactElement {
             details="Bestätigungs-Mail an den Beitretenden, Outlook-Einladung in seine Queue, Info-Mail an die anderen aktiven Mitglieder '<Name> ist eurem Team beigetreten'."
           />
         </Branch>
-        <Branch label="Ja — Approval-Queue">
+        <Branch label="Selbst-Beitritt mit Approval-Queue">
           <FlowNode
             type="data"
             color="#ffebee"

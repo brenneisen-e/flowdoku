@@ -4054,6 +4054,35 @@ export class EventService {
   }
 
   /**
+   * v11.84: Lead-Rolle innerhalb eines Teams von einer Person auf eine andere
+   * uebergeben. Wird im Admin Center per Dropdown im Teams-Block ausgeloest.
+   * Best-effort transaktional: erst die neue Lead-Zeile auf TeamLead=true
+   * setzen, danach die alte auf TeamLead=false. Schlaegt der zweite MERGE
+   * fehl, gibt es kurzfristig zwei Leads — der Aufrufer kann dann erneut
+   * versuchen oder die Liste manuell reparieren. Keine echte Transaktion,
+   * SharePoint bietet sowas auf Listen-Ebene nicht.
+   */
+  public async transferTeamLead(
+    subsiteUrl: string,
+    fromLeadItemId: number,
+    toNewLeadItemId: number
+  ): Promise<boolean> {
+    if (!subsiteUrl || !fromLeadItemId || !toNewLeadItemId || fromLeadItemId === toNewLeadItemId) {
+      return false;
+    }
+    try {
+      const newUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${toNewLeadItemId})`;
+      const r1 = await this._merge(newUrl, { TeamLead: true });
+      if (!r1.ok) return false;
+      const oldUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${fromLeadItemId})`;
+      const r2 = await this._merge(oldUrl, { TeamLead: false });
+      return !!r2.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * v11.83: Pruefen, ob eine bestimmte Email-Adresse bereits aktiv beim
    * Event angemeldet ist (Status in Angemeldet/QR versendet/Eingecheckt/
    * Warteliste). Wird vor jedem Team-Add (Initial, Add-Member, Beitritt)

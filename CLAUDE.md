@@ -295,6 +295,56 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Team-Anmeldung — Phase 4 (v11.84): Admin-Center-Team-Management
+
+Mit v11.84 bekommen Admins und Organizer eigener Events einen
+direkten Eingriff in bestehende Teams aus dem Admin Center heraus —
+ohne den Umweg über „Meine Events" als Team-Lead.
+
+- **Teams-Sektion in `AdminPage.tsx`:** Bei Events mit
+  `teamRegistrationEnabled === true` rendert die Admin-Detail-Seite
+  oberhalb der Teilnehmer-Tabelle (nach Statistiken und
+  Überbuchungs-Box) eine eigene collapsible Card „Teams (N)".
+  Teams werden live aus dem bereits geladenen `registrations`-State
+  per groupBy(`TeamId`) gebildet — kein zusätzlicher Roundtrip.
+  Abgemeldete Mitglieder werden ausgeblendet, die Teams sortieren
+  nach Lead-RegistrationDate (älteste zuerst), innerhalb eines
+  Teams steht der Lead oben und danach die Mitglieder nach
+  TeilnehmerID aufsteigend. Pro Mitglied: Profilfoto via
+  `userphoto.aspx?accountname=<email>&size=L` (mit Hover-Zoom
+  scale 2.4×), Name + Email, Status-Badge (außer „Angemeldet"),
+  und ein grüner „Lead"-Pill für den TeamLead.
+- **„Person hinzufügen"-Button pro Team:** Nur sichtbar wenn das
+  Team noch freie Slots hat (`activeCount < teamSize`). Öffnet ein
+  Modal mit dem gleichen orangen Pflicht-Hinweisbox-Pattern wie der
+  Lead-Add in MyEvents — People-Picker via `searchUsers`,
+  Pflicht-Bestätigungs-Checkbox. Submit ruft `addTeamMember` aus
+  EventContext (existiert seit v11.83) auf — dedup-Schutz,
+  Sitzplatz-Reservierung, Insert, Bestätigungs-Mail + Outlook +
+  Info-Mails an die anderen Mitglieder. Nach Erfolg ein grüner
+  Toast „X wurde zum Team hinzugefügt — Mail + Outlook werden
+  versendet." und die Teilnehmer-Tabelle wird mit
+  `getAllRegistrations()` neu geladen.
+- **„Lead-Rolle übergeben"-Dropdown:** Nur sichtbar wenn das Team
+  ≥ 2 aktive Mitglieder hat. Klick öffnet ein Inline-Dropdown mit
+  allen anderen aktiven Mitgliedern (mit Foto + Name + Email).
+  Auswahl ruft `EventContext.transferTeamLead(eventId, teamId,
+  newLeadEmail)`. Die Context-Funktion lädt die aktuellen Members
+  via `getTeamMembers`, identifiziert alten Lead + Ziel-Member und
+  delegiert an `EventService.transferTeamLead(subsiteUrl,
+  fromLeadItemId, toNewLeadItemId)` — zwei MERGE-Patches in Folge
+  (best-effort, kein echtes Transactional weil SP keine Multi-Item-
+  Transaktionen kennt). Bei Erfolg gehen Info-Mails an alle
+  aktiven Mitglieder raus (im Deloitte-Layout via `wrapTemplate`),
+  der neue Lead bekommt einen Extra-Hinweis auf seine erweiterten
+  Rechte. Audit-Eintrag im ChangeLog mit
+  `action='TeamLeadTransferred'` plus alter und neuer Lead-Email.
+- **Berechtigungen:** Sichtbar für Admin (alle Events) oder
+  Organizer (eigene Events; via `isOrganizerFor(selectedEvent)`).
+  Die Buttons sind sonst komplett ausgeblendet. Die Teams-Sektion
+  selbst bleibt für nicht-berechtigte Rollen verborgen, weil die
+  Admin-Detail-Seite ohnehin nur für sie gerendert wird.
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event

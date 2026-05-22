@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2 } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown } from './Icons';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -341,7 +341,7 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
-  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents } = useEvents();
+  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -478,6 +478,27 @@ export default function AdminPage(): React.ReactElement {
   const [reorderProgressLabel, setReorderProgressLabel] = React.useState('');
   const [isFixingFields, setIsFixingFields] = React.useState(false);
   const [fixFieldsResult, setFixFieldsResult] = React.useState<string | null>(null);
+  // v11.84: Teams-Section (Admin Center Team-Management).
+  const [teamsCollapsed, setTeamsCollapsed] = React.useState<boolean>(false);
+  // Add-Member-Modal pro Team — gleiche Mechanik wie MyEventsPage.
+  const [adminAddMemberDialog, setAdminAddMemberDialog] = React.useState<{
+    teamId: string;
+    teamName: string;
+    freeSlots: number;
+  } | null>(null);
+  const [adminAddMemberPick, setAdminAddMemberPick] = React.useState<{ email: string; displayName: string } | null>(null);
+  const [adminAddMemberQuery, setAdminAddMemberQuery] = React.useState('');
+  const [adminAddMemberResults, setAdminAddMemberResults] = React.useState<Array<{ email: string; displayName: string }>>([]);
+  const [adminAddMemberSearching, setAdminAddMemberSearching] = React.useState(false);
+  const [adminAddMemberConsent, setAdminAddMemberConsent] = React.useState(false);
+  const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
+  const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
+  const adminAddMemberQueryTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Lead-Transfer-Dropdown: pro Team ein offener Dropdown-Index (TeamId-Key).
+  const [leadTransferOpenFor, setLeadTransferOpenFor] = React.useState<string | null>(null);
+  const [leadTransferBusy, setLeadTransferBusy] = React.useState(false);
+  // Toast nach erfolgreicher Aktion in der Teams-Section.
+  const [teamsToast, setTeamsToast] = React.useState<string>('');
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
   const [refreshProfilesResult, setRefreshProfilesResult] = React.useState<string | null>(null);
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
@@ -3919,6 +3940,280 @@ export default function AdminPage(): React.ReactElement {
           );
         })()}
 
+        {(() => {
+          // v11.84: Teams-Section — Admin-Center-Team-Management.
+          // Sichtbar nur fuer Events mit aktivierter Team-Anmeldung. Listet
+          // alle Teams (gruppiert per TeamId, abgemeldete Mitglieder
+          // ausgeblendet), mit Lead-Badge und Buttons fuer „+ Person
+          // hinzufuegen" und „Lead-Rolle uebergeben". Reagiert live auf
+          // `registrations` — kein zusaetzlicher Roundtrip.
+          if (!selectedEvent || !selectedEvent.teamRegistrationEnabled) return null;
+          if (isLoadingRegs) return null;
+
+          // groupBy TeamId, abgemeldete Personen NICHT eingehen lassen.
+          const teamsByid: Record<string, SPRegistration[]> = {};
+          for (const r of registrations) {
+            const tid = r.TeamId || '';
+            if (!tid) continue;
+            if (r.Status === 'Abgemeldet') continue;
+            (teamsByid[tid] = teamsByid[tid] || []).push(r);
+          }
+          // Sortierung: aelteste Lead-RegistrationDate zuerst.
+          const teamEntries = Object.entries(teamsByid)
+            .map(([tid, members]) => {
+              // Lead oben, dann TeilnehmerID aufsteigend.
+              members.sort((a, b) => {
+                if (!!a.TeamLead !== !!b.TeamLead) return a.TeamLead ? -1 : 1;
+                const aT = (a.TeilnehmerID ?? 9_999_999) as number;
+                const bT = (b.TeilnehmerID ?? 9_999_999) as number;
+                return aT - bT;
+              });
+              const lead = members.find(m => !!m.TeamLead) || members[0];
+              const leadDate = lead?.RegistrationDate ? new Date(lead.RegistrationDate).getTime() : Number.MAX_SAFE_INTEGER;
+              return { tid, members, lead, leadDate };
+            })
+            .sort((a, b) => a.leadDate - b.leadDate);
+
+          const teamSizeCfg = selectedEvent.teamSize || 0;
+          const count = teamEntries.length;
+          const canManage = isAdmin || isOrganizerFor(selectedEvent);
+
+          const statusBadge = (st: string): React.ReactElement | null => {
+            if (!st || st === 'Angemeldet') return null;
+            const colorMap: Record<string, string> = {
+              'Warteliste': '#b35a00',
+              'QR versendet': '#3a7dbf',
+              'Eingecheckt': '#4a7c1f',
+            };
+            const color = colorMap[st] || 'var(--dex-gray-500)';
+            return (
+              <span style={{
+                display: 'inline-block', padding: '1px 8px', borderRadius: 10,
+                background: `${color}15`, color, fontSize: '0.7rem', fontWeight: 600, marginLeft: 6,
+              }}>{st}</span>
+            );
+          };
+
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setTeamsCollapsed(v => !v)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTeamsCollapsed(v => !v); } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+              >
+                <Users size={20} />
+                <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
+                  Teams ({count})
+                </strong>
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {teamsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </span>
+              </div>
+              {!teamsCollapsed && (
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {teamEntries.length === 0 && (
+                    <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', fontStyle: 'italic' }}>
+                      Keine Team-Anmeldungen bisher.
+                    </div>
+                  )}
+                  {teamEntries.map(({ tid, members, lead }) => {
+                    const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+                    const total = members.length;
+                    const free = teamSizeCfg > 0 ? Math.max(0, teamSizeCfg - total) : 0;
+                    const canAdd = canManage && (teamSizeCfg === 0 || total < teamSizeCfg);
+                    const leadEmail = lead?.ParticipantEmail || '';
+                    const otherMembers = members.filter(m => m.Id !== lead?.Id);
+                    return (
+                      <div
+                        key={tid}
+                        style={{
+                          padding: 14,
+                          border: '1px solid var(--dex-gray-200)',
+                          borderRadius: 10,
+                          background: 'var(--dex-gray-50, #f7f7f7)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                          <strong style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
+                            {teamName ? `Team „${teamName}"` : 'Team (ohne Namen)'}
+                          </strong>
+                          <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.85rem' }}>
+                            {teamSizeCfg > 0 ? `${total}/${teamSizeCfg} belegt` : `${total} Mitglieder`}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {members.map(m => {
+                            const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+                            const isLead = !!m.TeamLead;
+                            return (
+                              <div
+                                key={m.Id}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 10,
+                                  padding: '4px 0',
+                                }}
+                              >
+                                <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
+                                  <img
+                                    src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                                    alt={name}
+                                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                    style={{
+                                      width: 32, height: 32, borderRadius: '50%', objectFit: 'cover',
+                                      background: 'var(--dex-gray-100)',
+                                      transition: 'transform 0.18s ease',
+                                      transformOrigin: 'left center',
+                                      cursor: 'pointer',
+                                    }}
+                                    onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)'; (e.currentTarget as HTMLImageElement).style.zIndex = '10'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)'; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.zIndex = ''; (e.currentTarget as HTMLImageElement).style.position = ''; (e.currentTarget as HTMLImageElement).style.boxShadow = ''; }}
+                                  />
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>
+                                    {name}
+                                    {statusBadge(m.Status)}
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
+                                </div>
+                                {isLead && (
+                                  <span style={{
+                                    display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+                                    background: 'var(--dex-green, #86bc25)', color: '#fff',
+                                    fontSize: '0.72rem', fontWeight: 700,
+                                  }}>Lead</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {canManage && (
+                          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', position: 'relative' }}>
+                            {canAdd && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => {
+                                  setAdminAddMemberDialog({ teamId: tid, teamName, freeSlots: free });
+                                  setAdminAddMemberPick(null);
+                                  setAdminAddMemberQuery('');
+                                  setAdminAddMemberResults([]);
+                                  setAdminAddMemberConsent(false);
+                                  setAdminAddMemberError('');
+                                }}
+                              >
+                                <Plus size={14} /> Person hinzufügen
+                                {teamSizeCfg > 0 && ` (${free} Slot${free === 1 ? '' : 's'} frei)`}
+                              </button>
+                            )}
+                            {otherMembers.length > 0 && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                  onClick={() => setLeadTransferOpenFor(leadTransferOpenFor === tid ? null : tid)}
+                                >
+                                  <RefreshCw size={14} /> Lead-Rolle übergeben
+                                </button>
+                                {leadTransferOpenFor === tid && (
+                                  <div style={{
+                                    position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                                    background: '#fff', border: '1px solid var(--dex-gray-300)',
+                                    borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                                    zIndex: 20, minWidth: 280, maxWidth: 360, padding: 6,
+                                  }}>
+                                    <div style={{ padding: '6px 10px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', borderBottom: '1px solid var(--dex-gray-100)' }}>
+                                      Neue Lead-Rolle übertragen an:
+                                    </div>
+                                    {otherMembers.map(m => {
+                                      const nm = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+                                      return (
+                                        <button
+                                          key={m.Id}
+                                          type="button"
+                                          disabled={leadTransferBusy}
+                                          onClick={async () => {
+                                            if (leadTransferBusy) return;
+                                            setLeadTransferBusy(true);
+                                            try {
+                                              const res = await transferTeamLead(selectedEvent.id, tid, m.ParticipantEmail);
+                                              if (res.ok) {
+                                                setTeamsToast(`Lead-Rolle wurde an ${nm} übergeben.`);
+                                                const regs = await getAllRegistrations(selectedEvent.id);
+                                                setRegistrations(regs);
+                                                window.setTimeout(() => setTeamsToast(''), 4500);
+                                              } else {
+                                                setTeamsToast(`Lead-Übergabe fehlgeschlagen: ${res.reason || 'Unbekannter Fehler'}.`);
+                                                window.setTimeout(() => setTeamsToast(''), 4500);
+                                              }
+                                            } finally {
+                                              setLeadTransferBusy(false);
+                                              setLeadTransferOpenFor(null);
+                                            }
+                                          }}
+                                          style={{
+                                            display: 'flex', alignItems: 'center', gap: 8,
+                                            width: '100%', padding: '8px 10px', border: 'none',
+                                            background: 'transparent', cursor: 'pointer',
+                                            textAlign: 'left', borderRadius: 6,
+                                          }}
+                                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-100)'; }}
+                                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                                        >
+                                          <img
+                                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=S`}
+                                            alt={nm}
+                                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                            style={{ width: 24, height: 24, borderRadius: '50%' }}
+                                          />
+                                          <div style={{ minWidth: 0 }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{nm}</div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                    <button
+                                      type="button"
+                                      onClick={() => setLeadTransferOpenFor(null)}
+                                      style={{
+                                        width: '100%', padding: '6px 10px',
+                                        border: 'none', borderTop: '1px solid var(--dex-gray-100)',
+                                        background: 'transparent', cursor: 'pointer',
+                                        fontSize: '0.78rem', color: 'var(--dex-gray-500)',
+                                      }}
+                                    >Abbrechen</button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {/* leadEmail nur als Referenz fuer den Lead-Lookup behalten — nicht fuer's TS-Linting wegwerfen. */}
+                            <span style={{ display: 'none' }}>{leadEmail}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {teamsToast && (
+          <div style={{
+            marginBottom: 14, padding: '10px 14px', borderRadius: 8,
+            background: 'rgba(134,188,37,0.12)', border: '1px solid var(--dex-green, #86bc25)',
+            color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.88rem',
+          }}>
+            {teamsToast}
+          </div>
+        )}
+
         {regLoadError ? (
           <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
         ) : isLoadingRegs ? (
@@ -5929,6 +6224,238 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {adminAddMemberDialog && selectedEvent && (() => {
+        const closeDlg = (): void => {
+          setAdminAddMemberDialog(null);
+          setAdminAddMemberPick(null);
+          setAdminAddMemberQuery('');
+          setAdminAddMemberResults([]);
+          setAdminAddMemberConsent(false);
+          setAdminAddMemberError('');
+          setAdminAddMemberBusy(false);
+        };
+        const submit = async (): Promise<void> => {
+          if (!adminAddMemberDialog || !adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy) return;
+          setAdminAddMemberBusy(true);
+          setAdminAddMemberError('');
+          try {
+            const res = await addTeamMember(
+              selectedEvent.id,
+              adminAddMemberDialog.teamId,
+              adminAddMemberDialog.teamName || undefined,
+              adminAddMemberPick
+            );
+            if (!res.ok) {
+              if (res.reason && res.reason.startsWith('already-registered')) {
+                setAdminAddMemberError('Diese Person ist bereits beim Event angemeldet — bitte abmelden lassen, bevor du sie zum Team hinzufügst.');
+              } else if (res.reason === 'team-full') {
+                setAdminAddMemberError('Das Team ist bereits voll.');
+              } else {
+                setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
+              }
+              setAdminAddMemberBusy(false);
+              return;
+            }
+            const pickedName = adminAddMemberPick.displayName || adminAddMemberPick.email;
+            setTeamsToast(`${pickedName} wurde zum Team hinzugefügt — Mail + Outlook werden versendet.`);
+            window.setTimeout(() => setTeamsToast(''), 4500);
+            const regs = await getAllRegistrations(selectedEvent.id);
+            setRegistrations(regs);
+            closeDlg();
+          } catch {
+            setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
+            setAdminAddMemberBusy(false);
+          }
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => { if (!adminAddMemberBusy) closeDlg(); }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2000,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: 12, padding: '28px 32px',
+                maxWidth: 540, width: '100%',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+                display: 'flex', flexDirection: 'column', gap: 14,
+                maxHeight: '90vh', overflowY: 'auto',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+                {adminAddMemberDialog.teamName
+                  ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
+                  : 'Person zum Team hinzufügen'}
+              </h3>
+              <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                {(selectedEvent.teamSize || 0) > 0
+                  ? `Team-Belegung: ${(selectedEvent.teamSize || 0) - adminAddMemberDialog.freeSlots}/${selectedEvent.teamSize}`
+                  : 'Belegung wird nach dem Hinzufügen aktualisiert.'}
+              </div>
+              <div style={{
+                padding: '14px 16px',
+                background: 'rgba(237,139,0,0.10)',
+                border: '2px solid var(--dex-orange, #ed8b00)',
+                borderRadius: 8,
+                color: '#7a4a00',
+                fontSize: '0.88rem',
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  Vorab die Zustimmung des Mitglieds einholen
+                </div>
+                <div>
+                  {'Mit dem Hinzufügen meldest du diese Person an. Sie erhält automatisch '}
+                  {'eine Anmeldebestätigung per Mail, einen Outlook-Termin und sieht das '}
+                  {'Event in „Meine Events". Bitte stelle sicher, dass die Person ihrer '}
+                  {'Anmeldung '}<strong>vorher zugestimmt</strong>{' hat.'}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--dex-red)' }}>*</span> Person auswählen
+                </label>
+                {adminAddMemberPick ? (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 10,
+                    padding: '6px 10px 6px 6px',
+                    border: '1px solid var(--dex-gray-200)',
+                    borderRadius: 'var(--dex-radius)',
+                    background: 'var(--dex-gray-50, #f7f7f7)',
+                    maxWidth: '100%',
+                  }}>
+                    <img
+                      src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(adminAddMemberPick.email)}&size=S`}
+                      alt={adminAddMemberPick.displayName}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                      style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{adminAddMemberPick.displayName}</div>
+                      <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem' }}>{adminAddMemberPick.email}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setAdminAddMemberPick(null); setAdminAddMemberQuery(''); setAdminAddMemberResults([]); }}
+                      title="Auswahl entfernen"
+                      style={{
+                        background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)',
+                        width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+                        fontSize: '0.9rem', lineHeight: 1,
+                      }}
+                    >×</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="form-input"
+                      value={adminAddMemberQuery}
+                      placeholder="Name oder E-Mail eingeben…"
+                      onChange={e => {
+                        const val = e.target.value;
+                        setAdminAddMemberQuery(val);
+                        if (adminAddMemberQueryTimer.current) clearTimeout(adminAddMemberQueryTimer.current);
+                        if (val.length >= 2) {
+                          adminAddMemberQueryTimer.current = setTimeout(async () => {
+                            setAdminAddMemberSearching(true);
+                            try {
+                              const res = await searchUsers(val);
+                              setAdminAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
+                            } catch { setAdminAddMemberResults([]); }
+                            setAdminAddMemberSearching(false);
+                          }, 300);
+                        } else {
+                          setAdminAddMemberResults([]);
+                        }
+                      }}
+                    />
+                    {(adminAddMemberResults.length > 0 || adminAddMemberSearching) && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                        background: '#fff', border: '1px solid var(--dex-gray-200)',
+                        borderRadius: 6, marginTop: 4, maxHeight: 220, overflowY: 'auto',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                      }}>
+                        {adminAddMemberSearching && (
+                          <div style={{ padding: 10, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                            Suche…
+                          </div>
+                        )}
+                        {adminAddMemberResults.map(r => (
+                          <button
+                            key={r.email}
+                            type="button"
+                            onClick={() => { setAdminAddMemberPick(r); setAdminAddMemberResults([]); setAdminAddMemberQuery(''); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              width: '100%', padding: '6px 10px', border: 'none',
+                              background: '#fff', cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.email)}&size=S`}
+                              alt={r.displayName}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                              style={{ width: 28, height: 28, borderRadius: '50%' }}
+                            />
+                            <div>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{r.displayName}</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{r.email}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                <input
+                  type="checkbox"
+                  checked={adminAddMemberConsent}
+                  onChange={e => setAdminAddMemberConsent(e.target.checked)}
+                  style={{ marginTop: 3 }}
+                />
+                <span>
+                  <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                  Ich bestätige, dass die Person ihrer Anmeldung zugestimmt hat.
+                </span>
+              </label>
+              {adminAddMemberError && (
+                <div style={{ padding: 10, borderRadius: 6, background: 'rgba(220,38,38,0.10)', color: '#b91c1c', fontSize: '0.85rem' }}>
+                  {adminAddMemberError}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeDlg}
+                  disabled={adminAddMemberBusy}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => { submit().catch(() => { /* */ }); }}
+                  disabled={!adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy}
+                >
+                  {adminAddMemberBusy ? 'Wird hinzugefügt…' : 'Hinzufügen'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

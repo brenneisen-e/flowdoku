@@ -148,6 +148,11 @@ interface EventContextType {
    *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
    *  selbst als neuem Member. */
   joinTeam: (eventId: string, teamId: string, teamName: string | undefined) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v11.84: Team-Lead-Rolle innerhalb eines Teams uebergeben — nur im
+   *  Admin Center fuer Admin/Organizer eigener Events sichtbar. Setzt die
+   *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
+   *  schickt anschliessend eine Info-Mail an alle aktiven Mitglieder. */
+  transferTeamLead: (eventId: string, teamId: string, newLeadEmail: string) => Promise<{ ok: boolean; reason?: string }>;
   /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — fuer
    *  Events bei denen der Organizer Approval aktiviert hat. */
   createTeamJoinRequest: (eventId: string, teamId: string) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
@@ -1460,6 +1465,82 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v11.84: Lead-Rolle innerhalb eines Teams uebergeben. Nur fuer Admin
+   * Center gedacht — die UI versteckt den Button fuer alle anderen Rollen.
+   * Wirft kein Mail zur "alten" Person, sondern eine Info-Mail an alle
+   * aktiven Team-Mitglieder mit dem Hinweis "Die Team-Lead-Rolle wurde
+   * an <Name> uebergeben". Audit-Eintrag im ChangeLog.
+   */
+  async function transferTeamLead(
+    eventId: string,
+    teamId: string,
+    newLeadEmail: string
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { ok: false, reason: 'event-not-found' };
+    if (!teamId || !newLeadEmail) return { ok: false, reason: 'invalid-input' };
+
+    const members = await eventService.getTeamMembers(subsiteUrl, teamId);
+    const active = members.filter(m => m.Status !== 'Abgemeldet');
+    const oldLead = active.find(m => !!m.TeamLead);
+    const newLead = active.find(m => (m.ParticipantEmail || '').toLowerCase() === newLeadEmail.toLowerCase());
+    if (!newLead) return { ok: false, reason: 'new-lead-not-found' };
+    if (!oldLead) {
+      // Kein aktiver Lead — einfach den neuen promoten, kein Demote noetig.
+      const okPromote = await eventService.promoteToTeamLead(subsiteUrl, newLead.Id);
+      if (!okPromote) return { ok: false, reason: 'promote-failed' };
+    } else {
+      if (oldLead.Id === newLead.Id) return { ok: false, reason: 'already-lead' };
+      const ok = await eventService.transferTeamLead(subsiteUrl, oldLead.Id, newLead.Id);
+      if (!ok) return { ok: false, reason: 'transfer-failed' };
+    }
+
+    // Info-Mails an alle aktiven Mitglieder — best-effort.
+    if (!event.disableEmails) {
+      const lang = (event.emailLanguage || 'EN').toUpperCase();
+      const isDe = lang === 'DE';
+      const newLeadName = `${newLead.Vorname || ''} ${newLead.Nachname || ''}`.trim() || newLead.ParticipantEmail;
+      const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+      for (const other of active) {
+        const otherFirst = other.Vorname || '';
+        const subject = isDe
+          ? `Team-Lead-Rolle uebergeben — Event ${event.title}`
+          : `Team lead role transferred — event ${event.title}`;
+        const isNewLeadMember = other.Id === newLead.Id;
+        const inner = isDe
+          ? `<p>Hallo ${otherFirst},</p>`
+            + `<p>Die Team-Lead-Rolle in eurem Team${teamName ? ` „${teamName}"` : ''} wurde an <strong>${newLeadName}</strong> uebergeben.</p>`
+            + (isNewLeadMember ? `<p>Du bist ab jetzt Team-Lead — du kannst neue Mitglieder ueber „Meine Events" hinzufuegen und ggf. Beitritts-Anfragen entscheiden.</p>` : '')
+            + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
+          : `<p>Hello ${otherFirst},</p>`
+            + `<p>The team lead role in your team${teamName ? ` „${teamName}"` : ''} has been transferred to <strong>${newLeadName}</strong>.</p>`
+            + (isNewLeadMember ? `<p>You are now the team lead — you can add new members via „My Events" and decide on join requests if any.</p>` : '')
+            + `<p>Best regards,<br>Your event team</p>`;
+        const html = wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner);
+        eventService.queueEmail(
+          subject, other.ParticipantEmail,
+          `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail,
+          html, 'Info', event.title, eventId
+        ).catch(() => { /* best-effort */ });
+      }
+    }
+
+    eventService.writeChangeLog({
+      action: 'TeamLeadTransferred',
+      targetType: 'Participant',
+      targetId: newLeadEmail,
+      targetName: `${newLead.Vorname || ''} ${newLead.Nachname || ''}`.trim(),
+      eventId,
+      eventTitle: event.title,
+      details: { teamId, fromLeadEmail: oldLead?.ParticipantEmail || '', toLeadEmail: newLeadEmail, actor: currentUserEmail },
+    }).catch(() => { /* */ });
+
+    return { ok: true };
+  }
+
+  /**
    * v11.83: Eine Beitritts-Anfrage in DEX_TeamJoinRequests anlegen +
    * Lead-Notification queuen. Die App liest die TeamId vom UI, holt sich
    * den Lead aus der Subsite-Teilnehmerliste (TeamId-Match,
@@ -2249,6 +2330,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         },
         addTeamMember,
         joinTeam,
+        transferTeamLead,
         createTeamJoinRequest,
         listTeamJoinRequestsForEvent,
         decideTeamJoinRequest,
