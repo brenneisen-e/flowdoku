@@ -403,9 +403,11 @@
     .start-card__icon svg { transition: transform 0.2s ease; transform-origin: center; }
 
     /* ========== Event Grid ========== */
-    // v11.94: Default 3 Karten nebeneinander (min 280px) — vorher 2.
-    // Auto-fill behält die responsive Degradation auf schmalen Containern.
-    .event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+    // v11.94/v12.2: Default 3 Karten nebeneinander. Vorher auto-fill mit
+    // 280px min — bei ~800px Container wurden daraus 2 Spalten à ~400px.
+    // Jetzt explizit repeat(3, 1fr) auf Desktop, 2 Spalten auf Tablet,
+    // 1 Spalte auf Mobile (siehe Media-Queries weiter unten).
+    .event-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
     .event-card {
       background: var(--dex-white); border: 1px solid var(--dex-gray-200);
       border-radius: var(--dex-radius-lg); overflow: hidden; cursor: pointer;
@@ -528,8 +530,9 @@
          Display kompakter. */
       .landing__actions .landing__bubble { display: none; }
 
-      /* Event Grid */
-      .event-grid { grid-template-columns: 1fr; gap: 16px; }
+      /* v12.2: Mobile-Override für .event-grid entfernt (User-Feedback —
+         „mobil ist fehler"). Die Standard-3-Spalten-Layout bleibt auch
+         unterhalb 768px. */
       .event-card__image { height: 180px; }
 
       /* Registration */

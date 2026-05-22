@@ -2379,30 +2379,9 @@ export default function AdminPage(): React.ReactElement {
                         <span style={valueStyle}>{waitlistRegs.length}</span>
                       </div>
                     )}
-                    {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
-                      <div style={{ ...rowStyle, alignItems: 'flex-start', borderBottom: 'none' }}>
-                        <span style={labelStyle}>{isDe ? 'Abgefragte Felder' : 'Requested fields'}</span>
-                        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {selectedEvent.eventSpecificFields.map(f => (
-                            <span
-                              key={f.id}
-                              title={f.helpText || f.label}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                padding: '2px 8px', borderRadius: 999,
-                                background: 'rgba(134,188,37,0.10)',
-                                border: '1px solid rgba(134,188,37,0.35)',
-                                color: 'var(--dex-green-dark, #4a7c1f)',
-                                fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {f.label}
-                              {f.required && <span style={{ color: 'var(--dex-red, #c00)' }}>*</span>}
-                            </span>
-                          ))}
-                        </span>
-                      </div>
-                    )}
+                    {/* v12.2: 'Abgefragte Felder'-Zeile entfernt — die
+                        Custom-Field-Pills hier waren redundant; sie tauchen
+                        ohnehin als Spalten in der Teilnehmer-Tabelle auf. */}
                   </>
                 );
               })()}
