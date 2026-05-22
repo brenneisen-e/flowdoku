@@ -83,19 +83,16 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           fontFamily: 'inherit',
+          // v11.98: gleicher Chevron-Look wie .form-select (inline SVG
+          // als background-image rechts mittig). Vorher Unicode-▾ —
+          // visuell anders als der Single-Select-Pfeil.
+          backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3e%3cpath fill='%23666' d='M6 8L1 3h10z'/%3e%3c/svg%3e\")",
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 12px center',
+          backgroundSize: '12px 12px',
         }}
       >
         {label}
-        <span style={{
-          position: 'absolute',
-          right: 10,
-          top: '50%',
-          transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
-          transition: 'transform 0.15s',
-          color: 'var(--dex-gray-400)',
-          pointerEvents: 'none',
-          fontSize: '0.8rem',
-        }}>▾</span>
       </button>
       {open && (
         <div

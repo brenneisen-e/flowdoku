@@ -342,6 +342,40 @@ function ActionTile(props: ActionTileProps): React.ReactElement {
   );
 }
 
+// v11.98: Pill-Toggle für die Aktiv-Teilnehmer-Tabelle bei Split-Kapazität.
+// Default 'split' = getrennte Tabellen pro Gruppe. 'merged' = einzelne
+// Tabelle (alter Look).
+function SplitMergeToggle(props: {
+  view: 'split' | 'merged';
+  setView: (v: 'split' | 'merged') => void;
+  isDe: boolean;
+}): React.ReactElement {
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: '5px 12px',
+    borderRadius: 999,
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+    background: active ? 'rgba(134,188,37,0.10)' : '#fff',
+    color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+    transition: 'all 0.12s ease',
+  });
+  return (
+    <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+      <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginRight: 6 }}>
+        {props.isDe ? 'Ansicht:' : 'View:'}
+      </span>
+      <button type="button" onClick={() => props.setView('split')} style={pill(props.view === 'split')}>
+        {props.isDe ? 'Getrennt' : 'Split'}
+      </button>
+      <button type="button" onClick={() => props.setView('merged')} style={pill(props.view === 'merged')}>
+        {props.isDe ? 'Zusammen' : 'Merged'}
+      </button>
+    </div>
+  );
+}
+
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
@@ -366,12 +400,10 @@ export default function AdminPage(): React.ReactElement {
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
-  // v11.97: bei Events mit Split-Kapazität (zwei Gruppen) wird die Aktiv-
-  // Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt.
-  // Per Toggle kann der Organizer/Admin auf eine zusammengeführte Sicht
-  // umstellen. Default: 'split'. Bei Events ohne Split-Kapazität ohne
-  // Wirkung (Tabelle bleibt single-table).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // v11.97/v11.98: bei Events mit Split-Kapazität (zwei Gruppen) wird die
+  // Aktiv-Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt
+  // (kleinere Gruppe zuerst). Per Toggle umschaltbar auf zusammengeführte
+  // Sicht. Default: 'split'. Bei Events ohne Split-Kapazität ohne Wirkung.
   const [splitParticipantsView, setSplitParticipantsView] = React.useState<'split' | 'merged'>('split');
   // v11.0: Bei Events mit Teilnehmer-Upload alle Attachment-Listen
   // einmalig laden, sobald sich registrations oder das ausgewählte
@@ -4767,35 +4799,103 @@ export default function AdminPage(): React.ReactElement {
                     )}
                   </div>
 
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                        {visibleColumnIds.map(id => renderHeader(id))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeRegs.map((reg, i) => {
-                        // v11.36: über Kapazität markierte Personen auch in der
-                        // eigentlichen Teilnehmerliste hervorheben (orange),
-                        // damit man sie nicht nur in der Review-Box sieht.
-                        const isOverbook = reg.OverbookReview === 'Pending';
-                        return (
-                          <tr
-                            key={reg.Id}
-                            title={isOverbook ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : undefined}
-                            style={{
-                              borderBottom: '1px solid var(--dex-gray-100)',
-                              ...(isOverbook
-                                ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
-                                : {}),
-                            }}
-                          >
-                            {visibleColumnIds.map(id => renderCell(id, reg, i))}
+                  {/* v11.98: Split-/Merged-Toggle bei Split-Kapazität.
+                      Default 'split' — getrennte Tabellen pro Gruppe,
+                      kleinere zuerst. */}
+                  {(() => {
+                    const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                            {visibleColumnIds.map(id => renderHeader(id))}
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody>
+                          {rows.map((reg, i) => {
+                            const isOverbook = reg.OverbookReview === 'Pending';
+                            return (
+                              <tr
+                                key={reg.Id}
+                                title={isOverbook ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : undefined}
+                                style={{
+                                  borderBottom: '1px solid var(--dex-gray-100)',
+                                  ...(isOverbook
+                                    ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
+                                    : {}),
+                                }}
+                              >
+                                {visibleColumnIds.map(id => renderCell(id, reg, indexOffset + i))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    );
+
+                    if (!isSplitCapacity || splitParticipantsView === 'merged') {
+                      return (
+                        <>
+                          {isSplitCapacity && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                              <SplitMergeToggle view={splitParticipantsView} setView={setSplitParticipantsView} isDe={isDe} />
+                            </div>
+                          )}
+                          {renderTable(activeRegs, 0)}
+                        </>
+                      );
+                    }
+
+                    // Split-View: nach Gruppe trennen (StarterType ||
+                    // PreferredStarterType), kleinere Gruppe zuerst.
+                    const lblA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
+                    const lblB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
+                    const groupA = activeRegs.filter(r => (r.StarterType || r.PreferredStarterType) === 'Durchstarter');
+                    const groupB = activeRegs.filter(r => (r.StarterType || r.PreferredStarterType) === 'Funstarter');
+                    const groupNone = activeRegs.filter(r => !(r.StarterType || r.PreferredStarterType));
+                    const groups = [
+                      { label: lblA, key: 'A', rows: groupA, cap: selectedEvent?.durchstarterCapacity || 0 },
+                      { label: lblB, key: 'B', rows: groupB, cap: selectedEvent?.funstarterCapacity || 0 },
+                    ].sort((x, y) => x.rows.length - y.rows.length);
+                    let runningIdx = 0;
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                          <SplitMergeToggle view={splitParticipantsView} setView={setSplitParticipantsView} isDe={isDe} />
+                        </div>
+                        {groups.map(g => {
+                          const offset = runningIdx;
+                          runningIdx += g.rows.length;
+                          return (
+                            <div key={g.key} style={{ marginBottom: 20 }}>
+                              <h4 style={{
+                                margin: '0 0 8px', color: 'var(--dex-green-dark, #4a7c1f)',
+                                fontSize: '0.95rem', fontWeight: 700, display: 'flex',
+                                alignItems: 'baseline', gap: 8,
+                              }}>
+                                <span>{g.label}</span>
+                                <span style={{ color: 'var(--dex-gray-500)', fontWeight: 500, fontSize: '0.85rem' }}>
+                                  ({g.rows.length}{g.cap > 0 ? ` / ${g.cap}` : ''})
+                                </span>
+                              </h4>
+                              {g.rows.length === 0 ? (
+                                <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+                                  {isDe ? 'Keine Teilnehmer in dieser Gruppe.' : 'No participants in this group.'}
+                                </p>
+                              ) : renderTable(g.rows, offset)}
+                            </div>
+                          );
+                        })}
+                        {groupNone.length > 0 && (
+                          <div style={{ marginBottom: 20 }}>
+                            <h4 style={{ margin: '0 0 8px', color: 'var(--dex-gray-500)', fontSize: '0.95rem', fontWeight: 700 }}>
+                              {isDe ? 'Ohne Gruppe' : 'No group'} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 500, fontSize: '0.85rem' }}>({groupNone.length})</span>
+                            </h4>
+                            {renderTable(groupNone, runningIdx)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               );
             })()}
