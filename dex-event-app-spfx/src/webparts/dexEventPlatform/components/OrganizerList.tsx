@@ -10,6 +10,7 @@
  */
 
 import * as React from 'react';
+import { useRoles } from '../context/RoleContext';
 
 export interface OrganizerListProps {
   names: string[];
@@ -17,6 +18,11 @@ export interface OrganizerListProps {
   size?: 'sm' | 'md';
   compact?: boolean;
 }
+
+// v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
+// (nur Tab-Lebensdauer). Verhindert dass jeder Hover einen neuen REST-Call
+// triggert wenn der User mehrfach drüberfährt.
+const profileCache = new Map<string, { jobTitle: string; location: string }>();
 
 function getInitials(name: string): string {
   const parts = name.includes(',')
@@ -39,6 +45,12 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
   // dem zweiten Fehlschlag fallen wir auf das Initialen-Avatar zurück.
   const [retryAttempt, setRetryAttempt] = React.useState(0);
   const [coords, setCoords] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
+  // v11.95: lazy-loaded JobTitle + Standort. Wird beim ersten Hover über
+  // searchUser nachgeladen und im modul-globalen profileCache gemerkt.
+  const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(
+    email && profileCache.has(email.toLowerCase()) ? profileCache.get(email.toLowerCase()) as { jobTitle: string; location: string } : null
+  );
+  const { searchUser } = useRoles();
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
@@ -55,6 +67,23 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
     const x = r.left + r.width / 2;
     setCoords({ x, y, above });
     setHovered(true);
+    // v11.95: beim ersten Hover JobTitle + Standort lazy nachladen.
+    // Cache pro Email — beim wiederholten Hover sofort verfügbar.
+    if (email && !profile) {
+      const cacheKey = email.toLowerCase();
+      const cached = profileCache.get(cacheKey);
+      if (cached) {
+        setProfile(cached);
+      } else {
+        searchUser(email).then(res => {
+          if (res) {
+            const entry = { jobTitle: res.jobTitle || '', location: res.location || '' };
+            profileCache.set(cacheKey, entry);
+            setProfile(entry);
+          }
+        }).catch(() => { /* silent — falls Lookup fehlschlägt einfach nur Name+Email zeigen */ });
+      }
+    }
   };
 
   return (
@@ -127,6 +156,13 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
           />
           <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</span>
           <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{email}</span>
+          {/* v11.95: JobTitle + Standort aus dem SP-Profil — lazy beim
+              ersten Hover geladen, danach gecached. */}
+          {profile && (profile.jobTitle || profile.location) && (
+            <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', textAlign: 'center' }}>
+              {[profile.jobTitle, profile.location].filter(Boolean).join(' · ')}
+            </span>
+          )}
         </span>
       )}
     </span>
