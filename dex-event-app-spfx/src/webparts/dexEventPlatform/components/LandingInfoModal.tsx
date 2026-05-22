@@ -165,18 +165,18 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
           <ul style={{ margin: 0, paddingLeft: 22, lineHeight: 1.7, fontSize: '0.9rem', color: GRAY_700 }}>
             {isDE ? (
               <>
-                <li><strong>Lauf-Events</strong> — B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)</li>
                 <li><strong>Leadership & Strategy Meetings</strong> — z.B. SR&amp;T P/MD/D Meeting mit 450 Teilnehmern</li>
                 <li><strong>Firmen-Events</strong> — Sommerfeste, Weihnachtsfeiern, Abteilungs-Offsites</li>
                 <li><strong>Assistenz- &amp; Team-Meetings</strong> — mit Transfer- und Hotelbuchung</li>
+                <li><strong>Lauf-Events</strong> — B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)</li>
                 <li><strong>Alles dazwischen</strong> — von 10 Leuten am Lunch bis 500+ Personen auf einer Großveranstaltung</li>
               </>
             ) : (
               <>
-                <li><strong>Running events</strong> — B2Run, JPMorgan Corporate Challenge (with start-blocks &amp; split capacity)</li>
                 <li><strong>Leadership &amp; strategy meetings</strong> — e.g. SR&amp;T P/MD/D with 450+ participants</li>
                 <li><strong>Company events</strong> — summer parties, Christmas celebrations, team offsites</li>
                 <li><strong>Assistant &amp; team meetings</strong> — with transfer and hotel booking</li>
+                <li><strong>Running events</strong> — B2Run, JPMorgan Corporate Challenge (with start-blocks &amp; split capacity)</li>
                 <li><strong>Everything in between</strong> — from 10 people at lunch to 500+ at a flagship event</li>
               </>
             )}
