@@ -61,14 +61,20 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         disabled={disabled}
         onClick={() => !disabled && setOpen(o => !o)}
         style={{
+          // v11.97: exakt gleiche Geometrie wie .form-select (siehe SCSS):
+          // padding 12/16, border 1.5px, border-radius 12, font 0.95rem,
+          // min-height 48px, line-height 1.45.
           width: '100%',
           textAlign: 'left',
-          padding: '10px 36px 10px 12px',
-          border: error ? '1px solid var(--dex-red)' : '1px solid var(--dex-gray-200)',
-          borderRadius: 8,
-          background: disabled ? 'var(--dex-gray-50)' : '#fff',
-          color: isEmpty ? 'var(--dex-gray-400)' : 'var(--dex-gray-700)',
+          padding: '12px 36px 12px 16px',
+          border: error ? '1.5px solid var(--dex-red)' : '1.5px solid var(--dex-gray-200)',
+          borderRadius: 12,
+          background: disabled ? 'var(--dex-gray-50)' : 'var(--dex-white, #fff)',
+          color: isEmpty ? 'var(--dex-gray-400)' : 'var(--dex-gray-800)',
           fontSize: '0.95rem',
+          lineHeight: 1.45,
+          minHeight: 48,
+          boxSizing: 'border-box',
           cursor: disabled ? 'not-allowed' : 'pointer',
           outline: open ? '2px solid var(--dex-green, #86bc25)' : 'none',
           outlineOffset: -1,

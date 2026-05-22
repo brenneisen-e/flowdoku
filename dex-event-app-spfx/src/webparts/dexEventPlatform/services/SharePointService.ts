@@ -686,11 +686,16 @@ export class SharePointService {
     displayName: string;
     location: string;
     jobTitle: string;
+    // v11.97: Department + Mobile zusätzlich aus dem SP-Profil — für die
+    // Personal-Info-Card auf der Registration-Page wenn jemand für eine
+    // andere Person registriert.
+    department?: string;
+    mobilePhone?: string;
   } | null> {
     if (!email) return null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const extract = (data: any): { displayName: string; location: string; jobTitle: string } | null => {
+    const extract = (data: any): { displayName: string; location: string; jobTitle: string; department: string; mobilePhone: string } | null => {
       if (!data || !data.DisplayName) return null;
       const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
       const getProp = (keys: string[]): string => {
@@ -704,6 +709,8 @@ export class SharePointService {
         displayName: data.DisplayName,
         location: getProp(['Office', 'SPS-Location', 'SPS-City', 'City']),
         jobTitle: getProp(['Title', 'SPS-JobTitle']),
+        department: getProp(['Department', 'SPS-Department']),
+        mobilePhone: getProp(['CellPhone', 'SPS-MobilePhone', 'MobilePhone']),
       };
     };
 
