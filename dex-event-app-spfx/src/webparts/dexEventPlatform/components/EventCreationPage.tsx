@@ -2234,6 +2234,56 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
+   * v11.93: Liefert die Top-Level-Kommunikations-Werte zuverlässig — egal auf
+   * welchem Tab der User gerade in Schritt 6 steht. Bug-Hintergrund: Die
+   * Logo-/Body-/Heading-States werden zwischen Top-Level und Sub-Event-Tabs
+   * hin- und hergespiegelt; wenn der User auf einem Sub-Tab Speichern klickt,
+   * stehen in den State-Variablen die Sub-Event-Werte — der Top-Level-Save
+   * würde diese fälschlich aufs Haupt-Event schreiben (Logo, Outlook-Body
+   * etc.). Diese Helper-Funktion entscheidet auf Basis von activeCommTabIdx,
+   * ob die aktuellen State-Variablen schon Top-Level sind (Tab 0) oder ob aus
+   * dem topLevelCommSnapshot resolved werden muss.
+   */
+  const resolveTopLevelCommState = (): {
+    emailLanguage: string;
+    emailLogoBase64: string;
+    outlookLogoBase64: string;
+    outlookBody: string;
+    outlookHeading: string;
+    outlookSubheading: string;
+    disableEmails: boolean;
+    disableOutlook: boolean;
+  } => {
+    if (activeCommTabIdx === 0) {
+      return {
+        emailLanguage,
+        emailLogoBase64: emailLogoPreview,
+        outlookLogoBase64: outlookLogoPreview,
+        outlookBody,
+        outlookHeading,
+        outlookSubheading,
+        disableEmails,
+        disableOutlook,
+      };
+    }
+    const snap = topLevelCommSnapshot.current;
+    if (snap) return snap;
+    // Fallback (sollte praktisch nicht eintreten): wir sind auf einem Sub-Tab,
+    // hatten aber noch keinen Snapshot — verwenden die aktuellen State-Werte,
+    // damit zumindest kein Crash entsteht.
+    return {
+      emailLanguage,
+      emailLogoBase64: emailLogoPreview,
+      outlookLogoBase64: outlookLogoPreview,
+      outlookBody,
+      outlookHeading,
+      outlookSubheading,
+      disableEmails,
+      disableOutlook,
+    };
+  };
+
+  /**
    * Save-Side-Sanity: Organizer-Names und -Emails 1:1 paaren bevor sie nach SP
    * geschrieben werden. Pairs ohne BEIDE (Name + Email) fallen raus — verhindert
    * dass eine Mismatch-State (z.B. „Spiegel, Mirjam" gepaart mit
@@ -2270,6 +2320,20 @@ export default function EventCreationPage(): React.ReactElement {
     setIsSubmitting(true);
     setError('');
     setProgress(0);
+
+    // v11.93: Top-Level-Kommunikations-Werte sauber resolven (s. Helper-
+    // Doku oben). Sonst würden, falls beim Speichern ein Sub-Event-Tab
+    // aktiv ist, die Sub-Event-States (Logo, Outlook-Body, Headings,
+    // etc.) fälschlich auf das Haupt-Event geschrieben.
+    const topComm = resolveTopLevelCommState();
+    const effEmailLanguage = topComm.emailLanguage;
+    const effEmailLogo = topComm.emailLogoBase64;
+    const effOutlookLogo = topComm.outlookLogoBase64;
+    const effOutlookBody = topComm.outlookBody;
+    const effOutlookHeading = topComm.outlookHeading;
+    const effOutlookSubheading = topComm.outlookSubheading;
+    const effDisableEmails = topComm.disableEmails;
+    const effDisableOutlook = topComm.disableOutlook;
 
     // Schritt 1: Bild wird spaeter (nach Event-Erstellung) als Item-Attachment hochgeladen.
     // Bestehende URL beibehalten (z.B. bei Edit ohne neues Bild).
@@ -2365,31 +2429,27 @@ export default function EventCreationPage(): React.ReactElement {
       // sich abmelden kann — die Outlook-Decline-Funktion triggert zwar einen
       // Reminder-Flow, aber der eigentliche App-Abmelde-Pfad ist sauberer.
       const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-      const defaultOutlookBody = emailLanguage === 'EN'
+      const defaultOutlookBody = effEmailLanguage === 'EN'
         ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
           + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
           + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
         : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
           + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
           + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
-      const resolvedBody = outlookBody
-        ? replacePlaceholders(outlookBody, outlookVars)
+      const resolvedBody = effOutlookBody
+        ? replacePlaceholders(effOutlookBody, outlookVars)
         : defaultOutlookBody;
-      const resolvedOlHeading = outlookHeading ? replacePlaceholders(outlookHeading, outlookVars) : title;
-      const resolvedOlSub = outlookSubheading ? replacePlaceholders(outlookSubheading, outlookVars) : undefined;
+      const resolvedOlHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, outlookVars) : title;
+      const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : undefined;
       const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub);
-      // Outlook-spezifisches Logo direkt in den Body einbetten (Flow ersetzt {{ORB_URL}}
-      // nur mit EmailImageBase64 — das ist fuer Mails. Fuer Outlook haben wir ein eigenes
-      // Logo, also hier resolven).
-      // v7.5: Fallback auf den globalen DEX-Orb-Cache, wenn der Organizer kein
-      // event-spezifisches Outlook-Logo hochgeladen hat — sonst rendert
-      // <img src=""> ein leeres Bildkasten und der Termin sieht halbfertig aus.
-      updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || getCachedOrbBase64() || '');
+      // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
+      // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
+      updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
       updates['QuizClusterSize'] = Math.min(Math.max(1, quizClusterSize || 1), 4);
-      updates['EmailLanguage'] = emailLanguage;
+      updates['EmailLanguage'] = effEmailLanguage;
       // v6.15: B2Run-Config (Starter-Typ → Startblock, Leistungsnachweis-Pflicht)
       // wird in EmailTemplateOverrides._b2run piggyback gespeichert, damit keine
       // neue SP-Spalte nötig ist.
@@ -2417,10 +2477,13 @@ export default function EventCreationPage(): React.ReactElement {
       const splitDispRevConfig = splitDisplayOrderReversed && useSplitCapacities
         ? { _splitDisplayOrderReversed: true }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0)
+      // v11.93: Top-Level-Logos aus dem Resolver lesen, NICHT direkt aus
+      // den State-Variablen — sonst wird beim Speichern aus einem Sub-Tab
+      // das Sub-Logo aufs Haupt-Event geschrieben.
+      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0)
         ? JSON.stringify({
-            ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
-            ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+            ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
+            ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
             ...b2runExtraConfig,
             ...qrScannerConfig,
             ...coOrganizerConfig,
@@ -2434,9 +2497,9 @@ export default function EventCreationPage(): React.ReactElement {
       // Custom-Mail-Logo in EmailImageBase64 (SP-Spalte) — der Flow ersetzt
       // {{ORB_URL}} in Mails damit. Wenn leer: Flow faellt auf _Config
       // DefaultImageBase64 (DEX-Orb) zurueck.
-      updates['EmailImageBase64'] = emailLogoPreview || '';
-      updates['DisableEmails'] = disableEmails;
-      updates['DisableOutlook'] = disableOutlook;
+      updates['EmailImageBase64'] = effEmailLogo || '';
+      updates['DisableEmails'] = effDisableEmails;
+      updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
       // *nicht* gesetzt hat, bleibt der Flag dirty=true; bei Checkbox=true
@@ -2830,27 +2893,27 @@ export default function EventCreationPage(): React.ReactElement {
           // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
           // mit Link auf die App ("Meine Events"-Tab).
           const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-          const defaultBody = emailLanguage === 'EN'
+          const defaultBody = effEmailLanguage === 'EN'
             ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
               + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
               + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
             : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
               + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
               + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
-          const resolvedBody = outlookBody ? replacePlaceholders(outlookBody, vars) : defaultBody;
-          const resolvedHeading = outlookHeading ? replacePlaceholders(outlookHeading, vars) : title;
-          const resolvedSub = outlookSubheading ? replacePlaceholders(outlookSubheading, vars) : undefined;
+          const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
+          const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
+          const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : undefined;
           const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub);
-          // v7.5: gleicher Fallback wie im Update-Pfad — globaler DEX-Orb,
-          // damit der Termin nie ohne Hero-Bild rauskommt.
-          return wrapped.replace(/\{\{ORB_URL\}\}/g, outlookLogoPreview || getCachedOrbBase64() || '');
+          // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
+          // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
+          return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
         })(),
         agenda: JSON.stringify(agenda),
         transfers: JSON.stringify(transferTimes),
         documents: '[]', // Dokumente werden nach erfolgreichem Upload gespeichert
         funZone: JSON.stringify(quiz),
         quizClusterSize: Math.min(Math.max(1, quizClusterSize || 1), 4),
-        emailLanguage,
+        emailLanguage: effEmailLanguage,
         emailTemplateOverrides: (() => {
           const b2runExtra = (durchstarterStartblock || funstarterStartblock || durchstarterRequiresProof)
             ? { _b2run: {
@@ -2874,11 +2937,12 @@ export default function EventCreationPage(): React.ReactElement {
           const splitDispRevExtra = splitDisplayOrderReversed && useSplitCapacities
             ? { _splitDisplayOrderReversed: true }
             : {};
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || emailLogoPreview || outlookLogoPreview || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0;
+          // v11.93: Top-Level-Logos aus dem Resolver lesen.
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0;
           return hasAny
             ? JSON.stringify({
-                ...(emailLogoPreview ? { _eventLogo: emailLogoPreview } : {}),
-                ...(outlookLogoPreview ? { _outlookLogo: outlookLogoPreview } : {}),
+                ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
+                ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
                 ...b2runExtra,
                 ...splitDispRevExtra,
                 ...qrExtra,
@@ -2888,8 +2952,10 @@ export default function EventCreationPage(): React.ReactElement {
               })
             : '';
         })(),
-        disableEmails,
-        disableOutlook,
+        // v11.93: aus dem Top-Level-Resolver — Sub-Tab-Werte würden sonst
+        // beim Save fälschlich aufs Haupt-Event übernommen.
+        disableEmails: effDisableEmails,
+        disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
         notifyOrgCancelMode,

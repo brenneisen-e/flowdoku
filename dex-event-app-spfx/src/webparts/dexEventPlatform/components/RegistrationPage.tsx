@@ -1006,14 +1006,17 @@ export default function RegistrationPage(): React.ReactElement {
         </label>
         <label
           style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            cursor: 'pointer', padding: '12px 14px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: 'pointer',
+            // v11.93: exakt gleiche Höhe wie .form-select — 12px 16px Padding,
+            // 1.5px Border, 12px Radius. Vorher 44px minHeight = optisch
+            // höher als die Dropdowns daneben.
+            padding: '12px 16px',
             border: showErrors && field.required && eventSpecific[field.id] !== 'true'
-              ? '1px solid var(--dex-red)'
-              : '1px solid var(--dex-gray-200)',
-            borderRadius: 8,
-            background: eventSpecific[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : '#fff',
-            minHeight: 44,
+              ? '1.5px solid var(--dex-red)'
+              : '1.5px solid var(--dex-gray-200)',
+            borderRadius: 12,
+            background: eventSpecific[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : 'var(--dex-white, #fff)',
             transition: 'background 0.12s',
           }}
         >
@@ -1021,9 +1024,9 @@ export default function RegistrationPage(): React.ReactElement {
             type="checkbox"
             checked={eventSpecific[field.id] === 'true'}
             onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
-            style={{ width: 22, height: 22, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
+            style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
           />
-          <span style={{ fontSize: '0.92rem', color: 'var(--dex-gray-700)' }}>
+          <span style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
             {locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm'}
           </span>
         </label>
@@ -1220,29 +1223,33 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 4px 4px 0' }}>
               <h4 style={{ fontSize: '1rem', margin: 0 }}>{event.title}</h4>
-              {/* v11.91: Datum + Ort als prominente Badges mit Icon —
-                  vorher Mini-Text mit 0.78-0.82rem, fast übersehbar. */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* v11.91: Datum + Ort als prominente Badges mit Icon.
+                  v11.93: Datum einzeilig (nowrap) — Box wächst auf
+                  natürliche Breite. Der Ort-Kasten streckt sich auf
+                  dieselbe Breite, damit beide Boxen visuell aligniert
+                  sind. inline-flex + alignItems:stretch sorgt für gleiche
+                  Breite ohne festen Wert. */}
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, alignSelf: 'flex-start' }}>
                 <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px', borderRadius: 8,
                   background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)',
-                  fontSize: '0.88rem', fontWeight: 600, alignSelf: 'flex-start',
+                  fontSize: '0.88rem', fontWeight: 600,
+                  whiteSpace: 'nowrap',
                 }}>
-                  <Icon iconName="Calendar" style={{ fontSize: 16 }} />
+                  <Icon iconName="Calendar" style={{ fontSize: 16, flexShrink: 0 }} />
                   <span>
-                    {formatDate(event.startDate)} {t('reg.until')}<br />
-                    {formatDate(event.endDate)}
+                    {formatDate(event.startDate)} {t('reg.until')} {formatDate(event.endDate)}
                   </span>
                 </div>
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
                   <div style={{
-                    display: 'inline-flex', alignItems: 'flex-start', gap: 8,
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
                     padding: '8px 12px', borderRadius: 8,
                     background: 'rgba(0,86,166,0.08)', color: '#0a3766',
-                    fontSize: '0.88rem', alignSelf: 'flex-start',
+                    fontSize: '0.88rem',
                   }}>
-                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: 2 }} />
+                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: 2, flexShrink: 0 }} />
                     <span>
                       {event.location && (
                         <span style={{ fontWeight: 700 }}>{event.location}</span>
@@ -1311,6 +1318,11 @@ export default function RegistrationPage(): React.ReactElement {
                   : nearlyFull
                     ? 'var(--dex-orange, #ff8c00)'
                     : 'var(--dex-green-dark, #6b9a1e)';
+                // v11.93: "Event voll"-Hinweis nicht mehr hier rendern —
+                // der ausführliche "All places are taken. Currently X on
+                // waiting list"-Block unter der Beschreibung übernimmt das
+                // bereits, sonst doppelte Meldung.
+                if (isFullAll) return null;
                 return (
                   <div style={{
                     fontSize: '0.78rem',
@@ -1318,9 +1330,7 @@ export default function RegistrationPage(): React.ReactElement {
                     marginTop: 6,
                     fontWeight: 600,
                   }}>
-                    {isFullAll
-                      ? t('reg.seats.full') || 'Event voll — Anmeldung geht auf die Warteliste'
-                      : `${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
+                    {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
                   </div>
                 );
               })()}
@@ -2409,8 +2419,14 @@ export default function RegistrationPage(): React.ReactElement {
         </button>
       </div>
 
-      {/* Datenschutz-Hinweis als Fußnote ganz unten */}
-      <div className="footer-disclaimer mt-24" style={{ borderRadius: 'var(--dex-radius-lg)' }}>
+      {/* Datenschutz-Hinweis als Fußnote ganz unten.
+          v11.93: Breite auf 1100px begrenzt + zentriert (analog
+          .registration-layout), damit der Text nicht über die ganze
+          App-Breite läuft. */}
+      <div
+        className="footer-disclaimer mt-24"
+        style={{ borderRadius: 'var(--dex-radius-lg)', maxWidth: 1100, margin: '24px auto 0' }}
+      >
         <p>
           {t('reg.privacy').replace('{title}', event.title)}
         </p>
