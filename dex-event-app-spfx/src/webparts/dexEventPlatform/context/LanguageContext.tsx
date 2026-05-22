@@ -27,7 +27,7 @@ export const translations: Record<Locale, Record<string, string>> = {
   de: {
     // Landing Page
     'landing.welcome': 'Willkommen bei',
-    'landing.platform': 'DEX.',
+    'landing.platform': 'DEX',
     'landing.subtitle': 'Die neue App für die Organisation von Deloitte Events.',
     'landing.devby': 'Entwickelt von Eike Brenneisen, Andreas Enk und Nils Felten.',
     'landing.start': 'Start',
@@ -458,7 +458,7 @@ export const translations: Record<Locale, Record<string, string>> = {
   en: {
     // Landing Page
     'landing.welcome': 'Welcome to',
-    'landing.platform': 'DEX.',
+    'landing.platform': 'DEX',
     'landing.subtitle': 'The new app for organising Deloitte events.',
     'landing.devby': 'Built by Eike Brenneisen, Andreas Enk and Nils Felten.',
     'landing.start': 'Start',
