@@ -165,6 +165,9 @@ interface CustomFieldInput {
    *  Gruppen sichtbar machen ('A' = Durchstarter / Gruppe A, 'B' =
    *  Funstarter / Gruppe B). 'all' / undefined = beide Gruppen. */
   onlyForGroup?: 'all' | 'A' | 'B';
+  /** v11.94: Nur fuer type='checkbox' — Text neben der Checkbox im
+   *  Registrierungsformular (Default „Ja, bestätigen" / „Yes, confirm"). */
+  confirmLabel?: string;
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -664,6 +667,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.helpText ? { helpText: f.helpText } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+      // v11.94: confirmLabel beim Edit-Mount mit-übernehmen.
+      ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
     })) : []
   );
@@ -2075,6 +2080,10 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren.
+            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+              ? { confirmLabel: f.confirmLabel.trim() }
+              : {}),
             // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
             // mit-persistieren — vorher haben alle drei Persist-Pfade
             // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
@@ -2396,6 +2405,10 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Sub-Event-Pfad).
+            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+              ? { confirmLabel: f.confirmLabel.trim() }
+              : {}),
             // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
             // mit-persistieren — vorher haben alle drei Persist-Pfade
             // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
@@ -2662,6 +2675,11 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
                 ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
                   ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
+                  : {}),
+                // v11.94: confirmLabel auch im cfForFix-Mapping mit-übernehmen,
+                // sonst überschreibt der zweite updateEvent-Call die Property weg.
+                ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+                  ? { confirmLabel: f.confirmLabel.trim() }
                   : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
@@ -2988,6 +3006,10 @@ export default function EventCreationPage(): React.ReactElement {
               : {}),
             ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
             ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Create-Pfad).
+            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+              ? { confirmLabel: f.confirmLabel.trim() }
+              : {}),
             // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
             // mit-persistieren — vorher haben alle drei Persist-Pfade
             // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
@@ -7530,6 +7552,23 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
                     </div>
+
+                    {/* v11.94: Bei Checkbox-Feldern kann der Organizer den
+                        Text neben der Checkbox individuell setzen — Default
+                        ist „Ja, bestätigen" / „Yes, confirm". */}
+                    {field.type === 'checkbox' && (
+                      <div style={{ marginLeft: 32, marginTop: 6 }}>
+                        <input
+                          className="form-input"
+                          placeholder={isDe
+                            ? 'Text neben Checkbox (optional, Default: „Ja, bestätigen")'
+                            : 'Text next to checkbox (optional, default: „Yes, confirm")'}
+                          value={field.confirmLabel || ''}
+                          onChange={e => updateCustomField(field.id, { confirmLabel: e.target.value })}
+                          style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
+                        />
+                      </div>
+                    )}
 
 
                     {/* v10.23: Dropdown-Optionen als gelisteter Editor mit

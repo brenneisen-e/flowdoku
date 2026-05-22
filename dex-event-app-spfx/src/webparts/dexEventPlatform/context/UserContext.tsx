@@ -68,11 +68,13 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // JobTitle brauchen wir fuer die Assistant-Ausnahme in der Registration
     // ("Assistant" darf fuer "Director"/"Partner" registrieren).
     loadUserProfile(props.context).then(profile => {
-      if (profile.location || profile.jobTitle) {
+      if (profile.location || profile.jobTitle || profile.department || profile.mobilePhone) {
         setCurrentUser(prev => ({
           ...prev,
           ...(profile.location ? { location: profile.location } : {}),
           ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
+          ...(profile.department ? { department: profile.department } : {}),
+          ...(profile.mobilePhone ? { mobilePhone: profile.mobilePhone } : {}),
         }));
       }
     }).catch(() => { /* Profil konnte nicht geladen werden */ });
@@ -102,7 +104,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
  * Office-Standort + JobTitle aus dem SP User Profile lesen.
  * JobTitle liegt im Property "Title" (bzw. "SPS-JobTitle" im Fallback).
  */
-async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string }> {
+async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string; department: string; mobilePhone: string }> {
   try {
     const profileUrl = `${context.pageContext.web.absoluteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`;
     const response = await context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
@@ -122,11 +124,14 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
         return {
           location: getProp(['Office', 'SPS-Location']),
           jobTitle: getProp(['Title', 'SPS-JobTitle']),
+          // v11.94: Department + Mobile zusätzlich aus dem SP-Profil.
+          department: getProp(['Department', 'SPS-Department']),
+          mobilePhone: getProp(['CellPhone', 'SPS-MobilePhone', 'MobilePhone']),
         };
       }
     }
   } catch { /* Profil nicht verfuegbar */ }
-  return { location: '', jobTitle: '' };
+  return { location: '', jobTitle: '', department: '', mobilePhone: '' };
 }
 
 /**
