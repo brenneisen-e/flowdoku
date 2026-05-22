@@ -876,6 +876,31 @@ Free/Busy-Anzeige fuer Dritte (Kollegen sehen nur „Privat — Beschaeftigt",
 keine Titel). Der eingeladene Teilnehmer selbst sieht den Termin ganz
 normal mit allen Details.
 
+**Vollstaendiger Stand der Compose-Action `Build_Update_Body` (Code-View 2026-05-22):**
+```json
+{
+  "type": "Compose",
+  "inputs": {
+    "subject": "@{first(outputs('Get_Event_Details')?['body/value'])?['Title']}",
+    "start": {
+      "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "end": {
+      "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+      "timeZone": "W. Europe Standard Time"
+    },
+    "showAs": "busy",
+    "responseRequested": false,
+    "sensitivity": "private",
+    "body": {
+      "contentType": "html",
+      "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
+    }
+  }
+}
+```
+
 **`Send_an_HTTP_request`-Body** (PATCH zur Graph API):
 ```
 @outputs('Build_Update_Body')
