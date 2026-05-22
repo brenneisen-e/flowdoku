@@ -1325,7 +1325,7 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                   {event.contactEmail && (
                     <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
-                      <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'none' }}>{event.contactEmail}</a>
+                      <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green, #86bc25)', textDecoration: 'none' }}>{event.contactEmail}</a>
                     </div>
                   )}
                   {event.contactInfo && (
@@ -1395,7 +1395,9 @@ export default function RegistrationPage(): React.ReactElement {
                     const beforeWindow = full.slice(Math.max(0, offset - 80), offset);
                     if (/href\s*=\s*["'][^"']*$/.test(beforeWindow)) return match;
                     if (/>$/.test(beforeWindow) && /<a [^>]*$/i.test(beforeWindow)) return match;
-                    return `<a href="mailto:${match}" style="color:#4a7c1f;text-decoration:underline">${match}</a>`;
+                    // v11.95: Deloitte-Grün (--dex-green #86bc25) statt dem
+                    // dunkleren Olive — gleiche Farbe wie die Card-Header.
+                    return `<a href="mailto:${match}" style="color:#86bc25;text-decoration:underline">${match}</a>`;
                   });
                 })(),
               }}

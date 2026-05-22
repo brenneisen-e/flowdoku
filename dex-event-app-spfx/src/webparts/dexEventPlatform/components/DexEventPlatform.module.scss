@@ -203,6 +203,17 @@
       background: var(--dex-white); color: var(--dex-gray-800);
       transition: border-color 0.2s, box-shadow 0.2s;
       outline: none;
+      // v11.95: Einheitliche Mindesthöhe für alle Form-Inputs (Single-Line-Text,
+      // Dropdown, Multi-Select-Dropdown-Button, Checkbox-Karte). Dropdowns +
+      // Inputs hatten je nach Browser-Default leicht unterschiedliche
+      // intrinsic heights; mit explizitem min-height alignen alle Felder
+      // zeilenweise sauber. Textareas erhalten min-height bewusst NICHT
+      // (haben eigenes min-height: 120px).
+      line-height: 1.45;
+      box-sizing: border-box;
+    }
+    .form-input, .form-select {
+      min-height: 48px;
     }
     .form-input:focus, .form-select:focus, .form-textarea:focus {
       border-color: var(--dex-green);
