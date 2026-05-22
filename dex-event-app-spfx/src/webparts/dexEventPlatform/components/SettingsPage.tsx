@@ -9,7 +9,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { UserRole } from '../types';
-import { Plus, FileText, Trash2 } from './Icons';
+import { Plus, FileText, Trash2, X } from './Icons';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -291,6 +291,154 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             )}
 
+            {/* Neue Rolle hinzufuegen — v11.72: nach OBEN verschoben, damit der
+                Admin nicht erst durch die Tabelle scrollen muss. Form ist auf
+                EINEN People-Picker reduziert (analog zum Organizer-Picker im
+                EventCreation-Wizard). */}
+            {!showAddForm ? (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowAddForm(true)}
+                style={{ fontSize: '0.85rem', marginBottom: 16 }}
+              >
+                <Plus size={16} /> Add User Role
+              </button>
+            ) : (
+              <div style={{
+                marginBottom: 16, padding: 16, background: 'var(--dex-gray-50, #fafafa)',
+                borderRadius: 'var(--dex-radius, 8px)', border: '1px solid var(--dex-gray-200, #eee)',
+              }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>Assign New Role</h4>
+
+                {/* People-Picker — Such-Input ODER ausgewählter Chip */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
+                    Person <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
+                  </label>
+                  {userFound === true && newEmail && newName ? (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 10,
+                      padding: '6px 10px 6px 6px', background: '#fff',
+                      border: '1px solid var(--dex-green)', borderRadius: 999,
+                      maxWidth: '100%',
+                    }}>
+                      <img
+                        src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(newEmail)}&size=S`}
+                        alt={newName}
+                        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                        style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {newName}
+                        </div>
+                        <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {newEmail}{newLocation ? ` · ${newLocation}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setNewEmail(''); setNewName(''); setNewLocation(''); setUserFound(null); }}
+                        title="Auswahl entfernen"
+                        style={{
+                          border: 'none', background: 'var(--dex-gray-100)', cursor: 'pointer',
+                          width: 24, height: 24, borderRadius: '50%',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'var(--dex-gray-600)', flexShrink: 0,
+                        }}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        className="form-input"
+                        value={newEmail}
+                        onChange={e => handleEmailChange(e.target.value)}
+                        onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        placeholder="Name oder Email eingeben..."
+                        style={{ fontSize: '0.85rem' }}
+                        autoFocus
+                        autoComplete="off"
+                      />
+                      {isSearching && (
+                        <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                          Suche...
+                        </span>
+                      )}
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)',
+                          boxShadow: 'var(--dex-shadow-hover)', maxHeight: 320, overflowY: 'auto', marginTop: 2,
+                        }}>
+                          {suggestions.map((s, i) => (
+                            <div
+                              key={i}
+                              onMouseDown={() => selectSuggestion(s)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '8px 12px', cursor: 'pointer',
+                                borderBottom: i < suggestions.length - 1 ? '1px solid var(--dex-gray-100)' : 'none',
+                              }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--dex-gray-100)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#fff'; }}
+                            >
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(s.email)}&size=S`}
+                                alt={s.displayName}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{s.displayName}</div>
+                                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {s.email}{s.location ? ` · ${s.location}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Role</label>
+                  <select
+                    className="form-select"
+                    value={newRole}
+                    onChange={e => setNewRole(e.target.value as UserRole)}
+                    style={{ fontSize: '0.85rem', maxWidth: 200 }}
+                  >
+                    <option value="Organizer">Organizer</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => { setShowAddForm(false); setNewEmail(''); setNewName(''); setNewLocation(''); setUserFound(null); }}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleAddRole}
+                    disabled={isAdding || !newEmail || !newName}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    {isAdding ? 'Saving...' : 'Assign Role'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Rollen-Tabelle */}
             {isRolesLoading ? (
               <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Loading roles...</p>
@@ -325,7 +473,35 @@ export default function SettingsPage(): React.ReactElement {
                               <tr><td colSpan={6} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
                             )}
                             <tr style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                        <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>{r.userName}</td>
+                        <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.userEmail)}&size=S`}
+                              alt={r.userName}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                              style={{
+                                width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
+                                background: 'var(--dex-gray-100)',
+                                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                                transformOrigin: 'left center',
+                                cursor: 'zoom-in',
+                              }}
+                              onMouseEnter={e => {
+                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)';
+                                (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
+                                (e.currentTarget as HTMLImageElement).style.zIndex = '50';
+                                (e.currentTarget as HTMLImageElement).style.position = 'relative';
+                              }}
+                              onMouseLeave={e => {
+                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
+                                (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
+                                (e.currentTarget as HTMLImageElement).style.zIndex = '';
+                                (e.currentTarget as HTMLImageElement).style.position = '';
+                              }}
+                            />
+                            <span>{r.userName}</span>
+                          </div>
+                        </td>
                         <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
                         <td style={{ padding: 10 }}>
                           <select
@@ -423,7 +599,35 @@ export default function SettingsPage(): React.ReactElement {
                       <tbody>
                         {coOrganizersList.map(co => (
                           <tr key={co.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                            <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>{co.name}</td>
+                            <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <img
+                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=S`}
+                                  alt={co.name}
+                                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                  style={{
+                                    width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
+                                    background: 'var(--dex-gray-100)',
+                                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                                    transformOrigin: 'left center',
+                                    cursor: 'zoom-in',
+                                  }}
+                                  onMouseEnter={e => {
+                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.4)';
+                                    (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
+                                    (e.currentTarget as HTMLImageElement).style.zIndex = '50';
+                                    (e.currentTarget as HTMLImageElement).style.position = 'relative';
+                                  }}
+                                  onMouseLeave={e => {
+                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
+                                    (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
+                                    (e.currentTarget as HTMLImageElement).style.zIndex = '';
+                                    (e.currentTarget as HTMLImageElement).style.position = '';
+                                  }}
+                                />
+                                <span>{co.name}</span>
+                              </div>
+                            </td>
                             <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{co.email}</td>
                             <td style={{ padding: 10 }}>
                               <span style={{
@@ -452,144 +656,6 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             )}
 
-            {/* Neue Rolle hinzufuegen */}
-            {!showAddForm ? (
-              <button
-                className="btn btn-primary mt-16"
-                onClick={() => setShowAddForm(true)}
-                style={{ fontSize: '0.85rem' }}
-              >
-                <Plus size={16} /> Add User Role
-              </button>
-            ) : (
-              <div style={{
-                marginTop: 16, padding: 16, background: 'var(--dex-gray-50, #fafafa)',
-                borderRadius: 'var(--dex-radius, 8px)', border: '1px solid var(--dex-gray-200, #eee)',
-              }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>Assign New Role</h4>
-                {/* Email mit Autocomplete */}
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
-                    Email <span style={{ color: 'var(--dex-danger, red)' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="form-input"
-                      value={newEmail}
-                      onChange={e => handleEmailChange(e.target.value)}
-                      onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                      placeholder="Name oder Email eingeben..."
-                      style={{
-                        fontSize: '0.85rem',
-                        borderColor: userFound === true ? 'var(--dex-green)' : undefined,
-                      }}
-                      autoFocus
-                      autoComplete="off"
-                    />
-                    {isSearching && (
-                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
-                        Suche...
-                      </span>
-                    )}
-                    {showSuggestions && suggestions.length > 0 && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-                        background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)',
-                        boxShadow: 'var(--dex-shadow-hover)', maxHeight: 240, overflowY: 'auto',
-                      }}>
-                        {suggestions.map((s, i) => (
-                          <div
-                            key={i}
-                            onMouseDown={() => selectSuggestion(s)}
-                            style={{
-                              padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--dex-gray-100)',
-                              fontSize: '0.85rem',
-                            }}
-                            onMouseEnter={e => { (e.target as HTMLDivElement).style.background = 'var(--dex-gray-100)'; }}
-                            onMouseLeave={e => { (e.target as HTMLDivElement).style.background = '#fff'; }}
-                          >
-                            <div style={{ fontWeight: 600 }}>{s.displayName}</div>
-                            <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>
-                              {s.email}{s.location ? ` · ${s.location}` : ''}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {userFound === true && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--dex-green-dark)', marginTop: 4, display: 'block' }}>
-                      Gefunden: {newName}{newLocation ? ` (${newLocation})` : ''}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
-                      Name {userFound !== true && <span style={{ color: 'var(--dex-danger, red)' }}>*</span>}
-                    </label>
-                    <input
-                      className="form-input"
-                      value={newName}
-                      onChange={e => setNewName(e.target.value)}
-                      placeholder={userFound === true ? '' : 'Max Mustermann'}
-                      style={{
-                        fontSize: '0.85rem',
-                        background: userFound === true ? 'var(--dex-gray-100)' : undefined,
-                      }}
-                      readOnly={userFound === true}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Location</label>
-                    <input
-                      className="form-input"
-                      value={newLocation}
-                      onChange={e => setNewLocation(e.target.value)}
-                      placeholder={userFound === true ? '' : 'Düsseldorf'}
-                      style={{
-                        fontSize: '0.85rem',
-                        background: userFound === true ? 'var(--dex-gray-100)' : undefined,
-                      }}
-                      readOnly={userFound === true}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>Role</label>
-                  <select
-                    className="form-select"
-                    value={newRole}
-                    onChange={e => setNewRole(e.target.value as UserRole)}
-                    style={{ fontSize: '0.85rem', maxWidth: 200 }}
-                  >
-                    <option value="Organizer">Organizer</option>
-                    <option value="Admin">Admin</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => { setShowAddForm(false); setNewEmail(''); setNewName(''); setNewLocation(''); setUserFound(null); }}
-                    style={{ fontSize: '0.85rem' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleAddRole}
-                    disabled={isAdding || !newEmail || !newName}
-                    style={{ fontSize: '0.85rem' }}
-                  >
-                    {isAdding ? 'Saving...' : 'Assign Role'}
-                  </button>
-                </div>
-              </div>
-            )}
             </div>
           </details>
         )}
