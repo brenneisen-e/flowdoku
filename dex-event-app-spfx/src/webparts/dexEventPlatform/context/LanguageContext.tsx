@@ -431,6 +431,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Settings
     'settings.title': 'Einstellungen',
     'settings.rolemanagement': 'Rollenverwaltung',
+    'header.demoUser': 'Demo: als User testen',
 
     // Participants
     'participants.title': 'Teilnehmer-Übersicht',
@@ -862,6 +863,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Settings
     'settings.title': 'Settings',
     'settings.rolemanagement': 'Role Management',
+    'header.demoUser': 'Demo: act as a user',
 
     // Participants
     'participants.title': 'Participants Overview',

@@ -221,8 +221,29 @@ interface ActionTileProps {
   // gerendert wird (z.B. das Excel-Dropdown-Menue).
   children?: React.ReactNode;
 }
-function ActionTile(props: ActionTileProps): React.ReactElement {
+function ActionTile(props: ActionTileProps): React.ReactElement | null {
+  // v12.7: Wenn ActionTile innerhalb eines ActionsRegistryProvider gerendert
+  // wird, registriert er sich dort (title, desc, onClick) statt eine
+  // Kachel zu zeichnen. Children-Mode (Excel-Sub-Dropdown) bleibt
+  // sichtbar — sonst gingen Modals/Dropdowns verloren.
+  const registry = React.useContext(ActionsRegistryContext);
+  const registered = !!registry && !props.children;
   const [hover, setHover] = React.useState(false);
+  React.useEffect(() => {
+    if (!registry || !registered) return undefined;
+    const key = props.title;
+    registry.register({
+      key,
+      title: props.title,
+      desc: props.desc,
+      badge: props.badge,
+      onClick: props.onClick,
+      href: props.href,
+      disabled: props.disabled || props.busy,
+    });
+    return () => registry.unregister(key);
+  }, [registry, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy]);
+  if (registered) return null;
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
   // v9.19/v9.20: filled-Look — Tile dezent eingefaerbt fuer
@@ -376,49 +397,161 @@ function SplitMergeToggle(props: {
   );
 }
 
-// v12.6: Sammel-Card für alle Aktionen + Quick-Actions unter „Currently
-// registered". Default eingeklappt, Header zeigt „Aktionen / Actions".
-// Inhalt wird als Collapsible-Body gerendert (kein eigenes Modal).
+// v12.7: Sammel-Card-Wrapper aus v12.6 entfernt — Aktionen leben jetzt
+// als alphabetische Dropdown-Liste innerhalb der Event-Detail-Card
+// (siehe ActionsDropdown weiter unten). Diese Komponente bleibt im
+// Code für Backward-Compat, ihre Children werden display:none gerendert
+// damit React-State + onClick-Handler weiterhin funktionieren.
 function ActionsCollapsibleCard(props: {
   isDe: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
-  const [open, setOpen] = React.useState(false);
+  // v12.7: nicht mehr in eigener Card — wir verstecken die ganze Box
+  // (display:none) und die ActionTiles registrieren sich via Context
+  // im ActionsDropdown.
+  void props.isDe;
   return (
-    <div className="card" style={{ padding: 0, marginTop: 16, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ display: 'none' }}>
+      {props.children}
+    </div>
+  );
+}
+
+// v12.7: Action-Registry — ActionTile-Instanzen melden sich beim Mount
+// hier an. Der ActionsDropdown unten in der Event-Detail-Card liest den
+// registry-State und rendert alle Einträge als alphabetisch sortierte
+// Dropdown-Liste mit Hover-Tooltip (desc).
+interface RegisteredAction {
+  key: string;
+  title: string;
+  desc: string;
+  badge: 'organizer' | 'admin';
+  onClick?: () => void;
+  href?: string;
+  disabled?: boolean;
+}
+const ActionsRegistryContext = React.createContext<{
+  register: (_a: RegisteredAction) => void;
+  unregister: (_key: string) => void;
+  actions: RegisteredAction[];
+} | null>(null);
+
+function ActionsRegistryProvider(props: { children: React.ReactNode }): React.ReactElement {
+  const [actions, setActions] = React.useState<RegisteredAction[]>([]);
+  const register = React.useCallback((a: RegisteredAction) => {
+    setActions(prev => {
+      const filtered = prev.filter(x => x.key !== a.key);
+      return [...filtered, a];
+    });
+  }, []);
+  const unregister = React.useCallback((key: string) => {
+    setActions(prev => prev.filter(x => x.key !== key));
+  }, []);
+  return React.createElement(ActionsRegistryContext.Provider, { value: { register, unregister, actions } }, props.children);
+}
+
+function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
+  const ctx = React.useContext(ActionsRegistryContext);
+  const [open, setOpen] = React.useState(false);
+  const [hoveredKey, setHoveredKey] = React.useState<string | null>(null);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (e: MouseEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setHoveredKey(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+  if (!ctx || ctx.actions.length === 0) return null;
+  const sorted = ctx.actions.slice().sort((a, b) => a.title.localeCompare(b.title, props.isDe ? 'de' : 'en'));
+  const hoveredAction = hoveredKey ? sorted.find(a => a.key === hoveredKey) : null;
+  return (
+    <div ref={rootRef} style={{ position: 'relative', marginTop: 12 }}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         style={{
-          width: '100%', textAlign: 'left',
-          padding: '16px 24px', border: 'none', background: 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, fontSize: '1.05rem', fontWeight: 700, color: 'var(--dex-gray-800)',
-          cursor: 'pointer',
+          width: '100%', textAlign: 'left', padding: '10px 14px',
+          border: '1.5px solid var(--dex-gray-200)', borderRadius: 10,
+          background: '#fff', color: 'var(--dex-gray-800)',
+          fontSize: '0.92rem', fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}
-        aria-expanded={open}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            display: 'inline-block', width: 14, textAlign: 'center',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 0.15s ease', fontSize: '0.9rem',
-            color: 'var(--dex-green, #86bc25)',
-          }}>▶</span>
-          {props.isDe ? 'Aktionen' : 'Actions'}
-        </span>
-        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-          {props.isDe ? 'alle Event-Aktionen' : 'all event actions'}
-        </span>
+        <span>{props.isDe ? `Aktion auswählen (${sorted.length})` : `Pick an action (${sorted.length})`}</span>
+        <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▾</span>
       </button>
       {open && (
-        <div style={{ padding: '0 24px 24px' }}>
-          {props.children}
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
+          maxHeight: 420, overflowY: 'auto',
+        }}>
+          {sorted.map(a => {
+            const adminOnly = a.badge === 'admin';
+            return (
+              <div
+                key={a.key}
+                onMouseEnter={() => setHoveredKey(a.key)}
+                onMouseLeave={() => { if (hoveredKey === a.key) setHoveredKey(null); }}
+                onClick={() => {
+                  if (a.disabled) return;
+                  setOpen(false);
+                  setHoveredKey(null);
+                  if (a.href) {
+                    window.open(a.href, '_blank', 'noopener,noreferrer');
+                  } else if (a.onClick) {
+                    a.onClick();
+                  }
+                }}
+                style={{
+                  padding: '8px 12px', cursor: a.disabled ? 'not-allowed' : 'pointer',
+                  fontSize: '0.88rem', borderBottom: '1px solid var(--dex-gray-100)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                  opacity: a.disabled ? 0.5 : 1,
+                  background: hoveredKey === a.key ? 'rgba(134,188,37,0.08)' : '#fff',
+                  color: 'var(--dex-gray-800)',
+                }}
+              >
+                <span style={{ fontWeight: 500 }}>{a.title}</span>
+                <span style={{
+                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: 999,
+                  background: adminOnly ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
+                  color: adminOnly ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
+                  fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                  {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {open && hoveredAction && hoveredAction.desc && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 'calc(100% + 12px)',
+          width: 320,
+          padding: '12px 14px', background: 'rgba(40,40,40,0.96)', color: '#fff',
+          borderRadius: 10, fontSize: '0.8rem', lineHeight: 1.5,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+          zIndex: 60, pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{hoveredAction.title}</div>
+          <div style={{ opacity: 0.9 }}>{hoveredAction.desc}</div>
         </div>
       )}
     </div>
   );
 }
+
+// v12.6: Sammel-Card für alle Aktionen + Quick-Actions unter „Currently
+// registered". v12.7: ersetzt durch ActionsDropdown + ActionsRegistry —
+// die folgende Funktion bleibt aus Kompatibilitätsgründen als no-op.
 
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
@@ -2240,11 +2373,12 @@ export default function AdminPage(): React.ReactElement {
           Eventauswahl-Reset („zurück zur Event-Liste") triggern wir über den Header-Back —
           siehe Listener weiter oben, der bei navigate-Wechsel selectedEvent zurücksetzt. */}
 
-      {/* Event-Info + Aktionen
-          Bei Hochformat-Bildern: Bild links neben den Detail-Rows.
-          Bei Querformat-Bildern (oder solange die Orientierung noch
-          unbekannt ist): Bild als Banner ueber den Detail-Rows. */}
-      <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+      {/* v12.7: Aktionen-Card aufgelöst — alle ActionTiles registrieren
+          sich jetzt im ActionsRegistryProvider. Die Dropdown-Liste sitzt
+          unten in der linken Event-Detail-Card. Daher 1-Spalten-Grid
+          statt vorher 2-Spalten. */}
+      <ActionsRegistryProvider>
+      <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
         <div className="card" style={{ padding: 24 }}>
           {/* Header: Event-Titel + Status-Badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -2428,6 +2562,16 @@ export default function AdminPage(): React.ReactElement {
                         <span style={valueStyle}>{waitlistRegs.length}</span>
                       </div>
                     )}
+                    {/* v12.7: Aktionen-Dropdown direkt unter „Aktuell
+                        registriert" — alphabetisch sortiert, mit Hover-
+                        Tooltip pro Action (desc-Text rechts daneben).
+                        Ersetzt die separate Aktionen-Card. */}
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ ...labelStyle, marginBottom: 6 }}>
+                        {isDe ? 'Aktionen' : 'Actions'}
+                      </div>
+                      <ActionsDropdown isDe={isDe} />
+                    </div>
                     {/* v12.2: 'Abgefragte Felder'-Zeile entfernt — die
                         Custom-Field-Pills hier waren redundant; sie tauchen
                         ohnehin als Spalten in der Teilnehmer-Tabelle auf. */}
@@ -3443,6 +3587,7 @@ export default function AdminPage(): React.ReactElement {
         </ActionsCollapsibleCard>
         )}
       </div>
+      </ActionsRegistryProvider>
 
       {/* Zähler + QR/Check-in Aktionen.
           v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
