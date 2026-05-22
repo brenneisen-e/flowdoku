@@ -277,6 +277,10 @@ export interface SPEvent {
   AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
   AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
+  AskSalutation?: boolean;       // v11.80: Anrede im Registrierungsformular abfragen
+  TeamRegistrationEnabled?: boolean; // v11.80: Team-Anmeldung erlauben
+  TeamSize?: number;             // v11.80: Maximale Teamgröße
+  AskTeamName?: boolean;         // v11.80: Team-Namen abfragen
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -2275,6 +2279,10 @@ export class EventService {
       { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
       { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
+      { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
+      { title: 'TeamRegistrationEnabled', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Anmeldung erlauben
+      { title: 'TeamSize', type: 9 }, // v11.80: Number - Maximale Teamgröße (0 = nicht gesetzt)
+      { title: 'AskTeamName', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Name abfragen
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2650,7 +2658,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2806,6 +2814,14 @@ export class EventService {
     allowAttendeeUpload?: boolean;
     attendeeUploadHint?: string;
     attendeeUploadLabel?: string;
+    /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
+    askSalutation?: boolean;
+    /** v11.80: Team-Anmeldung erlauben (Default false). */
+    teamRegistrationEnabled?: boolean;
+    /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
+    teamSize?: number;
+    /** v11.80: Team-Name abfragen (Default false). */
+    askTeamName?: boolean;
     customFields: CustomField[];
     /** v11.69: Wenn `existingSubsiteUrl` UND `existingRegistrationListName`
      *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
@@ -2951,6 +2967,10 @@ export class EventService {
         'AllowAttendeeUpload': !!event.allowAttendeeUpload,
         'AttendeeUploadHint': event.attendeeUploadHint || '',
         'AttendeeUploadLabel': event.attendeeUploadLabel || '',
+        'AskSalutation': !!event.askSalutation,
+        'TeamRegistrationEnabled': !!event.teamRegistrationEnabled,
+        'TeamSize': typeof event.teamSize === 'number' && event.teamSize > 0 ? event.teamSize : null,
+        'AskTeamName': !!event.askTeamName,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',

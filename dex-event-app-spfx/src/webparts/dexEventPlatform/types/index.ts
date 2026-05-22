@@ -168,6 +168,22 @@ export interface DeloitteEvent {
   /** Seit v6.15: optionale Admin-Option. Wenn true, muss der User beim Wählen
    *  von Durchstarter eine Checkbox "Leistungsnachweis vorhanden" bestätigen. */
   durchstarterRequiresProof?: boolean;
+  /** v11.80: Wenn true, sehen Teilnehmer im Registrierungsformular ein
+   *  Anrede-Dropdown (Frau / Herr / Divers / Keine Angabe). Wenn false /
+   *  undefined (Default), wird die Anrede-Auswahl ausgeblendet — viele
+   *  Events brauchen keine Anrede. Gespeicherte Anrede ist in dem Fall
+   *  ein leerer String. */
+  askSalutation?: boolean;
+  /** v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
+   *  Default false. Die tatsächliche Multi-Person-Anmelde-Logik folgt
+   *  in v11.81+; aktuell wird die Konfiguration nur persistiert. */
+  teamRegistrationEnabled?: boolean;
+  /** v11.80: Maximale Teamgröße (Default 0 = nicht gesetzt; UI-Default
+   *  beim Aktivieren = 4). Nur relevant wenn teamRegistrationEnabled. */
+  teamSize?: number;
+  /** v11.80: Wenn true, fragt das Anmeldeformular bei einer Team-
+   *  Anmeldung zusaetzlich nach einem Team-Namen (frei waehlbar). */
+  askTeamName?: boolean;
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

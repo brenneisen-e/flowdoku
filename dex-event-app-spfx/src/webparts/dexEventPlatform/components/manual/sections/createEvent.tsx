@@ -108,7 +108,19 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 5,
-            title: isDe ? 'Schritt 4: Custom Fields' : 'Step 4: Custom Fields',
+            title: isDe ? 'Schritt 4: Team-Anmeldung (v11.80)' : 'Step 4: Team Registration (v11.80)',
+            description: (
+              <>
+                {isDe
+                  ? 'Optionaler Konfigurations-Schritt für Events, bei denen eine Person ein ganzes Team gleichzeitig anmelden darf — z.B. Lauf-Teams, Workshop-Gruppen oder Tische am Abend. Drei Settings: (1) Toggle „Team-Anmeldung erlauben" — Default aus, dann verhält sich das Event wie gewohnt. (2) Team-Größe — Default 4, Min. 2, Max. 20. (3) Toggle „Team-Namen abfragen" — Default aus; wenn an, gibt der Team-Lead bei der Anmeldung einen frei wählbaren Team-Namen ein, der dann auf MyEvents und in offenen Slots angezeigt wird. Hinweis: die tatsächliche Multi-Person-Anmelde-Logik (Multi-Person-Form, automatische Mails an Mitglieder, Outlook-Einladungen, Slot-Beitritt) folgt mit v11.81+ — in v11.80 wird ausschließlich die Konfiguration persistiert.'
+                  : 'Optional configuration step for events where one person can register an entire team in one go — e.g. running teams, workshop groups or tables at an evening event. Three settings: (1) toggle "Allow team registration" — default off, then the event behaves as usual. (2) Team size — default 4, min 2, max 20. (3) Toggle "Ask for team name" — default off; when enabled, the team lead enters a freely chosen team name during registration which is then shown on MyEvents and in open slots. Note: the actual multi-person registration logic (multi-person form, automatic emails to members, Outlook invites, slot join) will follow with v11.81+ — in v11.80 only the configuration is persisted.'}
+              </>
+            ),
+            mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Team-Anmeldung (echte Ansicht)' : 'Wizard step 4: Team Registration (real view)'),
+          },
+          {
+            number: 7,
+            title: isDe ? 'Schritt 5: Custom Fields' : 'Step 5: Custom Fields',
             description: (
               <>
                 {isDe
@@ -142,20 +154,23 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   <li>{isDe
                     ? 'Seit v10.24: Bei aktiver „Geteilter Kapazität" (Schritt 3) erscheint pro Custom-Field ein Selector „Sichtbar für Teilnehmergruppe" mit den drei Optionen „Beide Gruppen", „Nur Gruppe A" und „Nur Gruppe B". So kannst du z.B. eine Pflicht-Checkbox „Leistungsnachweis vorhanden" nur den Schnellstartern zeigen, während Walker / Gruppe B das Feld gar nicht erst sehen. Anmelde- und Validierungslogik blendet das Feld dynamisch ein/aus, sobald der Teilnehmer eine Gruppe wählt.'
                     : 'Since v10.24: with "Split capacity" enabled (step 3), each custom field shows an extra selector "Visible for attendee group" with three options: "Both groups", "Group A only", "Group B only". For example, a required checkbox "Performance proof available" can be shown only to the fast-runner group, while walkers / group B never see the field. Registration and validation logic dynamically show / hide the field as the attendee picks a group.'}</li>
+                  <li>{isDe
+                    ? 'Seit v11.80: oben im Step ein Toggle „Anrede abfragen?" (Default aus). Wenn aktiv, erscheint im Registrierungsformular ein Pflicht-Dropdown „Anrede" (Frau / Herr / Divers / Keine Angabe). Wenn aus, wird das Feld komplett ausgeblendet — viele Events brauchen die Anrede nicht.'
+                    : 'Since v11.80: a toggle "Ask for salutation?" on top of the step (default off). When enabled, a required "Salutation" dropdown (Mrs / Mr / Diverse / Prefer not to say) appears in the registration form. When off, the field is hidden completely — many events do not need a salutation.'}</li>
                 </ul>
                 {isDe
                   ? 'Datenschutz-Hinweis oben: Erhebe nur Daten die zwingend für das Event nötig sind — bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'
                   : 'Privacy notice on top: only collect data strictly necessary for the event — in case of doubt, always check with the data-protection officer.'}
               </>
             ),
-            mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Felder (echte Ansicht)' : 'Wizard step 4: Fields (real view)'),
+            mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Felder (echte Ansicht)' : 'Wizard step 5: Fields (real view)'),
             tip: isDe
               ? 'Mit dem Vorschau-Button rechts oben siehst du jederzeit live wie das Anmeldeformular für den Teilnehmer aussehen wird — inklusive Sichtbarkeitsbedingungen und i-Tooltips.'
               : 'Use the preview button top right to see live what the attendee\'s registration form will look like — including visibility conditions and i-tooltips.',
           },
           {
-            number: 6,
-            title: isDe ? 'Schritt 5: Kommunikation' : 'Step 5: Communication',
+            number: 8,
+            title: isDe ? 'Schritt 6: Kommunikation' : 'Step 6: Communication',
             description: (
               <>
                 {isDe
@@ -163,11 +178,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Set the email language (DE or EN), upload an optional event logo for the email header, customize the Outlook invite description, and edit the four system templates if needed: Registration, Waitlist, Cancellation, Promotion. Below you find the sub-event (training session) management. Since v11.57: if the event has sub-events, you can use the tab bar on top to maintain separate language, Outlook texts and logos per sub-event — handy e.g. when one sub-event runs in German and another in English.'}
               </>
             ),
-            mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Kommunikation (echte Ansicht)' : 'Wizard step 5: Communication (real view)'),
+            mockup: wizardPreview(5, isDe ? 'Wizard Schritt 6: Kommunikation (echte Ansicht)' : 'Wizard step 6: Communication (real view)'),
           },
           {
-            number: 7,
-            title: isDe ? 'Schritt 6: Dokumente' : 'Step 6: Documents',
+            number: 9,
+            title: isDe ? 'Schritt 7: Dokumente' : 'Step 7: Documents',
             description: (
               <>
                 {isDe
@@ -175,11 +190,11 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Upload PDFs or documents that attendees see before the event: agenda, travel info, safety notes. Documents are stored as attachments on the event item.'}
               </>
             ),
-            mockup: wizardPreview(5, isDe ? 'Wizard Schritt 6: Dokumente (echte Ansicht)' : 'Wizard step 6: Documents (real view)'),
+            mockup: wizardPreview(6, isDe ? 'Wizard Schritt 7: Dokumente (echte Ansicht)' : 'Wizard step 7: Documents (real view)'),
           },
           {
-            number: 8,
-            title: isDe ? 'Schritt 7: Fun-Zone (Quiz)' : 'Step 7: Fun-Zone (Quiz)',
+            number: 10,
+            title: isDe ? 'Schritt 8: Fun-Zone (Quiz)' : 'Step 8: Fun-Zone (Quiz)',
             description: (
               <>
                 {isDe
@@ -187,10 +202,10 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'Optional: create a quiz for attendees to play before or during the event. Each question has 4 answer options and one marked correct. See "Quiz / Fun-Zone" for details.'}
               </>
             ),
-            mockup: wizardPreview(6, isDe ? 'Wizard Schritt 7: Fun-Zone (echte Ansicht)' : 'Wizard step 7: Fun-Zone (real view)'),
+            mockup: wizardPreview(7, isDe ? 'Wizard Schritt 8: Fun-Zone (echte Ansicht)' : 'Wizard step 8: Fun-Zone (real view)'),
           },
           {
-            number: 9,
+            number: 11,
             title: isDe ? 'Vorschau & speichern' : 'Preview & save',
             description: (
               <>

@@ -225,6 +225,14 @@ export interface CreateEventInput {
   allowAttendeeUpload?: boolean;
   attendeeUploadHint?: string;
   attendeeUploadLabel?: string;
+  /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
+  askSalutation?: boolean;
+  /** v11.80: Team-Anmeldung erlauben (Default false). */
+  teamRegistrationEnabled?: boolean;
+  /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
+  teamSize?: number;
+  /** v11.80: Team-Namen abfragen (Default false). */
+  askTeamName?: boolean;
   customFields: CustomField[];
   /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
    *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
@@ -542,6 +550,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       allowAttendeeUpload: !!e.AllowAttendeeUpload,
       attendeeUploadHint: e.AttendeeUploadHint || undefined,
       attendeeUploadLabel: e.AttendeeUploadLabel || undefined,
+      // v11.80: Anrede-Toggle + Team-Anmelde-Konfiguration durchreichen.
+      // Alte Tenants ohne diese Spalten interpretieren undefined als false /
+      // 0, das passt zum Default-Verhalten (Anrede aus, Team-Anmeldung aus).
+      askSalutation: !!e.AskSalutation,
+      teamRegistrationEnabled: !!e.TeamRegistrationEnabled,
+      teamSize: typeof e.TeamSize === 'number' ? e.TeamSize : 0,
+      askTeamName: !!e.AskTeamName,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).

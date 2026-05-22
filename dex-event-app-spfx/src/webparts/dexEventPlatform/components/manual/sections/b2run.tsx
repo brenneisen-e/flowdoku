@@ -126,7 +126,7 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Wenn das B2Run-Template gewählt wird, legt die App automatisch Custom-Fields für Startblock-Auswahl, AGB-Zustimmung, Zimmerpartner usw. an. Diese Felder können im Schritt 4 (Registrierungsfelder) angepasst werden. Alle Antworten landen in der Teilnehmerliste als SP-Spalten.'
+                  ? 'Wenn das B2Run-Template gewählt wird, legt die App automatisch Custom-Fields für Startblock-Auswahl, AGB-Zustimmung, Zimmerpartner usw. an. Diese Felder können im Schritt 5 (Registrierungsfelder) angepasst werden. Alle Antworten landen in der Teilnehmerliste als SP-Spalten.'
                   : 'When the B2Run template is selected, the app automatically creates custom fields for starter-block selection, terms acceptance, roommate picker etc. These fields can be adjusted in step 4 (registration fields). All answers are stored in the participant list as SP columns.'}
               </>
             ),

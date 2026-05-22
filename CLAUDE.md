@@ -167,9 +167,9 @@ welche Events ein `queueOutlookEvent('UpdateEvent')` bekommen;
 `pendingOutlookDirtyWriteRefs` (Record<eventId, boolean>) hält die
 OutlookDirty-Schreibwerte pro Event-ID.
 
-### Sub-Event-Tabs in Schritt 5 (v11.57)
+### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
-Schritt 5 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
+Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
 Sub-Events hat. Tabs: erster Tab „Haupt-Event: <title>", danach pro
 Sub-Event ein Tab mit dessen Titel. Beim Tab-Wechsel wird der aktuelle
 UI-State zwischen Top-Level-State und der `SubEventDraft`-Slice
@@ -387,17 +387,18 @@ import { Icon } from '@fluentui/react/lib/Icon';
 
 ### Wizard-Schritt-Nummerierung (1-basiert in UI / 0-basiert in Logik)
 
-**WICHTIG (ab v9.32):** Der Event-Erstellungs-Wizard hat 7 Schritte. In der UI und in jeglicher Kommunikation mit dem User (Tooltips, Hilfetexte, Handbuch, Mail-Texte, Commit-Messages) sprechen wir **immer 1-basiert**:
+**WICHTIG (ab v9.32, erweitert v11.80):** Der Event-Erstellungs-Wizard hat **8 Schritte** (vorher 7 — mit v11.80 ist „Team-Anmeldung" als neuer Schritt 4 eingefügt worden). In der UI und in jeglicher Kommunikation mit dem User (Tooltips, Hilfetexte, Handbuch, Mail-Texte, Commit-Messages) sprechen wir **immer 1-basiert**:
 
 - Schritt 1 = **Grundlagen** (Entwurf, Title, Datum, Beschreibung, Bild, Organizer, Test-Team, Check-In Team)
 - Schritt 2 = **Ort & Programm** (Veranstaltungsort, Adresse, Agenda, Transferzeiten)
 - Schritt 3 = **Kapazität & Sichtbarkeit** (Standortfilter, Mailverteiler, Filterverknüpfung, Deadlines, Teilnehmerzahl & Warteliste)
-- Schritt 4 = **Felder** (Template, eigene Abfragen)
-- Schritt 5 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
-- Schritt 6 = **Dokumente** (PDFs für Teilnehmer)
-- Schritt 7 = **Fun-Zone** (Quiz)
+- Schritt 4 = **Team-Anmeldung** (v11.80 — Toggle „Team-Anmeldung erlauben", Team-Größe, Toggle „Team-Namen abfragen". Konfiguration wird persistiert; die tatsächliche Multi-Person-Anmelde-Logik folgt mit v11.81+.)
+- Schritt 5 = **Felder** (Template, eigene Abfragen, ab v11.80 Toggle „Anrede abfragen?")
+- Schritt 6 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
+- Schritt 7 = **Dokumente** (PDFs für Teilnehmer)
+- Schritt 8 = **Fun-Zone** (Quiz)
 
-In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 5 (Kommunikation)" statt „Schritt 4 (Kommunikation)").
+In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 6 (Kommunikation)" statt „Schritt 5 (Kommunikation)").
 
 Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-green-dark, #4a7c1f)`) im Format `Schritt N — Name` mit einem kurzen ein-Satz-Lead darunter, was in diesem Schritt eingestellt wird.
 

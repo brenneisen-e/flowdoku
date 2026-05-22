@@ -404,7 +404,10 @@ export default function RegistrationPage(): React.ReactElement {
     // Nur wenn der User das Haupt-Event (neu) anmelden möchte, gelten
     // Anrede + Custom-Fields + B2Run-Starter-Typ als Pflicht.
     if (willRegisterParent || registerForOther) {
-      if (!salutation) {
+      // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
+      // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
+      // Sonst wird die Anrede gar nicht gerendert und bleibt leer.
+      if (event.askSalutation && !salutation) {
         setError(t('reg.requiredfields'));
         return;
       }
@@ -1524,16 +1527,23 @@ export default function RegistrationPage(): React.ReactElement {
               </>
             )}
 
-            <div className="form-group">
-              <label className="form-label"><span className="required">*</span> {t('reg.salutation')}</label>
-              <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)} style={showErrors && !salutation ? errorBorder : {}}>
-                <option value="">{t('reg.pleaseselect')}</option>
-                <option value="Herr">{locale === 'de' ? 'Herr' : 'Mr'}</option>
-                <option value="Frau">{locale === 'de' ? 'Frau' : 'Mrs'}</option>
-                <option value="Divers">{locale === 'de' ? 'Divers' : 'Diverse'}</option>
-                <option value="Keine Angabe">{locale === 'de' ? 'Keine Angabe' : 'Prefer not to say'}</option>
-              </select>
-            </div>
+            {/* v11.80: Anrede-Dropdown nur rendern, wenn das Event das Feld
+                explizit abfragt (event.askSalutation === true). Default: aus —
+                viele Events brauchen die Anrede nicht. Wenn nicht gerendert,
+                bleibt salutation '' und wird so in die Teilnehmer-Zeile
+                geschrieben. */}
+            {event.askSalutation && (
+              <div className="form-group">
+                <label className="form-label"><span className="required">*</span> {t('reg.salutation')}</label>
+                <select className="form-select" value={salutation} onChange={e => setSalutation(e.target.value as Salutation)} style={showErrors && !salutation ? errorBorder : {}}>
+                  <option value="">{t('reg.pleaseselect')}</option>
+                  <option value="Herr">{locale === 'de' ? 'Herr' : 'Mr'}</option>
+                  <option value="Frau">{locale === 'de' ? 'Frau' : 'Mrs'}</option>
+                  <option value="Divers">{locale === 'de' ? 'Divers' : 'Diverse'}</option>
+                  <option value="Keine Angabe">{locale === 'de' ? 'Keine Angabe' : 'Prefer not to say'}</option>
+                </select>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label"><span className="required">*</span> {t('reg.firstname')}</label>

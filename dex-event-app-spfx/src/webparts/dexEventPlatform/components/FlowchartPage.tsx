@@ -591,7 +591,17 @@ function IDReorderFlow(): React.ReactElement {
 function EventCreationFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <FlowNode type="start" label="Organizer/Admin erstellt Event (7 Schritte: Grundlagen → Zeit&Ort → Kapazität → Felder → Kommunikation → Dokumente → Quiz)" />
+      <FlowNode
+        type="start"
+        label="Organizer/Admin erstellt Event (8 Schritte: Grundlagen → Zeit&Ort → Kapazität → Team-Anmeldung → Felder → Kommunikation → Dokumente → Quiz)"
+        details="v11.80: Zwischen Schritt 3 (Kapazität) und dem bisherigen Schritt 4 (Felder) ist ein neuer Schritt 4 'Team-Anmeldung' eingezogen — Toggle 'Team-Anmeldung erlauben' (Default aus), Team-Größe (Default 4, Min 2, Max 20), Toggle 'Team-Name abfragen' (Default aus). Aktuell wird nur die Konfiguration persistiert; die tatsächliche Multi-Person-Anmelde-Logik (Multi-Person-Form, automatische Mails an Mitglieder, Outlook-Einladungen, Slot-Beitritt) folgt mit v11.81+."
+      />
+      <Arrow />
+      <FlowNode
+        type="process"
+        label="Schritt 4 — Team-Anmeldung konfigurieren (v11.80)"
+        details="TeamRegistrationEnabled, TeamSize und AskTeamName werden in DEX_Events persistiert. Der neue Schritt rendert direkt nach 'Kapazität & Sichtbarkeit' und vor 'Felder'. Die alten Steps Felder/Kommunikation/Dokumente/Fun-Zone rücken in der UI je um eins nach hinten — alle Step-Headlines, alle Tooltip-Verweise und das Handbuch sind entsprechend renumbered."
+      />
       <Arrow />
       <FlowNode type="process" label="Nächste EventNumber ermitteln (max + 1)" />
       <Arrow />
