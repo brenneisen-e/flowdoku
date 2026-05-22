@@ -53,9 +53,11 @@ interface Props {
   index: number;
   isRegistered?: boolean;
   isWaitlisted?: boolean;
+  /** v11.90: eingeloggter User ist Haupt- oder Co-Organizer dieses Events. */
+  isOwnOrganizer?: boolean;
 }
 
-export default function EventCard({ event, index, isRegistered, isWaitlisted }: Props): React.ReactElement {
+export default function EventCard({ event, index, isRegistered, isWaitlisted, isOwnOrganizer }: Props): React.ReactElement {
   const { navigate } = useNavigation();
   const { t } = useLanguage();
   const { canCreateEvents } = useRoles();
@@ -87,6 +89,20 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted }: 
           boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>
           {t('create.fictive.badge')}
+        </div>
+      )}
+      {/* v11.90: Eigene Events (User selbst Haupt- oder Co-Organizer)
+          bekommen ein grünes „Organizer"-Badge oben links — auch in
+          Kombination mit dem orangen „Entwurf"-Badge oben rechts. */}
+      {isOwnOrganizer && (
+        <div style={{
+          position: 'absolute', top: 10, left: 10, zIndex: 5,
+          padding: '3px 10px', borderRadius: 999,
+          background: 'var(--dex-green, #86bc25)', color: '#fff',
+          fontSize: '0.68rem', fontWeight: 700, letterSpacing: 0.5,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        }}>
+          Organizer
         </div>
       )}
       {showDeadlineOverlay && (
