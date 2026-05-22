@@ -58,6 +58,9 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }, []);
 
   async function initRoles(): Promise<void> {
+    // v11.74: Profiling der Roles-Boot-Phase.
+    const tBoot = performance.now();
+    const tEns = performance.now();
     // v6.34 (Security-Hotfix): ensureRolesList sagt uns, ob die Liste gerade
     // frisch angelegt wurde. Nur dann (echte Erstinstallation) darf der erste
     // User automatisch Admin werden. Sonst bleibt der Default 'User' — sonst
@@ -66,7 +69,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // "leere Liste → Erstinstallation" und beförderte JEDEN aufrufenden User
     // zum Admin.
     const { isNewlyCreated } = await spService.ensureRolesList();
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][roles] ensureRolesList = ${Math.round(performance.now() - tEns)} ms`);
+    const tGet = performance.now();
     const spRoles = await spService.getRoles();
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][roles] getRoles = ${Math.round(performance.now() - tGet)} ms (n=${spRoles ? spRoles.length : 'null'})`);
+    void tBoot;
 
     if (spRoles === null) {
       // API-Fehler / Permission-Issue: KEINE Rolle zuordnen, als 'User' lassen.
