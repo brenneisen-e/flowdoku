@@ -7981,124 +7981,199 @@ export default function EventCreationPage(): React.ReactElement {
                                 : 'No additional fields — attendees just pick this sub-event with no further question.'}
                             </p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                              {seFields.map(field => (
+                            // v11.96: Sub-Event-Felder-Layout = exakt gleicher
+                            // Look wie die Hauptevent-Felder (Step 5 oben):
+                            // numerierte grüne Badge + prominentes Label-Input
+                            // + grüner Typ-Selector + Pflicht-Pill + Lösch-X +
+                            // gleiches Helptext / Confirm-Label / Optionen-
+                            // Layout. Vorher kompakte Mini-Variante mit kleinen
+                            // Schriften — visuell inkonsistent zum Hauptevent.
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                              {seFields.map((field, idx) => (
                                 <div
                                   key={field.id}
                                   style={{
+                                    background: 'var(--dex-gray-50, #fafafa)',
+                                    borderRadius: 12,
+                                    padding: 16,
                                     border: '1px solid var(--dex-gray-200)',
-                                    borderRadius: 6,
-                                    padding: '10px 12px',
-                                    background: '#fff',
                                   }}
                                 >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                                    <select
+                                  {/* Header: Badge + Label + Typ + Pflicht + X */}
+                                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                                    <span style={{
+                                      flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                                      background: 'var(--dex-green, #86bc25)', color: '#fff',
+                                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                      fontWeight: 700, fontSize: '0.78rem',
+                                    }}>{idx + 1}</span>
+                                    <input
                                       className="form-input"
+                                      value={field.label}
+                                      placeholder={isDe ? 'Frage / Feld-Label (z.B. „Welche Strecke?")' : 'Question / field label (e.g. „Which distance?")'}
+                                      onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
+                                      style={{
+                                        flex: '0 1 320px', minWidth: 180, maxWidth: 320,
+                                        fontSize: '1rem', fontWeight: 600,
+                                        padding: '8px 12px',
+                                        color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
+                                      }}
+                                    />
+                                    <select
+                                      className="form-select"
                                       value={field.type}
                                       onChange={e => updateSubEventCustomField(se.id, field.id, { type: e.target.value as CustomFieldInput['type'] })}
-                                      style={{ flex: '0 0 130px', fontSize: '0.82rem', padding: '4px 8px' }}
+                                      title={isDe ? 'Art des Feldes' : 'Field type'}
+                                      style={{
+                                        flex: '0 0 200px', maxWidth: 200,
+                                        background: 'rgba(134,188,37,0.08)',
+                                        border: '1px solid var(--dex-green, #86bc25)',
+                                        color: 'var(--dex-green-dark, #4a7c1f)',
+                                        fontWeight: 600,
+                                        padding: '8px 10px',
+                                      }}
                                     >
-                                      <option value="text">{isDe ? 'Text' : 'Text'}</option>
+                                      <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
                                       <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                                       <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                       <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                                     </select>
-                                    <input
-                                      className="form-input"
-                                      placeholder={isDe ? 'Frage / Feld-Label (z.B. „Welche Strecke?")' : 'Question / field label (e.g. „Which distance?")'}
-                                      value={field.label}
-                                      onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
-                                      style={{ flex: 2, fontSize: '0.85rem', padding: '4px 8px' }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => removeSubEventCustomField(se.id, field.id)}
-                                      style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer' }}
-                                      title={isDe ? 'Feld entfernen' : 'Remove field'}
+                                    <label
+                                      style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                                        padding: '6px 12px', borderRadius: 999,
+                                        fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                        cursor: 'pointer', userSelect: 'none',
+                                        border: `1px solid ${field.required ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                        background: field.required ? 'rgba(134,188,37,0.10)' : '#fff',
+                                        color: field.required ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                        transition: 'all 0.15s ease',
+                                      }}
                                     >
-                                      <X size={16} />
-                                    </button>
-                                  </div>
-
-                                  {/* Required-Toggle + Mehrfachauswahl */}
-                                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: field.type === 'select' ? 10 : 0 }}>
-                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer' }}>
                                       <input
                                         type="checkbox"
                                         checked={field.required}
                                         onChange={e => updateSubEventCustomField(se.id, field.id, { required: e.target.checked })}
+                                        style={{ display: 'none' }}
                                       />
-                                      {isDe ? 'Pflichtfeld' : 'Required'}
+                                      <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{field.required ? '✓' : '○'}</span>
+                                      {t('create.required')}
                                     </label>
                                     {field.type === 'select' && (
-                                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer' }}>
+                                      <label
+                                        style={{
+                                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                                          padding: '6px 12px', borderRadius: 999,
+                                          fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                          cursor: 'pointer', userSelect: 'none',
+                                          border: `1px solid ${field.multi ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                          background: field.multi ? 'rgba(134,188,37,0.10)' : '#fff',
+                                          color: field.multi ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                      >
                                         <input
                                           type="checkbox"
                                           checked={!!field.multi}
                                           onChange={e => updateSubEventCustomField(se.id, field.id, { multi: e.target.checked })}
+                                          style={{ display: 'none' }}
                                         />
+                                        <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{field.multi ? '✓' : '○'}</span>
                                         {isDe ? 'Mehrfachauswahl' : 'Multi-select'}
                                       </label>
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSubEventCustomField(se.id, field.id)}
+                                      title={isDe ? 'Feld entfernen' : 'Remove field'}
+                                      style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer', flexShrink: 0 }}
+                                    >
+                                      <X size={18} />
+                                    </button>
                                   </div>
 
-                                  {/* v10.27: Optionale Beschreibung pro Sub-Event-Feld
-                                      — landet bei der Anmeldung als „i"-Tooltip
-                                      neben dem Feld (analog zu Hauptevent-Custom-
-                                      Fields). */}
-                                  <div style={{ marginBottom: field.type === 'select' ? 10 : 0 }}>
+                                  {/* Beschreibung pro Feld */}
+                                  <div style={{ marginLeft: 32, marginTop: 10 }}>
                                     <input
                                       className="form-input"
                                       placeholder={isDe
                                         ? 'Beschreibung (optional, erscheint als „i"-Tooltip neben dem Feld)'
-                                        : 'Description (optional, shown as „i"-tooltip next to the field)'}
+                                        : 'Description (optional, shown as „i" tooltip next to the field)'}
                                       value={field.helpText || ''}
                                       onChange={e => updateSubEventCustomField(se.id, field.id, { helpText: e.target.value })}
-                                      style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
+                                      style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                                     />
                                   </div>
 
+                                  {/* Checkbox-Confirm-Label */}
+                                  {field.type === 'checkbox' && (
+                                    <div style={{ marginLeft: 32, marginTop: 6 }}>
+                                      <input
+                                        className="form-input"
+                                        placeholder={isDe
+                                          ? 'Text neben Checkbox (optional, Default: „Ja, bestätigen")'
+                                          : 'Text next to checkbox (optional, default: „Yes, confirm")'}
+                                        value={field.confirmLabel || ''}
+                                        onChange={e => updateSubEventCustomField(se.id, field.id, { confirmLabel: e.target.value })}
+                                        style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
+                                      />
+                                    </div>
+                                  )}
+
                                   {/* Optionen-Editor für Dropdown-Felder */}
                                   {field.type === 'select' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 12 }}>
-                                      <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', fontWeight: 600 }}>
-                                        {isDe ? 'Antwort-Optionen:' : 'Answer options:'}
-                                      </span>
-                                      {field.options.map((opt, idx) => (
-                                        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                          <input
-                                            className="form-input"
-                                            placeholder={isDe ? `Option ${idx + 1}` : `Option ${idx + 1}`}
-                                            value={opt}
-                                            onChange={e => {
-                                              const next = field.options.slice();
-                                              next[idx] = e.target.value;
-                                              updateSubEventCustomField(se.id, field.id, { options: next });
-                                            }}
-                                            style={{ flex: 1, fontSize: '0.82rem', padding: '4px 8px' }}
-                                          />
-                                          {field.options.length > 1 && (
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const next = field.options.filter((_, i) => i !== idx);
+                                    <div style={{
+                                      marginTop: 10, marginLeft: 32, padding: '12px 14px',
+                                      background: '#fff',
+                                      border: '1px solid var(--dex-gray-200)',
+                                      borderRadius: 8,
+                                    }}>
+                                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', fontWeight: 600, marginBottom: 8 }}>
+                                        {isDe ? 'Antwort-Optionen' : 'Answer options'}
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {field.options.map((opt, oidx) => (
+                                          <div key={oidx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                            <span style={{
+                                              flexShrink: 0, width: 22, height: 22, borderRadius: '50%',
+                                              background: 'var(--dex-gray-200)', color: 'var(--dex-gray-700)',
+                                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                              fontWeight: 700, fontSize: '0.72rem',
+                                            }}>{oidx + 1}</span>
+                                            <input
+                                              className="form-input"
+                                              placeholder={isDe ? `Option ${oidx + 1}` : `Option ${oidx + 1}`}
+                                              value={opt}
+                                              onChange={e => {
+                                                const next = field.options.slice();
+                                                next[oidx] = e.target.value;
                                                 updateSubEventCustomField(se.id, field.id, { options: next });
                                               }}
-                                              style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', padding: 2, cursor: 'pointer' }}
-                                            >
-                                              <X size={14} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      ))}
-                                      <button
-                                        type="button"
-                                        onClick={() => updateSubEventCustomField(se.id, field.id, { options: [...field.options, ''] })}
-                                        style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--dex-gray-300)', padding: '3px 10px', fontSize: '0.75rem', borderRadius: 4, cursor: 'pointer', color: 'var(--dex-gray-700)' }}
-                                      >
-                                        <Plus size={11} /> {isDe ? 'Option hinzufügen' : 'Add option'}
-                                      </button>
+                                              style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
+                                            />
+                                            {field.options.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const next = field.options.filter((_, i) => i !== oidx);
+                                                  updateSubEventCustomField(se.id, field.id, { options: next });
+                                                }}
+                                                title={isDe ? 'Option entfernen' : 'Remove option'}
+                                                style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', padding: 4, cursor: 'pointer' }}
+                                              >
+                                                <X size={14} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          onClick={() => updateSubEventCustomField(se.id, field.id, { options: [...field.options, ''] })}
+                                          style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--dex-gray-300)', padding: '4px 12px', fontSize: '0.78rem', borderRadius: 6, cursor: 'pointer', color: 'var(--dex-gray-700)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}
+                                        >
+                                          <Plus size={12} /> {isDe ? 'Option hinzufügen' : 'Add option'}
+                                        </button>
+                                      </div>
                                     </div>
                                   )}
                                 </div>
