@@ -799,6 +799,31 @@ export class SharePointService {
       } else if (parts.length === 1 && parts[0].length >= 2) {
         variants.add(parts[0]);
       }
+    } else if (cleanQuery.indexOf(' ') >= 0 && cleanQuery.indexOf('@') < 0) {
+      // v11.77: „Firstname Lastname" (ohne Komma) → SP-Picker findet das
+      // nicht zuverlässig. In DE-Tenants ist das Standard-Display-Name-
+      // Format „Lastname, Firstname" — die Such-API matched besser darauf.
+      // Daher zusaetzliche Varianten generieren: swap + Komma-Variante +
+      // nur-Lastname + nur-Firstname.
+      const tokens = cleanQuery.split(/\s+/).map(s => s.trim()).filter(Boolean);
+      if (tokens.length === 2) {
+        const a = tokens[0];
+        const b = tokens[1];
+        // Wir wissen nicht, ob „a b" Firstname-Lastname oder Lastname-Firstname
+        // ist — probieren beide swap-Varianten mit Komma.
+        variants.add(`${b}, ${a}`); // wenn a=Firstname, b=Lastname → „Lastname, Firstname"
+        variants.add(`${a}, ${b}`); // wenn a=Lastname, b=Firstname → ebenfalls Komma-Form
+        variants.add(`${b} ${a}`);  // umgekehrte Reihenfolge ohne Komma
+        if (a.length >= 2) variants.add(a);
+        if (b.length >= 2) variants.add(b);
+      } else if (tokens.length > 2) {
+        // Mehrere Worte (z.B. Doppelname) — als zweiten Versuch alle Worte
+        // umgedreht und nur das letzte Wort (vermutlich Lastname) probieren.
+        const reversed = [...tokens].reverse().join(' ');
+        variants.add(reversed);
+        const last = tokens[tokens.length - 1];
+        if (last.length >= 2) variants.add(last);
+      }
     }
 
     const seen = new Set<string>();
