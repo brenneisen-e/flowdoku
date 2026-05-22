@@ -277,6 +277,13 @@ export interface SPEvent {
   AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
   AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
+  AskSalutation?: boolean;       // v11.80: Anrede im Registrierungsformular abfragen
+  TeamRegistrationEnabled?: boolean; // v11.80: Team-Anmeldung erlauben
+  TeamSize?: number;             // v11.80: Maximale Teamgröße
+  AskTeamName?: boolean;         // v11.80: Team-Namen abfragen
+  TeamPartialAllowed?: boolean;       // v11.81: Auch Teil-Teams erlauben (statt nur komplette)
+  TeamOpenSlotsVisible?: boolean;     // v11.81: Offene Slots öffentlich sichtbar für Beitritt
+  TeamJoinRequiresApproval?: boolean; // v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -341,6 +348,12 @@ export interface SPRegistration {
   CheckedInDate?: string;      // ISO-DateTime, wann der Teilnehmer eingecheckt wurde
   CheckedInByName?: string;    // Name des Helfers, der den Check-In ausgeloest hat
   CheckedInByEmail?: string;   // E-Mail des Helfers, der den Check-In ausgeloest hat
+  /** v11.82: Team-Anmeldung — TeamId ist die UUID, die alle Mitglieder eines
+   *  gemeinsam angemeldeten Teams gruppiert. TeamLead=true nur fuer die
+   *  anmeldende Person. TeamName ist optional (nur wenn AskTeamName aktiv). */
+  TeamId?: string;
+  TeamLead?: boolean;
+  TeamName?: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
 
@@ -2275,6 +2288,13 @@ export class EventService {
       { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
       { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
+      { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
+      { title: 'TeamRegistrationEnabled', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Anmeldung erlauben
+      { title: 'TeamSize', type: 9 }, // v11.80: Number - Maximale Teamgröße (0 = nicht gesetzt)
+      { title: 'AskTeamName', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Name abfragen
+      { title: 'TeamPartialAllowed', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Auch Teil-Teams erlauben
+      { title: 'TeamOpenSlotsVisible', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - offene Slots öffentlich sichtbar
+      { title: 'TeamJoinRequiresApproval', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Lead muss Beitritt bestätigen
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2650,7 +2670,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -2806,6 +2826,20 @@ export class EventService {
     allowAttendeeUpload?: boolean;
     attendeeUploadHint?: string;
     attendeeUploadLabel?: string;
+    /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
+    askSalutation?: boolean;
+    /** v11.80: Team-Anmeldung erlauben (Default false). */
+    teamRegistrationEnabled?: boolean;
+    /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
+    teamSize?: number;
+    /** v11.80: Team-Name abfragen (Default false). */
+    askTeamName?: boolean;
+    /** v11.81: Auch Teil-Teams zulassen (Default false = nur komplette Teams). */
+    teamPartialAllowed?: boolean;
+    /** v11.81: Offene Slots öffentlich für Beitritt sichtbar (Default false). */
+    teamOpenSlotsVisible?: boolean;
+    /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
+    teamJoinRequiresApproval?: boolean;
     customFields: CustomField[];
     /** v11.69: Wenn `existingSubsiteUrl` UND `existingRegistrationListName`
      *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
@@ -2951,6 +2985,13 @@ export class EventService {
         'AllowAttendeeUpload': !!event.allowAttendeeUpload,
         'AttendeeUploadHint': event.attendeeUploadHint || '',
         'AttendeeUploadLabel': event.attendeeUploadLabel || '',
+        'AskSalutation': !!event.askSalutation,
+        'TeamRegistrationEnabled': !!event.teamRegistrationEnabled,
+        'TeamSize': typeof event.teamSize === 'number' && event.teamSize > 0 ? event.teamSize : null,
+        'AskTeamName': !!event.askTeamName,
+        'TeamPartialAllowed': !!event.teamPartialAllowed,
+        'TeamOpenSlotsVisible': !!event.teamOpenSlotsVisible,
+        'TeamJoinRequiresApproval': !!event.teamJoinRequiresApproval,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',
@@ -3387,6 +3428,14 @@ export class EventService {
       // „Überbuchung prüfen"-Lauf als über Kapazität erkannt; der Admin
       // entscheidet pro Person (auf Warteliste / Platz behalten).
       { title: 'OverbookReview', type: 2 },
+      // v11.82: Team-Anmeldung — drei Spalten gruppieren Mitglieder eines
+      // gemeinsam angemeldeten Teams. TeamId = UUID (gleicher Wert fuer alle
+      // Mitglieder), TeamLead = true nur fuer die anmeldende Person, TeamName
+      // = optionaler frei waehlbarer Name (nur wenn das Event AskTeamName an
+      // hat). Bei Nicht-Team-Anmeldungen bleiben alle drei Felder leer.
+      { title: 'TeamId', type: 2 },
+      { title: 'TeamLead', type: 8 },
+      { title: 'TeamName', type: 2 },
       { title: 'CustomData', type: 3 },
     ];
 
@@ -3465,6 +3514,11 @@ export class EventService {
     await this.configureDefaultView(REG_LIST_NAME, [
       'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
+      // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
+      // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffaellig
+      // und bei Team-Events sieht der Organizer auf einen Blick, wer mit wem
+      // angemeldet ist.
+      'TeamId', 'TeamLead', 'TeamName',
     ], subsiteUrl, { rebuild: true });
 
     // Item-Level Permissions
@@ -3876,6 +3930,335 @@ export class EventService {
       }
 
       return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v11.82: Ein einzelnes Teilnehmer-Item im Team-Modus anlegen.
+   *
+   * Unterschied zu `registerForEvent`: kein eigener Permission-Check (der
+   * Aufrufer hat schon im Team-Submit alle Mitglieder validiert), kein
+   * Post-Insert Dedup-Loop (der ist im Team-Pfad ueberfluessig — wenn ein
+   * Member mit Kollision verliert, fixt es der Folge-IDReorder). Nimmt
+   * Profil-Daten und Anzeige-Namen direkt entgegen, weil der Lead-Submit
+   * pro Member ohnehin schon das Graph-Profil geladen hat.
+   */
+  public async registerTeamMember(
+    subsiteUrl: string,
+    args: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      profile: { department: string; location: string; jobTitle: string; phone: string };
+      status: 'Angemeldet' | 'Warteliste';
+      teamId: string;
+      teamLead: boolean;
+      teamName?: string;
+      customData?: Record<string, string>;
+      customFieldMap?: Record<string, string>;
+      starterType?: string;
+      preferredStarterType?: string;
+      registeredByName?: string;
+      registeredByEmail?: string;
+      salutation?: string;
+    }
+  ): Promise<{ ok: boolean; teilnehmerId?: number; itemId?: number }> {
+    try {
+      const nextId = await this.getNextTeilnehmerId(subsiteUrl);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'Title': args.email,
+        ...(typeof nextId === 'number' ? { 'TeilnehmerID': nextId } : {}),
+        'Anrede': args.salutation || '',
+        'Vorname': args.firstName,
+        'Nachname': args.lastName,
+        'ParticipantName': `${args.firstName} ${args.lastName}`.trim(),
+        'ParticipantEmail': args.email,
+        'Department': args.profile.department,
+        'Location': args.profile.location,
+        'JobTitle': args.profile.jobTitle,
+        'Phone': args.profile.phone,
+        'Status': args.status,
+        'RegistrationDate': new Date().toISOString(),
+        'TeamId': args.teamId,
+        'TeamLead': !!args.teamLead,
+        'TeamName': args.teamName || '',
+        'CustomData': JSON.stringify(args.customData || {}),
+      };
+      if (args.registeredByName) payload['RegisteredByName'] = args.registeredByName;
+      if (args.registeredByEmail) payload['RegisteredByEmail'] = args.registeredByEmail;
+      if (args.starterType) payload['StarterType'] = args.starterType;
+      if (args.preferredStarterType) payload['PreferredStarterType'] = args.preferredStarterType;
+      if (args.customFieldMap && args.customData) {
+        for (const cfId of Object.keys(args.customData)) {
+          if (cfId === 'salutation') continue;
+          const v = args.customData[cfId];
+          if (!v) continue;
+          const spName = args.customFieldMap[cfId];
+          if (spName) payload[spName] = v;
+        }
+      }
+      const response = await this._post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
+        payload
+      );
+      if (!response.ok) return { ok: false };
+      try {
+        const respJson = await response.json();
+        const itemId: number = respJson?.d?.Id || respJson?.Id || 0;
+        return { ok: true, teilnehmerId: typeof nextId === 'number' ? nextId : undefined, itemId };
+      } catch {
+        return { ok: true, teilnehmerId: typeof nextId === 'number' ? nextId : undefined };
+      }
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /**
+   * v11.82: Alle Mitglieder eines Teams (per TeamId) zu einer Registrierung
+   * laden — wird in „Meine Events" zum Rendern des Team-Badges genutzt.
+   */
+  public async getTeamMembers(subsiteUrl: string, teamId: string): Promise<SPRegistration[]> {
+    if (!teamId) return [];
+    try {
+      const tidEsc = teamId.replace(/'/g, "''");
+      const response = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=TeamId eq '${tidEsc}'&$top=100&$orderby=TeamLead desc,Id asc`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.value || data.d?.results || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * v11.83: Auf einer existierenden Teilnehmer-Zeile das Feld TeamLead
+   * auf true setzen (Auto-Promote nach Lead-Cancel). MERGE auf der
+   * Teilnehmerliste — die Subsite kennt das Item ueber `itemId`.
+   */
+  public async promoteToTeamLead(subsiteUrl: string, itemId: number): Promise<boolean> {
+    try {
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
+      const resp = await this._merge(url, { TeamLead: true });
+      return !!resp.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v11.84: Lead-Rolle innerhalb eines Teams von einer Person auf eine andere
+   * uebergeben. Wird im Admin Center per Dropdown im Teams-Block ausgeloest.
+   * Best-effort transaktional: erst die neue Lead-Zeile auf TeamLead=true
+   * setzen, danach die alte auf TeamLead=false. Schlaegt der zweite MERGE
+   * fehl, gibt es kurzfristig zwei Leads — der Aufrufer kann dann erneut
+   * versuchen oder die Liste manuell reparieren. Keine echte Transaktion,
+   * SharePoint bietet sowas auf Listen-Ebene nicht.
+   */
+  public async transferTeamLead(
+    subsiteUrl: string,
+    fromLeadItemId: number,
+    toNewLeadItemId: number
+  ): Promise<boolean> {
+    if (!subsiteUrl || !fromLeadItemId || !toNewLeadItemId || fromLeadItemId === toNewLeadItemId) {
+      return false;
+    }
+    try {
+      const newUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${toNewLeadItemId})`;
+      const r1 = await this._merge(newUrl, { TeamLead: true });
+      if (!r1.ok) return false;
+      const oldUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${fromLeadItemId})`;
+      const r2 = await this._merge(oldUrl, { TeamLead: false });
+      return !!r2.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v11.83: Pruefen, ob eine bestimmte Email-Adresse bereits aktiv beim
+   * Event angemeldet ist (Status in Angemeldet/QR versendet/Eingecheckt/
+   * Warteliste). Wird vor jedem Team-Add (Initial, Add-Member, Beitritt)
+   * benutzt, um Doppel-Anmeldungen sauber abzuweisen, bevor ein Sitzplatz
+   * reserviert wird.
+   *
+   * Rueckgabe: true = blockieren, false = frei (auch bei SP-Fehlern, weil
+   * der Aufrufer dann auf die strikteren Stellen-internen Checks zurueck-
+   * faellt; ein lauter Throw wuerde den Pfad unnoetig abbrechen).
+   */
+  public async isUserAlreadyOnEvent(subsiteUrl: string, email: string): Promise<boolean> {
+    if (!subsiteUrl || !email) return false;
+    try {
+      const emEsc = email.trim().replace(/'/g, "''");
+      const blockingStatuses = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+      const statusClause = blockingStatuses.map(s => `Status eq '${s}'`).join(' or ');
+      const filter = `(ParticipantEmail eq '${emEsc}') and (${statusClause})`;
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$top=1&$select=Id,Status,ParticipantEmail`;
+      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!response.ok) return false;
+      const data = await response.json();
+      const items = data.value || data.d?.results || [];
+      return items.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // ==================== DEX_TeamJoinRequests (v11.83) ====================
+
+  /**
+   * v11.83: Globale Liste fuer Team-Beitritts-Anfragen (Approve-Queue).
+   * Liegt auf der Site-Collection-Ebene (nicht pro Subsite), damit alle
+   * Events darauf zugreifen koennen und der Team-Lead alle ausstehenden
+   * Anfragen in einer einzigen Query findet.
+   *
+   * Spalten:
+   * - Title: Anzeige-Zusammenfassung "RequesterName -> Event-Title"
+   * - EventId: ID des Events in DEX_Events
+   * - TeamId: UUID der Team-Anmeldung
+   * - RequesterEmail: Email des Anfragenden
+   * - RequesterDisplayName: Anzeigename des Anfragenden
+   * - Status: Pending / Approved / Rejected
+   * - DecidedDate: Wann hat der Team-Lead entschieden
+   * - DecidedByEmail: Email des entscheidenden Leads
+   */
+  public async ensureTeamJoinRequestsList(): Promise<void> {
+    const listName = 'DEX_TeamJoinRequests';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Approve-Queue fuer Team-Beitritts-Anfragen (v11.83+).',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'EventId', type: 2 },
+      { title: 'TeamId', type: 2 },
+      { title: 'RequesterEmail', type: 2 },
+      { title: 'RequesterDisplayName', type: 2 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
+      { title: 'DecidedDate', type: 4 },
+      { title: 'DecidedByEmail', type: 2 },
+    ];
+
+    for (const f of fields) {
+      const payload: Record<string, unknown> = {
+        '__metadata': { 'type': f.metaType || 'SP.Field' },
+        'Title': f.title,
+        'FieldTypeKind': f.type,
+        'Required': false,
+      };
+      if (f.choices) payload['Choices'] = { 'results': f.choices };
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+    }
+
+    await this.configureDefaultView(listName, [
+      'EventId', 'TeamId', 'RequesterEmail', 'RequesterDisplayName',
+      'Status', 'Created', 'DecidedDate', 'DecidedByEmail',
+    ]);
+
+    // Schreibrechte fuer alle Authentifizierten (analog zu DEX_Emails-Queue):
+    // jeder darf eine Anfrage erstellen, aber Item-Level-Security greift
+    // sowieso ueber den Lead-Check beim Approve-Pfad.
+    try {
+      await this.setQueueListPermissions(listName);
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * v11.83: Neue Team-Beitritts-Anfrage anlegen.
+   */
+  public async createTeamJoinRequest(args: {
+    eventId: string;
+    eventTitle: string;
+    teamId: string;
+    requesterEmail: string;
+    requesterDisplayName: string;
+  }): Promise<{ ok: boolean; itemId?: number }> {
+    try {
+      const payload = {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_TeamJoinRequestsListItem' },
+        'Title': `${args.requesterDisplayName} -> ${args.eventTitle}`.slice(0, 250),
+        'EventId': args.eventId,
+        'TeamId': args.teamId,
+        'RequesterEmail': args.requesterEmail,
+        'RequesterDisplayName': args.requesterDisplayName,
+        'Status': 'Pending',
+      };
+      const resp = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items`,
+        payload
+      );
+      if (!resp.ok) return { ok: false };
+      try {
+        const j = await resp.json();
+        const id: number = j?.d?.Id || j?.Id || 0;
+        return { ok: true, itemId: id };
+      } catch {
+        return { ok: true };
+      }
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /**
+   * v11.83: Alle Pending-Beitritts-Anfragen — optional gefiltert nach
+   * Event und/oder Team. Wird fuer die "Beitritts-Anfragen"-Box im
+   * Team-Lead-UI in MyEventsPage aufgerufen.
+   */
+  public async listTeamJoinRequests(args: {
+    eventId?: string;
+    teamId?: string;
+    status?: 'Pending' | 'Approved' | 'Rejected';
+  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string }>> {
+    try {
+      const clauses: string[] = [];
+      if (args.eventId) clauses.push(`EventId eq '${args.eventId.replace(/'/g, "''")}'`);
+      if (args.teamId) clauses.push(`TeamId eq '${args.teamId.replace(/'/g, "''")}'`);
+      clauses.push(`Status eq '${args.status || 'Pending'}'`);
+      const filter = clauses.join(' and ');
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items?$filter=${encodeURIComponent(filter)}&$top=200&$orderby=Created asc`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return data.value || data.d?.results || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * v11.83: Approve/Reject einer Beitritts-Anfrage — schreibt Status,
+   * DecidedDate und DecidedByEmail. Die Folge-Logik (Member-Insert,
+   * Mails) liegt im EventContext, weil dort die Subsite-/Event-Lookups
+   * verfuegbar sind.
+   */
+  public async decideTeamJoinRequest(
+    requestId: number,
+    decision: 'Approved' | 'Rejected',
+    decidedByEmail: string
+  ): Promise<boolean> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items(${requestId})`;
+      const body = {
+        'Status': decision,
+        'DecidedDate': new Date().toISOString(),
+        'DecidedByEmail': decidedByEmail || '',
+      };
+      const resp = await this._merge(url, body);
+      return !!resp.ok;
     } catch {
       return false;
     }
@@ -4422,10 +4805,12 @@ export class EventService {
   public async reserveSeat(
     subsiteUrl: string,
     group: '' | 'Durchstarter' | 'Funstarter',
-    cap: number
+    cap: number,
+    count: number = 1
   ): Promise<'reserved' | 'full' | 'error'> {
     // cap <= 0 = unbegrenzt → kein Reservieren nötig.
     if (!cap || cap <= 0) return 'reserved';
+    const inc = Math.max(1, Math.floor(count));
     const field = this.seatFieldFor(group);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     const MAX_RETRIES = 40;
@@ -4463,8 +4848,12 @@ export class EventService {
       } else {
         current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
       }
-      if (current >= cap) return 'full';
-      const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: current + 1 }, etag);
+      // v11.82: Team-Anmeldungen reservieren N Plaetze atomar. Wenn nicht alle
+      // N in dieselbe Gruppe passen, schlaegt die Reservierung als „full" fehl —
+      // der Aufrufer setzt das gesamte Team auf Warteliste (kein Teil-Team
+      // aktivieren). Bei count=1 (Solo) ist das Verhalten identisch zu vorher.
+      if (current + inc > cap) return 'full';
+      const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: current + inc }, etag);
       if (patchResp.ok) return 'reserved';
       if (patchResp.status !== 412) return 'error';
       const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
@@ -4847,6 +5236,9 @@ export class EventService {
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
       { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
+      { title: 'TeamId', type: 2 },            // v11.82: UUID einer Team-Anmeldung (leer = Solo)
+      { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true fuer die anmeldende Person
+      { title: 'TeamName', type: 2 },          // v11.82: optionaler frei waehlbarer Team-Name
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(
@@ -5034,12 +5426,25 @@ export class EventService {
       ]);
       // Bereits zur View hinzugefuegt — nicht doppelt anfassen
       const alreadyAdded = new Set(viewFields);
+      // v11.82: Team-Spalten kommen ans Ende der View — nach allen
+      // Custom-Fields, damit sie nicht zwischen den event-spezifischen
+      // Antwortspalten landen. Hier merken und im Post-Loop ueberspringen.
+      const teamTailFields = ['TeamId', 'TeamLead', 'TeamName'];
+      const teamTailSet = new Set(teamTailFields);
       // Kompletter Feld-Stand NACH dem Fix (bestehende + neu angelegte),
       // damit neu angelegte Custom-Fields auch in die View kommen.
       for (const fn of postFixFields) {
         if (alreadyAdded.has(fn)) continue;
         if (systemBlocklist.has(fn)) continue;
         if (fn.charAt(0) === '_') continue;
+        if (teamTailSet.has(fn)) continue; // ans Ende
+        viewFields.push(fn);
+        alreadyAdded.add(fn);
+      }
+      // Team-Spalten jetzt am Ende anhaengen (nur die, die tatsaechlich existieren).
+      for (const fn of teamTailFields) {
+        if (alreadyAdded.has(fn)) continue;
+        if (postFixFields.indexOf(fn) < 0) continue;
         viewFields.push(fn);
         alreadyAdded.add(fn);
       }

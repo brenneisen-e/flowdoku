@@ -167,9 +167,187 @@ welche Events ein `queueOutlookEvent('UpdateEvent')` bekommen;
 `pendingOutlookDirtyWriteRefs` (Record<eventId, boolean>) hält die
 OutlookDirty-Schreibwerte pro Event-ID.
 
-### Sub-Event-Tabs in Schritt 5 (v11.57)
+### Team-Anmeldung — Phase 2 Registration-Flow (v11.82)
 
-Schritt 5 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
+Mit v11.82 wird aus der Konfiguration aus v11.80/v11.81 ein
+funktionierender Multi-Person-Anmelde-Flow. Der Stand zur App- und
+Schema-Seite:
+
+- **Schema-Erweiterung Subsite-Teilnehmerliste:** Drei neue Spalten
+  `TeamId` (Text), `TeamLead` (Boolean), `TeamName` (Text) — angelegt
+  sowohl in `createRegistrationList()` (neue Events) als auch in
+  `fixRegistrationListColumns()` (bestehende Events; Admin per
+  „Spalten fixen" nachrüstbar). In der Default-View landen die drei
+  Spalten **am Ende**, nach allen Custom-Fields, damit die View bei
+  Nicht-Team-Events unauffällig bleibt.
+- **Atomare N-Sitz-Reservierung:** `EventService.reserveSeat(...,
+  count?: number)` akzeptiert seit v11.82 einen optionalen
+  `count`-Parameter (Default 1). Bei `count > 1` wird der
+  Sitzplatz-Counter um `count` per ETag-CAS inkrementiert — entweder
+  alle N Plätze gehen gleichzeitig in die Gruppe, oder das gesamte
+  Team landet auf der Warteliste (`current + N > cap` → 'full').
+  Kein Teil-Anmelden bei Engpässen.
+- **`EventService.registerTeamMember(...)`**: ein einzelner Insert
+  mit Team-Feldern (`TeamId`, `TeamLead`, `TeamName`). Wird vom
+  Team-Submit pro Mitglied einmal aufgerufen, ohne den schweren
+  Permission-/Dedup-Pfad von `registerForEvent` zu durchlaufen.
+- **`EventContext.registerTeam(eventId, leadData, members,
+  teamName)`**: orchestriert den ganzen Submit — Doppel-Anmelde-
+  Prüfung pro Member, `TeamId` via `crypto.randomUUID()` (Fallback
+  `Date.now()+random`), Sitzplatz-Reservierung, parallele
+  `Promise.all`-Inserts pro Person, dann pro erfolgreichem Eintrag
+  Bestätigungs-Mail (mit „Du wurdest als Teil eines Teams
+  angemeldet"-Hinweis-Box plus Klartext-Verweis auf Self-Cancel
+  über „Meine Events" falls keine Zustimmung) und
+  Outlook-Einladung, plus KPI-Bump um N.
+- **UI im Anmeldeformular:** `RegistrationPage` zeigt unter
+  „Persönliche Daten" einen Toggle „Ich melde mich + mein Team an"
+  nur wenn `event.teamRegistrationEnabled && teamSize >= 2 &&
+  !registerForOther`. Aktiver Toggle blendet eine eigene Card auf
+  mit (1) auffällig orange Pflicht-Hinweis-Box zur Zustimmung jedes
+  Mitglieds, (2) optionalem Team-Name-Pflichtfeld (nur wenn
+  `event.askTeamName`), (3) N-1 People-Picker-Slots (Pflicht im
+  Modus „Nur komplette Teams", optional bei „Auch Teil-Teams") und
+  (4) einer Pflicht-Bestätigungs-Checkbox. Der Submit-Button heißt
+  in dem Modus „Team anmelden (N Personen)" und bleibt deaktiviert
+  bis die Validation grün ist (keine Duplikate, alle Pflicht-Slots
+  gefüllt, Checkbox angehakt).
+- **„Meine Events"-Team-Badge:** Jede Registrierung mit `TeamId`
+  rendert unter dem Event-Titel ein grünes Badge „Team „<Name>" —
+  N/M belegt" plus eine Komma-Liste der aktiven
+  Mitglieder-Namen. Wenn der eingeloggte User Lead ist, kommt
+  zusätzlich ein kleines „du bist Team-Lead"-Chip dazu. Die andere
+  Team-Mitgliederliste wird lazy via
+  `EventContext.getTeamMembers(eventId, teamId)` geladen und im
+  React-State gecached.
+- **Sub-Events:** Für v11.82 ist Team-Anmeldung **auf das Haupt-
+  Event beschränkt**. Sub-Event-Subsites bekommen die Team-Spalten
+  noch nicht über den Wizard-Pfad zugewiesen — Pro-Sub-Event-
+  Team-Anmeldung + Beitritts-/Approve-Flows kommen in v11.83+.
+
+### Team-Anmeldung — Phase 3 (v11.83): Cancel-Promote, Add-Member, Open-Teams, Approve
+
+Aufbauend auf v11.82 ergänzt v11.83 den vollständigen Lebenszyklus
+einer Team-Anmeldung:
+
+- **Cancel-Logik für Team-Mitglieder.** `EventContext.cancelRegistration`
+  snapshottet vor dem MERGE die Felder `TeamId`, `TeamLead`, `TeamName`
+  der eigenen Registrierung. Nach dem Cancel führt
+  `handleTeamCancelPostStep` (in `EventContext.tsx`) drei Schritte aus:
+  (1) verbleibende aktive Team-Mitglieder via `getTeamMembers` laden,
+  (2) wenn die abgemeldete Person Lead war UND ≥1 Member übrig ist, das
+  früheste verbleibende Mitglied per `EventService.promoteToTeamLead`
+  zum neuen Lead promoten (Kriterium: kleinste `TeilnehmerID`, sonst
+  früheste `RegistrationDate`, sonst kleinste Item-Id), (3) pro Member
+  eine Info-Mail im Deloitte-Wrap-Layout in `DEX_Emails` queuen mit
+  Abgemeldete-Person, aktuelle Belegung `N/TeamSize` und drei
+  Handlungs-Optionen. Der Sitzplatz-Counter wird dabei NICHT
+  zurückgerollt — die App folgt dem Standard-Reconcile
+  (`syncSeatsToActiveCount`), der frei werdende Slot ist neutral und
+  darf später vom Lead per Add-Member oder von Dritten via Open-Teams-
+  Box belegt werden.
+
+- **Add-Member-Modal in MyEvents.** Der Team-Badge zeigt jedem Lead bei
+  freien Slots einen Button `[+ Mitglied hinzufügen (N Slots frei)]`,
+  der ein Modal öffnet (orange Pflicht-Hinweisbox, People-Picker via
+  `useRoles().searchUsers`, Pflicht-Bestätigungs-Checkbox).
+  `EventContext.addTeamMember(eventId, teamId, teamName, member)`
+  prüft per `isUserAlreadyOnEvent` auf Doppel-Anmeldungen, reserviert
+  atomar einen Sitzplatz (split-aware, mit `PreferredStarterType`-
+  Vererbung aus vorhandenen Team-Mitgliedern), legt das Mitglied via
+  `registerTeamMember` an und queued Bestätigungs-Mail + Outlook +
+  Info-Mails an die anderen Mitglieder. Bei Doppel-Anmeldung gibt's
+  einen klaren Fehler-Toast statt eines Inserts.
+
+- **Open-Teams-Box auf der Register-Page.** Wenn
+  `event.teamOpenSlotsVisible` aktiv ist und der User selbst noch nicht
+  beim Event angemeldet ist, lädt `RegistrationPage` via
+  `EventContext.listOpenTeamsForEvent` alle Teams mit Aktiv-Count <
+  TeamSize und zeigt sie als Card oberhalb des Formulars. Pro Team:
+  Team-Name (falls vorhanden), Belegungs-Anzahl, Beitritts-Button. **Die
+  App rendert bewusst KEINE Mitglieder-Namen** (Privatsphäre — nur
+  Anzahl). Klick-Verhalten je nach `event.teamJoinRequiresApproval`:
+  Direkter Beitritt via `EventContext.joinTeam(eventId, teamId,
+  teamName)` (gleicher Pfad wie Add-Member, nur mit dem eingeloggten
+  User selbst) ODER `EventContext.createTeamJoinRequest(eventId,
+  teamId)` legt eine Pending-Zeile in `DEX_TeamJoinRequests` an und
+  queued eine Notification-Mail an den Lead.
+
+- **Approve-Queue `DEX_TeamJoinRequests`.** Neue globale SP-Liste auf der
+  Site Collection (nicht pro Subsite) mit Spalten `EventId`, `TeamId`,
+  `RequesterEmail`, `RequesterDisplayName`, `Status` (Choice
+  `Pending`/`Approved`/`Rejected`), `Created` (Default), `DecidedDate`,
+  `DecidedByEmail`. Angelegt durch
+  `EventService.ensureTeamJoinRequestsList` in `initEvents`.
+  Schreibrechte über `setQueueListPermissions` (analog DEX_Emails). Die
+  Notification-Mail an den Lead enthält Approve-/Reject-Buttons als
+  HTML-Links auf die App mit Query-Parametern
+  `?action=teamjoin&request=<id>&decision=approve|reject` — aktuell
+  NICHT hart als URL-Handler verdrahtet, der Lead nutzt stattdessen den
+  UI-Block in MyEvents (orange Box „Beitritts-Anfragen (N)").
+  `EventContext.decideTeamJoinRequest` Approve-Pfad: lädt die Request-
+  Zeile, ruft `addTeamMember`-Logik auf, setzt Request-Status='Approved'.
+  Reject-Pfad: Status='Rejected' + kurze Absage-Mail.
+
+- **Doppel-Anmelde-Prävention.** Neuer Helper
+  `EventService.isUserAlreadyOnEvent(subsiteUrl, email)` filtert auf
+  Status in `Angemeldet | QR versendet | Eingecheckt | Warteliste`.
+  Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
+  `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
+
+### Team-Anmeldung — Phase 4 (v11.84): Admin-Center-Team-Management
+
+Mit v11.84 bekommen Admins und Organizer eigener Events einen
+direkten Eingriff in bestehende Teams aus dem Admin Center heraus —
+ohne den Umweg über „Meine Events" als Team-Lead.
+
+- **Teams-Sektion in `AdminPage.tsx`:** Bei Events mit
+  `teamRegistrationEnabled === true` rendert die Admin-Detail-Seite
+  oberhalb der Teilnehmer-Tabelle (nach Statistiken und
+  Überbuchungs-Box) eine eigene collapsible Card „Teams (N)".
+  Teams werden live aus dem bereits geladenen `registrations`-State
+  per groupBy(`TeamId`) gebildet — kein zusätzlicher Roundtrip.
+  Abgemeldete Mitglieder werden ausgeblendet, die Teams sortieren
+  nach Lead-RegistrationDate (älteste zuerst), innerhalb eines
+  Teams steht der Lead oben und danach die Mitglieder nach
+  TeilnehmerID aufsteigend. Pro Mitglied: Profilfoto via
+  `userphoto.aspx?accountname=<email>&size=L` (mit Hover-Zoom
+  scale 2.4×), Name + Email, Status-Badge (außer „Angemeldet"),
+  und ein grüner „Lead"-Pill für den TeamLead.
+- **„Person hinzufügen"-Button pro Team:** Nur sichtbar wenn das
+  Team noch freie Slots hat (`activeCount < teamSize`). Öffnet ein
+  Modal mit dem gleichen orangen Pflicht-Hinweisbox-Pattern wie der
+  Lead-Add in MyEvents — People-Picker via `searchUsers`,
+  Pflicht-Bestätigungs-Checkbox. Submit ruft `addTeamMember` aus
+  EventContext (existiert seit v11.83) auf — dedup-Schutz,
+  Sitzplatz-Reservierung, Insert, Bestätigungs-Mail + Outlook +
+  Info-Mails an die anderen Mitglieder. Nach Erfolg ein grüner
+  Toast „X wurde zum Team hinzugefügt — Mail + Outlook werden
+  versendet." und die Teilnehmer-Tabelle wird mit
+  `getAllRegistrations()` neu geladen.
+- **„Lead-Rolle übergeben"-Dropdown:** Nur sichtbar wenn das Team
+  ≥ 2 aktive Mitglieder hat. Klick öffnet ein Inline-Dropdown mit
+  allen anderen aktiven Mitgliedern (mit Foto + Name + Email).
+  Auswahl ruft `EventContext.transferTeamLead(eventId, teamId,
+  newLeadEmail)`. Die Context-Funktion lädt die aktuellen Members
+  via `getTeamMembers`, identifiziert alten Lead + Ziel-Member und
+  delegiert an `EventService.transferTeamLead(subsiteUrl,
+  fromLeadItemId, toNewLeadItemId)` — zwei MERGE-Patches in Folge
+  (best-effort, kein echtes Transactional weil SP keine Multi-Item-
+  Transaktionen kennt). Bei Erfolg gehen Info-Mails an alle
+  aktiven Mitglieder raus (im Deloitte-Layout via `wrapTemplate`),
+  der neue Lead bekommt einen Extra-Hinweis auf seine erweiterten
+  Rechte. Audit-Eintrag im ChangeLog mit
+  `action='TeamLeadTransferred'` plus alter und neuer Lead-Email.
+- **Berechtigungen:** Sichtbar für Admin (alle Events) oder
+  Organizer (eigene Events; via `isOrganizerFor(selectedEvent)`).
+  Die Buttons sind sonst komplett ausgeblendet. Die Teams-Sektion
+  selbst bleibt für nicht-berechtigte Rollen verborgen, weil die
+  Admin-Detail-Seite ohnehin nur für sie gerendert wird.
+
+### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
+
+Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
 Sub-Events hat. Tabs: erster Tab „Haupt-Event: <title>", danach pro
 Sub-Event ein Tab mit dessen Titel. Beim Tab-Wechsel wird der aktuelle
 UI-State zwischen Top-Level-State und der `SubEventDraft`-Slice
@@ -387,17 +565,18 @@ import { Icon } from '@fluentui/react/lib/Icon';
 
 ### Wizard-Schritt-Nummerierung (1-basiert in UI / 0-basiert in Logik)
 
-**WICHTIG (ab v9.32):** Der Event-Erstellungs-Wizard hat 7 Schritte. In der UI und in jeglicher Kommunikation mit dem User (Tooltips, Hilfetexte, Handbuch, Mail-Texte, Commit-Messages) sprechen wir **immer 1-basiert**:
+**WICHTIG (ab v9.32, erweitert v11.80):** Der Event-Erstellungs-Wizard hat **8 Schritte** (vorher 7 — mit v11.80 ist „Team-Anmeldung" als neuer Schritt 4 eingefügt worden). In der UI und in jeglicher Kommunikation mit dem User (Tooltips, Hilfetexte, Handbuch, Mail-Texte, Commit-Messages) sprechen wir **immer 1-basiert**:
 
 - Schritt 1 = **Grundlagen** (Entwurf, Title, Datum, Beschreibung, Bild, Organizer, Test-Team, Check-In Team)
 - Schritt 2 = **Ort & Programm** (Veranstaltungsort, Adresse, Agenda, Transferzeiten)
 - Schritt 3 = **Kapazität & Sichtbarkeit** (Standortfilter, Mailverteiler, Filterverknüpfung, Deadlines, Teilnehmerzahl & Warteliste)
-- Schritt 4 = **Felder** (Template, eigene Abfragen)
-- Schritt 5 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
-- Schritt 6 = **Dokumente** (PDFs für Teilnehmer)
-- Schritt 7 = **Fun-Zone** (Quiz)
+- Schritt 4 = **Team-Anmeldung** (v11.80 + erweitert v11.81 — Basis-Settings: Toggle „Team-Anmeldung erlauben", Team-Größe, Toggle „Team-Namen abfragen". Beitritts-Modus (v11.81, Sub-Box): Radio „Nur komplette Teams" vs. „Auch Teil-Teams erlaubt" (Default: komplette Teams), Checkbox „Unvollständige Teams öffentlich für Beitritt sichtbar" (Default aus — wenn aktiv sehen andere Teilnehmer offene Slots als „Team mit X freien Plätzen" ohne Namen der bereits angemeldeten Mitglieder), Checkbox „Beitritt erfordert Bestätigung durch Team-Kapitän" (Default aus, nur aktivierbar wenn vorige Option an — wenn aktiv landen Beitritte in einer Approve-Queue beim Team-Lead). Konfiguration wird persistiert; die tatsächliche Multi-Person-Anmelde-Logik folgt mit v11.82+. Persistierte SP-Spalten: `TeamRegistrationEnabled`, `TeamSize`, `AskTeamName`, `TeamPartialAllowed`, `TeamOpenSlotsVisible`, `TeamJoinRequiresApproval`.)
+- Schritt 5 = **Felder** (Template, eigene Abfragen, ab v11.80 Toggle „Anrede abfragen?")
+- Schritt 6 = **Kommunikation** (Mail-Sprache, Versand-Schalter, Organizer-BCC, Logos, Templates, Sub-Events)
+- Schritt 7 = **Dokumente** (PDFs für Teilnehmer)
+- Schritt 8 = **Fun-Zone** (Quiz)
 
-In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 5 (Kommunikation)" statt „Schritt 4 (Kommunikation)").
+In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep === 0` ist Grundlagen) — das ist ein Implementierungs-Detail. Wenn du in einer UI-Erklärung oder einem Tooltip „Schritt X" schreibst, immer **1-basiert** angeben (also „Schritt 6 (Kommunikation)" statt „Schritt 5 (Kommunikation)").
 
 Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-green-dark, #4a7c1f)`) im Format `Schritt N — Name` mit einem kurzen ein-Satz-Lead darunter, was in diesem Schritt eingestellt wird.
 

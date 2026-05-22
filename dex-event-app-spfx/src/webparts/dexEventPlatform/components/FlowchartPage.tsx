@@ -334,6 +334,14 @@ function RegistrationFlow(): React.ReactElement {
         label="Registrierung abgeschlossen"
         details="Der User sieht die Erfolgs-Seite. Bei Events mit Sub-Events (z.B. B2Run-Trainingssessions): Seit v6.14 wählt der User auf der Registrierungsseite direkt per Checkbox aus, wofür er sich anmelden möchte — Haupt-Event und/oder einzelne Sessions. Pro ausgewählter Session wird eine eigene Registrierung angelegt (separate Bestätigungsmail + Outlook-Termin). Bei B2Run-Parents kommt pro Session eine Durchstarter-/Funstarter-Auswahl hinzu; meldet sich der User gleichzeitig für das Haupt-Event an, wird der dort gewählte Starter-Typ automatisch auf die Session-TN-Listen übernommen. Wenn der User nur Sessions wählt (Haupt-Event abgehakt), zeigt der Success-Screen einen Sessions-Only-Hinweis und in 'My Events' erscheint der Parent-Eintrag mit dem orangefarbenen Badge 'Nur Sessions'."
       />
+      <Arrow />
+      {/* v11.82: Team-Anmeldung als paralleler Branch zur Solo-Anmeldung */}
+      <FlowNode
+        type="subprocess"
+        color="#f3f8ec"
+        label="Alternativ: Team-Anmeldung (v11.82)"
+        details={'Wenn der Organizer in Schritt 4 die Team-Anmeldung aktiviert hat und der User den Toggle „Ich melde mich + mein Team an" setzt, läuft ein paralleler Submit-Pfad: Der Lead wählt N-1 weitere Teilnehmer per People-Picker aus und bestätigt vorab schriftlich, dass alle Mitglieder zugestimmt haben. Beim Submit reserviert die App atomar N Plätze auf einmal (reserveSeat mit count=N — entweder alle N oder das gesamte Team landet gemeinsam auf der Warteliste; kein Teil-Anmelden). Danach werden N parallele Teilnehmer-Items mit identischer TeamId (UUID) angelegt — genau ein Eintrag (Lead) hat TeamLead=true. Jedes Mitglied bekommt eine eigene Bestätigungs-Mail (inkl. „Du wurdest als Teil eines Teams angemeldet"-Hinweis-Box plus klarem Hinweis, falls kein Einverständnis vorlag, sich beim Organizer zu melden oder selbst über „Meine Events" abzumelden) und einen eigenen Outlook-Termin. In „Meine Events" sieht jedes Mitglied ein Team-Badge mit Belegungs-Anzahl, Lead-Markierung und Namen der anderen Mitglieder. Beitritts-/Approve-Flows für offene Team-Slots folgen in einer späteren Iteration.'}
+      />
     </div>
   );
 }
@@ -381,6 +389,50 @@ function CancellationFlow(): React.ReactElement {
         label="DEX_Participants aktualisieren"
         details="Die zentrale DEX_Participants-Liste enthält pro User die Liste der EventNumbers, für die er angemeldet oder auf der Warteliste ist. Bei Abmeldung wird die EventNumber aus EventRegistered bzw. EventOnWaitlist entfernt. So weiß die My-Events-Seite auf einen Blick, dass der User für dieses Event nicht mehr aktiv ist."
       />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="War es eine Team-Anmeldung? (v11.83)"
+        details="Wenn die abgemeldete Registrierung eine TeamId hat, läuft parallel zum Standard-Cancel-Pfad ein Team-Nachlauf: verbleibende Mitglieder werden ermittelt, ggf. der frühere Lead durch das früheste verbleibende Mitglied ersetzt (Promote), und alle bekommen eine Info-Mail."
+      />
+      <BranchContainer>
+        <Branch label="Ja — Team-Cancel">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="Verbleibende Mitglieder laden"
+            details="getTeamMembers(subsiteUrl, TeamId) liefert alle Einträge derselben Team-Id. Davon filtert die App den gerade abgemeldeten Eintrag und alle Status='Abgemeldet'-Einträge heraus."
+          />
+          <Arrow />
+          <FlowNode
+            type="decision"
+            label="War der Abgemeldete Team-Lead UND gibt es verbleibende Mitglieder?"
+            details="Beide Bedingungen müssen wahr sein. Bei genau einer 1-Person-Anmeldung (Cancel des Solo-Leads) löst sich das Team einfach auf — kein Promote, keine Info-Mails."
+          />
+          <BranchContainer>
+            <Branch label="Ja">
+              <FlowNode
+                type="subprocess"
+                color="#e8f5e9"
+                label="Auto-Promote des neuen Leads"
+                details={'Sortier-Kriterium: kleinste TeilnehmerID, sonst früheste RegistrationDate, sonst kleinste Item-Id. Der Treffer bekommt per MERGE TeamLead=true. In der Info-Mail an diesen Member steht ein extra Hinweis „Du bist jetzt der neue Team-Lead".'}
+              />
+            </Branch>
+            <Branch label="Nein">
+              <FlowNode type="process" color="#f5f5f5" label="Kein Promote nötig" />
+            </Branch>
+          </BranchContainer>
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="DEX_Emails: Info-Mail pro Mitglied"
+            details={'Pro verbleibendem Member wird eine Info-Mail im Deloitte-Layout in die Queue gelegt. Inhalt: Name der abgemeldeten Person, aktuelle Belegung „N/Team-Size", drei Handlungs-Optionen (nichts tun, Lead fügt neu hinzu, andere belegen den Slot via Anmelde-Seite). Best-effort — Fehler beim Queueing brechen den Cancel nicht ab.'}
+          />
+        </Branch>
+        <Branch label="Nein — Solo-Cancel">
+          <FlowNode type="process" color="#f5f5f5" label="Kein Team-Nachlauf" />
+        </Branch>
+      </BranchContainer>
       <Arrow />
       <FlowNode
         type="decision"
@@ -591,7 +643,17 @@ function IDReorderFlow(): React.ReactElement {
 function EventCreationFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <FlowNode type="start" label="Organizer/Admin erstellt Event (7 Schritte: Grundlagen → Zeit&Ort → Kapazität → Felder → Kommunikation → Dokumente → Quiz)" />
+      <FlowNode
+        type="start"
+        label="Organizer/Admin erstellt Event (8 Schritte: Grundlagen → Zeit&Ort → Kapazität → Team-Anmeldung → Felder → Kommunikation → Dokumente → Quiz)"
+        details="v11.80 + erweitert v11.81: Zwischen Schritt 3 (Kapazität) und dem bisherigen Schritt 4 (Felder) ist ein neuer Schritt 4 'Team-Anmeldung' eingezogen — Basis-Settings: Toggle 'Team-Anmeldung erlauben' (Default aus), Team-Größe (Default 4, Min 2, Max 20), Toggle 'Team-Name abfragen' (Default aus). Beitritts-Modus (v11.81): Radio 'Nur komplette Teams' vs. 'Auch Teil-Teams erlaubt', Checkbox 'Unvollständige Teams öffentlich sichtbar', Checkbox 'Beitritt erfordert Lead-Bestätigung'. Aktuell wird nur die Konfiguration persistiert; die tatsächliche Multi-Person-Anmelde-Logik (Multi-Person-Form, automatische Mails an Mitglieder, Outlook-Einladungen, Slot-Beitritt, Approve-Queue) folgt mit v11.82+."
+      />
+      <Arrow />
+      <FlowNode
+        type="process"
+        label="Schritt 4 — Team-Anmeldung konfigurieren (v11.80 + v11.81)"
+        details="TeamRegistrationEnabled, TeamSize, AskTeamName (v11.80) sowie TeamPartialAllowed, TeamOpenSlotsVisible, TeamJoinRequiresApproval (v11.81) werden in DEX_Events persistiert. Die UI gruppiert die sechs Settings in zwei Sub-Boxen: Basis (Toggle, Größe, Team-Name) + Beitritts-Modus (Radio komplett/teilweise + Sichtbarkeit + Approval). Der gesamte Schritt rendert direkt nach 'Kapazität & Sichtbarkeit' und vor 'Felder'. Die alten Steps Felder/Kommunikation/Dokumente/Fun-Zone rücken in der UI je um eins nach hinten — alle Step-Headlines, alle Tooltip-Verweise und das Handbuch sind entsprechend renumbered."
+      />
       <Arrow />
       <FlowNode type="process" label="Nächste EventNumber ermitteln (max + 1)" />
       <Arrow />
@@ -703,6 +765,111 @@ function IDReorderManualFlow(): React.ReactElement {
   );
 }
 
+function TeamJoinFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode
+        type="start"
+        label="Beitritts-Wunsch ausgelöst (v11.83 / v11.84)"
+        details={'Drei Einstiege: (1) User klickt auf der Event-Anmeldeseite einen \'Beitreten\'-/ \'Beitritt anfragen\'-Button in der \'Offene Teams\'-Box (User-Pfad, v11.83). (2) Team-Lead klickt in „Meine Events" auf „+ Mitglied hinzufügen" am Team-Badge (Lead-Pfad, v11.83). (3) Organizer/Admin klickt im Admin Center in der Teams-Sektion auf „Person hinzufügen" (Admin-Pfad, v11.84). Alle drei Pfade laufen anschliessend durch denselben Doppel-Anmelde-Schutz.'}
+      />
+      <Arrow />
+      <FlowNode
+        type="subprocess"
+        label="Doppel-Anmelde-Schutz"
+        details="isUserAlreadyOnEvent(subsiteUrl, email) prüft per OData-Filter (ParticipantEmail + Status in Angemeldet/QR versendet/Eingecheckt/Warteliste). Treffer = Abbruch mit klarer Fehlermeldung."
+      />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Welcher Pfad?"
+        details="Selbst-Beitritt vs. Lead-Add vs. Admin-Center-Add. Bei Selbst-Beitritt: prüfe ob Approval erforderlich ist. Bei Lead-Add und Admin-Center-Add: kein Approval — die hinzufügende Person trägt die Verantwortung der Zustimmung (Pflicht-Checkbox)."
+      />
+      <BranchContainer>
+        <Branch label="Lead-Add (MyEvents) oder Admin-Center-Add">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="addTeamMember()-Pfad direkt"
+            details="reserveSeat + registerTeamMember + Bestätigungs-Mail + Outlook + Info-Mail an alle Mitglieder. Kein Approval-Detour. Im Admin-Center-Pfad ist das die einzige Möglichkeit, im MyEvents-Pfad bedient sich nur der Lead daran (UI versteckt den Button für Nicht-Leads)."
+          />
+        </Branch>
+        <Branch label="Selbst-Beitritt (Anmelde-Seite) — direkt (kein Approval)">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="reserveSeat() atomisch"
+            details="Split-aware: bei aktivem PreferredStarterType wird die entsprechende Gruppe inkrementiert. Bei Vollbelegung landet der User auf der Warteliste (kein Hard-Fail)."
+          />
+          <Arrow />
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="registerTeamMember() — neuer Eintrag"
+            details="Inserts ein Teilnehmer-Item mit gleicher TeamId wie das offene Team, TeamLead=false, TeamName geerbt."
+          />
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="DEX_Emails + DEX_Outlook + Info-Mails"
+            details="Bestätigungs-Mail an den Beitretenden, Outlook-Einladung in seine Queue, Info-Mail an die anderen aktiven Mitglieder '<Name> ist eurem Team beigetreten'."
+          />
+        </Branch>
+        <Branch label="Selbst-Beitritt mit Approval-Queue">
+          <FlowNode
+            type="data"
+            color="#ffebee"
+            label="DEX_TeamJoinRequests: neuer Pending-Eintrag"
+            details="Eine Zeile mit EventId, TeamId, RequesterEmail, RequesterDisplayName, Status='Pending'. Liegt global auf der Site-Collection-Ebene, nicht pro Subsite."
+          />
+          <Arrow />
+          <FlowNode
+            type="data"
+            label="Notification-Mail an den Team-Lead"
+            details="Mail mit Approve-/Reject-Buttons (HTML-Links auf die App mit Query-Parametern ?action=teamjoin&request=<id>&decision=approve|reject). Die App-UI in MyEvents zeigt aber sowieso den 'Beitritts-Anfragen (N)'-Block."
+          />
+          <Arrow />
+          <FlowNode
+            type="decision"
+            label="Team-Lead entscheidet (in MyEvents)"
+            details="Im 'Beitritts-Anfragen'-Block klickt der Lead pro Anfrage auf 'Bestätigen' oder 'Ablehnen'."
+          />
+          <BranchContainer>
+            <Branch label="Bestätigen">
+              <FlowNode
+                type="subprocess"
+                color="#e8f5e9"
+                label="addTeamMember()-Pfad"
+                details="reserveSeat + registerTeamMember + Bestätigungs-Mail + Outlook + Info-Mails an alle, identisch zum Direkt-Beitritts-Pfad."
+              />
+              <Arrow />
+              <FlowNode
+                type="data"
+                label="DEX_TeamJoinRequests: Status='Approved'"
+                details="DecidedDate + DecidedByEmail werden gesetzt — Audit-Spur, wer wann genehmigt hat."
+              />
+            </Branch>
+            <Branch label="Ablehnen">
+              <FlowNode
+                type="data"
+                color="#ffebee"
+                label="DEX_TeamJoinRequests: Status='Rejected'"
+                details="Plus kurze Absage-Mail im Deloitte-Layout an den Anfragenden: 'Deine Anfrage wurde abgelehnt — du kannst dich gerne einzeln anmelden, falls die Kapazität reicht.'"
+              />
+            </Branch>
+          </BranchContainer>
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="end"
+        label="Fertig"
+        details="Im Direkt-Pfad sieht der User sofort die Erfolgs-Box auf der Anmeldeseite und das Event in 'Meine Events'. Im Approval-Pfad bekommt er eine Mail mit Ergebnis, sobald der Lead entschieden hat."
+      />
+    </div>
+  );
+}
+
 function ColumnFixFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -738,6 +905,7 @@ export default function FlowchartPage(): React.ReactElement {
     { id: 'reorder', label: 'ID-Korrektur (Power Automate)', icon: '↻' },
     { id: 'creation', label: 'Event-Erstellung', icon: '+' },
     { id: 'massemail', label: 'Massenmail', icon: '✉' },
+    { id: 'teamjoin', label: 'Team-Beitritt (v11.83)', icon: '+' },
     { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
     { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
   ];
@@ -749,6 +917,7 @@ export default function FlowchartPage(): React.ReactElement {
       case 'reorder': return <IDReorderFlow />;
       case 'creation': return <EventCreationFlow />;
       case 'massemail': return <MassEmailFlow />;
+      case 'teamjoin': return <TeamJoinFlow />;
       case 'idmanual': return <IDReorderManualFlow />;
       case 'columnfix': return <ColumnFixFlow />;
       default: return <RegistrationFlow />;

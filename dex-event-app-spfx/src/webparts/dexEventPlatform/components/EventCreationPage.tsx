@@ -907,7 +907,7 @@ export default function EventCreationPage(): React.ReactElement {
     };
     });
   });
-  // v11.57: aktiv ausgewaehlter Tab in Step 5 (Kommunikation). 0 = Haupt-Event,
+  // v11.57: aktiv ausgewaehlter Tab in Step 6 (Kommunikation, v11.80 Renumbering). 0 = Haupt-Event,
   // N>0 = subEvents[N-1]. Beim Tab-Wechsel werden die Step-5-Felder zwischen
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
   // switchCommTab-Helper weiter unten.
@@ -1030,7 +1030,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (typeof window !== 'undefined') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const init = (window as any).__dexPreviewInitialStep;
-      if (typeof init === 'number' && init >= 0 && init <= 6) return init;
+      if (typeof init === 'number' && init >= 0 && init <= 7) return init;
     }
     return 0;
   });
@@ -1077,6 +1077,37 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [attendeeUploadLabel, setAttendeeUploadLabel] = React.useState<string>(
     editEvent?.attendeeUploadLabel || ''
+  );
+  // v11.80: Anrede im Registrierungsformular abfragen (Default false). Wenn
+  // false, wird das Anrede-Dropdown ausgeblendet und ein leerer String als
+  // Anrede gespeichert. Wird im neuen Schritt 5 (Felder) konfiguriert.
+  const [askSalutation, setAskSalutation] = React.useState<boolean>(
+    !!editEvent?.askSalutation
+  );
+  // v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
+  // Konfiguration im neuen Schritt 4 (Team-Anmeldung). Die tatsächliche
+  // Multi-Person-Anmelde-Logik folgt mit v11.81+; aktuell wird nur die
+  // Konfiguration persistiert.
+  const [teamRegistrationEnabled, setTeamRegistrationEnabled] = React.useState<boolean>(
+    !!editEvent?.teamRegistrationEnabled
+  );
+  const [teamSize, setTeamSize] = React.useState<number>(
+    typeof editEvent?.teamSize === 'number' && editEvent.teamSize > 0 ? editEvent.teamSize : 4
+  );
+  const [askTeamName, setAskTeamName] = React.useState<boolean>(
+    !!editEvent?.askTeamName
+  );
+  // v11.81: Erweiterte Team-Konfiguration — Beitritts-Modus, Sichtbarkeit
+  // offener Slots, Lead-Approval. Die tatsächliche Team-Anmelde-Logik
+  // (Multi-Person-Form, Mails, Outlook) folgt mit v11.82+.
+  const [teamPartialAllowed, setTeamPartialAllowed] = React.useState<boolean>(
+    !!editEvent?.teamPartialAllowed
+  );
+  const [teamOpenSlotsVisible, setTeamOpenSlotsVisible] = React.useState<boolean>(
+    !!editEvent?.teamOpenSlotsVisible
+  );
+  const [teamJoinRequiresApproval, setTeamJoinRequiresApproval] = React.useState<boolean>(
+    !!editEvent?.teamJoinRequiresApproval
   );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
@@ -2044,7 +2075,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
-   * v11.57: Tab-Wechsel im Schritt 5 (Kommunikation). Der aktuelle Step-5-
+   * v11.57: Tab-Wechsel im Schritt 6 (Kommunikation). Der aktuelle Step-6-
    * UI-State (emailLanguage, outlookBody, disableEmails, disableOutlook,
    * Logo-Previews, Outlook-Heading) wird in das ausgehende Tab-Slot
    * geschrieben, danach werden die Felder aus dem neuen Tab-Slot geladen.
@@ -2396,6 +2427,15 @@ export default function EventCreationPage(): React.ReactElement {
       updates['AllowAttendeeUpload'] = !!allowAttendeeUpload;
       updates['AttendeeUploadHint'] = (attendeeUploadHint || '').trim();
       updates['AttendeeUploadLabel'] = (attendeeUploadLabel || '').trim();
+      // v11.80: Anrede-Toggle + Team-Anmeldung-Konfiguration mit-persistieren.
+      updates['AskSalutation'] = !!askSalutation;
+      updates['TeamRegistrationEnabled'] = !!teamRegistrationEnabled;
+      updates['TeamSize'] = teamRegistrationEnabled && teamSize > 0 ? teamSize : null;
+      updates['AskTeamName'] = !!askTeamName;
+      // v11.81: Erweiterte Team-Konfiguration mit-persistieren.
+      updates['TeamPartialAllowed'] = !!(teamRegistrationEnabled && teamPartialAllowed);
+      updates['TeamOpenSlotsVisible'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible);
+      updates['TeamJoinRequiresApproval'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval);
 
       // v11.22: feinere Progress-Stufen waehrend Edit-Save. Vorher
       // sprang es bei 50% sehr lange auf der Stelle, weil zwischen
@@ -2776,6 +2816,15 @@ export default function EventCreationPage(): React.ReactElement {
         allowAttendeeUpload: !!allowAttendeeUpload,
         attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
         attendeeUploadLabel: (attendeeUploadLabel || '').trim() || undefined,
+        // v11.80: Anrede-Toggle + Team-Anmelde-Konfiguration mit-durchreichen.
+        askSalutation: !!askSalutation,
+        teamRegistrationEnabled: !!teamRegistrationEnabled,
+        teamSize: teamRegistrationEnabled && teamSize > 0 ? teamSize : undefined,
+        askTeamName: !!askTeamName,
+        // v11.81: Erweiterte Team-Konfiguration mit-durchreichen.
+        teamPartialAllowed: !!(teamRegistrationEnabled && teamPartialAllowed),
+        teamOpenSlotsVisible: !!(teamRegistrationEnabled && teamOpenSlotsVisible),
+        teamJoinRequiresApproval: !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval),
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -3131,11 +3180,11 @@ export default function EventCreationPage(): React.ReactElement {
     }
   }, [subEvents.length, activeCommTabIdx]);
 
-  // Templates laden wenn Step 4 (Kommunikation) erreicht wird
+  // Templates laden wenn Step 6 (Kommunikation, currentStep === 5) erreicht wird
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
   // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
   React.useEffect(() => {
-    if (currentStep === 4 && emailTemplates.length === 0) {
+    if (currentStep === 5 && emailTemplates.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
@@ -3299,7 +3348,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
       'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
       'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
-      'Pflichtfelder pro Gruppe in Schritt 4 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
+      'Pflichtfelder pro Gruppe in Schritt 5 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
     ],
     [
       'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
@@ -3383,10 +3432,13 @@ export default function EventCreationPage(): React.ReactElement {
     { label: t('create.step.basics'), icon: '1' },
     { label: t('create.step.datetime'), icon: '2' },
     { label: t('create.step.capacity'), icon: '3' },
-    { label: t('create.step.fields'), icon: '4' },
-    { label: t('create.step.communication'), icon: '5' },
-    { label: t('create.step.documents'), icon: '6' },
-    { label: t('create.step.funzone'), icon: '7' },
+    // v11.80: neuer Schritt 4 für Team-Anmeldung. Die folgenden Steps
+    // ruecken um eins nach hinten.
+    { label: t('create.step.team'), icon: '4' },
+    { label: t('create.step.fields'), icon: '5' },
+    { label: t('create.step.communication'), icon: '6' },
+    { label: t('create.step.documents'), icon: '7' },
+    { label: t('create.step.funzone'), icon: '8' },
   ];
 
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
@@ -4275,7 +4327,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>verantwortlichen Personen</strong> für dieses Event — beliebige Deloitte-User per Graph-Suche. Du selbst bist standardmäßig vorbefüllt, kannst aber Co-Organizer hinzunehmen oder dich selbst rauslöschen.<br /><br />
                       <strong>Anzeige in der App:</strong> Organizer dürfen das Event <strong>bearbeiten, deaktivieren, löschen</strong>, die <strong>Teilnehmerliste</strong> einsehen, <strong>QR-Codes versenden</strong> und <strong>Massenmails</strong> verschicken. Sie tauchen auf der Anmelde-Seite und in Meine Events als <strong>Ansprechpartner</strong> mit Foto + Mail-Adresse auf.<br /><br />
-                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 5 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
+                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
                       <strong>Reihenfolge zählt:</strong> der erste Organizer ist der Haupt-Organizer und wird in Mails als Absender-Name verwendet.
                     </>
                   ) : (
@@ -5089,7 +5141,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> den <strong>Programmablauf des Events</strong> als Liste — pro Punkt: Datum, Start- und Endzeit, Titel, optionale Beschreibung und ein Icon (z.B. Kaffee, Vortrag, Pause).<br /><br />
                       <strong>Anzeige in der App:</strong> erscheint als <strong>schöner Timeline-Block</strong> auf der Anmelde-Seite und in Meine Events — Punkte werden automatisch nach Datum + Uhrzeit sortiert. Mehrtägige Events werden tageweise gruppiert.<br /><br />
-                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 5).<br /><br />
+                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 6).<br /><br />
                       <strong>Empfehlung:</strong> hilft Teilnehmern, sich auf den Tag einzustellen — bei Tagungen oder Auswärtsterminen sehr empfohlen, bei kurzen Office-Events optional.
                     </>
                   ) : (
@@ -6104,7 +6156,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <>
                         <strong>Letzte Abmeldemöglichkeit</strong> — bis zu diesem Stichtag können sich Teilnehmer <strong>ohne Rückfrage</strong> selbst abmelden.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> nach dem Stichtag ist der <strong>Abmelden-Button für reguläre User ausgeblendet</strong> — sie müssen aktiv den Organizer kontaktieren, der dann manuell abmeldet. <strong>Organizer und Co-Organizer</strong> können weiterhin jederzeit Teilnehmer abmelden.<br /><br />
-                        <strong>Automatismen:</strong> je nach Einstellung in <strong>Schritt 5 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden — damit Hotel, Catering oder Bus angepasst werden können.<br /><br />
+                        <strong>Automatismen:</strong> je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden — damit Hotel, Catering oder Bus angepasst werden können.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
@@ -6385,7 +6437,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
 
                   {/* v10.24: Leistungsnachweis-Pflicht-Toggle wurde entfernt.
-                      Stattdessen kann der Organizer in Schritt 4 (Felder) ein
+                      Stattdessen kann der Organizer in Schritt 5 (Felder) ein
                       eigenes Pflichtfeld vom Typ Checkbox anlegen und es ueber
                       'Sichtbar fuer Teilnehmergruppe → Nur Gruppe A' gezielt
                       auf eine Split-Gruppe einschraenken. Das ersetzt den
@@ -6400,7 +6452,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     {isDe ? (
                       <>
-                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 4 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
+                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 5 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
                       </>
                     ) : (
                       <>
@@ -6541,16 +6593,317 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>
 
-              {/* ===== Step 3: Registrierungsfelder ===== */}
+              {/* ===== Step 4 (v11.80, NEU): Team-Anmeldung =====
+                  Renderblock für den neuen Wizard-Schritt 4. Konfiguriert
+                  Team-Anmeldung-Toggle + Teamgröße + Team-Name-Frage.
+                  Die tatsächliche Multi-Person-Anmelde-Logik folgt mit
+                  v11.81+; aktuell wird nur die Konfiguration persistiert. */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 4 — Felder' : 'Step 4 — Fields'}
+                {isDe ? 'Schritt 4 — Team-Anmeldung' : 'Step 4 — Team Registration'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
-                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Anrede, Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 4 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
-                  : <><strong>Optional</strong> — the standard attendee data (<strong>salutation, first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 4 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. If your event needs no extra questions, you can simply leave this step empty.</>}
+                  ? <><strong>Optional</strong> — erlaube einer Person, ein ganzes Team gleichzeitig anzumelden. Praktisch z.B. für Lauf-Teams, Workshop-Gruppen oder Tische bei einer Abendveranstaltung. Default: aus.</>
+                  : <><strong>Optional</strong> — let a single person register an entire team in one go. Handy e.g. for running teams, workshop groups or tables at an evening event. Default: off.</>}
               </p>
+
+              {/* Toggle Team-Anmeldung erlauben */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={teamRegistrationEnabled}
+                    onChange={e => setTeamRegistrationEnabled(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Team-Anmeldung erlauben' : 'Allow team registration'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob eine Person ein <strong>ganzes Team</strong> über das Anmeldeformular anmelden darf — statt sich nur selbst einzutragen.<br /><br />
+                          <strong>Anzeige in der App:</strong> der Team-Lead sieht nach Eingabe seiner eigenen Daten ein zusätzliches Formularfeld pro weiterem Team-Mitglied (Name, E-Mail). Default: aus — dann verhält sich das Event wie gewohnt (eine Person meldet sich selbst an).<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> die mit angemeldeten Personen bekommen automatisch eine eigene Bestätigungsmail und (sofern Outlook aktiv ist) eigene Kalender-Einladung — sie müssen sich nicht selber registrieren.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether one person can register an <strong>entire team</strong> via the registration form — instead of only registering themselves.<br /><br />
+                          <strong>Where you see it:</strong> after entering their own details, the team lead sees an additional form block per team member (name, email). Default: off — the event behaves as usual (one person registers themselves).<br /><br />
+                          <strong>For attendees:</strong> co-registered members automatically receive their own confirmation email and (if Outlook is enabled) their own calendar invite — they do not have to register themselves.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Wenn aktiviert, kann eine Person ein ganzes Team anmelden — die anderen Mitglieder bekommen Bestätigungsmail + Outlook-Termin automatisch.'
+                        : 'When enabled, one person can register an entire team — the other members automatically receive a confirmation mail + Outlook invite.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Team-Größe + Team-Name-Frage — ausgegraut wenn Team-Anmeldung aus */}
+              <div style={{
+                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
+                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+                opacity: teamRegistrationEnabled ? 1 : 0.55,
+                transition: 'opacity 0.2s ease',
+              }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <strong>{isDe ? 'Team-Größe' : 'Team size'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> die maximale Anzahl Personen pro Team (inkl. Team-Lead). Min. 2, Max. 20. Default 4.<br /><br />
+                          <strong>Anzeige in der App:</strong> der Team-Lead sieht so viele Mitglied-Slots wie hier gesetzt; einzelne Slots können leer bleiben, ein Team ist also nicht zwingend voll.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> ein Team kann maximal so groß werden — versucht der Team-Lead, mehr Mitglieder einzutragen, wird er gestoppt.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> the maximum number of people per team (including the team lead). Min. 2, max. 20. Default 4.<br /><br />
+                          <strong>Where you see it:</strong> the team lead sees as many member slots as configured here; slots can stay empty, so teams are not required to be full.<br /><br />
+                          <strong>For attendees:</strong> a team caps at this size — attempting to add more members is blocked.
+                        </>
+                    } />
+                  </label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min={2}
+                    max={20}
+                    value={teamSize}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => {
+                      const v = parseInt(e.target.value, 10);
+                      if (isNaN(v)) { setTeamSize(2); return; }
+                      setTeamSize(Math.max(2, Math.min(20, v)));
+                    }}
+                    style={{ maxWidth: 120 }}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                  <input
+                    type="checkbox"
+                    checked={askTeamName}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => setAskTeamName(e.target.checked)}
+                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Team-Namen abfragen' : 'Ask for team name'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob der Team-Lead beim Anmelden zusätzlich einen <strong>frei wählbaren Team-Namen</strong> eingeben muss (z.B. &bdquo;Die schnellen Sieben&ldquo;).<br /><br />
+                          <strong>Anzeige in der App:</strong> der Team-Name erscheint auf der Seite &bdquo;Meine Events&ldquo; beim Team-Lead und allen Mitgliedern. Bei offenen Slots (Team noch nicht voll) wird der Team-Name in der Slot-Liste angezeigt, damit andere Teilnehmer bei Interesse beitreten können.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> macht das Team identifizierbar. Bleibt die Option aus, wird das Team nur intern über den Namen des Team-Leads referenziert.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether the team lead has to enter a <strong>freely chosen team name</strong> during registration (e.g. &ldquo;The Fast Seven&rdquo;).<br /><br />
+                          <strong>Where you see it:</strong> the team name appears on &ldquo;My Events&rdquo; for the team lead and all members. For open slots (team not full yet), the name is displayed in the slot list so other attendees can join.<br /><br />
+                          <strong>For attendees:</strong> makes the team identifiable. If turned off, teams are referenced internally only via the team lead&apos;s name.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Wenn aktiv, gibt der Team-Lead bei der Anmeldung einen Team-Namen ein, der dann auf der MyEvents-Seite und in offenen Slots angezeigt wird.'
+                        : 'When enabled, the team lead enters a team name during registration which is shown on the MyEvents page and in open slots.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* v11.81: Beitritts-Modus — Sub-Box mit Modus + Sichtbarkeit + Approval */}
+              <div style={{
+                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
+                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+                opacity: teamRegistrationEnabled ? 1 : 0.55,
+                transition: 'opacity 0.2s ease',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
+                  {isDe ? 'Beitritts-Modus' : 'Join mode'}
+                </div>
+
+                {/* Radio-Group: komplette vs. Teil-Teams */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                    <input
+                      type="radio"
+                      name="teamPartialMode"
+                      checked={!teamPartialAllowed}
+                      disabled={!teamRegistrationEnabled}
+                      onChange={() => setTeamPartialAllowed(false)}
+                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Nur komplette Teams' : 'Only complete teams'}</strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Der Team-Lead muss alle N Mitglieder beim Anmelden eintragen. Halbe Teams sind nicht möglich.'
+                          : 'The team lead must enter all N members during registration. Partial teams are not possible.'}
+                      </span>
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                    <input
+                      type="radio"
+                      name="teamPartialMode"
+                      checked={teamPartialAllowed}
+                      disabled={!teamRegistrationEnabled}
+                      onChange={() => setTeamPartialAllowed(true)}
+                      style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Auch Teil-Teams erlaubt' : 'Partial teams allowed'}</strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Der Team-Lead kann z.B. 2 von 4 Mitgliedern anmelden, die restlichen 2 Slots bleiben offen — andere Personen können später beitreten (siehe nächste Option).'
+                          : 'The team lead can register e.g. 2 of 4 members; the remaining 2 slots stay open — others can join later (see next option).'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {/* Checkbox: Sichtbarkeit offener Slots */}
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                  <input
+                    type="checkbox"
+                    checked={teamOpenSlotsVisible}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => {
+                      const v = e.target.checked;
+                      setTeamOpenSlotsVisible(v);
+                      if (!v) setTeamJoinRequiresApproval(false);
+                    }}
+                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Unvollständige Teams öffentlich für Beitritt sichtbar' : 'Open teams publicly visible for joining'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob andere Teilnehmer Teams mit offenen Slots in der Anmeldeseite sehen und beitreten können.<br /><br />
+                          <strong>Anzeige in der App:</strong> auf der Anmeldeseite erscheint eine Liste &bdquo;Teams mit freien Plätzen&ldquo; — pro Team mit der Anzahl freier Slots und (falls aktiviert) dem Team-Namen, aber <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wer noch in keinem Team ist, kann mit einem Klick einem offenen Slot beitreten — entweder sofort gültig oder erst nach Bestätigung durch den Team-Lead (siehe nächste Option).
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether other attendees see and can join teams with open slots on the registration page.<br /><br />
+                          <strong>Where you see it:</strong> the registration page shows a list &ldquo;teams with free seats&rdquo; — per team with the count of free slots and (if enabled) the team name, but <strong>without</strong> the names of already-registered members (privacy).<br /><br />
+                          <strong>For attendees:</strong> anyone not yet in a team can join an open slot with one click — either immediately or only after lead approval (see next option).
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? <>Wenn aktiv: andere Teilnehmer sehen offene Slots in der Registrierungsseite als &bdquo;Team mit X freien Plätzen&ldquo; — <strong>ohne</strong> die Namen der bereits angemeldeten Mitglieder (Privatsphäre).</>
+                        : <>When active: other attendees see open slots on the registration page as &ldquo;team with X free seats&rdquo; — <strong>without</strong> the names of already-registered members (privacy).</>}
+                    </span>
+                  </span>
+                </label>
+
+                {/* Checkbox: Approval-Pflicht durch Team-Lead */}
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed',
+                  opacity: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 1 : 0.55,
+                  transition: 'opacity 0.2s ease',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={teamJoinRequiresApproval}
+                    disabled={!teamRegistrationEnabled || !teamOpenSlotsVisible}
+                    onChange={e => setTeamJoinRequiresApproval(e.target.checked)}
+                    style={{ marginTop: 3, cursor: (teamRegistrationEnabled && teamOpenSlotsVisible) ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Beitritt erfordert Bestätigung durch Team-Kapitän' : 'Joining requires team captain approval'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob jede Beitrittsanfrage zu einem offenen Team-Slot erst vom Team-Lead bestätigt werden muss.<br /><br />
+                          <strong>Anzeige in der App:</strong> der Team-Lead bekommt eine Mail mit <strong>&bdquo;Bestätigen&ldquo;</strong>- und <strong>&bdquo;Ablehnen&ldquo;</strong>-Buttons pro Anfrage. Bis zur Bestätigung steht der Beitretende in einer Approve-Queue und ist noch nicht offiziell im Team.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, wird der Beitritt erst nach Bestätigung gültig — und der Beitretende bekommt erst dann seine Bestätigungsmail und (falls Outlook aktiv) den Kalendertermin. Wenn aus: Beitritt ist sofort gültig.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether every join request to an open team slot has to be confirmed by the team lead first.<br /><br />
+                          <strong>Where you see it:</strong> the team lead receives an email with <strong>&ldquo;Confirm&rdquo;</strong> and <strong>&ldquo;Reject&rdquo;</strong> buttons per request. Until confirmed, the joiner sits in an approve queue and is not yet officially in the team.<br /><br />
+                          <strong>For attendees:</strong> if active, the join only becomes valid after confirmation — and the joiner receives their confirmation mail and (if Outlook is enabled) the calendar invite only at that point. If off: join is immediately valid.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Wenn aktiv: jeder Beitritt zu einem offenen Team geht erst in eine Approve-Queue. Der Team-Lead bekommt eine Mail mit „Bestätigen / Ablehnen"-Buttons. Erst nach Bestätigung ist die Person im Team. Wenn aus: Beitritt ist sofort gültig.'
+                        : 'When active: every join to an open team enters an approve queue. The team lead gets an email with "Confirm / Reject" buttons. Only after confirmation is the person in the team. When off: joins are immediately valid.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Hinweis-Box: tatsächliche Logik folgt mit v11.82+ */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '12px 14px', marginBottom: 16,
+                background: 'rgba(237,139,0,0.08)',
+                border: '1px solid var(--dex-orange, #ed8b00)',
+                borderRadius: 'var(--dex-radius, 12px)',
+                fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                lineHeight: 1.55,
+              }}>
+                <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
+                <div>
+                  {isDe
+                    ? <><strong>Hinweis:</strong> Die tatsächliche Team-Anmelde-Logik (Multi-Person-Form, automatische Mails, Outlook-Einladungen, Slot-Beitritt) folgt mit dem nächsten Release. Aktuell wird diese Konfiguration nur gespeichert — die Auswirkung auf die Anmeldeseite kommt mit <strong>v11.82+</strong>.</>
+                    : <><strong>Note:</strong> The actual team registration logic (multi-person form, automatic emails, Outlook invites, slot join) will follow with the next release. Currently this configuration is only stored — the impact on the registration page comes with <strong>v11.82+</strong>.</>}
+                </div>
+              </div>
+
+              </div>
+
+              {/* ===== Step 5 (v11.80: vormals Step 4): Registrierungsfelder ===== */}
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
+              </h2>
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 5 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du oben das <strong>Anrede</strong>-Dropdown einblenden. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
+                  : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 5 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
+              </p>
+
+              {/* v11.80: Anrede-Toggle */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={askSalutation}
+                    onChange={e => setAskSalutation(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
+                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
+                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
 
               {renderStepIntro(
                 [
@@ -7514,10 +7867,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>{/* close Step 3 */}
 
-              {/* ===== Step 4: Kommunikation ===== */}
-              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+              {/* ===== Step 6 (v11.80: vormals Step 5): Kommunikation ===== */}
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 5 — Kommunikation' : 'Step 5 — Communication'}
+                  {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -8033,10 +8386,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>{/* close Step 4 */}
 
-              {/* ===== Step 5: Dokumente ===== */}
-              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+              {/* ===== Step 7 (v11.80: vormals Step 6): Dokumente ===== */}
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 6 — Dokumente' : 'Step 6 — Documents'}
+                  {isDe ? 'Schritt 7 — Dokumente' : 'Step 7 — Documents'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -8204,10 +8557,10 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>{/* close Step 5 */}
 
-              {/* ===== Step 6: Fun-Zone ===== */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+              {/* ===== Step 8 (v11.80: vormals Step 7): Fun-Zone ===== */}
+              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 7 — Fun-Zone' : 'Step 7 — Fun Zone'}
+                  {isDe ? 'Schritt 8 — Fun-Zone' : 'Step 8 — Fun Zone'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
