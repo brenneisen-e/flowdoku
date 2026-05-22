@@ -16,8 +16,8 @@
   // System-Default wird hier wieder eingesetzt, bis ein klareres
   // Design vorliegt.
 
-  // v11.99: Focus-Ring nur per Tastatur-Navigation zeigen — Klick auf
-  // Buttons / Karten / Toggles soll keinen blinkenden Focus-Rahmen
+  // v11.99/v12.0: Focus-Ring nur per Tastatur-Navigation zeigen — Klick
+  // auf Buttons / Karten / Toggles soll keinen blinkenden Focus-Rahmen
   // hinterlassen ("ticking cursor"-Eindruck). Text-Inputs / Textareas /
   // Selects behalten ihren Focus-Style aus dem normalen :focus.
   button:focus:not(:focus-visible),
@@ -26,6 +26,24 @@
   [tabindex]:focus:not(:focus-visible) {
     outline: none;
     box-shadow: none;
+  }
+
+  // v12.0: kurzes Text-Cursor-Flackern (I-Beam) bei Klick auf klickbare
+  // Karten / Buttons unterbinden. user-select:none + cursor:pointer auf
+  // typischen Interaktiv-Containern. Eingabefelder behalten ihre Default-
+  // Selection (text-select erforderlich).
+  button,
+  .card-clickable,
+  .start-card,
+  .landing__bubble,
+  [role='button'] {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+  button:disabled,
+  [role='button'][aria-disabled='true'] {
+    cursor: not-allowed;
   }
 
   // v11.94: Globale Round-Checkbox im Deloitte-Look — leerer Kreis,
