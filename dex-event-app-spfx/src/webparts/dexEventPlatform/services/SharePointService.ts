@@ -890,6 +890,32 @@ export class SharePointService {
       }
     }
 
+    // v11.85: Client-side Filter — die Variants-Logik (Single-Token-
+    // Fallback wie „Nils" oder „Felt" einzeln) zog auch False-Positives an
+    // (z.B. „Nilmara Santos" matched auf „Nils"-Prefix). Wenn der User
+    // mehrere Tokens eingegeben hat, MUESSEN ALLE Tokens im displayName
+    // ODER der Email der Person vorkommen (case-insensitive Substring).
+    // Single-Token-Queries (1 Wort, ohne Komma) bleiben unangetastet —
+    // dort ist Substring-Match auf einen Begriff genau das gewuenschte
+    // Verhalten.
+    const queryTokens = cleanQuery
+      .replace(/,/g, ' ')
+      .split(/\s+/)
+      .map(t => t.trim().toLowerCase())
+      .filter(t => t.length >= 2);
+    if (queryTokens.length >= 2) {
+      const filtered = all.filter(u => {
+        const hay = (u.displayName + ' ' + u.email).toLowerCase();
+        return queryTokens.every(tok => hay.indexOf(tok) >= 0);
+      });
+      // Nur uebernehmen wenn ueberhaupt etwas matched — sonst sind die
+      // unscharfen Single-Token-Treffer immer noch besser als gar nichts.
+      if (filtered.length > 0) {
+        all.length = 0;
+        all.push(...filtered);
+      }
+    }
+
     // Location + JobTitle per User Profile nachladen
     for (const user of all) {
       try {
