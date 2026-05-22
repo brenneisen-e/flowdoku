@@ -332,6 +332,8 @@ function QuizPlayer({
                   <img
                     src={q.imageBase64}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     style={{
                       maxWidth: '100%', maxHeight: 120, display: 'block',
                       borderRadius: 6, marginBottom: 6, border: '1px solid var(--dex-gray-200)',
@@ -406,6 +408,8 @@ function QuizPlayer({
                 <img
                   src={question.imageBase64}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   style={{
                     maxWidth: '100%', maxHeight: 240, display: 'block',
                     borderRadius: 8, marginBottom: 10, border: '1px solid var(--dex-gray-200)',
@@ -656,17 +660,46 @@ export default function MyEventsPage(): React.ReactElement {
       setLoadError('');
       return;
     }
+    // v11.79: Stale-while-revalidate. Wenn vor < 60 s schon mal MyEvents
+    // geladen wurden, sofort den letzten Stand aus dem sessionStorage
+    // rendern (Skeleton-Spinner uebersprungen) und im Hintergrund frisch
+    // nachladen. Beim erneuten Klick auf "Meine Events" fuehlt sich die
+    // Seite damit instantan an, ohne Stale-Daten zu riskieren.
+    try {
+      const raw = window.sessionStorage.getItem('dex:myevents:cache');
+      if (raw) {
+        const cache = JSON.parse(raw) as { ts: number; entries: MyEventEntry[] };
+        if (cache && Array.isArray(cache.entries) && (Date.now() - cache.ts) < 60_000) {
+          setMyEvents(cache.entries);
+          setIsLoading(false);
+          // im Hintergrund refreshen, kein "loading"-Flag
+          loadMyRegistrations(true).catch(() => { /* ignore */ });
+          return;
+        }
+      }
+    } catch { /* sessionStorage kann disabled sein — dann normaler Pfad */ }
     loadMyRegistrations();
   }, [topLevelEvents, isEventsLoading]);
 
-  async function loadMyRegistrations(): Promise<void> {
-    setIsLoading(true);
-    setLoadError('');
+  async function loadMyRegistrations(silent: boolean = false): Promise<void> {
+    // v11.79: Performance-Logs + Promise.all-Parallelisierung.
+    // Vorher: pro angemeldetem Event eine sequentielle getMyRegistration —
+    // bei N Anmeldungen N Roundtrips in Serie. Jetzt: alle parallel via
+    // Promise.all, dazu Phase-Timer pro Block fuer ein Vorher/Nachher-
+    // Profil in der Browser-Console.
+    const tStart = performance.now();
+    if (!silent) {
+      setIsLoading(true);
+      setLoadError('');
+    }
     const entries: MyEventEntry[] = [];
 
     // Schneller Pfad: DEX_Participants abfragen
+    const tNums = performance.now();
     const myNumbers = await getMyEventNumbers();
     const allMyNumbers = [...myNumbers.registered, ...myNumbers.waitlisted];
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][myevents] getMyEventNumbers = ${Math.round(performance.now() - tNums)} ms (n=${allMyNumbers.length})`);
 
     if (allMyNumbers.length > 0) {
       // Nur Events laden die in DEX_Participants stehen
@@ -674,35 +707,39 @@ export default function MyEventsPage(): React.ReactElement {
       // wir nur Top-Level-Events; Sub-Event-Anmeldungen erscheinen verschachtelt
       // unter ihrem Parent über childEventsOf().
       const relevantEvents = topLevelEvents.filter(e => e.eventNumber && allMyNumbers.indexOf(e.eventNumber) >= 0);
-      for (const event of relevantEvents) {
-        try {
-          const reg = await getMyRegistration(event.id);
-          if (reg) {
-            // v10.22: Sonderfall — Parent-Reg ist 'Abgemeldet', aber der User
-            // hat noch aktive Sub-Event-Registrierungen (Hauptevent abgemeldet,
-            // Sub-Events behalten). Dann zeigen wir das Parent als
-            // sessionsOnly-Container damit die Sub-Event-Liste sichtbar
-            // bleibt und der User weitere Sub-Events nachbuchen oder einzeln
-            // abmelden kann. Wenn alles abgemeldet ist, normales Cancelled-
-            // Verhalten.
-            if (reg.Status === 'Abgemeldet') {
-              const kids = childEventsOf(event.id);
-              const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
-              if (activeKids.length > 0) {
-                entries.push({
-                  event,
-                  registration: { ...reg, Status: 'Angemeldet' },
-                  sessionsOnly: true,
-                  subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
-                });
-              } else {
-                entries.push({ event, registration: reg });
-              }
-            } else {
-              entries.push({ event, registration: reg });
-            }
+      const tRel = performance.now();
+      // v11.79: parallele getMyRegistration-Calls statt sequentielle Schleife.
+      const relevantRegs = await Promise.all(relevantEvents.map(async (event) => {
+        try { return { event, reg: await getMyRegistration(event.id) }; }
+        catch { return { event, reg: null as SPRegistration | null }; }
+      }));
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][myevents] getMyRegistration relevant n=${relevantEvents.length} = ${Math.round(performance.now() - tRel)} ms (parallel)`);
+      for (const { event, reg } of relevantRegs) {
+        if (!reg) continue;
+        // v10.22: Sonderfall — Parent-Reg ist 'Abgemeldet', aber der User
+        // hat noch aktive Sub-Event-Registrierungen (Hauptevent abgemeldet,
+        // Sub-Events behalten). Dann zeigen wir das Parent als
+        // sessionsOnly-Container damit die Sub-Event-Liste sichtbar
+        // bleibt und der User weitere Sub-Events nachbuchen oder einzeln
+        // abmelden kann. Wenn alles abgemeldet ist, normales Cancelled-
+        // Verhalten.
+        if (reg.Status === 'Abgemeldet') {
+          const kids = childEventsOf(event.id);
+          const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+          if (activeKids.length > 0) {
+            entries.push({
+              event,
+              registration: { ...reg, Status: 'Angemeldet' },
+              sessionsOnly: true,
+              subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
+            });
+          } else {
+            entries.push({ event, registration: reg });
           }
-        } catch { /* */ }
+        } else {
+          entries.push({ event, registration: reg });
+        }
       }
       // v6.14: Sessions-Only-Entries. Wenn der User nur Sub-Events eines Parent-Events
       // angemeldet hat (nicht das Parent selbst), zeigen wir den Parent trotzdem als
@@ -745,40 +782,52 @@ export default function MyEventsPage(): React.ReactElement {
       // Container eingetragen haben (sonst Doppel-Eintrag mit Status 'Angemeldet'
       // UND 'Abgemeldet' fuer dasselbe Parent-Event).
       const handledParentIds = new Set(entries.map(e => e.event.id));
-      const remainingEvents = topLevelEvents.filter(e => !e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0);
-      for (const event of remainingEvents) {
-        if (handledParentIds.has(event.id)) continue;
-        try {
-          const reg = await getMyRegistration(event.id);
-          if (reg && reg.Status === 'Abgemeldet') {
-            // v10.22: Auch hier den hasActiveChild-Sonderfall pruefen — falls
-            // DEX_Participants die Parent-EventNumber noch nicht entfernt hat
-            // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
-            // Eintrag fuer das Parent existiert.
-            const kids = childEventsOf(event.id);
-            const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
-            if (activeKids.length > 0) {
-              entries.push({
-                event,
-                registration: { ...reg, Status: 'Angemeldet' },
-                sessionsOnly: true,
-                subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
-              });
-            } else {
-              entries.push({ event, registration: reg });
-            }
-          }
-        } catch { /* */ }
-      }
-    } else {
-      // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag
-      for (const event of topLevelEvents) {
-        try {
-          const reg = await getMyRegistration(event.id);
-          if (reg) {
+      const remainingEvents = topLevelEvents.filter(e =>
+        (!e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0) && !handledParentIds.has(e.id)
+      );
+      const tRem = performance.now();
+      // v11.79: auch die Abgemeldet-Suche parallelisieren. Vorher: pro nicht-
+      // angemeldetem Event ein Roundtrip — bei vielen Events der teuerste
+      // Block, weil oft 80%+ "kein Eintrag" zurueckkommen. Parallel schneidet
+      // die Gesamtdauer auf max(slowest), nicht sum().
+      const remainingRegs = await Promise.all(remainingEvents.map(async (event) => {
+        try { return { event, reg: await getMyRegistration(event.id) }; }
+        catch { return { event, reg: null as SPRegistration | null }; }
+      }));
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][myevents] getMyRegistration remaining n=${remainingEvents.length} = ${Math.round(performance.now() - tRem)} ms (parallel, Abgemeldet-Suche)`);
+      for (const { event, reg } of remainingRegs) {
+        if (reg && reg.Status === 'Abgemeldet') {
+          // v10.22: Auch hier den hasActiveChild-Sonderfall pruefen — falls
+          // DEX_Participants die Parent-EventNumber noch nicht entfernt hat
+          // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
+          // Eintrag fuer das Parent existiert.
+          const kids = childEventsOf(event.id);
+          const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+          if (activeKids.length > 0) {
+            entries.push({
+              event,
+              registration: { ...reg, Status: 'Angemeldet' },
+              sessionsOnly: true,
+              subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
+            });
+          } else {
             entries.push({ event, registration: reg });
           }
-        } catch { /* */ }
+        }
+      }
+    } else {
+      // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag.
+      // v11.79: ebenfalls parallelisiert.
+      const tFb = performance.now();
+      const fbRegs = await Promise.all(topLevelEvents.map(async (event) => {
+        try { return { event, reg: await getMyRegistration(event.id) }; }
+        catch { return { event, reg: null as SPRegistration | null }; }
+      }));
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][myevents] getMyRegistration fallback n=${topLevelEvents.length} = ${Math.round(performance.now() - tFb)} ms (parallel, Altdaten-Pfad)`);
+      for (const { event, reg } of fbRegs) {
+        if (reg) entries.push({ event, registration: reg });
       }
     }
 
@@ -786,7 +835,15 @@ export default function MyEventsPage(): React.ReactElement {
       setLoadError('Registrierungen konnten nicht geladen werden.');
     }
     setMyEvents(entries);
-    setIsLoading(false);
+    if (!silent) setIsLoading(false);
+    // v11.79: Cache fuer Stale-while-revalidate. Beim naechsten Mount
+    // innerhalb 60 s wird sofort der letzte Stand gerendert.
+    try {
+      window.sessionStorage.setItem('dex:myevents:cache', JSON.stringify({ ts: Date.now(), entries }));
+    } catch { /* ignore */ }
+    const tTotal = Math.round(performance.now() - tStart);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][myevents] total = ${tTotal} ms (entries=${entries.length}, silent=${silent})`);
   }
 
   // Eigentliche Cancel-Logik (direkt ausfuehren, ohne 2-Klick-Bestaetigung).
@@ -923,37 +980,40 @@ export default function MyEventsPage(): React.ReactElement {
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
 
   if (isLoading) {
-    // v11.33: animierter Loader statt nur einer grauen Zeile —
-    // gibt dem User klares visuelles Feedback dass die Daten geladen
-    // werden (vorher wirkte der Bildschirm fast leer / gefroren).
+    // v11.79: Border-Ring-Spinner (v11.33/v11.70) durch eine saubere
+    // indeterminierte Progress-Bar ersetzt — der border-radius/border-top-
+    // Trick erzeugte in der SP-Hostpage trotz inline-block-Fix einen
+    // mitrotierenden vertikalen Strich im Zentrum. Stattdessen jetzt
+    // dasselbe Markup wie im App-Boot-Loader (siehe DexEventPlatform.tsx,
+    // dexProgressSlide-Keyframe): eine endlos durchlaufende grüne Zone
+    // über einer grauen Spur. Kein Rotations-Element, kein Strich-Quirk.
     return (
       <div className="page-container text-center" style={{ padding: '64px 16px' }}>
         <div style={{
           display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+          width: 'min(320px, 80%)',
         }}>
-          <span
+          <div
             aria-hidden="true"
             style={{
-              // v11.70: explizit display:inline-block + box-sizing, sonst kann
-              // der <span> als reines inline-Element seine Border-Geometrie
-              // nicht sauber rendern — in Folge zeigte der Spinner einen
-              // duennen vertikalen Strich im Zentrum (CSS-Var-Resolve +
-              // Inline-Renderer-Quirk in SP-Hostpage). Mit explizitem
-              // Inline-Block + festen Farbwerten (statt var-Fallback) zeichnet
-              // der Browser einen sauberen Ring.
-              display: 'inline-block',
-              boxSizing: 'border-box',
-              width: 48, height: 48, borderRadius: '50%',
-              border: '4px solid #e5e5e5',
-              borderTopColor: '#86bc25',
-              animation: 'dex-spin 0.9s linear infinite',
+              width: '100%', height: 6, borderRadius: 3,
+              background: '#e5e5e5',
+              overflow: 'hidden', position: 'relative',
             }}
-          />
+          >
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0,
+              width: '40%',
+              background: '#86bc25',
+              borderRadius: 3,
+              animation: 'dexProgressSlide 1.2s ease-in-out infinite',
+            }} />
+          </div>
           <p style={{ color: 'var(--dex-gray-600)', margin: 0, fontSize: '0.95rem' }}>
             {t('myevents.loading')}
           </p>
         </div>
-        <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
       </div>
     );
   }
@@ -1075,6 +1135,8 @@ export default function MyEventsPage(): React.ReactElement {
                       <img
                         src={event.imageUrl}
                         alt={event.title}
+                        loading="lazy"
+                        decoding="async"
                         style={{
                           maxWidth: '100%',
                           maxHeight: '100%',

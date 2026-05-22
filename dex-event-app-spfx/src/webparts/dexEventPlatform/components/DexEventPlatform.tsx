@@ -110,13 +110,14 @@ function AppContent(): React.ReactElement {
         return;
       }
       const elapsed = Date.now() - start;
-      // v7.10: Linearer Fortschritt — nach 10 Sekunden bei 100%. Wenn das
-      // Laden frueher fertig ist, setzt der Done-Branch oben sofort auf 100%
-      // und stoppt das Intervall. Sollte Roles/Events laenger als 10s
-      // brauchen, friert der Balken bei 99% ein, bis das Done-Signal kommt
-      // — sonst stuende der Balken auf 100%, obwohl die App noch nicht
-      // bereit ist (das wirkt verwirrend / "haengend").
-      const target = Math.min(99, Math.round((elapsed / 10000) * 100));
+      // v7.10/v11.79: Linearer Fortschritt — nach 4 Sekunden bei 100%
+      // (vorher 10 s, war seit dem App-Boot-Speedup auf ~1.6 s zu langsam).
+      // Wenn das Laden frueher fertig ist, setzt der Done-Branch oben sofort
+      // auf 100% und stoppt das Intervall. Sollte Roles/Events laenger als
+      // 4 s brauchen, friert der Balken bei 99% ein, bis das Done-Signal
+      // kommt — sonst stuende der Balken auf 100%, obwohl die App noch
+      // nicht bereit ist (das wirkt verwirrend / "haengend").
+      const target = Math.min(99, Math.round((elapsed / 4000) * 100));
       setBootProgress(prev => Math.max(prev, target));
     }, 60);
     return () => clearInterval(id);

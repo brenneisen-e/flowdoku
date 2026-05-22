@@ -2979,21 +2979,27 @@ export default function EventCreationPage(): React.ReactElement {
       // Konsole nachvollziehen koennen, warum das Modal manchmal nicht
       // erscheint. v11.67: JSON.stringify damit der Browser die Werte
       // direkt anzeigt (statt nur „Object" mit Klick zum Aufklappen).
-      // eslint-disable-next-line no-console
-      console.log('[DEX][outlook-detect][sub] ' + JSON.stringify({
-        dbId: s.dbId,
-        title: s.title,
-        subChangedFields,
-        disableOutlook: s.disableOutlook,
-        hasOutlookEvId,
-        initialOutlookEventId: s.initialOutlookEventId,
-        initialCalendarLink: s.initialCalendarLink,
-        bodyLenInitial: (s.initialOutlookBody || '').length,
-        bodyLenCurrent: (s.outlookBody || '').length,
-        bodyLenInitStripped: initBodyStripped.length,
-        bodyMatch: curBodyStripped === initBodyStripped,
-        titleMatch: (s.title || '') === initTitle,
-      }));
+      // v11.79: nur noch sichtbar, wenn der Maintainer in der Console
+      // `window.__dexDebug = true` setzt — sonst spammt das Log im
+      // Normalbetrieb die DevTools voll.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (typeof window !== 'undefined' && (window as any).__dexDebug) {
+        // eslint-disable-next-line no-console
+        console.log('[DEX][outlook-detect][sub] ' + JSON.stringify({
+          dbId: s.dbId,
+          title: s.title,
+          subChangedFields,
+          disableOutlook: s.disableOutlook,
+          hasOutlookEvId,
+          initialOutlookEventId: s.initialOutlookEventId,
+          initialCalendarLink: s.initialCalendarLink,
+          bodyLenInitial: (s.initialOutlookBody || '').length,
+          bodyLenCurrent: (s.outlookBody || '').length,
+          bodyLenInitStripped: initBodyStripped.length,
+          bodyMatch: curBodyStripped === initBodyStripped,
+          titleMatch: (s.title || '') === initTitle,
+        }));
+      }
       if (subChangedFields.length > 0 && !s.disableOutlook) {
         items.push({
           kind: 'sub',
@@ -3007,15 +3013,19 @@ export default function EventCreationPage(): React.ReactElement {
         });
       }
     }
-    // eslint-disable-next-line no-console
-    console.log('[DEX][outlook-detect][result] ' + JSON.stringify({
-      itemsCount: items.length,
-      items,
-      activeCommTabIdx,
-      topOutlookBodyLen: (outlookBody || '').length,
-      topInitialOutlookBodyLen: (snap.outlookBody || '').length,
-      topBodyMatch: currentStripped === initialStripped,
-    }));
+    // v11.79: gated debug log — siehe oben.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (typeof window !== 'undefined' && (window as any).__dexDebug) {
+      // eslint-disable-next-line no-console
+      console.log('[DEX][outlook-detect][result] ' + JSON.stringify({
+        itemsCount: items.length,
+        items,
+        activeCommTabIdx,
+        topOutlookBodyLen: (outlookBody || '').length,
+        topInitialOutlookBodyLen: (snap.outlookBody || '').length,
+        topBodyMatch: currentStripped === initialStripped,
+      }));
+    }
     return { items };
   };
 
