@@ -23,6 +23,7 @@ import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePl
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
+import { MultiSelectDropdown } from './MultiSelectDropdown';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -108,6 +109,8 @@ function getBlockedInviteRecipients(emails: string[]): Array<{ email: string; re
 }
 
 // v9.20: EventStatus-Labels lokalisieren (DE).
+// v11.89: 'Under Construction' wird transparent als 'Entwurf' angezeigt,
+// solange noch Legacy-Daten existieren — neue Events nutzen IsFictive.
 function localizeStatus(status: string): string {
   switch (status) {
     case 'Active': return 'Aktiv';
@@ -2410,34 +2413,34 @@ export default function AdminPage(): React.ReactElement {
               }}
             />
 
-            {/* v9.19: Event aktivieren/deaktivieren — prominent gefuellt.
-                Aktiv → User koennen sich anmelden. Deaktiv (Under Construction)
-                → Event nur fuer Organizer/Admin/Test-Team sichtbar, Anmeldung
-                blockiert. Der Toggle ist die schnellste Moeglichkeit, ein
-                Event live zu schalten oder kurzfristig "auf Pause" zu setzen
-                (z.B. waehrend kurzfristige Aenderungen). */}
+            {/* v11.89: Event Live/Entwurf-Toggle — flippt IsFictive
+                (vorher EventStatus). Live → alle Berechtigten sehen das
+                Event und können sich anmelden. Entwurf → nur Organizer,
+                Admin und Test-Team sehen es. Bestehende Anmeldungen
+                bleiben in beiden Modi erhalten. */}
             {(() => {
-              const isActive = selectedEvent.status === 'Active';
+              const isDraft = !!selectedEvent.isFictive;
               return (
                 <ActionTile
-                  icon={isActive ? <X size={18} /> : <Check size={18} />}
-                  title={isActive ? 'Event deaktivieren' : 'Event aktivieren'}
-                  desc={isActive
-                    ? 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder auf "aktiv" stellen.'
-                    : 'Schaltet das Event auf "Active" — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'}
+                  icon={isDraft ? <Check size={18} /> : <X size={18} />}
+                  title={isDraft ? 'Event live schalten' : 'Auf Entwurf setzen'}
+                  desc={isDraft
+                    ? 'Schaltet das Event live — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'
+                    : 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder live schalten.'}
                   badge="organizer"
-                  // v9.19/v9.20: nur "Aktivieren" wird gruen highlighted —
-                  // "Deaktivieren" bleibt unauffaellig (Standard-Tile-Look),
-                  // damit der Button nicht alarmierend wirkt.
-                  accent={isActive ? undefined : 'green'}
+                  accent={isDraft ? 'green' : undefined}
                   onClick={async () => {
                     if (!eventServiceRef) return;
-                    const newStatus = isActive ? 'Under Construction' : 'Active';
-                    const confirmMsg = isActive
+                    const nextIsFictive = !isDraft;
+                    const confirmMsg = nextIsFictive
                       ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
-                      : 'Event auf "Active" schalten? Alle Berechtigten können sich danach anmelden.';
+                      : 'Event live schalten? Alle Berechtigten können sich danach anmelden.';
                     if (!window.confirm(confirmMsg)) return;
-                    await updateEvent(selectedEvent.id, { 'EventStatus': newStatus });
+                    // Legacy-Cleanup: Falls das Event noch EventStatus='Under Construction'
+                    // hatte, beim Live-Schalten direkt mit auf 'Active' setzen.
+                    const patch: Record<string, unknown> = { 'IsFictive': nextIsFictive };
+                    if (!nextIsFictive) patch['EventStatus'] = 'Active';
+                    await updateEvent(selectedEvent.id, patch);
                     await refreshEvents();
                   }}
                 />
@@ -5376,30 +5379,19 @@ export default function AdminPage(): React.ReactElement {
                             );
                           }
 
-                          // Multi-Select (Checkbox-Liste, Werte mit ' | ' joinen)
+                          // v11.89: Multi-Select-Dropdown (vorher Checkbox-Liste).
+                          // Werte werden weiterhin ' | '-getrennt gespeichert.
                           if (cf.type === 'select' && cf.multi && cf.options && cf.options.length > 0) {
-                            const selectedSet = new Set(value.split(' | ').map(s => s.trim()).filter(Boolean));
-                            const toggle = (opt: string): void => {
-                              if (selectedSet.has(opt)) selectedSet.delete(opt);
-                              else selectedSet.add(opt);
-                              setVal(Array.from(selectedSet).join(' | '));
-                            };
+                            const selected = value.split(' | ').map(s => s.trim()).filter(Boolean);
                             return (
                               <div key={cf.id} style={{ gridColumn: '1 / -1' }}>
                                 {labelEl}
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8, border: '1px solid var(--dex-gray-200)', borderRadius: 6, background: '#fff' }}>
-                                  {cf.options.map(opt => (
-                                    <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer', padding: '4px 8px', background: selectedSet.has(opt) ? 'rgba(134,188,37,0.12)' : 'var(--dex-gray-50)', borderRadius: 6 }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedSet.has(opt)}
-                                        onChange={() => toggle(opt)}
-                                        style={{ accentColor: 'var(--dex-green)' }}
-                                      />
-                                      {opt}
-                                    </label>
-                                  ))}
-                                </div>
+                                <MultiSelectDropdown
+                                  options={cf.options}
+                                  value={selected}
+                                  onChange={next => setVal(next.join(' | '))}
+                                  placeholder={isDe ? '— bitte wählen —' : '— please choose —'}
+                                />
                               </div>
                             );
                           }

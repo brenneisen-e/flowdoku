@@ -2,7 +2,10 @@
 // Author: Eike Brenneisen
 
 export type EventType = 'B2Run' | 'JPMorgan' | 'Other';
-export type EventStatus = 'Under Construction' | 'Active' | 'Completed' | 'Cancelled';
+// v11.89: 'Under Construction' wurde konsolidiert in das IsFictive-Flag.
+// Der „Entwurf"-Zustand eines Events lebt jetzt ausschließlich auf
+// IsFictive — EventStatus beschreibt nur noch den Lebenszyklus.
+export type EventStatus = 'Active' | 'Completed' | 'Cancelled';
 export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'Abgemeldet';
 export type Salutation = 'Herr' | 'Frau' | 'Divers' | 'Keine Angabe';
 

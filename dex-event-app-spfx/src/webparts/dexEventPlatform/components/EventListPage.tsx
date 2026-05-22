@@ -152,8 +152,19 @@ export default function EventListPage(): React.ReactElement {
     getMyEventNumbers().then(setMyNumbers).catch(err => console.warn('[DEX]', err));
   }, [events]);
 
+  // v11.89: "Nur aktive Events" blendet jetzt sowohl Entwürfe (IsFictive
+  // oder ActiveFrom in der Zukunft) als auch Cancelled/Completed aus —
+  // konsistent mit der Konsolidierung „Entwurf = Entwurf, kein zweites
+  // Under-Construction-Konzept mehr".
+  const nowTs = Date.now();
   const statusFiltered = onlyActive
-    ? events.filter((e) => e.status === 'Active')
+    ? events.filter((e) => {
+        if (e.status !== 'Active') return false;
+        if (e.isFictive) return false;
+        const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
+        if (activeFromTs > 0 && activeFromTs > nowTs) return false;
+        return true;
+      })
     : events;
 
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik

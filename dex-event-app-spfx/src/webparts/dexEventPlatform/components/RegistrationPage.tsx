@@ -15,6 +15,7 @@ import { Salutation } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Info, Trash2, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
+import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
 
 function formatDate(iso: string): string {
@@ -952,43 +953,23 @@ export default function RegistrationPage(): React.ReactElement {
       </label>
     )}
     {field.type === 'select' && field.multi ? (
-      // v7.11: Mehrfachauswahl als Checkbox-Liste. Werte werden
+      // v11.89: Multi-Select-Dropdown — gleicher Look wie Single-Select,
+      // beim Aufklappen Checkboxen pro Option. Werte werden weiterhin
       // " | "-getrennt im selben Feld eventSpecific[field.id]
       // gespeichert (kompatibel mit Record<string,string>).
       (() => {
         const sep = ' | ';
         const raw = (eventSpecific[field.id] || '').trim();
         const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
-        const toggle = (opt: string): void => {
-          const next = selected.indexOf(opt) >= 0
-            ? selected.filter(s => s !== opt)
-            : [...selected, opt];
-          setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) });
-        };
-        const isErr = showErrors && field.required && selected.length === 0;
+        const isErr = !!(showErrors && field.required && selected.length === 0);
         return (
-          <div
-            style={{
-              display: 'flex', flexDirection: 'column', gap: 6,
-              padding: 10, borderRadius: 8,
-              border: isErr ? '1px solid var(--dex-red)' : '1px solid var(--dex-gray-200)',
-              background: '#fff',
-            }}
-          >
-            {(field.options || []).map(opt => (
-              <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
-                <input
-                  type="checkbox"
-                  checked={selected.indexOf(opt) >= 0}
-                  onChange={() => toggle(opt)}
-                />
-                <span>{opt}</span>
-              </label>
-            ))}
-            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 2 }}>
-              {tEvent('reg.multiselect.hint') || 'Mehrere Auswahl möglich'}
-            </div>
-          </div>
+          <MultiSelectDropdown
+            options={field.options || []}
+            value={selected}
+            onChange={next => setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) })}
+            placeholder={tEvent('reg.pleaseselect')}
+            error={isErr}
+          />
         );
       })()
     ) : field.type === 'select' ? (
