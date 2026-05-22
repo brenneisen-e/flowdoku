@@ -623,6 +623,32 @@ In der React-Logik bleibt `currentStep` weiterhin **0-basiert** (`currentStep ==
 
 Jeder Step rendert oben eine eigene **Überschrift in Dunkelgrün** (`var(--dex-green-dark, #4a7c1f)`) im Format `Schritt N — Name` mit einem kurzen ein-Satz-Lead darunter, was in diesem Schritt eingestellt wird.
 
+### Demo-Daten laden im Wizard (v11.88)
+
+In Schritt 1 (Grundlagen) sitzt oben rechts ein „Demo"-Button. Vor v11.88 hat
+er das Formular direkt mit einer fixen Test-Vorlage gefüllt — seit v11.88
+öffnet er stattdessen ein Auswahl-Modal mit vier Varianten-Karten. Klick auf
+eine Karte schließt das Modal sofort, füllt das Formular vollständig (inkl.
+Reset von Team-, Split- und Sub-Event-Feldern) und springt auf Schritt 1
+zurück. Keine Submit-Buttons — die Karte selbst ist der Submit.
+
+Die vier Varianten in `EventCreationPage.tsx` (Map `DEMO_VARIANTS`):
+
+| Key            | Vorlage                                | Kerneigenschaften                                                                                                  |
+|----------------|----------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `standard`     | Einfaches Meeting / Lunch              | 50 Plätze, keine Gruppen, keine Sub-Events, Custom-Field „Essenspräferenz" (select, Pflicht)                       |
+| `groups`       | Workshop mit zwei Gruppen              | Split Capacity 25 + 25, Gruppen „Vormittag" + „Nachmittag", gemeinsame Warteliste, keine Sub-Events                |
+| `subevent`     | Conference mit Networking-Dinner       | 100 Plätze, ein Sub-Event („Networking-Dinner", 60 Plätze), Custom-Field „Hotel-Buchung" (select, optional)        |
+| `subeventTeam` | Quizabend mit Team-Anmeldung           | 80 Plätze (= 20 Teams à 4), Team-Anmeldung aktiv (TeamSize 4, Team-Name abfragen, Teil-Teams + offene Slots), ein Sub-Event („Vorbereitungs-Briefing", 10 Plätze), Custom-Field „Essenspräferenz" |
+
+Der Reset-Helper `resetDemoVariantBaseState()` setzt vor jedem Variant-Laden
+alle Variant-spezifischen Felder (Split, Team, Sub-Events, Custom-Fields,
+Agenda, Transferzeiten, Audience, Bild, Ansprechpartner) auf neutrale
+Defaults zurück, damit Reste vorheriger Varianten nicht im Formular hängen
+bleiben. Die alte `fillDemo`-Funktion mit der `Test_<datum>`-Vorlage bleibt
+als interner Helfer im Code, wird aber von keinem Button mehr direkt
+angesprochen.
+
 ### Tooltip-Stil (ab v9.32)
 
 InfoTooltips erklären jedem Admin/Organizer **ausführlich und in Klartext**:

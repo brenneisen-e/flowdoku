@@ -710,8 +710,10 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "item/start": "@convertFromUtc(triggerBody()?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/end": "@convertFromUtc(triggerBody()?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
-      "item/requiredAttendees": "@triggerBody()?['OrganizerEmail']",
-      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>"
+      "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
+      "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/showAs": "busy",
+      "item/responseRequested": false
     },
     "host": {
       "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -719,7 +721,7 @@ CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
       "operationId": "V4CalendarPostItem"
     }
   },
-  "runAfter": { "Compose_Image": ["SUCCEEDED"] }
+  "runAfter": { "Compose_Image": ["Succeeded"] }
 }
 
 UPDATE_EVENT (CalendarLink zurückschreiben):
@@ -850,12 +852,20 @@ HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
     "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
+  "showAs": "busy",
+  "responseRequested": false,
   "body": {
     "contentType": "html",
     "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
   }
 }
 ```
+
+**Stand 2026-05-22 (v11.88):** der Body schreibt zusaetzlich `showAs: busy`
++ `responseRequested: false`. Damit landet der Termin direkt im Kalender
+der Teilnehmer (kein Akzeptieren-Klick noetig) und ist als Beschaeftigt
+markiert. Im `DEX_CreateOutlookEvent`-Flow sind die gleichen zwei
+Parameter in der `Create_event_(V4)`-Action gesetzt.
 
 **`Send_an_HTTP_request`-Body** (PATCH zur Graph API):
 ```

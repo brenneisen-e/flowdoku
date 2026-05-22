@@ -715,6 +715,11 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? (editEvent.excludedUsers || []) : []
   );
   const [excludeModalOpen, setExcludeModalOpen] = React.useState(false);
+  // v11.88: Demo-Auswahl-Modal — der „Demo"-Button oeffnet einen Dialog
+  // mit vier Vorlagen-Karten (Standard, Mit Gruppen, Mit Sub-Event,
+  // Mit Sub-Event + Team). Klick auf eine Karte fuellt das Formular
+  // mit der jeweiligen Variante und schliesst das Modal.
+  const [showDemoVariantModal, setShowDemoVariantModal] = React.useState<boolean>(false);
   const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
@@ -1598,175 +1603,205 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [durchstarterCapacity, funstarterCapacity, useSplitCapacities]);
 
-  const fillDemo = (): void => {
-    const now = new Date();
-    // Demo-Events sollen standardmaessig am Wochenende stattfinden:
-    // Naechster Samstag ab now+7 Tage (getDay() === 6 = Samstag).
-    const eventStart = new Date(now);
-    eventStart.setDate(now.getDate() + 7);
-    while (eventStart.getDay() !== 6) {
-      eventStart.setDate(eventStart.getDate() + 1);
-    }
-    eventStart.setHours(9, 0, 0, 0); // Samstag 09:00
-    // Event laeuft bis Sonntag 17:00 (zwei-Tages-Weekend-Event)
-    const eventEnd = new Date(eventStart);
-    eventEnd.setDate(eventStart.getDate() + 1);
-    eventEnd.setHours(17, 0, 0, 0);
-    const deadline = new Date(eventStart);
-    deadline.setDate(eventStart.getDate() - 2);
-    const lastDereg = new Date(eventStart);
-    lastDereg.setDate(eventStart.getDate() - 1);
+  // v11.88: Helpers fuer Datums-Formatierung — werden von allen Demo-
+  // Varianten + dem alten fillDemo geteilt.
+  const fmtDatetime = (d: Date): string => {
+    const pad = (n: number): string => (n < 10 ? '0' : '') + n;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const fmtDate = (d: Date): string => {
+    const pad = (n: number): string => (n < 10 ? '0' : '') + n;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
 
-    const toDatetime = (d: Date): string => {
-      const pad = (n: number): string => (n < 10 ? '0' : '') + n;
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-    const toDate = (d: Date): string => {
-      const pad = (n: number): string => (n < 10 ? '0' : '') + n;
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    };
-
-    const dateStr = toDate(eventStart).replace(/-/g, '');
-    setTitle(`Test_${dateStr}`);
-    setDescription('Testbeschreibung für ein Demo-Event.');
-    setLocation('Köln, Testort');
-    setLocationFilter('');
-    // v11.45: Demo-Event darf NICHT 'All' in den Mailverteiler legen — das
-    // gilt als pauschaler All-Verteiler und ist beim Einladungs-Versand
-    // (siehe AdminPage.getBlockedInviteReason) hart geblockt. Mailverteiler
-    // bleibt im Demo-Template leer; der Organizer fuellt ihn bewusst.
-    setAudience('');
-    setStartDate(toDatetime(eventStart));
-    setEndDate(toDatetime(eventEnd));
-    setRegistrationDeadline(toDate(deadline));
-    setLastDeregisterDate(toDate(lastDereg));
-    // v10.26: Demo-Event aktiviert geteilte Kapazität als Vorlage. Zwei
-    // Gruppen á 25 Plätze, gemeinsame Warteliste deaktiviert (= getrennt,
-    // damit der typ-bewusste Promote-Pfad als Demo durchläuft).
-    setMaxParticipants('50');
-    setUseSplitCapacities(true);
+  // v11.88: Reset-Helfer — setzt alle Team-, Split- und sonstigen
+  // Variant-spezifischen Felder auf neutralen Default zurueck, damit die
+  // Demo-Varianten nicht versehentlich Zustand der vorigen Variante erben.
+  const resetDemoVariantBaseState = (): void => {
+    setUseSplitCapacities(false);
     setSplitLabelA('Teilnehmergruppe 1');
     setSplitLabelB('Teilnehmergruppe 2');
+    setDurchstarterCapacity('0');
+    setFunstarterCapacity('0');
+    setSplitSharedWaitlist(false);
+    setTeamRegistrationEnabled(false);
+    setTeamSize(4);
+    setAskTeamName(false);
+    setTeamPartialAllowed(false);
+    setTeamOpenSlotsVisible(false);
+    setTeamJoinRequiresApproval(false);
+    setAskSalutation(false);
+    setSubEvents([]);
+    setCustomFields([]);
+    setAgenda([]);
+    setTransferTimes([]);
+    setLocationFilter('');
+    setAudience('');
+    setEventImageUrl('');
+    setContactName('');
+    setContactEmail('');
+    setContactInfo('');
+    setWaitlistEnabled(true);
+    setEmailLanguage('DE');
+  };
+
+  // v11.88: Berechnet einen Demo-Termin relativ zu „heute".
+  // daysAhead = Anzahl Tage in der Zukunft, hour/minute = Start.
+  const demoDate = (daysAhead: number, hour: number, minute: number): Date => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+
+  // v11.88: Vier Demo-Vorlagen — vom „Demo"-Button-Modal aufgerufen.
+  // Jede Variante fuellt das Formular vollstaendig (inkl. Reset der
+  // Felder, die diese Variante NICHT setzt).
+  const loadDemoStandard = (): void => {
+    resetDemoVariantBaseState();
+    const start = demoDate(14, 10, 0);
+    const end = demoDate(14, 12, 0);
+    const deadline = demoDate(13, 23, 59);
+    setTitle('Demo-Meeting Standard');
+    setDescription('Beispielhaftes einfaches Meeting ohne Gruppen und ohne Sub-Events.');
+    setLocation('Heinrich Campus Düsseldorf, 6. Etage');
+    setStartDate(fmtDatetime(start));
+    setEndDate(fmtDatetime(end));
+    setRegistrationDeadline(fmtDate(deadline));
+    setLastDeregisterDate(fmtDate(deadline));
+    setMaxParticipants('50');
+    setUseSplitCapacities(false);
+    setWaitlistEnabled(true);
+    setAskSalutation(false);
+    const tDemo = Date.now();
+    setCustomFields([
+      { id: `cf-${tDemo}`, label: 'Essenspräferenz', type: 'select', required: true,
+        options: ['Vegetarisch', 'Vegan', 'Keine Einschränkungen'], visible: true },
+    ]);
+    setCurrentStep(0);
+  };
+
+  const loadDemoGroups = (): void => {
+    resetDemoVariantBaseState();
+    const start = demoDate(14, 9, 0);
+    const end = demoDate(14, 17, 0);
+    const deadline = demoDate(12, 23, 59);
+    setTitle('Demo-Workshop mit Gruppen');
+    setDescription('Workshop mit zwei Teilnehmer-Gruppen (Vormittag/Nachmittag) und gemeinsamer Warteliste.');
+    setLocation('Deloitte Office Köln');
+    setStartDate(fmtDatetime(start));
+    setEndDate(fmtDatetime(end));
+    setRegistrationDeadline(fmtDate(deadline));
+    setLastDeregisterDate(fmtDate(deadline));
+    setMaxParticipants('50');
+    setUseSplitCapacities(true);
+    setSplitLabelA('Vormittag');
+    setSplitLabelB('Nachmittag');
     setDurchstarterCapacity('25');
     setFunstarterCapacity('25');
-    setSplitSharedWaitlist(false);
+    setSplitSharedWaitlist(true);
     setWaitlistEnabled(true);
-    setEventImageUrl('');
-    // v10.26: Ansprechpartner als Demo befüllt — der Organizer sieht
-    // direkt wie das Feld auf der Anmelde-Seite gerendert wird.
-    setContactName('Heike Musterfrau');
-    setContactEmail('Musterfirma@online.de');
-    setContactInfo('Bei Rückfragen zu Anmeldung oder Ablauf direkt melden.');
-    // v10.26: Custom-Fields. Zusätzlich zu den Standard-Beispielen kommt
-    // eine Pflicht-Checkbox die NUR für Teilnehmergruppe 1 sichtbar ist
-    // (onlyForGroup='A') — zeigt den neuen Pro-Gruppe-Field-Mechanismus
-    // direkt am Demo-Event.
-    // v11.3: deterministic IDs damit das roommate-Feld eine showIf-Referenz
-    // auf das zimmerart-Feld bauen kann (showIf-Filter-Vergleich nutzt
-    // exakte fieldId-Strings, daher muss die ID stabil sein).
+    setAskSalutation(false);
+    setCurrentStep(0);
+  };
+
+  const loadDemoSubEvent = (): void => {
+    resetDemoVariantBaseState();
+    const start = demoDate(21, 9, 0);
+    const end = demoDate(21, 17, 0);
+    const deadline = demoDate(18, 23, 59);
+    setTitle('Demo-Conference mit Dinner');
+    setDescription('Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung.');
+    setLocation('Deloitte Office Hamburg');
+    setStartDate(fmtDatetime(start));
+    setEndDate(fmtDatetime(end));
+    setRegistrationDeadline(fmtDate(deadline));
+    setLastDeregisterDate(fmtDate(deadline));
+    setMaxParticipants('100');
+    setUseSplitCapacities(false);
+    setWaitlistEnabled(true);
+    setAskSalutation(false);
     const tDemo = Date.now();
-    const idTshirt = `cf-${tDemo}`;
-    const idAllergien = `cf-${tDemo + 1}`;
-    const idDiet = `cf-${tDemo + 2}`;
-    const idHotel = `cf-${tDemo + 3}`;
-    const idZimmerart = `cf-${tDemo + 4}`;
-    const idRoommate = `cf-${tDemo + 5}`;
-    const idGroup1 = `cf-${tDemo + 6}`;
     setCustomFields([
-      { id: idTshirt, label: 'T-Shirt Größe', type: 'select', required: false, options: ['Habe bereits ein T-Shirt', 'XS', 'S', 'M', 'L', 'XL', 'XXL'], visible: true },
-      { id: idAllergien, label: 'Allergien', type: 'text', required: false, options: [], visible: true },
-      { id: idDiet, label: 'Essenspräferenzen', type: 'select', required: false, options: ['Keine Präferenzen', 'Vegetarisch', 'Vegan', 'Pescetarisch'], visible: true },
-      { id: idHotel, label: 'Hotel benötigt', type: 'checkbox', required: false, options: [], visible: true },
-      { id: idZimmerart, label: 'Zimmerart (falls Hotel benötigt)', type: 'select', required: false, options: ['Keine Präferenz', 'Einzelzimmer', 'Doppelzimmer'], visible: true },
-      // v11.3: Roommate-Feld nur sichtbar wenn Zimmerart='Doppelzimmer' —
-      // verhindert dass Einzelzimmer-Bucher versehentlich einen Roommate
-      // angeben. Demonstriert direkt den showIf-Mechanismus aus v7.21.
-      { id: idRoommate, label: 'Bevorzugter Zimmerpartner (bei Doppelzimmer)', type: 'roommate', required: false, options: [], visible: true,
-        showIf: { fieldId: idZimmerart, values: ['Doppelzimmer'] } },
-      // Pflicht-Checkbox nur für Gruppe 1 (Demo für onlyForGroup='A')
-      { id: idGroup1, label: 'Zustimmung Sonderkonditionen Gruppe 1', type: 'checkbox', required: true, options: [], visible: true, onlyForGroup: 'A' },
+      { id: `cf-${tDemo}`, label: 'Hotel-Buchung', type: 'select', required: false,
+        options: ['Ja, ich brauche ein Hotel', 'Nein, ich reise abends ab'], visible: true },
     ]);
-    // v10.26: Zwei Sub-Events anlegen — Subevent 1 mit Dropdown-Frage,
-    // Subevent 2 mit Freitext-Frage. Damit sieht der Organizer beim
-    // Demo-Klick sofort, wie die Sub-Event-Struktur + Sub-Event-spezifische
-    // Custom-Fields zusammenspielen.
-    const subStart1 = new Date(eventStart);
-    subStart1.setHours(10, 0, 0, 0);
-    const subEnd1 = new Date(eventStart);
-    subEnd1.setHours(12, 0, 0, 0);
-    const subStart2 = new Date(eventStart);
-    subStart2.setDate(eventStart.getDate() + 1);
-    subStart2.setHours(13, 0, 0, 0);
-    const subEnd2 = new Date(eventStart);
-    subEnd2.setDate(eventStart.getDate() + 1);
-    subEnd2.setHours(15, 0, 0, 0);
-    // v10.26: Demo-Agenda mit drei Programmpunkten am ersten Tag
-    const dateIso = toDate(eventStart);
-    setAgenda([
-      { id: `ag-${Date.now()}`, date: dateIso, time: '09:00', endTime: '10:00', icon: 'Handshake', title: 'Begrüßung & Kennenlernen', description: 'Kurzer Auftakt mit Vorstellung der Tagesziele.' },
-      { id: `ag-${Date.now() + 1}`, date: dateIso, time: '10:15', endTime: '12:00', icon: 'Lightbulb', title: 'Workshop-Block', description: 'Interaktive Sessions in Kleingruppen.' },
-      { id: `ag-${Date.now() + 2}`, date: dateIso, time: '12:00', endTime: '13:30', icon: 'EatDrink', title: 'Mittagessen', description: 'Stärkung und Networking.' },
-    ]);
-    // v10.26: Demo-Transferzeiten — Bus von Frankfurt zum Veranstaltungsort
-    setTransferTimes([
-      {
-        id: `tt-${Date.now()}`,
-        location: 'Frankfurt am Main',
-        meetingPoint: 'Hauptbahnhof, Gleis 1',
-        address: 'Im Hauptbahnhof, 60329 Frankfurt am Main',
-        date: dateIso,
-        departureTime: '07:30',
-        arrivalTime: '08:45',
-        description: 'Reisebus-Transfer zum Veranstaltungsort.',
-      },
-    ]);
+    const dinnerStart = demoDate(21, 18, 0);
+    const dinnerEnd = demoDate(21, 22, 0);
     setSubEvents([
       {
-        id: `se-${Date.now()}`,
-        title: 'Subevent 1',
-        startDate: toDatetime(subStart1),
-        endDate: toDatetime(subEnd1),
+        id: `se-${tDemo}`,
+        title: 'Networking-Dinner',
+        startDate: fmtDatetime(dinnerStart),
+        endDate: fmtDatetime(dinnerEnd),
         registrationDeadline: '',
-        location: 'Köln, Testort — Raum A',
-        description: 'Subevent 1 mit Auswahlfrage zum Format.',
-        maxParticipants: 30,
+        location: 'Restaurant Fischmarkt',
+        description: 'Optionales Networking-Dinner im Anschluss an die Konferenz.',
+        maxParticipants: 60,
         disableEmails: false,
         disableOutlook: false,
-        customFields: [
-          {
-            id: `sef-${Date.now()}`,
-            label: 'Welches Format passt für dich?',
-            type: 'select',
-            required: false,
-            options: ['Workshop (interaktiv)', 'Vortrag (Frontal)', 'Roundtable'],
-            visible: true,
-          },
-        ],
-      },
-      {
-        id: `se-${Date.now() + 1}`,
-        title: 'Subevent 2',
-        startDate: toDatetime(subStart2),
-        endDate: toDatetime(subEnd2),
-        registrationDeadline: '',
-        location: 'Köln, Testort — Raum B',
-        description: 'Subevent 2 mit Freitext-Frage.',
-        maxParticipants: 30,
-        disableEmails: false,
-        disableOutlook: false,
-        customFields: [
-          {
-            id: `sef-${Date.now() + 1}`,
-            label: 'Welches Thema möchtest du gerne vertieft besprechen?',
-            type: 'text',
-            required: false,
-            options: [],
-            visible: true,
-          },
-        ],
+        customFields: [],
       },
     ]);
+    setCurrentStep(0);
   };
+
+  const loadDemoSubEventTeam = (): void => {
+    resetDemoVariantBaseState();
+    const start = demoDate(14, 18, 0);
+    const end = demoDate(14, 22, 0);
+    const deadline = demoDate(9, 23, 59);
+    setTitle('Demo-Kneipenquiz mit Team-Anmeldung');
+    setDescription('Quizabend, bei dem ganze Teams über das Anmeldeformular angemeldet werden.');
+    setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
+    setStartDate(fmtDatetime(start));
+    setEndDate(fmtDatetime(end));
+    setRegistrationDeadline(fmtDate(deadline));
+    setLastDeregisterDate(fmtDate(deadline));
+    setMaxParticipants('80');
+    setUseSplitCapacities(false);
+    setWaitlistEnabled(true);
+    setAskSalutation(false);
+    setTeamRegistrationEnabled(true);
+    setTeamSize(4);
+    setAskTeamName(true);
+    setTeamPartialAllowed(true);
+    setTeamOpenSlotsVisible(true);
+    setTeamJoinRequiresApproval(false);
+    const tDemo = Date.now();
+    setCustomFields([
+      { id: `cf-${tDemo}`, label: 'Essenspräferenz', type: 'select', required: true,
+        options: ['Vegetarisch', 'Vegan', 'Keine Einschränkungen'], visible: true },
+    ]);
+    const briefStart = demoDate(14, 17, 0);
+    const briefEnd = demoDate(14, 17, 30);
+    setSubEvents([
+      {
+        id: `se-${tDemo}`,
+        title: 'Vorbereitungs-Briefing (Quizmaster)',
+        startDate: fmtDatetime(briefStart),
+        endDate: fmtDatetime(briefEnd),
+        registrationDeadline: '',
+        location: 'Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse',
+        description: 'Kurzes Briefing für die Quizmaster-Helfer vor dem Event.',
+        maxParticipants: 10,
+        disableEmails: false,
+        disableOutlook: false,
+        customFields: [],
+      },
+    ]);
+    setCurrentStep(0);
+  };
+
+  // v11.88: Variant-Map fuer den Demo-Button. Key entspricht der Karten-
+  // Auswahl im Modal, Value ist die Loader-Funktion oben.
+  const DEMO_VARIANTS: Record<'standard' | 'groups' | 'subevent' | 'subeventTeam', () => void> = {
+    standard: loadDemoStandard,
+    groups: loadDemoGroups,
+    subevent: loadDemoSubEvent,
+    subeventTeam: loadDemoSubEventTeam,
+  };
+
 
   const moveCustomField = (id: string, direction: 'up' | 'down'): void => {
     const idx = customFields.findIndex(f => f.id === id);
@@ -4038,10 +4073,11 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                   <button
                     className="btn btn-outline"
-                    onClick={fillDemo}
+                    onClick={() => setShowDemoVariantModal(true)}
                     style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                    title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}
                   >
-                    Demo
+                    {isDe ? 'Demo' : 'Demo'}
                   </button>
                 </div>
               )}
@@ -9448,6 +9484,134 @@ export default function EventCreationPage(): React.ReactElement {
                 </table>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* v11.88: Demo-Auswahl-Modal — Ersatz fuer den frueheren
+          direkten „Demo"-Klick. Vier Karten-Optionen: Standard,
+          Mit Gruppen, Mit Sub-Event, Mit Sub-Event + Team. Klick auf
+          eine Karte schliesst das Modal und fuellt das Formular mit
+          der jeweiligen Variante. */}
+      {showDemoVariantModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={() => setShowDemoVariantModal(false)}
+        >
+          <div
+            className="card"
+            style={{
+              width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto',
+              padding: 24, borderRadius: 16, background: '#fff',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-between mb-16">
+              <h3 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                {isDe ? 'Demo-Daten laden' : 'Load demo data'}
+              </h3>
+              <button
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-600)' }}
+                onClick={() => setShowDemoVariantModal(false)}
+                aria-label={isDe ? 'Schließen' : 'Close'}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {isDe
+                ? 'Wähle eine Vorlage. Die ausgewählte Variante überschreibt deine aktuellen Eingaben — verworfen wird nichts, falls du noch nichts gespeichert hast.'
+                : 'Choose a template. The selected variant overrides your current input — nothing is lost if you haven\'t saved yet.'}
+            </p>
+            {(() => {
+              const cards: Array<{ key: keyof typeof DEMO_VARIANTS; titleDe: string; titleEn: string; descDe: string; descEn: string }> = [
+                {
+                  key: 'standard',
+                  titleDe: 'Standard',
+                  titleEn: 'Standard',
+                  descDe: 'Ein Event, eine Gruppe. Typisches Meeting / Lunch.',
+                  descEn: 'One event, one group. Typical meeting or lunch.',
+                },
+                {
+                  key: 'groups',
+                  titleDe: 'Mit Gruppen',
+                  titleEn: 'With groups',
+                  descDe: 'Event mit zwei Teilnehmer-Gruppen (Split Capacity), z.B. Vormittag / Nachmittag.',
+                  descEn: 'Event with two participant groups (split capacity), e.g. morning / afternoon.',
+                },
+                {
+                  key: 'subevent',
+                  titleDe: 'Mit Sub-Event',
+                  titleEn: 'With sub-event',
+                  descDe: 'Haupt-Event + 1 Sub-Event, z.B. Conference + Dinner.',
+                  descEn: 'Main event + 1 sub-event, e.g. conference + dinner.',
+                },
+                {
+                  key: 'subeventTeam',
+                  titleDe: 'Mit Sub-Event + Team',
+                  titleEn: 'With sub-event + team',
+                  descDe: 'Wie links, aber mit Team-Anmeldung (Teams à 4 Personen).',
+                  descEn: 'Same as on the left, but with team registration (teams of 4 people).',
+                },
+              ];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+                  {cards.map(card => (
+                    <button
+                      key={card.key}
+                      type="button"
+                      onClick={() => {
+                        DEMO_VARIANTS[card.key]();
+                        setShowDemoVariantModal(false);
+                      }}
+                      style={{
+                        textAlign: 'left',
+                        padding: 16,
+                        borderRadius: 12,
+                        border: '1px solid var(--dex-gray-200)',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        minHeight: 120,
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = 'var(--dex-green-dark, #4a7c1f)';
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(74,124,31,0.12)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = 'var(--dex-gray-200)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                        {isDe ? card.titleDe : card.titleEn}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                        {isDe ? card.descDe : card.descEn}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowDemoVariantModal(false)}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+            </div>
           </div>
         </div>
       )}
