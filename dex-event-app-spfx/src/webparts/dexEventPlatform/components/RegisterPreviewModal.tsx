@@ -184,9 +184,16 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
               }} />
               <div
                 className="dex-preview-scope"
+                // v11.92: pointerEvents 'none' verhinderte auch das Scrollen mit
+                // Mausrad/Touch — daher jetzt 'auto' am Scroll-Container und
+                // Klicks per Capture-Phase abfangen. Form-Inputs werden via CSS
+                // (siehe .dex-preview-scope) ohnehin read-only/inert gehalten.
+                onClickCapture={e => { e.preventDefault(); e.stopPropagation(); }}
+                onKeyDownCapture={e => { e.preventDefault(); e.stopPropagation(); }}
+                onSubmitCapture={e => { e.preventDefault(); e.stopPropagation(); }}
                 style={{
                   background: '#fff', borderRadius: 4,
-                  pointerEvents: 'none', userSelect: 'text',
+                  pointerEvents: 'auto', userSelect: 'text',
                   minHeight: 560, maxHeight: '70vh', overflow: 'auto',
                 }}
               >
