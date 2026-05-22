@@ -14,6 +14,7 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
+import { APP_VERSION } from '../version';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -271,6 +272,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // (DevTools → Console), kein UI-Impact. Hilft beim Identifizieren
     // der echten Bottlenecks (ensure-Listen vs. getEvents vs. counts
     // vs. attachments).
+    //
+    // v11.76: Schema-Ensure-Gate. Die idempotenten `ensure*`/`upgrade*`-
+    // Wartungs-Calls müssen NICHT bei jedem Page-Load laufen. Sie sind nur
+    // beim ersten Boot nach einer App-Version mit Schema-Änderungen nötig.
+    // Wir verwenden einen versions-gebundenen localStorage-Key — sobald
+    // wir die Version 11.76 erfolgreich durchgeschmurgelt haben, sparen
+    // wir uns alle ensure-Calls beim nächsten Boot.
+    //
+    // Außerdem: wenn die ensure-Calls DOCH laufen, parallelisieren wir sie
+    // (Stage 1 = ensureEventsList alleine; Stage 2 = alles andere parallel
+    // via Promise.allSettled), statt sie sequentiell hintereinander zu
+    // ketten. Spart bei 11 Calls und ca. 6.7 s seriell ca. 4-5 s.
+    const ENSURE_FLAG_KEY = 'dex.schema.ensured.v' + APP_VERSION;
+    let skipEnsure = false;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage.getItem(ENSURE_FLAG_KEY) === '1') {
+        skipEnsure = true;
+      }
+    } catch { /* localStorage disabled */ }
+
     const perfMarks: Array<{ name: string; ms: number }> = [];
     const tBoot = performance.now();
     const stage = async (name: string, fn: () => Promise<unknown>): Promise<void> => {
@@ -278,24 +299,60 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       try { await fn(); } catch { /* swallow — matches existing try/catch pattern */ }
       perfMarks.push({ name, ms: Math.round(performance.now() - t0) });
     };
-    await stage('ensureEventsList', () => eventService.ensureEventsList());
-    await stage('upgradeAudienceFieldToNote', () => eventService.upgradeAudienceFieldToNote());
-    await stage('upgradeOrganizerFieldsToNote', () => eventService.upgradeOrganizerFieldsToNote());
-    await stage('ensureEmailsList', () => eventService.ensureEmailsList());
-    await stage('ensureOutlookList', () => eventService.ensureOutlookList());
-    await stage('ensureParticipantsList', () => eventService.ensureParticipantsList());
-    await stage('ensureEmailTemplatesList', () => eventService.ensureEmailTemplatesList());
-    await stage('ensureIDReorderList', () => eventService.ensureIDReorderList());
-    await stage('ensureChangeLogList', () => eventService.ensureChangeLogList());
-    await stage('ensureAssetsFolders', () => eventService.ensureAssetsFolders());
-    await stage('ensureLogosInConfig', () => eventService.ensureLogosInConfig());
+    const safeRun = async (name: string, fn: () => Promise<unknown>, acc: Array<{ name: string; ms: number }>): Promise<void> => {
+      const t0 = performance.now();
+      try { await fn(); } catch { /* swallow */ }
+      acc.push({ name, ms: Math.round(performance.now() - t0) });
+    };
+
+    if (!skipEnsure) {
+      // Stage 1: DEX_Events anlegen/sichern (Listen-Erstellung muss als erstes;
+      // die upgrade*-Calls operieren auf DEX_Events).
+      await stage('ensureEventsList', () => eventService.ensureEventsList());
+      // Stage 2: alles andere parallel — keine inter-Abhaengigkeiten.
+      const parallelMarks: Array<{ name: string; ms: number }> = [];
+      const tPar = performance.now();
+      // Hinweis: safeRun() swallowt Exceptions intern und resolved IMMER. Daher
+      // ist Promise.all hier sicher (kein early-reject) und auch in ES2018-
+      // Targets verfügbar — Promise.allSettled wäre erst ab ES2020.
+      await Promise.all([
+        safeRun('upgradeAudienceFieldToNote', () => eventService.upgradeAudienceFieldToNote(), parallelMarks),
+        safeRun('upgradeOrganizerFieldsToNote', () => eventService.upgradeOrganizerFieldsToNote(), parallelMarks),
+        safeRun('ensureEmailsList', () => eventService.ensureEmailsList(), parallelMarks),
+        safeRun('ensureOutlookList', () => eventService.ensureOutlookList(), parallelMarks),
+        safeRun('ensureParticipantsList', () => eventService.ensureParticipantsList(), parallelMarks),
+        safeRun('ensureEmailTemplatesList', () => eventService.ensureEmailTemplatesList(), parallelMarks),
+        safeRun('ensureIDReorderList', () => eventService.ensureIDReorderList(), parallelMarks),
+        safeRun('ensureChangeLogList', () => eventService.ensureChangeLogList(), parallelMarks),
+        safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
+        safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
+      ]);
+      const dPar = Math.round(performance.now() - tPar);
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][boot] ensure-parallel-stage = ${dPar} ms`);
+      // Einzelne Sub-Zeiten in die Gesamt-Tabelle übernehmen.
+      for (const m of parallelMarks) perfMarks.push(m);
+      // Erfolg markieren — nächster Boot überspringt die ensure-Calls.
+      try {
+        if (typeof window !== 'undefined') window.localStorage.setItem(ENSURE_FLAG_KEY, '1');
+      } catch { /* localStorage disabled */ }
+    }
+
+    // loadLogosAsBase64 ist KEIN ensure-Call — es füllt den In-Memory-Cache
+    // mit den Logo-Daten, die für Mail-/Outlook-Templates gebraucht werden.
+    // Muss bei jedem Boot laufen.
     await stage('loadLogosAsBase64', () => loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl));
     await stage('loadEvents (full chain)', () => loadEvents());
     setIsEventsLoading(false);
     const tTotal = Math.round(performance.now() - tBoot);
     const sorted = [...perfMarks].sort((a, b) => b.ms - a.ms);
-    // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][boot] total = ${tTotal} ms`);
+    if (skipEnsure) {
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][boot] total = ${tTotal} ms (schema-ensure SKIPPED, version=v${APP_VERSION})`);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`[DEX][perf][boot] total = ${tTotal} ms (schema-ensure RAN, version=v${APP_VERSION})`);
+    }
     // eslint-disable-next-line no-console
     console.table(sorted.map(m => ({ stage: m.name, ms: m.ms })));
   }
