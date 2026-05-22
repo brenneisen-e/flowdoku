@@ -114,7 +114,7 @@ export const events: DeloitteEvent[] = [
     eventNumber: 5,
     title: 'Deloitte Summer Party 2026',
     type: 'Other',
-    status: 'Under Construction',
+    status: 'Active',
     organizers: ['HR Team'],
     organizerEmails: [],
     qrScannerNames: [],

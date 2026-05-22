@@ -152,8 +152,19 @@ export default function EventListPage(): React.ReactElement {
     getMyEventNumbers().then(setMyNumbers).catch(err => console.warn('[DEX]', err));
   }, [events]);
 
+  // v11.89: "Nur aktive Events" blendet jetzt sowohl Entwürfe (IsFictive
+  // oder ActiveFrom in der Zukunft) als auch Cancelled/Completed aus —
+  // konsistent mit der Konsolidierung „Entwurf = Entwurf, kein zweites
+  // Under-Construction-Konzept mehr".
+  const nowTs = Date.now();
   const statusFiltered = onlyActive
-    ? events.filter((e) => e.status === 'Active')
+    ? events.filter((e) => {
+        if (e.status !== 'Active') return false;
+        if (e.isFictive) return false;
+        const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
+        if (activeFromTs > 0 && activeFromTs > nowTs) return false;
+        return true;
+      })
     : events;
 
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
@@ -181,6 +192,19 @@ export default function EventListPage(): React.ReactElement {
     if ((e.testTeamEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
     return false;
   });
+  // v11.90: Events, bei denen der eingeloggte User selbst Organizer ist
+  // (Haupt- oder Co-Organizer), kommen oben links — ABER nur solange das
+  // Event nicht abgelaufen ist (EndDate in der Vergangenheit). Abgelaufene
+  // eigene Events sortieren mit allen anderen rein nach Startdatum.
+  const isOwnOrganizer = (e: DeloitteEvent): boolean => {
+    const own = (e.organizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
+    const co = (e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
+    return own || co;
+  };
+  const isExpired = (e: DeloitteEvent): boolean => {
+    const t = e.endDate ? new Date(e.endDate).getTime() : 0;
+    return t > 0 && t < nowTs;
+  };
   const filteredEvents = (isAdmin
     ? fictiveFiltered
     : fictiveFiltered.filter((e: DeloitteEvent) =>
@@ -188,7 +212,12 @@ export default function EventListPage(): React.ReactElement {
         || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
       )
   ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
-    // Chronologisch nach Startdatum (frueheste zuerst). Events ohne Datum ans Ende.
+    // v11.90: Priorität — eigene, noch nicht abgelaufene Events zuerst.
+    const aPrio = isOwnOrganizer(a) && !isExpired(a) ? 0 : 1;
+    const bPrio = isOwnOrganizer(b) && !isExpired(b) ? 0 : 1;
+    if (aPrio !== bPrio) return aPrio - bPrio;
+    // Innerhalb der Priorität: chronologisch nach Startdatum (frueheste zuerst).
+    // Events ohne Datum ans Ende.
     const ta = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
     const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
     return ta - tb;
@@ -316,6 +345,7 @@ export default function EventListPage(): React.ReactElement {
               index={i}
               isRegistered={myNumbers.registered.includes(event.eventNumber)}
               isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+              isOwnOrganizer={isOwnOrganizer(event)}
             />
           ))}
         </div>
@@ -323,6 +353,7 @@ export default function EventListPage(): React.ReactElement {
         <EventListView
           events={filteredEvents}
           myNumbers={myNumbers}
+          currentUserEmailLc={currentEmailLc}
           formatDate={(iso) => {
             if (!iso) return '';
             const d = new Date(iso);
@@ -344,10 +375,11 @@ export default function EventListPage(): React.ReactElement {
 /**
  * Listen-Ansicht der Events - im Stil der Admin/Organizer-Seite.
  */
-function EventListView({ events, myNumbers, formatDate }: {
+function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
   events: DeloitteEvent[];
   myNumbers: { registered: number[]; waitlisted: number[] };
   formatDate: (iso: string) => string;
+  currentUserEmailLc: string;
 }): React.ReactElement {
   const { navigate } = useNavigation();
   return (
@@ -356,6 +388,9 @@ function EventListView({ events, myNumbers, formatDate }: {
         const isReg = myNumbers.registered.includes(event.eventNumber);
         const isWait = myNumbers.waitlisted.includes(event.eventNumber);
         const targetPage = (isReg || isWait) ? 'my-events' : 'registration';
+        // v11.90: Organizer-Badge in der List-View auch
+        const isOwn = (event.organizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc)
+          || (event.coOrganizerEmails || []).some(em => (em || '').toLowerCase() === currentUserEmailLc);
         return (
           <div
             key={event.id}
@@ -372,7 +407,21 @@ function EventListView({ events, myNumbers, formatDate }: {
                   }} />
                 )}
                 <div>
-                  <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
+                  <h3 style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {event.title}
+                    {isOwn && (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700,
+                        background: 'var(--dex-green, #86bc25)', color: '#fff', letterSpacing: 0.5,
+                      }}>Organizer</span>
+                    )}
+                    {event.isFictive && (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700,
+                        background: 'var(--dex-orange, #ed8b00)', color: '#fff', letterSpacing: 0.5,
+                      }}>Entwurf</span>
+                    )}
+                  </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
                     {formatDate(event.startDate)} - {formatDate(event.endDate)}
                     {event.location ? ` · ${event.location}` : ''}

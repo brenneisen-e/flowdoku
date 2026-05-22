@@ -555,7 +555,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // (Fallback auf alten SP-Wert wenn noch vorhanden).
       type: (e.EventType as DeloitteEvent['type'])
         || (customFields.some(f => f.id === 'b2run_startblock') ? 'B2Run' : 'Other'),
-      status: (e.EventStatus as DeloitteEvent['status']) || 'Under Construction',
+      // v11.89: 'Under Construction' aus Legacy-Daten transparent auf 'Active'
+      // mappen — der Entwurfs-Zustand lebt jetzt auf IsFictive.
+      status: (e.EventStatus === 'Under Construction' ? 'Active' : (e.EventStatus as DeloitteEvent['status'])) || 'Active',
       organizers: (stripSpNoteWrapper(e.Organizer) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       organizerEmails: (stripSpNoteWrapper(e.OrganizerEmail) || '').split(';').map((s: string) => s.trim()).filter((s: string) => s),
       // v10.16: Optionaler Ansprechpartner. ContactInfo ist Note-Feld, daher
@@ -615,7 +617,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         return 'never';
       })(),
       excludedUsers: (e.ExcludedUsers || '').split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
-      isFictive: !!e.IsFictive,
+      // v11.89: Legacy-Events mit EventStatus='Under Construction' werden
+      // auch ohne explizites IsFictive-Flag als Entwurf erkannt — bis die
+      // Migration im Hintergrund das SP-Item neu geschrieben hat.
+      isFictive: !!e.IsFictive || e.EventStatus === 'Under Construction',
       durchstarterCapacity: typeof e.DurchstarterCapacity === 'number' ? e.DurchstarterCapacity : undefined,
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       splitLabelA: e.SplitLabelA || undefined,
