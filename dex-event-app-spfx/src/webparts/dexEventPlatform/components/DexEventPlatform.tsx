@@ -362,7 +362,7 @@ function AppContent(): React.ReactElement {
               </div>
               <div className="landing__text">
                 <h1 style={{ lineHeight: 1.25 }}>
-                  Welcome to the new <strong style={{ whiteSpace: 'nowrap' }}>Event Experience Platform.</strong>
+                  Welcome to <strong style={{ whiteSpace: 'nowrap' }}>DEX.</strong>
                 </h1>
                 <p style={{ color: 'var(--dex-gray-500)', marginTop: 12, fontSize: '0.95rem' }}>
                   Just a moment…

@@ -47,6 +47,22 @@ function formatDateRange(startIso: string, endIso: string): string {
 }
 
 export default function RegistrationPage(): React.ReactElement {
+  // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
+  // .main-content-Container die Position aus der vorherigen Seite (z.B.
+  // wenn man weit unten in der Events-Kachel war und dann auf Register
+  // klickt — die Register-Page erscheint dann mittendrin statt am Anfang).
+  React.useEffect(() => {
+    const main = document.querySelector('.main-content');
+    if (main && typeof (main as HTMLElement).scrollTo === 'function') {
+      (main as HTMLElement).scrollTo({ top: 0, behavior: 'auto' });
+    } else if (main) {
+      (main as HTMLElement).scrollTop = 0;
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, []);
+
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent, registerTeam, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
   const { currentUser } = useCurrentUser();
@@ -1016,6 +1032,7 @@ export default function RegistrationPage(): React.ReactElement {
         value={eventSpecific[field.id] || ''}
         onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
         searchUsers={searchUsers}
+        searchUserByEmail={searchUser}
         placeholder={tEvent('reg.userfield.placeholder')}
         errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
         hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
@@ -2138,8 +2155,9 @@ export default function RegistrationPage(): React.ReactElement {
                         }}
                         searchUsers={async (q) => {
                           const results = await searchUsers(q);
-                          return results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location }));
+                          return results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location, jobTitle: r.jobTitle }));
                         }}
+                        searchUserByEmail={searchUser}
                         placeholder={locale === 'de' ? 'Name oder E-Mail eingeben...' : 'Type a name or email...'}
                         errorStyle={isErr ? errorBorder : {}}
                       />
@@ -2876,6 +2894,10 @@ function UserFieldPicker(props: {
   value: string;
   onChange: (v: string) => void;
   searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>;
+  // v11.98: Profil-Lookup für die selektierte Person, damit der Chip
+  // auch nach Reload den JobTitle + Standort zeigt (props.value enthält
+  // nur "Name <email>" — Standort/Title wären sonst weg).
+  searchUserByEmail?: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string } | null>;
   placeholder: string;
   errorStyle: React.CSSProperties;
   hint?: string;
@@ -2900,6 +2922,16 @@ function UserFieldPicker(props: {
     setSelected(parsed);
     if (parsed) setQuery('');
     else setQuery(props.value || '');
+    // v11.98: nach Remount / Reload jobTitle + Standort lazy nachladen,
+    // damit der Chip die volle Profil-Info zeigt (props.value hält nur
+    // „Name <email>", deshalb fehlen die Profil-Properties initial).
+    if (parsed && props.searchUserByEmail) {
+      props.searchUserByEmail(parsed.email).then(p => {
+        if (p && (p.jobTitle || p.location)) {
+          setSelected({ name: parsed.name, email: parsed.email, jobTitle: p.jobTitle || '', location: p.location || '' });
+        }
+      }).catch(() => { /* silent */ });
+    }
   }, [props.value]);
   const hasSelection = !!selected;
   const clearSelection = (): void => {

@@ -16,6 +16,18 @@
   // System-Default wird hier wieder eingesetzt, bis ein klareres
   // Design vorliegt.
 
+  // v11.99: Focus-Ring nur per Tastatur-Navigation zeigen — Klick auf
+  // Buttons / Karten / Toggles soll keinen blinkenden Focus-Rahmen
+  // hinterlassen ("ticking cursor"-Eindruck). Text-Inputs / Textareas /
+  // Selects behalten ihren Focus-Style aus dem normalen :focus.
+  button:focus:not(:focus-visible),
+  a:focus:not(:focus-visible),
+  [role='button']:focus:not(:focus-visible),
+  [tabindex]:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
+
   // v11.94: Globale Round-Checkbox im Deloitte-Look — leerer Kreis,
   // angeklickt grüner Deloitte-Punkt innen. Ersetzt überall den Default-
   // Browser-Checkbox-Look. Inline-width/height in der App überschreiben
