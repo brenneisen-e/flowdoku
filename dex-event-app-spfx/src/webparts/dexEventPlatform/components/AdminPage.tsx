@@ -534,7 +534,9 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
       )}
       {open && hoveredAction && hoveredAction.desc && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 'calc(100% + 12px)',
+          // v12.9: Tooltip jetzt LINKS neben der Dropdown-Liste (vorher
+          // rechts — wurde dort am Viewport-Rand abgeschnitten).
+          position: 'absolute', top: 'calc(100% + 4px)', right: 'calc(100% + 12px)',
           width: 320,
           padding: '12px 14px', background: 'rgba(40,40,40,0.96)', color: '#fff',
           borderRadius: 10, fontSize: '0.8rem', lineHeight: 1.5,
