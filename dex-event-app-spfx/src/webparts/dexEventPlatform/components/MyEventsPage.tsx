@@ -17,7 +17,8 @@ import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
 import PdfViewer from './PdfViewer';
-import { RefreshCw, X, Pencil } from './Icons';
+// v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
+import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 
 interface MyEventEntry {
@@ -629,7 +630,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, refreshEvents } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
@@ -648,12 +649,7 @@ export default function MyEventsPage(): React.ReactElement {
       setTeamMembersCache(prev => ({ ...prev, [key]: [] }));
     });
   }, [getTeamMembers]);
-  const [isRefreshingEvents, setIsRefreshingEvents] = React.useState(false);
-  const handleRefreshMyEvents = async (): Promise<void> => {
-    if (isRefreshingEvents) return;
-    setIsRefreshingEvents(true);
-    try { await refreshEvents(); } finally { setIsRefreshingEvents(false); }
-  };
+  // v11.99: Page-Level-Refresh-State entfernt — Header-Button übernimmt.
 
   // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
   // searchUsers wird fuer den Add-Member-Picker gebraucht (gleiche API wie
@@ -1207,30 +1203,10 @@ export default function MyEventsPage(): React.ReactElement {
         .dex-cancel-btn:not(.dex-cancel-btn--armed):hover { background: var(--dex-red) !important; color: #fff !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(218,41,28,0.25); }
         .dex-cancel-btn--armed:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(218,41,28,0.4) !important; }
       `}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* v11.99: Page-Level-Refresh-Button entfernt — der Header oben
+          rechts hat bereits einen Aktualisieren-Button, doppelt verwirrt. */}
+      <div style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>{t('myevents.title')}</h2>
-        <button
-          type="button"
-          onClick={handleRefreshMyEvents}
-          disabled={isRefreshingEvents || isEventsLoading}
-          title={isDe ? 'Meine Events neu laden' : 'Refresh my events'}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: '0.78rem', padding: '6px 12px',
-            background: '#fff',
-            border: '1px solid var(--dex-gray-300, #d1d5db)',
-            borderRadius: 6, color: 'var(--dex-gray-700)',
-            cursor: (isRefreshingEvents || isEventsLoading) ? 'not-allowed' : 'pointer',
-            opacity: (isRefreshingEvents || isEventsLoading) ? 0.6 : 1,
-          }}
-        >
-          <span style={{ display: 'inline-flex', animation: isRefreshingEvents ? 'dex-spin 0.8s linear infinite' : 'none' }}>
-            <RefreshCw size={14} />
-          </span>
-          {isRefreshingEvents
-            ? (isDe ? 'Wird geladen…' : 'Loading…')
-            : (isDe ? 'Aktualisieren' : 'Refresh')}
-        </button>
       </div>
 
       {loadError && (

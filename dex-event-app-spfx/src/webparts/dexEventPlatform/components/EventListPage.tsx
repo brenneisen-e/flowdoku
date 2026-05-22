@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useNavigation } from '../context/NavigationContext';
 import { DeloitteEvent } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { RefreshCw } from './Icons';
+// v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
 import EventCard from './EventCard';
 
@@ -124,17 +124,10 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, refreshEvents } = useEvents();
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const handleRefresh = async (): Promise<void> => {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    try { await refreshEvents(); } finally { setIsRefreshing(false); }
-  };
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin } = useRoles();
-  const { t, locale } = useLanguage();
-  const isDe = locale === 'de';
+  const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   // View-Mode (Cards | List) - persistiert in localStorage
   const [viewMode, setViewMode] = React.useState<'cards' | 'list'>(() => {
@@ -244,43 +237,8 @@ export default function EventListPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      {/* Toolbar: Refresh-Button immer sichtbar (User koennen die Liste
-          frisch laden ohne die App zu reloaden), Debug-Button nur fuer
-          Organizer/Admin. */}
-      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={isRefreshing || isEventsLoading}
-          title={isDe ? 'Events neu laden' : 'Refresh events'}
-          style={{
-            // v9.18: moderner Button-Look — größeres Padding, Schatten,
-            // klare Card-Box statt schmaler Outline. Hover hebt sich leicht.
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            fontSize: '0.85rem', padding: '8px 16px',
-            background: '#fff',
-            border: '1px solid var(--dex-gray-200, #e5e7eb)',
-            borderRadius: 8, color: 'var(--dex-gray-800)',
-            cursor: (isRefreshing || isEventsLoading) ? 'not-allowed' : 'pointer',
-            opacity: (isRefreshing || isEventsLoading) ? 0.6 : 1,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-            fontWeight: 500,
-            transition: 'box-shadow 120ms ease, transform 120ms ease',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'; }}
-        >
-          <span style={{
-            display: 'inline-flex',
-            animation: isRefreshing ? 'dex-spin 0.8s linear infinite' : 'none',
-          }}>
-            <RefreshCw size={14} />
-          </span>
-          {isRefreshing
-            ? (isDe ? 'Wird geladen…' : 'Loading…')
-            : (isDe ? 'Aktualisieren' : 'Refresh')}
-        </button>
-      </div>
+      {/* v11.99: Page-Level-Refresh-Button entfernt — Header oben rechts
+          hat bereits einen Aktualisieren-Button, doppelt verwirrt. */}
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {/* Titel + Hinweis: Events sind fuer den User personalisiert */}
       <div className="card" style={{
