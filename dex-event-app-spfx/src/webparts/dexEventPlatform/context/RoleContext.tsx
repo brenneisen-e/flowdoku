@@ -19,6 +19,13 @@ interface RoleContextType {
   currentUserRole: UserRole;
   isRolesLoading: boolean;
   isAdmin: boolean;
+  /** v12.7: Echte Rolle aus DEX_Roles, unabhängig von Demo-Impersonation.
+   *  Wird genutzt um in der Header-UI das „Demo: als User testen"-Menü
+   *  weiterhin zu zeigen, auch wenn isAdmin durch Impersonation auf
+   *  false gesetzt wurde. */
+  originalIsAdmin: boolean;
+  /** v12.7: aktiv wenn Admin Demo-Impersonation gestartet hat. */
+  isImpersonating: boolean;
   isOrganizer: boolean;
   canCreateEvents: boolean;
   siteUrl: string;
@@ -232,9 +239,17 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.searchUsersByLocation(location);
   }
 
-  const isAdmin = currentUserRole === 'Admin';
-  const isOrganizer = currentUserRole === 'Organizer' || currentUserRole === 'Admin';
+  // v12.7: Demo-Impersonation. Admins können in den Header-User-Menü auf
+  // „Demo: als User testen" klicken, einen Standort wählen, danach
+  // agiert die App so als wäre der User ein normaler 'User' am gewählten
+  // Standort. Wird in localStorage gehalten, damit das auch über
+  // Reload bestehen bleibt. Beenden via Banner-Klick oben.
+  const isImpersonating = typeof window !== 'undefined' && !!window.localStorage?.getItem('dex_demo_impersonation');
+  const effectiveRole: UserRole = isImpersonating ? 'User' : currentUserRole;
+  const isAdmin = effectiveRole === 'Admin';
+  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin';
   const canCreateEvents = isOrganizer;
+  const originalIsAdmin = currentUserRole === 'Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
   return React.createElement(
@@ -243,6 +258,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       value: {
         roles, currentUserRole, isRolesLoading,
         isAdmin, isOrganizer, canCreateEvents, siteUrl,
+        originalIsAdmin, isImpersonating,
         addRole, updateRole, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
       },
     },

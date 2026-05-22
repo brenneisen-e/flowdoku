@@ -37,6 +37,53 @@ export interface IDexEventPlatformProps {
 }
 
 // Innere Komponente, die den NavigationContext nutzen kann
+// v12.7: Banner ganz oben — sichtbar wenn Admin Demo-Impersonation
+// gestartet hat. Klick auf X beendet die Impersonation (löscht
+// localStorage + reload).
+function ImpersonationBanner(): React.ReactElement | null {
+  const [active, setActive] = React.useState<{ firstName?: string; surname?: string; email?: string; location?: string } | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('dex_demo_impersonation');
+      if (raw) setActive(JSON.parse(raw));
+    } catch { /* */ }
+  }, []);
+  if (!active) return null;
+  const name = `${active.firstName || ''} ${active.surname || ''}`.trim() || active.email || '—';
+  const exitImpersonation = (): void => {
+    try { window.localStorage.removeItem('dex_demo_impersonation'); }
+    catch { /* */ }
+    window.location.reload();
+  };
+  return (
+    <div style={{
+      background: 'var(--dex-orange, #ed8b00)',
+      color: '#fff',
+      padding: '10px 24px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      fontSize: '0.85rem', fontWeight: 600,
+      borderBottom: '2px solid rgba(0,0,0,0.08)',
+    }}>
+      <span>
+        DEMO-MODUS · agierst als <strong>{name}</strong>
+        {active.location ? <> · Standort <strong>{active.location}</strong></> : null}
+      </span>
+      <button
+        type="button"
+        onClick={exitImpersonation}
+        style={{
+          background: '#fff', color: 'var(--dex-orange, #ed8b00)',
+          border: 'none', borderRadius: 999,
+          padding: '4px 12px', fontWeight: 700, fontSize: '0.78rem',
+          cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+        }}
+      >
+        Demo-Modus beenden
+      </button>
+    </div>
+  );
+}
+
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
@@ -396,15 +443,15 @@ function AppContent(): React.ReactElement {
                   {bootProgress} %
                 </div>
               </div>
-              {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader mit
-                  Caption-Zeile dahinter — "So far used for…" als kleiner
-                  Stolz-Marker, was die App bisher abgedeckt hat.
-                  v12.2: Container breiter (520 statt 320), KpiBox-
-                  Padding + Schriftgrößen größer für mehr Präsenz. */}
-              <div style={{ width: 'min(520px, 90%)', marginTop: 24 }}>
+              {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader.
+                  v12.2/v12.4: Container breiter (520 statt 320), Caption
+                  größer (0.95 statt 0.78rem), Block weiter nach oben
+                  (marginTop 8 statt 24). */}
+              <div style={{ width: 'min(520px, 90%)', marginTop: 8 }}>
                 <div style={{
-                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
-                  textAlign: 'center', marginBottom: 8, fontStyle: 'italic',
+                  fontSize: '0.95rem', color: 'var(--dex-gray-600)',
+                  textAlign: 'center', marginBottom: 12, fontStyle: 'italic',
+                  fontWeight: 500,
                 }}>
                   So far used for…
                 </div>
@@ -488,6 +535,8 @@ function AppContent(): React.ReactElement {
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
+      <ImpersonationBanner />
+
       {successBanner && (
         <div
           role="status"
