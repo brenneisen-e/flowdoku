@@ -266,35 +266,48 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }, []);
 
   async function initEvents(): Promise<void> {
-    // ensure-Aufrufe koennen fehlschlagen wenn User nur Read-Rechte hat
-    try { await eventService.ensureEventsList(); } catch { /* */ }
-    // v4.2.0 Migration: Audience-Feld von Text auf Note umstellen (falls noch Text).
-    // Idempotent: skipt wenn Feld bereits Note ist. Nur Admin hat Write-Rechte,
-    // fuer normale User faellt der Call still durch.
-    try { await eventService.upgradeAudienceFieldToNote(); } catch { /* */ }
-    // Migration: Organizer + OrganizerEmail von Text auf Note umstellen. Bei Events
-    // mit 10+ Co-Organizern lief der 255-Zeichen-Cutoff voll und Saves brachen mit
-    // HTTP 500 „Invalid text value" ab. Idempotent: skipt wenn Felder schon Note sind.
-    try { await eventService.upgradeOrganizerFieldsToNote(); } catch { /* */ }
-    try { await eventService.ensureEmailsList(); } catch { /* */ }
-    try { await eventService.ensureOutlookList(); } catch { /* */ }
-    try { await eventService.ensureParticipantsList(); } catch { /* */ }
-    try { await eventService.ensureEmailTemplatesList(); } catch { /* */ }
-    try { await eventService.ensureIDReorderList(); } catch { /* */ }
-    // v9.0: Audit-Log-Liste fuer Event- und Teilnehmer-Aenderungen
-    try { await eventService.ensureChangeLogList(); } catch { /* */ }
-    try { await eventService.ensureAssetsFolders(); } catch { /* */ }
-    try { await eventService.ensureLogosInConfig(); } catch { /* */ }
-    try { await loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl); } catch { /* */ }
-    // v9.21: Test-Team ist jetzt per-Event (kommt aus event.testTeamEmails),
-    // kein globaler Refresh mehr noetig.
-    // Seed-Migrationen entfernt - erfolgreich abgeschlossen
-    await loadEvents();
+    // v11.74: Performance-Profiling — misst jede Boot-Phase und gibt am
+    // Ende eine sortierte Tabelle aus. Nur in der Console sichtbar
+    // (DevTools → Console), kein UI-Impact. Hilft beim Identifizieren
+    // der echten Bottlenecks (ensure-Listen vs. getEvents vs. counts
+    // vs. attachments).
+    const perfMarks: Array<{ name: string; ms: number }> = [];
+    const tBoot = performance.now();
+    const stage = async (name: string, fn: () => Promise<unknown>): Promise<void> => {
+      const t0 = performance.now();
+      try { await fn(); } catch { /* swallow — matches existing try/catch pattern */ }
+      perfMarks.push({ name, ms: Math.round(performance.now() - t0) });
+    };
+    await stage('ensureEventsList', () => eventService.ensureEventsList());
+    await stage('upgradeAudienceFieldToNote', () => eventService.upgradeAudienceFieldToNote());
+    await stage('upgradeOrganizerFieldsToNote', () => eventService.upgradeOrganizerFieldsToNote());
+    await stage('ensureEmailsList', () => eventService.ensureEmailsList());
+    await stage('ensureOutlookList', () => eventService.ensureOutlookList());
+    await stage('ensureParticipantsList', () => eventService.ensureParticipantsList());
+    await stage('ensureEmailTemplatesList', () => eventService.ensureEmailTemplatesList());
+    await stage('ensureIDReorderList', () => eventService.ensureIDReorderList());
+    await stage('ensureChangeLogList', () => eventService.ensureChangeLogList());
+    await stage('ensureAssetsFolders', () => eventService.ensureAssetsFolders());
+    await stage('ensureLogosInConfig', () => eventService.ensureLogosInConfig());
+    await stage('loadLogosAsBase64', () => loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl));
+    await stage('loadEvents (full chain)', () => loadEvents());
     setIsEventsLoading(false);
+    const tTotal = Math.round(performance.now() - tBoot);
+    const sorted = [...perfMarks].sort((a, b) => b.ms - a.ms);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][boot] total = ${tTotal} ms`);
+    // eslint-disable-next-line no-console
+    console.table(sorted.map(m => ({ stage: m.name, ms: m.ms })));
   }
 
   async function loadEvents(): Promise<void> {
+    // v11.74: Sub-Phase-Profiling — getEvents vs. Mapping vs. Counts vs. Attachments.
+    const tGet = performance.now();
     const spEvents = await eventService.getEvents();
+    const dGet = Math.round(performance.now() - tGet);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
+    const tMap = performance.now();
     // v9.41: jedes Event-Mapping einzeln in try/catch wrappen — wenn EIN
     // Event-Mapping fehlschlägt (z.B. weil eine frisch erstellte Subsite noch
     // nicht API-konsistent ist), kippt nicht die ganze Eventliste in einen
@@ -310,15 +323,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }));
     const mapped = safeMapped.filter((x): x is DeloitteEvent => x !== null);
+    const dMap = Math.round(performance.now() - tMap);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
     // Teilnehmerzahlen fuer alle Events mit Subsite laden
+    const tCnt = performance.now();
     const withCounts = await loadParticipantCountsForEvents(mapped);
+    const dCnt = Math.round(performance.now() - tCnt);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][loadEvents] participantCounts = ${dCnt} ms`);
     // Attachments (Dokumente) fuer alle Events laden
+    const tAtt = performance.now();
     const withDocs = await Promise.all(withCounts.map(async (evt) => {
       try {
         const attachments = await eventService.getEventAttachments(Number(evt.id));
         return { ...evt, documents: attachments };
       } catch { return evt; }
     }));
+    const dAtt = Math.round(performance.now() - tAtt);
+    // eslint-disable-next-line no-console
+    console.log(`[DEX][perf][loadEvents] attachments x ${mapped.length} = ${dAtt} ms`);
     setEvents(withDocs);
   }
 
