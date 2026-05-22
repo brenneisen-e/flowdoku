@@ -37,6 +37,53 @@ export interface IDexEventPlatformProps {
 }
 
 // Innere Komponente, die den NavigationContext nutzen kann
+// v12.7: Banner ganz oben — sichtbar wenn Admin Demo-Impersonation
+// gestartet hat. Klick auf X beendet die Impersonation (löscht
+// localStorage + reload).
+function ImpersonationBanner(): React.ReactElement | null {
+  const [active, setActive] = React.useState<{ firstName?: string; surname?: string; email?: string; location?: string } | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('dex_demo_impersonation');
+      if (raw) setActive(JSON.parse(raw));
+    } catch { /* */ }
+  }, []);
+  if (!active) return null;
+  const name = `${active.firstName || ''} ${active.surname || ''}`.trim() || active.email || '—';
+  const exitImpersonation = (): void => {
+    try { window.localStorage.removeItem('dex_demo_impersonation'); }
+    catch { /* */ }
+    window.location.reload();
+  };
+  return (
+    <div style={{
+      background: 'var(--dex-orange, #ed8b00)',
+      color: '#fff',
+      padding: '10px 24px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      fontSize: '0.85rem', fontWeight: 600,
+      borderBottom: '2px solid rgba(0,0,0,0.08)',
+    }}>
+      <span>
+        DEMO-MODUS · agierst als <strong>{name}</strong>
+        {active.location ? <> · Standort <strong>{active.location}</strong></> : null}
+      </span>
+      <button
+        type="button"
+        onClick={exitImpersonation}
+        style={{
+          background: '#fff', color: 'var(--dex-orange, #ed8b00)',
+          border: 'none', borderRadius: 999,
+          padding: '4px 12px', fontWeight: 700, fontSize: '0.78rem',
+          cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+        }}
+      >
+        Demo-Modus beenden
+      </button>
+    </div>
+  );
+}
+
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
@@ -488,6 +535,8 @@ function AppContent(): React.ReactElement {
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
+      <ImpersonationBanner />
+
       {successBanner && (
         <div
           role="status"

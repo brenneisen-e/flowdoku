@@ -13,11 +13,13 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, QrCode, RefreshCw } from './Icons';
+import ImpersonateModal from './ImpersonateModal';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, isAdmin, isOrganizer } = useRoles();
+  const { currentUserRole, isAdmin, isOrganizer, originalIsAdmin } = useRoles();
+  const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
   // Check-In-Button (Admin / Organizer / QR-Scanner): schneller Einstieg in den
   // QR-Scanner ohne vorher ein konkretes Event auszuwaehlen. CheckInPage liest
@@ -355,6 +357,19 @@ export default function Header(): React.ReactElement {
                     <Settings size={14} /> {t('settings.rolemanagement')}
                   </button>
                 )}
+                {/* v12.7: Demo-Modus-Toggle nur für echte Admins
+                    (originalIsAdmin), damit der Button auch sichtbar bleibt,
+                    wenn die App durch laufende Impersonation kurzzeitig
+                    'isAdmin=false' meldet. */}
+                {originalIsAdmin && (
+                  <button
+                    className="btn btn-secondary btn-block"
+                    style={{ fontSize: '0.85rem' }}
+                    onClick={() => { setShowPopup(false); setShowImpersonate(true); }}
+                  >
+                    {t('header.demoUser') || 'Demo: als User testen'}
+                  </button>
+                )}
               </div>
               <div
                 title="Page-ID — bei UI-Anfragen kannst du diese ID nennen, dann finde ich die Seite sofort."
@@ -371,6 +386,7 @@ export default function Header(): React.ReactElement {
           )}
         </div>
       </div>
+      <ImpersonateModal open={showImpersonate} onClose={() => setShowImpersonate(false)} />
     </header>
   );
 }

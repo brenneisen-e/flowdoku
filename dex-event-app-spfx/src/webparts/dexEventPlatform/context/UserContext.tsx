@@ -53,14 +53,27 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
       surname = parts.slice(1).join(' ') || '';
     }
 
+    // v12.7: Falls Demo-Impersonation aktiv ist, überschreiben wir
+    // Location / Name / Email mit den Impersonations-Werten. Damit sieht
+    // der Admin tatsächlich die Welt durch die Brille des gewählten Users.
+    const imp = (() => {
+      try {
+        const raw = typeof window !== 'undefined' ? window.localStorage?.getItem('dex_demo_impersonation') : null;
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        return obj as { email?: string; firstName?: string; surname?: string; location?: string };
+      } catch { return null; }
+    })();
+
     setCurrentUser({
       id: spUser.loginName || '',
-      firstName: firstName,
-      surname: surname,
-      email: spUser.email || '',
+      firstName: imp?.firstName || firstName,
+      surname: imp?.surname || surname,
+      email: imp?.email || spUser.email || '',
       isAdmin: false,
       role: 'User',
-      location: '',
+      location: imp?.location || '',
     });
     setIsLoading(false);
 
