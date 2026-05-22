@@ -1998,10 +1998,13 @@ export default function RegistrationPage(): React.ReactElement {
               <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
-            {/* v11.94/v11.97: Zusätzliche read-only-Profildaten aus dem
+            {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
                 SP-Profil — Job Title, Geschäftsbereich, Büro, Mobil.
-                Self-Register: aus useCurrentUser(). For-other-Register:
-                aus pickedUserProfile (nach Picker-Auswahl gefüllt). */}
+                Self-Register: aus useCurrentUser(), nur Felder mit Wert.
+                For-other-Register: aus pickedUserProfile, ALLE vier Felder
+                rendern sobald jemand ausgewählt ist (auch leere — sonst
+                rätselt der Stellvertreter ob die App das Profil überhaupt
+                geladen hat). */}
             {(() => {
               const profile = registerForOther ? pickedUserProfile : currentUser;
               if (!profile) return null;
@@ -2009,33 +2012,26 @@ export default function RegistrationPage(): React.ReactElement {
               const dept = (profile as { department?: string }).department || '';
               const loc = (profile as { location?: string }).location || '';
               const mob = (profile as { mobilePhone?: string }).mobilePhone || '';
-              if (!jt && !dept && !loc && !mob) return null;
+              if (!registerForOther && !jt && !dept && !loc && !mob) return null;
+              const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
+              const renderField = (label: string, value: string): React.ReactElement => (
+                <div className="form-group">
+                  <label className="form-label">{label}</label>
+                  <input
+                    className="form-input"
+                    value={value}
+                    placeholder={registerForOther && !value ? placeholder : undefined}
+                    disabled
+                    style={{ background: 'var(--dex-gray-100)' }}
+                  />
+                </div>
+              );
               return (
                 <>
-                  {jt && (
-                    <div className="form-group">
-                      <label className="form-label">{locale === 'de' ? 'Position' : 'Job Title'}</label>
-                      <input className="form-input" value={jt} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                    </div>
-                  )}
-                  {dept && (
-                    <div className="form-group">
-                      <label className="form-label">{locale === 'de' ? 'Geschäftsbereich' : 'Business Area'}</label>
-                      <input className="form-input" value={dept} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                    </div>
-                  )}
-                  {loc && (
-                    <div className="form-group">
-                      <label className="form-label">{locale === 'de' ? 'Büro' : 'Office'}</label>
-                      <input className="form-input" value={loc} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                    </div>
-                  )}
-                  {mob && (
-                    <div className="form-group">
-                      <label className="form-label">{locale === 'de' ? 'Mobil' : 'Mobile'}</label>
-                      <input className="form-input" value={mob} disabled style={{ background: 'var(--dex-gray-100)' }} />
-                    </div>
-                  )}
+                  {(jt || registerForOther) && renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
+                  {(dept || registerForOther) && renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
+                  {(loc || registerForOther) && renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
+                  {(mob || registerForOther) && renderField(locale === 'de' ? 'Mobil' : 'Mobile', mob)}
                 </>
               );
             })()}

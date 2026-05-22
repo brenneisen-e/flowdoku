@@ -28,22 +28,47 @@
     box-shadow: none;
   }
 
-  // v12.0: kurzes Text-Cursor-Flackern (I-Beam) bei Klick auf klickbare
-  // Karten / Buttons unterbinden. user-select:none + cursor:pointer auf
-  // typischen Interaktiv-Containern. Eingabefelder behalten ihre Default-
-  // Selection (text-select erforderlich).
-  button,
-  .card-clickable,
-  .start-card,
-  .landing__bubble,
-  [role='button'] {
-    user-select: none;
-    -webkit-user-select: none;
-    cursor: pointer;
+  // v12.0/v12.1: kurzes Text-Cursor-Flackern (I-Beam) im gesamten App-
+  // Container unterbinden. Default ist 'default' (Pfeil), Inputs/Textareas/
+  // selectable Content bekommen explizit 'text', Klickbares 'pointer'.
+  // Zusätzlich caret-color: transparent global — der blinkende Text-Caret
+  // soll nirgends auftauchen außer in echten Editier-Feldern. Verhindert
+  // dass beim Klick auf Text in Karten/Headers ein „blinkender Cursor"
+  // erscheint, der den User glauben lässt er könnte hier tippen.
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  caret-color: transparent;
+
+  input[type='text'],
+  input[type='email'],
+  input[type='number'],
+  input[type='search'],
+  input[type='url'],
+  input[type='tel'],
+  input[type='password'],
+  input:not([type]),
+  textarea,
+  [contenteditable='true'] {
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    caret-color: auto;
   }
+  // Disabled-Buttons zeigen verbieten-Cursor.
   button:disabled,
   [role='button'][aria-disabled='true'] {
     cursor: not-allowed;
+  }
+  // Klickbare Tag-Selectors (button, a, [role=button], label) bleiben
+  // Pointer. Klassen-basierte Klickflächen (.card-clickable, .start-card,
+  // .landing__bubble, .dex-selectable) sind im :global-Block weiter unten,
+  // damit SPFx/SCSS sie nicht als CSS-Module-Klassen interpretiert.
+  button,
+  a,
+  [role='button'],
+  label[for] {
+    cursor: pointer;
   }
 
   // v11.94: Globale Round-Checkbox im Deloitte-Look — leerer Kreis,
