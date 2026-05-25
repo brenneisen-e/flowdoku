@@ -2239,7 +2239,10 @@ export default function AdminPage(): React.ReactElement {
     .filter(matchesSearch)
     .sort(sortRegs);
   const waitlistRegs = registrations.filter(r => r.Status === 'Warteliste').filter(matchesSearch)
-    .sort((a, b) => new Date(a.RegistrationDate).getTime() - new Date(b.RegistrationDate).getTime());
+    // v12.10: Warteliste nach TeilnehmerID asc sortieren statt
+    // RegistrationDate. Damit ist die UI-Reihenfolge konsistent mit
+    // der Nachrück-Logik in promoteFirstWaitlistItem (siehe EventService).
+    .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
   // Seit v6.5: getrennte Wartelisten bei B2Run-Split-Kapazitäten (Durchstarter/Funstarter).
   // Die Split-Aktivierung erkennen wir daran, dass beide Kapazitäts-Felder gesetzt und > 0 sind.

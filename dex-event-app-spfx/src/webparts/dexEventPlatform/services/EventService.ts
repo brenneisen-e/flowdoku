@@ -5655,7 +5655,14 @@ export class EventService {
         }
       }
 
-      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst).
+      // v12.10: Nachrück-Sortierung jetzt nach TeilnehmerID asc statt
+      // RegistrationDate. Hintergrund: nach dem IDReorder-Flow sind die
+      // TeilnehmerIDs durchlaufend (1..N aktiv, N+1.. Warteliste). Wenn
+      // also Platz 100 frei wird, soll TID 101 (= erster auf der Liste)
+      // nachrücken — unabhängig davon, ob TID 103 zeitlich gesehen vor
+      // TID 101 registriert war (z.B. nach Re-Registration oder Wechsel
+      // der Gruppe). RegistrationDate sortierte chronologisch, was bei
+      // umverteilten IDs zur falschen Reihenfolge führte.
       // Bei B2Run-Split-Kapazitäten: nur die passende Warteliste durchsuchen
       // (PreferredStarterType == onlyWithPreferredType).
       let filter = `Status eq 'Warteliste'`;
@@ -5664,7 +5671,7 @@ export class EventService {
         filter += ` and PreferredStarterType eq '${esc}'`;
       }
       const resp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=RegistrationDate asc&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=TeilnehmerID asc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return { success: false };
