@@ -20,6 +20,7 @@ import { HtmlEditorModal } from './HtmlEditorModal';
 import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
 import BulkUserImportModal from './BulkUserImportModal';
+import Modal from './Modal';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -10321,26 +10322,15 @@ export default function EventCreationPage(): React.ReactElement {
         </div>
       )}
 
-      {/* v9.28: Modal — neuer Quiz-Bereich anlegen (statt window.prompt) */}
-      {newSectionModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setNewSectionModalOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 9999, padding: 16,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--dex-radius-lg, 12px)',
-              padding: '24px 28px', maxWidth: 460, width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
-            }}
-          >
+      {/* v9.28/v13.4: Modal — neuer Quiz-Bereich anlegen, jetzt über <Modal>-Wrapper. */}
+      <Modal
+        open={newSectionModalOpen}
+        onClose={() => setNewSectionModalOpen(false)}
+        maxWidth={460}
+        ariaLabel="Neuen Quiz-Bereich anlegen"
+      >
+        {newSectionModalOpen && (
+          <>
             <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: '1.15rem' }}>
               Neuen Bereich anlegen
             </h3>
@@ -10399,27 +10389,20 @@ export default function EventCreationPage(): React.ReactElement {
                 <Plus size={14} /> Bereich anlegen
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
-      {/* Modal: Vorgeschlagene Felder auswaehlen (Multi-Select) */}
-      {showSuggestedModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowSuggestedModal(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 9999, padding: 16,
-          }}
-        >
+      {/* Modal: Vorgeschlagene Felder auswaehlen (Multi-Select) — v13.4 über <Modal>. */}
+      <Modal
+        open={showSuggestedModal}
+        onClose={() => setShowSuggestedModal(false)}
+        maxWidth={540}
+        ariaLabel="Vorgeschlagene Felder auswählen"
+      >
+        {showSuggestedModal && (
           <div
-            onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', borderRadius: 16, padding: '24px 28px',
-              maxWidth: 540, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
               display: 'flex', flexDirection: 'column', gap: 14,
             }}
           >
@@ -10576,34 +10559,20 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* v11.57 / v11.63: Outlook-Update-Confirm-Modal. Erscheint beim Speichern
-          eines bestehenden Events, wenn Title, Start, Ende oder Outlook-Body
-          gegenueber dem initialen Stand veraendert wurden — und das Event
-          einen Outlook-Termin hat. v11.63: Pro betroffenem Event (Hauptevent +
-          jedes Sub-Event) eine eigene Checkbox; der Organizer entscheidet
-          einzeln, fuer welche Termine die Teilnehmer eine „Aktualisierter
-          Termin"-Benachrichtigung bekommen sollen. */}
-      {outlookConfirmOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="outlook-confirm-title"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 10000,
-            background: 'rgba(0,0,0,0.55)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
-        >
-          <div style={{
-            background: '#fff', borderRadius: 12, padding: '24px 28px',
-            maxWidth: 620, width: '100%',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.25)',
-            maxHeight: '90vh', overflow: 'auto',
-          }}>
+      {/* v11.57 / v11.63 / v13.4: Outlook-Update-Confirm-Modal über <Modal>-Wrapper.
+          dismissable=false, da Schließen nur über Cancel-Button erlaubt. */}
+      <Modal
+        open={outlookConfirmOpen}
+        onClose={cancelOutlookSave}
+        maxWidth={620}
+        dismissable={false}
+        ariaLabel="Outlook-Update bestätigen"
+      >
+        {outlookConfirmOpen && (
+          <div>
             <h2 id="outlook-confirm-title" style={{
               margin: '0 0 10px', fontSize: '1.15rem', fontWeight: 700,
               color: 'var(--dex-green-dark, #4a7c1f)',
@@ -10731,8 +10700,8 @@ export default function EventCreationPage(): React.ReactElement {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

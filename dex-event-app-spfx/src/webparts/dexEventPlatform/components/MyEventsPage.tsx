@@ -2240,27 +2240,13 @@ export default function MyEventsPage(): React.ReactElement {
           return a.Id - b.Id;
         });
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => { if (manageTeamBusyId === null) closeManageTeamDialog(); }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 2000,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16,
-            }}
+          <Modal
+            open={true}
+            onClose={closeManageTeamDialog}
+            dismissable={manageTeamBusyId === null}
+            maxWidth={620}
+            ariaLabel={isDe ? 'Team verwalten' : 'Manage team'}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#fff', borderRadius: 12, padding: '24px 28px',
-                maxWidth: 620, width: '100%',
-                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-                display: 'flex', flexDirection: 'column', gap: 14,
-                maxHeight: '90vh', overflowY: 'auto',
-              }}
-            >
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
                   {isDe
@@ -2382,33 +2368,19 @@ export default function MyEventsPage(): React.ReactElement {
                   {isDe ? 'Schließen' : 'Close'}
                 </button>
               </div>
-            </div>
             {/* Confirm-Modal (zweite Ebene) — sitzt auf demselben z-index-Layer. */}
             {manageTeamConfirm && (() => {
               const cm = manageTeamConfirm;
               const fullName = `${cm.Vorname || ''} ${cm.Nachname || ''}`.trim() || cm.ParticipantEmail;
               const busy = manageTeamBusyId === cm.Id;
               return (
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  onClick={() => { if (!busy) setManageTeamConfirm(null); }}
-                  style={{
-                    position: 'fixed', inset: 0, zIndex: 2100,
-                    background: 'rgba(0,0,0,0.55)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: 16,
-                  }}
+                <Modal
+                  open={true}
+                  onClose={() => setManageTeamConfirm(null)}
+                  dismissable={!busy}
+                  maxWidth={480}
+                  ariaLabel={isDe ? 'Person aus dem Team abmelden?' : 'Cancel this team member?'}
                 >
-                  <div
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      background: '#fff', borderRadius: 12, padding: '24px 28px',
-                      maxWidth: 480, width: '100%',
-                      boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
-                      display: 'flex', flexDirection: 'column', gap: 14,
-                    }}
-                  >
                     <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--dex-gray-800)' }}>
                       {isDe ? 'Person aus dem Team abmelden?' : 'Cancel this team member?'}
                     </h3>
@@ -2454,37 +2426,22 @@ export default function MyEventsPage(): React.ReactElement {
                           : (isDe ? 'Person abmelden' : 'Cancel member')}
                       </button>
                     </div>
-                  </div>
-                </div>
+                </Modal>
               );
             })()}
-          </div>
+          </Modal>
         );
       })()}
       {cascadeDialog && (() => {
         const dlg = cascadeDialog;
         const choose = (c: 'cascade' | 'parent-only' | 'abort'): void => dlg.resolve(c);
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => choose('abort')}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 2000,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16,
-            }}
+          <Modal
+            open={true}
+            onClose={() => choose('abort')}
+            maxWidth={520}
+            ariaLabel={isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?'}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#fff', borderRadius: 12, padding: '28px 32px',
-                maxWidth: 520, width: '100%',
-                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-                display: 'flex', flexDirection: 'column', gap: 16,
-              }}
-            >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
                 {isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?'}
               </h3>
@@ -2534,8 +2491,7 @@ export default function MyEventsPage(): React.ReactElement {
                   {isDe ? 'Abbrechen — nichts abmelden' : 'Cancel — keep everything'}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
     </div>
@@ -2977,23 +2933,14 @@ function MyEventSubEvents(props: {
           }
         };
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-            }}
-            onClick={() => { if (!savingEdit) closeModal(); }}
+          <Modal
+            open={true}
+            onClose={closeModal}
+            dismissable={!savingEdit}
+            maxWidth={520}
+            padding={24}
+            ariaLabel={ce.title || (isDe ? 'Sub-Event' : 'Sub-event')}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{
-                width: '100%', maxWidth: 520, maxHeight: '85vh', overflow: 'auto',
-                padding: 24, borderRadius: 'var(--dex-radius, 8px)', background: '#fff',
-              }}
-            >
               <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
                 {ce.title || (isDe ? 'Sub-Event' : 'Sub-event')}
               </h3>
@@ -3071,8 +3018,7 @@ function MyEventSubEvents(props: {
                   {savingEdit ? '…' : (isDe ? 'Speichern' : 'Save')}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
 
@@ -3083,26 +3029,12 @@ function MyEventSubEvents(props: {
         const dlg = peerCancelDialog;
         const choose = (c: 'all' | 'one' | 'abort'): void => dlg.resolve(c);
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => choose('abort')}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 2000,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16,
-            }}
+          <Modal
+            open={true}
+            onClose={() => choose('abort')}
+            maxWidth={520}
+            ariaLabel={isDe ? 'Auch andere Sub-Events abmelden?' : 'Cancel other sub-events too?'}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#fff', borderRadius: 12, padding: '28px 32px',
-                maxWidth: 520, width: '100%',
-                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-                display: 'flex', flexDirection: 'column', gap: 16,
-              }}
-            >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
                 {isDe ? 'Auch andere Sub-Events abmelden?' : 'Cancel other sub-events too?'}
               </h3>
@@ -3147,8 +3079,7 @@ function MyEventSubEvents(props: {
                   {isDe ? 'Abbrechen — nichts abmelden' : 'Cancel — keep everything'}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
     </div>

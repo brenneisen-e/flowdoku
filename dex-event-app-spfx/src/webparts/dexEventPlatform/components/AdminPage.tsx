@@ -5224,23 +5224,14 @@ export default function AdminPage(): React.ReactElement {
       {/* v9.15: QR-Code-Versand-Modal — Test (nur Organizer) / Volldurchlauf
           (alle Angemeldeten) / Auto-Send-Toggle fuer zukuenftige Anmeldungen. */}
       {qrSendModalOpen && selectedEvent && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
-          onClick={() => { if (!isSendingQR) setQrSendModalOpen(false); }}
+        <Modal
+          open={qrSendModalOpen}
+          onClose={() => setQrSendModalOpen(false)}
+          dismissable={!isSendingQR}
+          maxWidth={520}
+          padding={24}
+          ariaLabel="QR-Codes versenden"
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
-              maxWidth: 520, width: '100%', padding: 24,
-              boxShadow: 'var(--dex-shadow-hover)',
-            }}
-          >
             <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>QR-Codes versenden</h3>
             <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
@@ -5479,8 +5470,7 @@ export default function AdminPage(): React.ReactElement {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {editingReg && selectedEvent && (
@@ -5784,24 +5774,13 @@ export default function AdminPage(): React.ReactElement {
           NICHT vorgesehen, der Body wird zentral aus der QR-Code-Vorlage
           gebaut. */}
       {qrPreviewOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setQrPreviewOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
+        <Modal
+          open={qrPreviewOpen}
+          onClose={() => setQrPreviewOpen(false)}
+          maxWidth={720}
+          padding={0}
+          ariaLabel="Vorschau: QR-Code-Mail"
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 12,
-              width: '100%', maxWidth: 720, maxHeight: '90vh',
-              display: 'flex', flexDirection: 'column',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.28)',
-            }}
-          >
             <div style={{
               padding: '14px 18px', borderBottom: '1px solid var(--dex-gray-200)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
@@ -5841,8 +5820,7 @@ export default function AdminPage(): React.ReactElement {
                 Schließen
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
@@ -6259,20 +6237,14 @@ export default function AdminPage(): React.ReactElement {
         };
         const fullName = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantEmail || '–';
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-            }}
-            onClick={() => { if (!attachmentsBusy) close(); }}
+          <Modal
+            open={true}
+            onClose={close}
+            dismissable={!attachmentsBusy}
+            maxWidth={560}
+            padding={24}
+            ariaLabel={isDe ? 'Hochgeladene Dateien' : 'Uploaded files'}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{ width: '100%', maxWidth: 560, maxHeight: '85vh', overflow: 'auto', padding: 24, background: '#fff', borderRadius: 8 }}
-            >
               <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>
                 {isDe ? 'Hochgeladene Dateien' : 'Uploaded files'}
               </h3>
@@ -6340,22 +6312,21 @@ export default function AdminPage(): React.ReactElement {
                   {isDe ? 'Schließen' : 'Close'}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
 
       {/* v11.36: Fortschritts-Overlay für die ID-Neuvergabe (mit %). */}
       {reorderProgress !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
+        <Modal
+          open={reorderProgress !== null}
+          onClose={() => { /* progress overlay — nicht schließbar */ }}
+          dismissable={false}
+          maxWidth={420}
+          padding={28}
+          ariaLabel="ID-Neuvergabe"
         >
-          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 28, background: '#fff', borderRadius: 10, textAlign: 'center' }}>
+          <div style={{ textAlign: 'center' }}>
             <div style={{ fontWeight: 600, marginBottom: 14 }}>{reorderProgressLabel || 'IDs werden neu vergeben…'}</div>
             <div style={{ height: 12, borderRadius: 6, background: 'var(--dex-gray-200, #e5e5e5)', overflow: 'hidden' }}>
               <div
@@ -6373,7 +6344,7 @@ export default function AdminPage(): React.ReactElement {
               Bitte warten — das Fenster nicht schließen.
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* v11.70: kein Modal mehr — der Hinweis wird inline ueber der
@@ -6382,20 +6353,14 @@ export default function AdminPage(): React.ReactElement {
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
-          onClick={() => { if (!obBusy) setOverbookModal(null); }}
+        <Modal
+          open={true}
+          onClose={() => setOverbookModal(null)}
+          dismissable={!obBusy}
+          maxWidth={560}
+          padding={24}
+          ariaLabel="Überbuchung"
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="card"
-            style={{ width: '100%', maxWidth: 560, maxHeight: '88vh', overflow: 'auto', padding: 24, background: '#fff', borderRadius: 8 }}
-          >
             {overbookModal.mode === 'confirm' ? (
               <>
                 <h3 style={{ marginTop: 0 }}>
@@ -6509,8 +6474,7 @@ export default function AdminPage(): React.ReactElement {
                 {obBusy ? 'Wird ausgeführt…' : (overbookModal.mode === 'confirm' ? 'Bestätigen & IDs neu vergeben' : 'Übernehmen & IDs neu vergeben')}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {adminAddMemberDialog && selectedEvent && (() => {
@@ -6557,27 +6521,13 @@ export default function AdminPage(): React.ReactElement {
           }
         };
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => { if (!adminAddMemberBusy) closeDlg(); }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 2000,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16,
-            }}
+          <Modal
+            open={true}
+            onClose={closeDlg}
+            dismissable={!adminAddMemberBusy}
+            maxWidth={540}
+            ariaLabel="Person zum Team hinzufügen"
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#fff', borderRadius: 12, padding: '28px 32px',
-                maxWidth: 540, width: '100%',
-                boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-                display: 'flex', flexDirection: 'column', gap: 14,
-                maxHeight: '90vh', overflowY: 'auto',
-              }}
-            >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
                 {adminAddMemberDialog.teamName
                   ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
@@ -6740,8 +6690,7 @@ export default function AdminPage(): React.ReactElement {
                   {adminAddMemberBusy ? 'Wird hinzugefügt…' : 'Hinzufügen'}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
     </div>

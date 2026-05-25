@@ -2601,25 +2601,13 @@ export default function RegistrationPage(): React.ReactElement {
       {/* Fallback-Dialog (seit v6.5): Wunsch-Starter-Typ voll, aber Alternative frei.
           User entscheidet explizit zwischen Umsteigen oder Warteliste. */}
       {fallbackDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
-          onClick={() => setFallbackDialog(null)}
+        <Modal
+          open={true}
+          onClose={() => setFallbackDialog(null)}
+          maxWidth={480}
+          padding={24}
+          ariaLabel="Plätze voll"
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--dex-radius, 12px)',
-              padding: 24, maxWidth: 480, width: '100%',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-            }}
-          >
             {(() => {
               // v10.20: Label-Mapping fuer die freie Bezeichnung — wunsch/alt
               // sind interne IDs ('Durchstarter' / 'Funstarter'); die Anzeige
@@ -2669,29 +2657,18 @@ export default function RegistrationPage(): React.ReactElement {
                 </>
               );
             })()}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* v9.22: Modal fuer externe Email-Anmeldung */}
       {externalEmailWarning && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
-          onClick={() => setExternalEmailWarning(false)}
+        <Modal
+          open={externalEmailWarning}
+          onClose={() => setExternalEmailWarning(false)}
+          maxWidth={540}
+          padding={24}
+          ariaLabel="Externe E-Mail-Adresse"
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
-              maxWidth: 540, width: '100%', padding: 24,
-              boxShadow: 'var(--dex-shadow-hover)',
-            }}
-          >
             <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
               Externe E-Mail-Adresse
             </h3>
@@ -2728,8 +2705,7 @@ export default function RegistrationPage(): React.ReactElement {
                 Trotzdem anmelden
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* v10.12: Sub-Event Custom-Fields Modal — wird geöffnet wenn ein
@@ -2763,23 +2739,13 @@ export default function RegistrationPage(): React.ReactElement {
         const onCancel = (): void => setPendingSubEventModal(null);
 
         return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-            }}
-            onClick={onCancel}
+          <Modal
+            open={true}
+            onClose={onCancel}
+            maxWidth={520}
+            padding={24}
+            ariaLabel={ce.title || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{
-                width: '100%', maxWidth: 520, maxHeight: '85vh', overflow: 'auto',
-                padding: 24, borderRadius: 'var(--dex-radius, 8px)', background: '#fff',
-              }}
-            >
               <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
                 {ce.title || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
               </h3>
@@ -2879,8 +2845,7 @@ export default function RegistrationPage(): React.ReactElement {
                   {locale === 'de' ? 'Bestätigen' : 'Confirm'}
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
     </div>
