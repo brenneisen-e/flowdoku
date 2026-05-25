@@ -847,17 +847,25 @@ function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
         }
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const perms = items.map((item: any) => {
-          const member = item.Member || {};
-          const bindings = item.RoleDefinitionBindings || item.RoleDefinitionBindings?.results || [];
-          const roleNames = (Array.isArray(bindings) ? bindings : bindings.results || [])
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((b: any) => b.Name).filter((n: string) => n !== 'Limited Access');
+        // v13.2: typsicheres Mapping der RoleAssignment-Items.
+        interface SPRoleAssignmentMember { Title?: string; PrincipalType?: number }
+        interface SPRoleDefinitionBinding { Name?: string }
+        interface SPRoleAssignmentItem {
+          Member?: SPRoleAssignmentMember;
+          RoleDefinitionBindings?: SPRoleDefinitionBinding[] | { results?: SPRoleDefinitionBinding[] };
+        }
+        const perms = (items as SPRoleAssignmentItem[]).map((item) => {
+          const member: SPRoleAssignmentMember = item.Member || {};
+          const bindingsRaw = item.RoleDefinitionBindings;
+          const bindings: SPRoleDefinitionBinding[] = Array.isArray(bindingsRaw)
+            ? bindingsRaw
+            : (bindingsRaw && Array.isArray(bindingsRaw.results) ? bindingsRaw.results : []);
+          const roleNames = bindings
+            .map((b) => b.Name || '')
+            .filter((n) => n !== 'Limited Access' && n !== '');
           const pType = member.PrincipalType === 8 ? 'Gruppe' : 'User';
           return { name: member.Title || '?', type: pType, level: roleNames.join(', ') || '-' };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }).filter((p: any) => p.level !== '-');
+        }).filter((p) => p.level !== '-');
         results.push({ listName, perms, loading: false });
       } catch {
         results.push({ listName, perms: [], loading: false, error: 'Fehler' });

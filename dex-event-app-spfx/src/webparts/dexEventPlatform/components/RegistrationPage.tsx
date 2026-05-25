@@ -11,7 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
-import { Salutation } from '../types';
+import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Trash2, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
@@ -959,11 +959,11 @@ export default function RegistrationPage(): React.ReactElement {
   // onlyForGroup-Constraint, einmal im Eventspez-2-Spalten-Grid für
   // alle anderen Felder. Die Filter-Logik dazu unten in den
   // groupSpecificFields- bzw. generalFields-Konstanten.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const renderRegField = (fRaw: any): React.ReactElement => {
+  // v13.2: fRaw jetzt typsicher als EventSpecificField (vorher any).
+  const renderRegField = (fRaw: EventSpecificField): React.ReactElement => {
     // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
     // Mobilnummer Pflicht.
-    let field = fRaw;
+    let field: EventSpecificField = fRaw;
     // Mobilnummer bei aktiviertem Infoservice dynamisch zur Pflicht
     if (fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true') {
       field = { ...field, required: true };

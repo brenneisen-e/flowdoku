@@ -28,6 +28,7 @@ import { waitlistSection } from './sections/waitlist';
 import { flowsSection } from './sections/flows';
 import { faqSection } from './sections/faq';
 import { demoImpersonationSection } from './sections/demoImpersonation';
+import { templatesReseedSection } from './sections/templatesReseed';
 
 export type Locale = 'de' | 'en';
 
@@ -53,6 +54,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     rolesSection(locale),
     demoImpersonationSection(locale),
     templatesSection(locale),
+    templatesReseedSection(locale),
     idReorderSection(locale),
     waitlistSection(locale),
     flowsSection(locale),
