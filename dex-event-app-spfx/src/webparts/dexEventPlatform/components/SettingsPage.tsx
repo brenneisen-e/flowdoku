@@ -8,6 +8,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
+import { useLanguage } from '../context/LanguageContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Trash2, X } from './Icons';
 
@@ -675,6 +676,13 @@ export default function SettingsPage(): React.ReactElement {
         {/* v9.16/v9.21: Test-Team war hier global, ist jetzt per-Event
             (im EventCreation-Wizard). TestTeamManager entfernt. */}
 
+        {/* v12.12: Default-Email-Templates re-seeden — Admin-Only.
+            Überschreibt die aktuellen Subject/Heading/Body-Texte in
+            DEX_EmailTemplates mit den eingebauten Defaults. Nützlich
+            nach Code-Updates an den Standard-Texten (z.B. neue
+            Nachrücken-Mail in v12.11/v12.12). */}
+        {isAdmin && <ReseedTemplatesCard />}
+
         {/* Berechtigungs-Übersicht - nur fuer Admin */}
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
 
@@ -740,6 +748,69 @@ export default function SettingsPage(): React.ReactElement {
 /**
  * Zeigt die Berechtigungen aller DEX-Listen an.
  */
+// v12.12: Re-Seed-Karte für die Default-Email-Templates. Admin-Only.
+// Klick auf den Button überschreibt jeden Standard-Template-Eintrag
+// in DEX_EmailTemplates mit dem Default-Text aus dem Code (Subject,
+// Heading, BodyHtml). Confirmation-Modal vor Ausführung.
+function ReseedTemplatesCard(): React.ReactElement {
+  const { reseedDefaultEmailTemplates } = useEvents();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
+  const handleReseed = async (): Promise<void> => {
+    const msg = isDe
+      ? 'Alle Standard-Mail-Templates (DEX_EmailTemplates) mit den Default-Texten aus dem Code überschreiben? Eigene individuelle Anpassungen an Subject / Heading / Body gehen verloren.'
+      : 'Overwrite all default email templates (DEX_EmailTemplates) with the built-in default texts from the code? Any local customizations to Subject / Heading / Body will be lost.';
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      await reseedDefaultEmailTemplates();
+      setStatus('success');
+      setTimeout(() => setStatus(''), 4000);
+    } catch {
+      setStatus('error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card" style={{ padding: '20px 24px', marginBottom: 24 }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>
+        {isDe ? 'Default-Mail-Templates re-seed' : 'Default email templates re-seed'}
+      </h3>
+      <p style={{ margin: '0 0 12px', color: 'var(--dex-gray-600)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+        {isDe
+          ? 'Überschreibt alle Einträge in DEX_EmailTemplates (Anmeldung, Warteliste, Abmeldung, Nachrücken, …) mit den Default-Texten aus dem aktuellen Code. Nützlich nach Code-Updates an den Standard-Vorlagen, damit der DEX_SEND_MAIL-Flow die neuen Texte nutzt. Achtung: eigene Anpassungen an Subject/Heading/Body in DEX_EmailTemplates gehen verloren.'
+          : 'Overwrites all entries in DEX_EmailTemplates (Registration, Waitlist, Cancellation, Promotion, …) with the default texts from the current code. Useful after code updates to the standard templates so that the DEX_SEND_MAIL flow uses the new texts. Note: local customizations to Subject/Heading/Body in DEX_EmailTemplates will be lost.'}
+      </p>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        onClick={handleReseed}
+        disabled={busy}
+        style={{ fontSize: '0.85rem' }}
+      >
+        {busy
+          ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…')
+          : (isDe ? 'Default-Templates zurücksetzen' : 'Reset default templates')}
+      </button>
+      {status === 'success' && (
+        <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+          {isDe ? 'Templates erfolgreich zurückgesetzt.' : 'Templates reset successfully.'}
+        </div>
+      )}
+      {status === 'error' && (
+        <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
+          {isDe ? 'Reset fehlgeschlagen. Bitte später erneut versuchen.' : 'Reset failed. Please try again later.'}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
   const { siteUrl } = props;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -173,17 +173,16 @@ const OUTLOOK_DECLINE_DIGEST_BODY_DE = wrapTemplateForStorage(
 // Nachruecken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
 // weil die Flow-seite den BodyHtml raw verwendet (ohne wrapTemplate). Client-Code
 // erkennt die Pre-Wrap in buildEmailFromTemplate() und skippt den Wrap dann.
-// v12.11: Nachr\u00FCcken-Mail-Text pr\u00E4zisiert \u2014 der alte \u201ESpot available"-Subject
-// war missverst\u00E4ndlich (klang wie ein Angebot). Neu: klar best\u00E4tigend, dass
-// die Person nun nachger\u00FCckt ist, auf der Teilnehmerliste steht und den
-// Outlook-Termin separat erh\u00E4lt. Verweis auf \u201EMeine Events" + Self-Cancel.
+// v12.11/v12.12: Nachr\u00FCcken-Mail-Text pr\u00E4zisiert \u2014 der alte \u201ESpot available"-
+// Subject war missverst\u00E4ndlich (klang wie ein Angebot). Outlook-Verweis
+// entfernt, weil nicht jedes Event Outlook-Termine versendet.
 const NACHRUECKEN_BODY_EN = wrapTemplateForStorage(
   '#86bc25',
   'You\u2019ve got a spot!',
   'Event {{EventTitle}}',
   `<p>Dear {{Name}},</p>
 <p>Great news! A spot has become available \u2014 you have <strong>moved up from the waitlist</strong> for the event <strong>{{EventTitle}}</strong> and are now a <strong>confirmed participant</strong>.</p>
-<p>You are now on the official participant list. You should also have received a corresponding <strong>Outlook calendar invitation</strong> for the event date \u2014 please accept it.</p>
+<p>You are now on the official participant list.</p>
 <p>You can review your participation any time in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>\u201CMy Events\u201D</strong>.</p>
 <p>If you are unable to attend after all, please cancel your registration as soon as possible via the App so that the next person on the waitlist can move up.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -195,7 +194,7 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
   'Event {{EventTitle}}',
   `<p>Hallo {{Name}},</p>
 <p>gute Nachrichten! Ein Platz ist frei geworden \u2014 du bist von der <strong>Warteliste nachger\u00FCckt</strong> f\u00FCr das Event <strong>{{EventTitle}}</strong> und bist jetzt <strong>fester Teilnehmer</strong>.</p>
-<p>Du stehst nun auf der offiziellen Teilnehmerliste. Du solltest zus\u00E4tzlich einen <strong>Outlook-Termin</strong> f\u00FCr das Event erhalten haben \u2014 bitte best\u00E4tige diesen.</p>
+<p>Du stehst nun auf der offiziellen Teilnehmerliste.</p>
 <p>Deine Teilnahme kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>\u201EMeine Events\u201C</strong> einsehen.</p>
 <p>Falls du doch nicht teilnehmen kannst, melde dich bitte zeitnah \u00FCber die App ab, damit die n\u00E4chste Person von der Warteliste nachr\u00FCcken kann.</p>
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
@@ -1420,6 +1419,15 @@ export class EventService {
    * noch die OOTB-Version ohne diese Felder. Diese Funktion zieht den BodyHtml
    * (sowie Subject + Heading) auf den aktuellen Code-Stand nach.
    */
+  /**
+   * v12.12: Öffentliche Re-Seed-Funktion für Admins. Stößt das Update aller
+   * Standard-Templates an — überschreibt eventuelle individuelle Änderungen
+   * in DEX_EmailTemplates mit den aktuellen Default-Texten aus dem Code.
+   */
+  public async reseedDefaultEmailTemplates(): Promise<void> {
+    await this.upgradeStandardEmailTemplates('DEX_EmailTemplates');
+  }
+
   private async upgradeStandardEmailTemplates(listName: string): Promise<void> {
     const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
     void APP_URL; // Reserviert fuer spaetere Templates die {{AppUrl}} hardcoden

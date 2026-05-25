@@ -210,6 +210,10 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
+  /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
+   *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
+   *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
+  reseedDefaultEmailTemplates: () => Promise<void>;
   /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
    *  ein einziger schneller REST-Call, fuer Boot-Loader-Anzeige. */
   getKpiCache: () => Promise<{ participants: number; events: number } | null>;
@@ -2412,6 +2416,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * der DEX_Emails-Queue, mit dem Anfrager im Cc-Feld. Body wird ins Deloitte-
    * Template (gruener Header, Footer) gewrappt.
    */
+  // v12.12: Re-Seed-Aktion durchreichen.
+  async function reseedDefaultEmailTemplates(): Promise<void> {
+    await eventService.reseedDefaultEmailTemplates();
+  }
+
   async function sendAdminInquiry(
     requesterName: string,
     requesterEmail: string,
@@ -2512,6 +2521,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
+        reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),
