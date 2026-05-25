@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { useRoles } from '../context/RoleContext';
 
 interface PermissionRow {
   category: string;
@@ -307,6 +308,24 @@ function renderCell(value: boolean | string): React.ReactElement {
 
 export default function RoleMatrixPage(): React.ReactElement {
   const { navigate } = useNavigation();
+  // v13.0: Admin-Guard hinzugefügt — laut CLAUDE.md-Rollenmatrix ist
+  // "Rollen-Matrix einsehen" Admin-only. Vorher fehlte der Schutz —
+  // jeder User (auch Demo-impersoniert) konnte die Seite öffnen. Wir
+  // nutzen originalIsAdmin damit der Admin-im-Demo-Modus seine eigene
+  // Matrix weiterhin testen kann.
+  const { originalIsAdmin } = useRoles();
+  React.useEffect(() => {
+    if (!originalIsAdmin) navigate('start');
+  }, [originalIsAdmin, navigate]);
+  if (!originalIsAdmin) {
+    return (
+      <div className="page-container">
+        <div className="card" style={{ padding: 24 }}>
+          <p>Diese Seite ist nur für Administratoren zugänglich.</p>
+        </div>
+      </div>
+    );
+  }
 
   const categories = Array.from(new Set(PERMISSIONS.map(p => p.category)));
 

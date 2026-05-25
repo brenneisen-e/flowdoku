@@ -16,10 +16,18 @@ export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, currentUserRole, isAdmin, canCreateEvents,
+    roles, currentUserRole, isAdmin, canCreateEvents, originalIsAdmin,
     addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
+  // v13.0: Settings/Rollenverwaltung ist Admin-only. Vorher konnte ein
+  // Demo-User die Seite öffnen — Admin-Controls waren zwar versteckt,
+  // aber der Seitenzugriff selbst war frei. Wir nutzen originalIsAdmin
+  // damit der Admin-im-Demo-Modus seine eigene Einstellungen weiterhin
+  // testen kann.
+  React.useEffect(() => {
+    if (!originalIsAdmin) navigate('start');
+  }, [originalIsAdmin, navigate]);
 
   /**
    * Map: organizer-email-lowercase -> Liste von Event-Titeln, die diese Person koordiniert.

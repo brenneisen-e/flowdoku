@@ -346,7 +346,13 @@ export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
+  const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, canCreateEvents } = useRoles();
+  // v13.0: Frühe Permission-Prüfung — vorher konnte ein Demo-User die
+  // Seite öffnen und das Save würde erst beim SP-Write scheitern. Mit
+  // Guard zurück zur Start-Seite, falls keine Organizer-Rechte.
+  React.useEffect(() => {
+    if (!canCreateEvents) goBack();
+  }, [canCreateEvents, goBack]);
   // Audience-Suche (Personen + Verteiler/Security-Groups)
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);

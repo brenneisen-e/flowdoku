@@ -4319,7 +4319,14 @@ export class EventService {
   public async ensureTeamJoinRequestsList(): Promise<void> {
     const listName = 'DEX_TeamJoinRequests';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // v13.0: Backfill für ältere Installationen, die die Liste vor
+      // v11.83 angelegt haben (DecidedDate/DecidedByEmail damals nicht
+      // vorhanden). Ohne diesen Patch schlägt decideTeamJoinRequest
+      // beim MERGE auf die fehlenden Felder mit HTTP 400 fehl.
+      await this.ensureMissingTeamJoinRequestsFields(listName);
+      return;
+    }
 
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -4361,6 +4368,36 @@ export class EventService {
     try {
       await this.setQueueListPermissions(listName);
     } catch { /* best-effort */ }
+  }
+
+  /**
+   * v13.0: Backfill fehlender Felder in einer bestehenden DEX_TeamJoinRequests-
+   * Liste. Greift bei Tenants die die Liste vor v11.83 angelegt haben.
+   */
+  private async ensureMissingTeamJoinRequestsFields(listName: string): Promise<void> {
+    const wanted = [
+      { title: 'DecidedDate', type: 4 },
+      { title: 'DecidedByEmail', type: 2 },
+    ];
+    for (const f of wanted) {
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')?$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (resp.ok) continue; // existiert
+      } catch { /* anlegen */ }
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+          'Required': false,
+        });
+      } catch (e) {
+        console.warn(`[DEX] ensureMissingTeamJoinRequestsFields: failed to add '${f.title}':`, e);
+      }
+    }
   }
 
   /**
