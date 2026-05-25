@@ -1024,15 +1024,28 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             : (partnerName.split(/\s+/)[0] || '');
           const registrantFullName = `${firstNameToUse} ${lastNameToUse}`.trim() || nameToUse;
           const isDe = (lang || 'EN').toUpperCase() === 'DE';
-          const subject = isDe
-            ? `Zimmerpartner-Anfrage: ${event.title}`
-            : `Roommate request: ${event.title}`;
-          const inner = isDe
-            ? `<p>Hallo ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>${event.title}</strong> angegeben.</p><p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>${registrantFullName}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-            : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p><p>If you'd like to confirm the match, please pick <strong>${registrantFullName}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
-          const body = wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner);
+          // v13.0: Roommate-Mail aus TemplateType=RoommateRequest.
+          const tpl = await eventService.getEmailTemplate('RoommateRequest', lang).catch(() => null);
+          const vars: Record<string, string> = {
+            Name: partnerFirstName || partnerName,
+            RegistrantName: registrantFullName,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let mail: { subject: string; body: string };
+          if (tpl) {
+            mail = buildEmailFromTemplate(tpl, vars);
+          } else {
+            const inner = isDe
+              ? `<p>Hallo ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>${event.title}</strong> angegeben.</p>`
+              : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p>`;
+            mail = {
+              subject: isDe ? `Zimmerpartner-Anfrage: ${event.title}` : `Roommate request: ${event.title}`,
+              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner),
+            };
+          }
           eventService.queueEmail(
-            subject, partnerEmail, partnerName, body, 'Info', event.title, eventId
+            mail.subject, partnerEmail, partnerName, mail.body, 'RoommateRequest', event.title, eventId
           ).catch(err => console.warn('[DEX] roommate queueEmail failed:', err));
         }
       }
@@ -2414,23 +2427,36 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
           const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
           const newLabel = newType === 'Durchstarter' ? labelA : labelB;
-          const subj = isDeMail
-            ? (result.status === 'Warteliste'
-              ? `Gruppen-Wechsel — auf Warteliste: ${event.title}`
-              : `Gruppen-Wechsel bestätigt: ${event.title}`)
-            : (result.status === 'Warteliste'
-              ? `Group switch — added to waitlist: ${event.title}`
-              : `Group switch confirmed: ${event.title}`);
-          const innerBody = isDeMail
-            ? (result.status === 'Warteliste'
-              ? `<p>Du hast den Wechsel in die Gruppe <strong>${newLabel}</strong> für <strong>${event.title}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe ${newLabel}</strong>. Sobald jemand absagt, rückst du automatisch nach.</p>`
-              : `<p>Dein Gruppen-Wechsel zu <strong>${newLabel}</strong> für <strong>${event.title}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>`)
-            : (result.status === 'Warteliste'
-              ? `<p>You requested to switch to the <strong>${newLabel}</strong> group for <strong>${event.title}</strong>. The group is currently full, so your registration is on the <strong>${newLabel} waitlist</strong>. You will be promoted automatically as soon as a spot frees up.</p>`
-              : `<p>Your group switch to <strong>${newLabel}</strong> for <strong>${event.title}</strong> is confirmed. You are now regularly registered in this group.</p>`);
-          const heading = isDeMail ? 'Gruppen-Wechsel' : 'Group switch';
-          const body = wrapTemplate('#86bc25', heading, event.title, innerBody);
-          await eventService.queueEmail(subj, currentUserEmail, currentUserName, body, 'Info', event.title, eventId)
+          // v13.0: Mail aus DB-Template — Confirmed bzw. Waitlist-Variante.
+          const isWaitlist = result.status === 'Warteliste';
+          const templateType = isWaitlist ? 'GroupSwitchWaitlist' : 'GroupSwitchConfirmed';
+          const tpl = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+          const firstName = currentUserName.split(',').pop()?.trim().split(' ')[0] || currentUserName.split(' ')[0];
+          const vars: Record<string, string> = {
+            Name: firstName,
+            GroupLabel: newLabel,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let mail: { subject: string; body: string };
+          if (tpl) {
+            mail = buildEmailFromTemplate(tpl, vars);
+          } else {
+            const innerBody = isDeMail
+              ? (isWaitlist
+                ? `<p>Du hast den Wechsel in die Gruppe <strong>${newLabel}</strong> für <strong>${event.title}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe ${newLabel}</strong>.</p>`
+                : `<p>Dein Gruppen-Wechsel zu <strong>${newLabel}</strong> für <strong>${event.title}</strong> ist bestätigt.</p>`)
+              : (isWaitlist
+                ? `<p>You requested to switch to the <strong>${newLabel}</strong> group for <strong>${event.title}</strong>. The group is currently full, so your registration is on the <strong>${newLabel} waitlist</strong>.</p>`
+                : `<p>Your group switch to <strong>${newLabel}</strong> for <strong>${event.title}</strong> is confirmed.</p>`);
+            mail = {
+              subject: isDeMail
+                ? (isWaitlist ? `Gruppen-Wechsel — auf Warteliste: ${event.title}` : `Gruppen-Wechsel bestätigt: ${event.title}`)
+                : (isWaitlist ? `Group switch — added to waitlist: ${event.title}` : `Group switch confirmed: ${event.title}`),
+              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody),
+            };
+          }
+          await eventService.queueEmail(mail.subject, currentUserEmail, currentUserName, mail.body, templateType, event.title, eventId)
             .catch(err => console.warn('[DEX] switchSplitGroup mail failed:', err));
         } catch { /* */ }
       }

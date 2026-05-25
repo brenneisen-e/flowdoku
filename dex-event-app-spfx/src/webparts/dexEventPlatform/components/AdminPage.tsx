@@ -1034,15 +1034,23 @@ export default function AdminPage(): React.ReactElement {
 
   // v11.36: Mailtext vorbefüllen — reagiert auf Dialog-Öffnen UND Sprachwahl.
   // Enthält die neue Wartelisten-Position der ersten Zielperson.
+  // v13.0: buildOverbookApologyEmail ist jetzt async (lädt Template aus
+  // DEX_EmailTemplates). Effect wartet auf das Promise und setzt State
+  // wenn der Modal noch offen ist.
   React.useEffect(() => {
     if (overbookModal?.mode === 'confirm' && eventServiceRef && selectedEvent) {
       const t = overbookModal.targets[0];
       const nm = t ? ((t.Vorname && t.Nachname) ? `${t.Vorname} ${t.Nachname}` : t.ParticipantName) : '';
       const pos = t ? getFairWaitlistRank(t) : 0;
-      const m = eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, pos);
-      setObMailSubject(m.subject);
-      setObMailBody(m.body);
+      let cancelled = false;
+      eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, pos).then(m => {
+        if (cancelled) return;
+        setObMailSubject(m.subject);
+        setObMailBody(m.body);
+      }).catch(() => { /* */ });
+      return () => { cancelled = true; };
     }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overbookModal, obMailLang]);
 
@@ -1063,7 +1071,7 @@ export default function AdminPage(): React.ReactElement {
             // Einzeln: ggf. vom Admin editierter Text. Sammel: pro Person
             // frisch personalisiert aus dem Standard-Template.
             const mail = isBulk
-              ? eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, getFairWaitlistRank(reg))
+              ? await eventServiceRef.buildOverbookApologyEmail(nm, selectedEvent.title, obMailLang, getFairWaitlistRank(reg))
               : { subject: obMailSubject, body: obMailBody };
             try {
               await eventServiceRef.queueEmail(
@@ -6451,28 +6459,26 @@ export default function AdminPage(): React.ReactElement {
                     />
                   </div>
                 )}
-                {obWithMail && overbookModal.targets.length > 1 && (() => {
-                  const t0 = overbookModal.targets[0];
-                  const nm0 = (t0.Vorname && t0.Nachname) ? `${t0.Vorname} ${t0.Nachname}` : t0.ParticipantName;
-                  const prev = eventServiceRef
-                    ? eventServiceRef.buildOverbookApologyEmail(nm0, selectedEvent.title, obMailLang, getFairWaitlistRank(t0)).body
-                    : '';
-                  return (
-                    <div style={{ marginBottom: 10 }}>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 6px' }}>
-                        Bei &bdquo;Alle&ldquo; wird der Standardtext je Person personalisiert versendet (eigene Wartelisten-Position). Vorschau am Beispiel der ersten Person:
-                      </p>
-                      <div
-                        style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 6, maxHeight: 260, overflow: 'auto', background: '#fff' }}
-                        dangerouslySetInnerHTML={{
-                          __html: prev
-                            .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
-                            .replace(/\{\{ORB_URL\}\}/g, getCachedOrbBase64() || ''),
-                        }}
-                      />
-                    </div>
-                  );
-                })()}
+                {obWithMail && overbookModal.targets.length > 1 && (
+                  // v13.0: Preview teilt sich den obMailBody-State mit der
+                  // Modal-Open-useEffect — beide rendern den Body der
+                  // ersten Person. Vorher wurde buildOverbookApologyEmail
+                  // synchron im Render aufgerufen; seit der Template-DB-
+                  // Lookup async ist, geht das nicht mehr direkt im JSX.
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '0 0 6px' }}>
+                      Bei &bdquo;Alle&ldquo; wird der Standardtext je Person personalisiert versendet (eigene Wartelisten-Position). Vorschau am Beispiel der ersten Person:
+                    </p>
+                    <div
+                      style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 6, maxHeight: 260, overflow: 'auto', background: '#fff' }}
+                      dangerouslySetInnerHTML={{
+                        __html: obMailBody
+                          .replace(/\{\{LOGO_URL\}\}/g, getCachedLogoBase64() || '')
+                          .replace(/\{\{ORB_URL\}\}/g, getCachedOrbBase64() || ''),
+                      }}
+                    />
+                  </div>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', margin: '10px 0', cursor: 'pointer' }}>
                   <input type="checkbox" checked={obRemoveCalendar} onChange={e => setObRemoveCalendar(e.target.checked)} disabled={obBusy} />
                   Vom Kalendereintrag abmelden (falls vorhanden)

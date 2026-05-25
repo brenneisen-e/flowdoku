@@ -19,7 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
-import { wrapTemplateForStorage } from './EmailTemplates';
+import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
 
 /**
  * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -307,6 +307,79 @@ const TEAM_MEMBER_CANCELLED_BODY_DE = wrapTemplateForStorage(
 <li>Andere Teilnehmer können ggf. den freien Slot über die Event-Anmeldeseite belegen (sofern der Organizer „Unvollständige Teams öffentlich sichtbar" aktiviert hat).</li>
 </ul>
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// v13.0: Vier weitere Templates aus dem Inline-Code geholt — analog zur
+// Team-Migration in v12.13/v12.14.
+
+// {{Name}} (Empfänger-Vorname), {{RegistrantName}} (voller Name dessen,
+// der sie als Zimmerpartner ausgewählt hat), {{EventTitle}}, {{AppUrl}}.
+const ROOMMATE_REQUEST_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Roommate request', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{RegistrantName}}</strong> has selected you as their <strong>roommate</strong> for the event <strong>{{EventTitle}}</strong>.</p>
+<p>To confirm the match, please pick <strong>{{RegistrantName}}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const ROOMMATE_REQUEST_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Zimmerpartner-Anfrage', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{RegistrantName}}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>{{EventTitle}}</strong> angegeben.</p>
+<p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>{{RegistrantName}}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{GroupLabel}} (neue Gruppe), {{EventTitle}}, {{AppUrl}}.
+const GROUP_SWITCH_CONFIRMED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Group switch', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>Your group switch to <strong>{{GroupLabel}}</strong> for <strong>{{EventTitle}}</strong> is confirmed. You are now regularly registered in this group.</p>
+<p>You can review your participation any time in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const GROUP_SWITCH_CONFIRMED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Gruppen-Wechsel', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Dein Gruppen-Wechsel zu <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>
+<p>Deine Teilnahme kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>„Meine Events"</strong> einsehen.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+const GROUP_SWITCH_WAITLIST_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Group switch — on waitlist', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>You requested to switch to the <strong>{{GroupLabel}}</strong> group for <strong>{{EventTitle}}</strong>. The group is currently full, so your registration is on the <strong>{{GroupLabel}} waitlist</strong>.</p>
+<p>You will be promoted automatically as soon as a spot frees up. You don't need to do anything else.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const GROUP_SWITCH_WAITLIST_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Gruppen-Wechsel — auf Warteliste', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Du hast den Wechsel in die Gruppe <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe {{GroupLabel}}</strong>.</p>
+<p>Sobald jemand absagt, rückst du automatisch nach. Du musst nichts weiter tun.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{EventTitle}}, {{WaitlistPositionBlock}}
+// (optionaler HTML-Block mit „Du stehst jetzt auf Warteliste-Platz X" —
+// leer wenn keine Position bekannt).
+const OVERBOOK_APOLOGY_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Registration corrected', '{{EventTitle}}',
+  `<p>Hi {{Name}},</p>
+<p>We sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>{{EventTitle}}</strong> although capacity was already full.</p>
+<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>
+{{WaitlistPositionBlock}}
+<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>
+<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`
+);
+const OVERBOOK_APOLOGY_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Anmeldung korrigiert', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>{{EventTitle}}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>
+<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>
+{{WaitlistPositionBlock}}
+<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>
+<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
 // Fester Listenname auf jeder Subsite
@@ -1428,6 +1501,23 @@ export class EventService {
         BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
       { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
         BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
+      // v13.0: Restliche bisher-inline-Mails (Zimmerpartner, Gruppen-Wechsel, Überbuchung).
+      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
+        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
+      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
+        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
+      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
+      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -1596,6 +1686,50 @@ export class EventService {
         BodyHtml: OUTLOOK_FORWARD_BODY_EN },
       { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
         BodyHtml: OUTLOOK_FORWARD_BODY_DE },
+      // v9.38: OutlookDeclineDigest
+      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
+      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
+      // v12.13: Team-Templates auch im Re-Seed-Pfad, sonst greift der Admin-
+      // Reseed-Button die Texte nicht.
+      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
+      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
+      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
+      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
+      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
+      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
+      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
+      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
+      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
+      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
+      // v13.0: Zimmerpartner, Gruppen-Wechsel, Überbuchung (vorher inline).
+      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
+        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
+      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
+        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
+      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
+      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -5285,36 +5419,58 @@ export class EventService {
    * für „Bestätigen mit Mail". Der Admin kann den Text im Modal vor dem
    * Versand editieren.
    */
-  public buildOverbookApologyEmail(
+  // v13.0: Lädt das OverbookingApology-Template aus DEX_EmailTemplates;
+  // wenn das Template existiert wird daraus die Mail gebaut (inkl.
+  // Reseed-Funktionalität für Admins). Fallback ist der alte Inline-Text
+  // damit ältere Tenants ohne Template-Update nicht ohne Mail dastehen.
+  public async buildOverbookApologyEmail(
     name: string,
     eventTitle: string,
     lang: string,
     waitlistPos?: number
-  ): { subject: string; body: string } {
+  ): Promise<{ subject: string; body: string }> {
     const isDe = (lang || 'EN').toUpperCase() === 'DE';
     const first = (name || '').split(' ')[0] || name;
     const hasPos = typeof waitlistPos === 'number' && waitlistPos > 0;
+    const posBlock = hasPos
+      ? (isDe
+        ? `<p>Du stehst jetzt auf <strong>Warteliste-Platz ${waitlistPos}</strong>.</p>`
+        : `<p>You are now <strong>waitlist position ${waitlistPos}</strong>.</p>`)
+      : '';
+    const tpl = await this.getEmailTemplate('OverbookingApology', lang).catch(() => null);
+    const vars: Record<string, string> = {
+      Name: first || name,
+      EventTitle: eventTitle,
+      WaitlistPositionBlock: posBlock,
+      WaitlistPosition: hasPos ? String(waitlistPos) : '',
+      AppUrl: `${this.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+    };
+    if (tpl) {
+      return buildEmailFromTemplate(tpl, vars);
+    }
+    // Fallback-Inline (alte Pfade)
+    const heading = isDe ? 'Anmeldung korrigiert' : 'Registration corrected';
     if (isDe) {
       const inner = `<p>Hallo ${first},</p>`
         + `<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>${eventTitle}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>`
         + `<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>`
-        + (hasPos ? `<p>Du stehst jetzt auf <strong>Warteliste-Platz ${waitlistPos}</strong>.</p>` : '')
+        + posBlock
         + `<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>`
         + `<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`;
       return {
         subject: `Wichtig: Korrektur deiner Anmeldung — ${eventTitle}`,
-        body: wrapTemplateForStorage('#ed8b00', 'Anmeldung korrigiert', eventTitle, inner),
+        body: wrapTemplateForStorage('#ed8b00', heading, eventTitle, inner),
       };
     }
     const inner = `<p>Hi ${first},</p>`
       + `<p>we sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>${eventTitle}</strong> although capacity was already full.</p>`
       + `<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>`
-      + (hasPos ? `<p>You are now <strong>waitlist position ${waitlistPos}</strong>.</p>` : '')
+      + posBlock
       + `<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>`
       + `<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`;
     return {
       subject: `Important: correction of your registration — ${eventTitle}`,
-      body: wrapTemplateForStorage('#ed8b00', 'Registration corrected', eventTitle, inner),
+      body: wrapTemplateForStorage('#ed8b00', heading, eventTitle, inner),
     };
   }
 
