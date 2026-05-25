@@ -200,6 +200,115 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
+// v12.13: Team-bezogene Mail-Vorlagen — vorher inline in EventContext.tsx
+// als ad-hoc-HTML zusammengebaut, jetzt zentral in DEX_EmailTemplates
+// hinterlegt damit Admins sie genauso wie Anmeldung/Abmeldung/Nachrücken
+// anpassen können. Platzhalter pro Template siehe Inline-Kommentare.
+
+// {{Name}} (Empfänger-Vorname), {{NewMemberName}} (voller Name des
+// neuen Mitglieds), {{TeamName}} (kann leer sein), {{EventTitle}}.
+const TEAM_MEMBER_JOINED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team update', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{NewMemberName}}</strong> joined your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>.</p>
+<p>You can see the current team status in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_MEMBER_JOINED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Update', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{NewMemberName}}</strong> ist deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beigetreten.</p>
+<p>Den aktuellen Team-Stand siehst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>„Meine Events"</strong>.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Lead-Vorname), {{RequesterName}} (voll), {{TeamName}},
+// {{EventTitle}}, {{ApproveUrl}}, {{RejectUrl}}.
+const TEAM_JOIN_REQUEST_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team join request', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{RequesterName}}</strong> would like to join your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>. Please decide:</p>
+<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>
+<p style="font-size:0.85rem;color:#666;">Note: the buttons lead you to the app; the request block lives under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_JOIN_REQUEST_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Beitritts-Anfrage', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{RequesterName}}</strong> möchte deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beitreten. Bitte entscheide:</p>
+<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestätigen</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>
+<p style="font-size:0.85rem;color:#666;">Hinweis: die Buttons führen dich in die App; den Beitritts-Anfragen-Block findest du unter <strong>„Meine Events"</strong>.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Anfrager-Vorname), {{EventTitle}}.
+const TEAM_JOIN_REJECTED_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Team join request declined', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>your join request for the team at the event <strong>{{EventTitle}}</strong> was declined by the team lead.</p>
+<p>You can still register individually if capacity allows — or join another open team via the registration page.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_JOIN_REJECTED_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Team-Beitritts-Anfrage abgelehnt', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>deine Beitritts-Anfrage zum Team beim Event <strong>{{EventTitle}}</strong> wurde vom Team-Lead abgelehnt.</p>
+<p>Du kannst dich gerne einzeln anmelden, falls die Kapazität noch reicht — oder einem anderen offenen Team über die Anmeldeseite beitreten.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{NewLeadName}}, {{TeamName}},
+// {{EventTitle}}, {{NewLeadBlock}} (HTML-Block — leer falls Empfänger
+// nicht der neue Lead ist, sonst der zusätzliche Hinweis-Absatz).
+const TEAM_LEAD_TRANSFERRED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team lead change', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>The team lead role in your team {{TeamName}} has been transferred to <strong>{{NewLeadName}}</strong>.</p>
+{{NewLeadBlock}}
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_LEAD_TRANSFERRED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Lead-Wechsel', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Die Team-Lead-Rolle in deinem Team {{TeamName}} wurde an <strong>{{NewLeadName}}</strong> übergeben.</p>
+{{NewLeadBlock}}
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{CancelledName}}, {{TeamName}},
+// {{EventTitle}}, {{ActiveCount}}, {{TeamSize}}, {{NewLeadBlock}}
+// (leer, falls Empfänger nicht zum neuen Lead ernannt wurde).
+const TEAM_MEMBER_CANCELLED_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Team update', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>a member of your team {{TeamName}} has cancelled their registration for the event <strong>{{EventTitle}}</strong>:</p>
+<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
+<p>Current team occupancy: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
+{{NewLeadBlock}}
+<p>What you can do now:</p>
+<ul>
+<li>Do nothing — your seat stays reserved for the team for now.</li>
+<li>As team lead: add a replacement person via <strong>“My Events”</strong>.</li>
+<li>Other participants can join the open slot via the registration page (if the organizer enabled “Public open slots”).</li>
+</ul>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_MEMBER_CANCELLED_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Team-Update', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>ein Mitglied deines Teams {{TeamName}} hat sich vom Event <strong>{{EventTitle}}</strong> abgemeldet:</p>
+<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
+<p>Aktuelle Team-Belegung: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
+{{NewLeadBlock}}
+<p>Was du jetzt machen kannst:</p>
+<ul>
+<li>Nichts tun — euer Platz bleibt erstmal für das Team reserviert.</li>
+<li>Als Team-Lead: über <strong>„Meine Events"</strong> eine andere Person nachträglich hinzufügen.</li>
+<li>Andere Teilnehmer können ggf. den freien Slot über die Event-Anmeldeseite belegen (sofern der Organizer „Unvollständige Teams öffentlich sichtbar" aktiviert hat).</li>
+</ul>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
@@ -1298,6 +1407,27 @@ export class EventService {
         BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
       { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
         BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
+      // v12.13: Team-bezogene Templates (vorher inline in EventContext.tsx).
+      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
+      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
+      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
+      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
+      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
+      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
+      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
+      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
+      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
+      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
