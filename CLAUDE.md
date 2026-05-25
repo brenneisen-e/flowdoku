@@ -887,6 +887,35 @@ auch nach TeilnehmerID sortiert, muss in jedem Nachrück-Branch
 `TeilnehmerID asc` umgestellt werden. Anleitung folgt in
 `docs/flow-jsons.md`.
 
+### Shared `<Modal>`-Komponente (v13.1)
+
+Vorher hatte jede Modal-Komponente (~17 Stück) das gleiche Backdrop-
++ Card-Layout selbst implementiert mit leicht unterschiedlichem
+z-index, Padding, Backdrop-Opacity. Seit v13.1 lebt in
+`components/Modal.tsx` ein wiederverwendbarer Wrapper:
+
+```tsx
+<Modal open={open} onClose={onClose} maxWidth={520}
+       dismissable={!busy} ariaLabel="Demo-Modus">
+  ...
+</Modal>
+```
+
+Übernommen: `InquiryModal` und `ImpersonateModal`. Weitere Modals
+können bei Touch auf den Wrapper umgestellt werden — der bestehende
+Inline-Code funktioniert weiterhin, ist aber Migrationskandidat
+beim nächsten gezielten Touch der Datei.
+
+### EventCreationPage-Refactor — offene Arbeit
+
+`EventCreationPage.tsx` ist mit ~10.700 Zeilen die mit Abstand
+größte Datei. Sie umfasst 8 Wizard-Schritte plus ~30 Modals und
+diverse Sub-Logiken. Refactor-Wunsch: jeden Wizard-Step in eine
+eigene Datei `components/eventCreation/Step1Basics.tsx` etc.
+aufteilen. **Aktuell ungeschnitten** — Risiko vs. Nutzen ist hoch,
+weil viele States über Step-Grenzen geteilt werden. Wenn die Datei
+in Zukunft erneut wachsen würde, hier ansetzen.
+
 ### Aktionen-Dropdown im Admin-Center (v12.7–v12.8)
 
 Statt ~20 Action-Kacheln in einem 4-Spalten-Grid sammeln sich alle

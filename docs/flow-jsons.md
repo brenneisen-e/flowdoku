@@ -2638,3 +2638,51 @@ IS_FORWARDNOTIFICATION (If):
 - **`Email_Resolved`-else-Zweig ist leer:** Wenn die weitergeleitete Person nicht per Graph-Search aufgelöst werden kann (z.B. Externe, Gastaccount mit anderem DisplayName-Format), verliert der Flow sie stumm. Besser wäre ein zweiter `Create_FYI_Email`-Block in diesem Zweig, der eine FYI-Mail mit `RecipientEmail = "nicht aufgelöst — bitte manuell prüfen: <DisplayName>"` an den Organizer schickt.
 - **Mehrere Recipients:** Die `bodyPreview`-Parsing-Logik nimmt aktuell nur den ersten Namen. Wenn jemand den Termin an mehrere Personen gleichzeitig forwarded (z.B. "Mauß, Anna Kristina; Müller, Max"), sollte eine Apply-to-each-Schleife über `split(outputs('Recipient_DisplayName'), ';')` iterieren.
 - **Subject-Parsing bei `:` im Event-Titel:** `Cleaned_Subject` per `substring(..., indexOf(':'))` schneidet nach dem **ersten** `:`. Bei Events wie `DEX: Sommer-Event` landet nur `Sommer-Event` im Cleaned_Subject und `Get_DEX_Event` findet nichts. Robustere Variante: per `add(indexOf('notification:'), 13)` bzw. `add(indexOf('benachrichtigung:'), 17)`.
+
+
+---
+
+## UI-Anleitung 2026-07-XX (v12.10) — Warteliste-Sortierung im DEX_IDReorder-Flow auf TeilnehmerID umstellen
+
+Seit App-v12.10 sortiert die App-seitige Promote-Logik die Warteliste
+nach `TeilnehmerID asc` statt `RegistrationDate asc`. Damit auch der
+**User-Self-Cancel-Pfad** (= Power-Automate-Flow
+`DEX_IDReorder_TeilnehmerIDs`) konsistent nachrückt, muss in jedem
+Nachrück-Branch die Order-By-Klausel der Get-Items-Action umgestellt
+werden.
+
+**Hintergrund:** Nach jedem Lauf des Flows sind die TeilnehmerIDs
+durchlaufend (1..N aktiv, N+1..M Warteliste). Wenn jetzt Platz 100
+frei wird, soll TID 101 nachrücken — auch wenn TID 103 zeitlich
+gesehen früher registriert war (z.B. nach Group-Switch oder
+Reaktivierung). Mit `RegistrationDate`-Sortierung würde TID 103
+fälschlich vorrücken.
+
+**Betroffene Branches im Flow:**
+
+1. **`Check_Nachruecken`** (Standard-Single-Capacity-Pfad)
+   → `Get_Erster_Warteliste` (oder analog benannte Get-Items-Action)
+2. **`Check_Nachruecken_Durchstarter`** (Split-Capacity, Durchstarter)
+   → `Get_Erster_Warteliste_Durchstarter`
+3. **`Check_Nachruecken_Funstarter`** (Split-Capacity, Funstarter)
+   → `Get_Erster_Warteliste_Funstarter`
+4. **`Check_Nachruecken_Shared`** (Shared-Waitlist-Modus, v10.20)
+   → `Get_Erster_Warteliste_Shared`
+
+**UI-Schritte pro Branch (Power-Automate-Editor):**
+
+1. Im linken Aktionsbaum den betroffenen Branch öffnen
+2. Auf die Get-Items-Action (z.B. `Get_Erster_Warteliste`) klicken
+3. Im **Show advanced options**-Block den Wert von **Order by** finden
+4. Aktueller Wert: `RegistrationDate asc`
+5. Diesen Wert **leeren** und neu eintippen: `TeilnehmerID asc`
+6. Filter-Query (Status eq 'Warteliste' etc.) **NICHT ändern**
+7. Auf Speichern klicken (oben rechts)
+
+**Wichtig:** `TeilnehmerID` ist ein Number-Feld in der Subsite-
+`Teilnehmer`-Liste. SP-OData-Sortierung auf Number-Feldern funktioniert
+direkt — keine Konvertierung nötig.
+
+**Sobald die Änderung im Tenant durchgeklickt und gespeichert ist:**
+bitte den neuen Flow-JSON exportieren und in `docs/flow-jsons.md` unter
+dem Abschnitt `DEX_IDReorder_TeilnehmerIDs` einpflegen.

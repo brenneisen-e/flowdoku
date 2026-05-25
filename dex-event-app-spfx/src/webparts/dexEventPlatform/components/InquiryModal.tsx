@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
+import Modal from './Modal';
 
 interface InquiryModalProps {
   open: boolean;
@@ -51,26 +52,14 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
     }
   }
 
-  if (!open) return null;
+  // v13.1: Modal-Wrapper-Komponente — kapselt Backdrop/Escape/Padding.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={() => { if (!sending) onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: 16,
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      dismissable={!sending}
+      ariaLabel={locale === 'de' ? 'DEX-Anfrage' : 'DEX inquiry'}
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16, padding: '24px 28px',
-          maxWidth: 480, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}
-      >
         <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--dex-gray-800)' }}>
           {locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
         </h2>
@@ -139,7 +128,6 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
               : (locale === 'de' ? 'Anfrage senden' : 'Send inquiry')}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
