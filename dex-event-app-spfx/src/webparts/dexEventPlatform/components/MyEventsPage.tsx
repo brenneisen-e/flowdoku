@@ -20,6 +20,7 @@ import PdfViewer from './PdfViewer';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
+import Modal from './Modal';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -2044,27 +2045,13 @@ export default function MyEventsPage(): React.ReactElement {
       {/* v11.83: Add-Member-Modal (Team-Lead fuegt nachtraeglich ein
           Mitglied hinzu). Layout-Logik analog zum cascadeDialog. */}
       {addMemberDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => { if (!addMemberBusy) closeAddMemberDialog(); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(0,0,0,0.55)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
+        <Modal
+          open={true}
+          onClose={closeAddMemberDialog}
+          dismissable={!addMemberBusy}
+          maxWidth={540}
+          ariaLabel={isDe ? 'Mitglied zum Team hinzufuegen' : 'Add member to team'}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 12, padding: '28px 32px',
-              maxWidth: 540, width: '100%',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
-              display: 'flex', flexDirection: 'column', gap: 14,
-              maxHeight: '90vh', overflowY: 'auto',
-            }}
-          >
             <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
               {isDe ? 'Mitglied zum Team hinzufuegen' : 'Add member to team'}
             </h3>
@@ -2235,8 +2222,7 @@ export default function MyEventsPage(): React.ReactElement {
                   : (isDe ? 'Hinzufuegen' : 'Add')}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
       {/* v11.86: Manage-Team-Modal — Lead bearbeitet sein Team
           (Mitglieder abmelden). Pflicht-Confirm vor dem eigentlichen

@@ -17,6 +17,7 @@ import { Trash2, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
+import Modal from './Modal';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);

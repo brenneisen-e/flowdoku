@@ -24,6 +24,7 @@ import { applyEventTemplateOverride, formatOrganizerList } from '../context/Even
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
+import Modal from './Modal';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {

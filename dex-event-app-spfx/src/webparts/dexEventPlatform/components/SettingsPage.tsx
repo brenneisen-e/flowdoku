@@ -11,6 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Trash2, X } from './Icons';
+import Modal from './Modal';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -697,25 +698,16 @@ export default function SettingsPage(): React.ReactElement {
       </div>
 
       {/* Onboarding-Mail-Prompt nach erfolgreicher Rollen-Zuweisung */}
-      {onboardingPrompt && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.45)', zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}
-          onClick={() => { if (!isSendingOnboarding) setOnboardingPrompt(null); }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--dex-radius, 8px)',
-              maxWidth: 460, width: '100%', padding: 24,
-              boxShadow: 'var(--dex-shadow-hover)',
-            }}
-          >
+      {/* v13.4: Onboarding-Prompt jetzt über das <Modal>-Wrapper-Component. */}
+      <Modal
+        open={!!onboardingPrompt}
+        onClose={() => setOnboardingPrompt(null)}
+        dismissable={!isSendingOnboarding}
+        maxWidth={460}
+        ariaLabel="Onboarding-Mail senden"
+      >
+        {onboardingPrompt && (
+          <>
             <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>
               Onboarding-Mail an {onboardingPrompt.name}?
             </h3>
@@ -746,9 +738,9 @@ export default function SettingsPage(): React.ReactElement {
                 {isSendingOnboarding ? 'Sende...' : 'Mail senden'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
