@@ -808,6 +808,7 @@ export default function EventCreationPage(): React.ReactElement {
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
           _subEventsOnlyMode, _childEventTerm,
+          _inheritFlags,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -816,6 +817,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
+        void _inheritFlags;
         return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
@@ -909,6 +911,15 @@ export default function EventCreationPage(): React.ReactElement {
     initialStartDate?: string;
     initialEndDate?: string;
     initialOutlookBody?: string;
+    /** v15.0: Inheritance-Flags fuer pro-Sub-Event-Tabs in Schritt 3
+     *  (Ort), Schritt 4 (Kapazitaet) und Schritt 6 (Felder). Werden im
+     *  EmailTemplateOverrides-JSON als `_inheritFlags`-Piggyback
+     *  persistiert (analog zu _eventLogo etc.). Default: bei neuen
+     *  Sub-Events alle drei auf `true` — die Felder werden dann vom
+     *  Hauptevent uebernommen und im UI ausgegraut. */
+    inheritLocationFromParent?: boolean;
+    inheritCapacityFromParent?: boolean;
+    inheritCustomFieldsFromParent?: boolean;
   }
   const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
     if (!editEvent) return [];
@@ -922,10 +933,15 @@ export default function EventCreationPage(): React.ReactElement {
       let emailLogo = '';
       let outlookLogo = '';
       let subOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
+      // v15.0: Inheritance-Flags aus dem Piggyback-JSON lesen. Wenn der
+      // Flag nicht persistiert wurde (alte Events) faellt die App auf
+      // datenbasierte Heuristik zurueck (siehe weiter unten).
+      let inheritFlagsRaw: { capacity?: boolean; fields?: boolean; location?: boolean } | undefined;
       try {
         const ov = JSON.parse(k.emailTemplateOverrides || '{}') as Record<string, unknown>;
         emailLogo = (ov?._eventLogo as string) || '';
         outlookLogo = (ov?._outlookLogo as string) || '';
+        inheritFlagsRaw = (ov?._inheritFlags as { capacity?: boolean; fields?: boolean; location?: boolean } | undefined);
         // Piggyback-Keys (mit Unterstrich-Prefix) rausstrippen, der Rest sind
         // die echten Mail-Template-Overrides pro TemplateType.
         const filtered: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
@@ -943,6 +959,19 @@ export default function EventCreationPage(): React.ReactElement {
         subOverrides = filtered;
       } catch { /* */ }
       const parsedHeads = parseOutlookHeadings(k.outlookBody || '');
+      // v15.0: Inheritance-Heuristik fuer Bestands-Events: wenn das
+      // Piggyback-Flag fehlt UND das jeweilige Datenfeld nicht-leer ist,
+      // gilt es als „eigener Wert" (nicht vom Hauptevent geerbt). Wenn
+      // das Feld leer ist, default = uebernehmen.
+      const inheritCap = inheritFlagsRaw && typeof inheritFlagsRaw.capacity === 'boolean'
+        ? inheritFlagsRaw.capacity
+        : !(k.maxParticipants && k.maxParticipants > 0);
+      const inheritFields = inheritFlagsRaw && typeof inheritFlagsRaw.fields === 'boolean'
+        ? inheritFlagsRaw.fields
+        : !((k.eventSpecificFields || []).length > 0);
+      const inheritLoc = inheritFlagsRaw && typeof inheritFlagsRaw.location === 'boolean'
+        ? inheritFlagsRaw.location
+        : !(k.location && k.location.trim().length > 0);
       return {
       id: k.id,
       dbId: k.id,
@@ -988,6 +1017,10 @@ export default function EventCreationPage(): React.ReactElement {
         helpText: f.helpText,
         showIf: f.showIf,
       })),
+      // v15.0: Inheritance-Flags fuer pro-Sub-Event-Tabs.
+      inheritLocationFromParent: inheritLoc,
+      inheritCapacityFromParent: inheritCap,
+      inheritCustomFieldsFromParent: inheritFields,
     };
     });
   });
@@ -996,6 +1029,15 @@ export default function EventCreationPage(): React.ReactElement {
   // dem Top-Level-State und der jeweiligen Sub-Event-Slice gespiegelt — siehe
   // switchCommTab-Helper weiter unten.
   const [activeCommTabIdx, setActiveCommTabIdx] = React.useState<number>(0);
+  // v15.0: pro-Event-Tabs in Schritt 3 (Ort), Schritt 4 (Kapazitaet) und
+  // Schritt 6 (Felder). 0 = Haupt-Event, N>0 = subEvents[N-1]. Im
+  // Gegensatz zu Step 6 (Kommunikation) gibt es hier KEIN Mirror-Pattern,
+  // weil die per-Tab-Werte direkt im subEvents[]-State (location,
+  // maxParticipants, customFields) bzw. in den Top-Level-States stehen —
+  // jedes Eingabefeld liest/schreibt direkt aus seinem Zielort.
+  const [activeLocationTabIdx, setActiveLocationTabIdx] = React.useState<number>(0);
+  const [activeCapacityTabIdx, setActiveCapacityTabIdx] = React.useState<number>(0);
+  const [activeFieldsTabIdx, setActiveFieldsTabIdx] = React.useState<number>(0);
   // v11.60: synchroner Spiegel von subEvents fuer Save/Detect-Pfade. React-
   // State-Updates sind async — wenn flushActiveCommTabToState() per
   // setSubEvents(prev=>...) den aktiven Tab in die jeweilige Slice
@@ -1988,20 +2030,35 @@ export default function EventCreationPage(): React.ReactElement {
       // + ab v14.4 die echten Mail-Text-Overrides pro Sub-Event
       // (Anmeldung/Warteliste/Abmeldung/Nachruecken).
       const subDraftOverrides = draft.emailTemplateOverrides || {};
+      // v15.0: Inheritance-Flags pro Sub-Event als Piggyback persistieren,
+      // damit der naechste Load die UI-Toggles korrekt wiederherstellen
+      // kann (statt nur datenbasierte Heuristik).
+      const inheritFlags: Record<string, boolean> = {};
+      if (typeof draft.inheritCapacityFromParent === 'boolean') inheritFlags.capacity = draft.inheritCapacityFromParent;
+      if (typeof draft.inheritCustomFieldsFromParent === 'boolean') inheritFlags.fields = draft.inheritCustomFieldsFromParent;
+      if (typeof draft.inheritLocationFromParent === 'boolean') inheritFlags.location = draft.inheritLocationFromParent;
       const subOverridesMerged: Record<string, unknown> = {
         ...subDraftOverrides,
         ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
         ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
+        ...(Object.keys(inheritFlags).length > 0 ? { _inheritFlags: inheritFlags } : {}),
       };
       const subEmailOverrides = Object.keys(subOverridesMerged).length > 0
         ? JSON.stringify(subOverridesMerged)
         : '';
+      // v15.0: bei aktivem inherit-Flag wird das Datenfeld leer geschrieben
+      // (Location/MaxParticipants=0/leere CustomFields-Array). Beim Lesen
+      // erkennt die App das (Datenfeld leer + Flag true) und faellt im
+      // Frontend auf den Hauptevent-Wert zurueck.
+      const effLocation = draft.inheritLocationFromParent ? '' : (draft.location || '');
+      const effMaxParticipants = draft.inheritCapacityFromParent ? 0 : (draft.maxParticipants || 0);
+      const effCustomFields = draft.inheritCustomFieldsFromParent ? [] : (draft.customFields || []);
       const childPayload = {
         title: draft.title.trim(),
         type: 'Other',
         status: 'Active',
         description: draft.description || '',
-        location: draft.location || '',
+        location: effLocation,
         locationAddress: '',
         locationFilter: locationFilter,
         audience: audience,
@@ -2010,7 +2067,7 @@ export default function EventCreationPage(): React.ReactElement {
         endDate: draft.endDate || '',
         registrationDeadline: draft.registrationDeadline || '',
         lastDeregisterDate: '',
-        maxParticipants: draft.maxParticipants || 0,
+        maxParticipants: effMaxParticipants,
         waitlistEnabled: true,
         eventImageUrl: '',
         organizer: sanitizedOrgPair.orgString,
@@ -2027,7 +2084,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails: !!draft.disableEmails,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
-        customFields: draft.customFields || [],
+        customFields: effCustomFields,
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
@@ -3586,12 +3643,21 @@ export default function EventCreationPage(): React.ReactElement {
       setActiveCommTabIdx(0);
     }
   }, [subEvents.length, activeCommTabIdx]);
+  // v15.0: gleiche Range-Garantie fuer die neuen Tab-Sets in den
+  // Steps 3 (Ort), 4 (Kapazitaet) und 6 (Felder).
+  React.useEffect(() => {
+    if (activeLocationTabIdx > subEvents.length) setActiveLocationTabIdx(0);
+    if (activeCapacityTabIdx > subEvents.length) setActiveCapacityTabIdx(0);
+    if (activeFieldsTabIdx > subEvents.length) setActiveFieldsTabIdx(0);
+  }, [subEvents.length, activeLocationTabIdx, activeCapacityTabIdx, activeFieldsTabIdx]);
 
-  // Templates laden wenn Step 7 (Kommunikation, currentStep === 6) erreicht wird
+  // v15: Templates laden wenn Step 6 (Kommunikation, currentStep === 5) erreicht
+  // wird. Index hat sich verschoben, weil Team-Anmeldung jetzt NACH Kommunikation
+  // kommt (siehe steps-Array).
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
   // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
   React.useEffect(() => {
-    if (currentStep === 6 && emailTemplates.length === 0) {
+    if (currentStep === 5 && emailTemplates.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
@@ -3746,38 +3812,59 @@ export default function EventCreationPage(): React.ReactElement {
       'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
     ],
     [
-      'Veranstaltungsort und Adresse erfassen',
-      'Start- und End-Datum (mit Uhrzeit) festlegen',
-      'Anmeldefrist setzen — nach diesem Datum keine neuen Registrierungen mehr',
-      'Optional: Letzte Abmeldemöglichkeit — danach können sich Teilnehmer nicht mehr selbst abmelden',
+      // v15 Step 2: Sub-Events
+      'Optional Sub-Events (Workshops, Sessions, Programmpunkte) anlegen — jeder bekommt im Anmeldeformular eine eigene Anmelde-Checkbox',
+      'Bezeichnung wählen: Sub-Events / Workshops / Sessions / Programmpunkte / Event-Sections / eigene Bezeichnung',
+      'Anmelde-Modus: zusätzlich zum Hauptevent ODER nur für Sub-Events (Hauptevent-Anmeldung dann ausgeblendet)',
+      'Ort, Kapazität, Anmeldefrist und Felder pro Sub-Event werden in den jeweiligen Folge-Schritten (3, 4, 5) per Tab gepflegt',
     ],
     [
-      'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
+      // v15 Step 3: Ort & Programm (mit Tabs pro Sub-Event)
+      'Veranstaltungsort und Adresse erfassen — pro Sub-Event optional eigener Ort (per Tab)',
+      'Start- und End-Datum (mit Uhrzeit) festlegen',
+      'Agenda mehrtägig pflegen (Drag-Reihenfolge pro Tag)',
+      'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
+    ],
+    [
+      // v15 Step 4: Kapazität & Sichtbarkeit (mit Tabs pro Sub-Event)
+      'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt) — pro Sub-Event eigene Kapazität per Tab (Default: vom Hauptevent übernehmen)',
+      'Anmeldefrist setzen — pro Sub-Event eigene Deadline möglich (leer = Hauptevent-Deadline gilt)',
+      'Optional: Letzte Abmeldemöglichkeit — danach können sich Teilnehmer nicht mehr selbst abmelden',
       'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
       'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
-      'Pflichtfelder pro Gruppe in Schritt 6 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
     ],
     [
+      // v15 Step 5: Felder (mit Tabs pro Sub-Event)
       'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
       'Mehrfachauswahl bei Dropdowns (z.B. mehrere Allergien anhaken)',
       'Pflichtfeld setzen (rotes Sternchen, Anmeldung blockiert wenn leer)',
       'Beschreibung pro Feld — landet als „i"-Tooltip neben dem Feld-Label',
       'Sichtbarkeitsbedingung: Feld nur dann anzeigen wenn eine andere Frage einen bestimmten Wert hat (z.B. „Zimmerart nur fragen wenn Hotel = ja")',
-      'Reihenfolge per Drag oder Pfeilen — die Nummerierung passt sich automatisch an',
+      'Pro Sub-Event eigene Felder per Tab (Default: vom Hauptevent übernehmen)',
     ],
     [
+      // v15 Step 6: Kommunikation
       'E-Mail-Sprache (DE/EN) für die automatischen Mails an die Teilnehmer wählen',
       'Pro Mail-Template (Anmeldung, Storno, Warteliste, Erinnerung, QR-Code…) den Subject/Heading/Body anpassen — mit Live-Vorschau',
       'Eigenes Logo / Header-Bild für Mail und Outlook-Termin hochladen',
       'Outlook-Termin-Body individuell gestalten (Live-Vorschau zeigt wie das Outlook-Element später aussieht)',
       'Benachrichtigungen optional komplett deaktivieren — z.B. für interne Entwurfs-Events',
+      'Pro Sub-Event eigene Mail-Texte + Outlook-Body + Disable-Toggles per Tab',
     ],
     [
-      'Programm / Agenda pflegen (mehrtägig möglich, Drag-Reihenfolge pro Tag)',
-      'Transferzeiten — Bus / Shuttle / Bahn von/zum Veranstaltungsort',
+      // v15 Step 7: Team-Anmeldung
+      'Team-Anmeldung erlauben — ein Teilnehmer kann sich für sich + sein Team gleichzeitig anmelden',
+      'Team-Größe festlegen (2-N Personen)',
+      'Optional Team-Namen abfragen — z.B. für Quiz- oder Lauf-Teams',
+      'Beitritts-Modus: nur komplette Teams ODER auch Teil-Teams erlaubt',
+      'Optional: offene Slots öffentlich sichtbar — andere Teilnehmer können beitreten (ggf. mit Lead-Approval)',
+    ],
+    [
+      // v15 Step 8: Dokumente
       'Dokumente hochladen (PDF) — Teilnehmer sehen sie auf MyEvents als Inline-Vorschau oder Download',
     ],
     [
+      // v15 Step 9: Fun-Zone
       'Quiz-Fragen für das Event anlegen — Multiple-Choice mit beliebig vielen Antwortoptionen',
       'Pro Frage optional ein Bild hochladen (Logo, Foto-Quiz, etc.)',
       'Mehrere richtige Antworten möglich (Mehrfachauswahl) — werden alle für volle Punktzahl gebraucht',
@@ -3795,38 +3882,59 @@ export default function EventCreationPage(): React.ReactElement {
       'Set location filter and audience — who sees the event in the list',
     ],
     [
-      'Set event location and address',
-      'Set start and end date (incl. time)',
-      'Set the registration deadline — no new registrations after this date',
-      'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+      // v15 Step 2: Sub-Events
+      'Optionally add sub-events (workshops, sessions, program items) — each gets its own registration checkbox in the attendee form',
+      'Pick the term: Sub-Events / Workshops / Sessions / Programmpunkte / Event-Sections / custom',
+      'Registration mode: in addition to the main event OR sub-events only (main-event registration hidden)',
+      'Location, capacity, deadline and fields per sub-event are configured in the following steps (3, 4, 5) via tabs',
     ],
     [
-      'Set the maximum number of attendees (or Unlimited)',
+      // v15 Step 3: Location & Programme (with tabs per sub-event)
+      'Set event location and address — per sub-event an own location is possible (via tab)',
+      'Set start and end date (incl. time)',
+      'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
+      'Transfer times — bus / shuttle / train to and from the venue',
+    ],
+    [
+      // v15 Step 4: Capacity & Visibility (with tabs per sub-event)
+      'Set the maximum number of attendees (or Unlimited) — per sub-event own capacity via tab (default: inherit from main event)',
+      'Set the registration deadline — per sub-event own deadline possible (empty = main-event deadline applies)',
+      'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
       'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
       'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
-      'Required fields per group in step 4 (e.g. proof of performance only for one group)',
     ],
     [
+      // v15 Step 5: Fields (with tabs per sub-event)
       'Pick a field type: text, number, dropdown, checkbox, people search or roommate (double room)',
       'Multi-select for dropdowns (e.g. tick multiple allergies)',
       'Mark required (red asterisk, blocks submit when empty)',
       'Description per field — appears as „i" tooltip next to the field label',
       'Visibility condition: only show this field when another question has a specific value (e.g. „Only ask room type if Hotel = yes")',
-      'Reordering via drag or arrows — numbering updates automatically',
+      'Per sub-event own fields via tab (default: inherit from main event)',
     ],
     [
+      // v15 Step 6: Communication
       'Pick the email language (DE/EN) for automatic emails to attendees',
       'Edit subject / heading / body per email template (registration, cancellation, waitlist, reminder, QR code…) — with live preview',
       'Upload a custom logo / header image for the email and Outlook event',
       'Customise the Outlook event body (live preview shows how the Outlook item will appear)',
       'Optionally disable notifications entirely — e.g. for internal draft events',
+      'Per sub-event own mail texts + Outlook body + disable toggles via tab',
     ],
     [
-      'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
-      'Transfer times — bus / shuttle / train to and from the venue',
+      // v15 Step 7: Team Registration
+      'Allow team registration — an attendee can register themselves + their team at once',
+      'Set team size (2-N people)',
+      'Optionally ask for a team name — e.g. quiz or running teams',
+      'Join mode: complete teams only OR partial teams allowed',
+      'Optional: open slots publicly visible — other attendees can join (with optional lead approval)',
+    ],
+    [
+      // v15 Step 8: Documents
       'Upload documents (PDF) — attendees see them on MyEvents as inline preview or download',
     ],
     [
+      // v15 Step 9: Fun-Zone
       'Create quiz questions for the event — multiple choice with any number of answer options',
       'Optionally upload an image per question (logo, photo quiz, etc.)',
       'Multiple correct answers are supported — all of them must be picked for full points',
@@ -3837,16 +3945,21 @@ export default function EventCreationPage(): React.ReactElement {
 
   const steps = [
     { label: t('create.step.basics'), icon: '1' },
-    { label: t('create.step.datetime'), icon: '2' },
-    // v14.8: neuer Schritt 3 für Sub-Events. Die folgenden Steps
-    // ruecken um eins nach hinten.
-    { label: t('create.step.subevents'), icon: '3' },
+    // v15.0: Sub-Events kommen vor „Ort & Programm". Hintergrund:
+    // Steps 3-5 (Ort, Kapazität, Felder) zeigen pro-Sub-Event-Tabs,
+    // damit der Organizer pro Sub-Event eigenes Ort / eigene Kapazität /
+    // eigene Felder pflegen kann — dafür müssen die Sub-Events schon
+    // angelegt sein, deshalb ist Step 2 der Sub-Events-Step.
+    { label: t('create.step.subevents'), icon: '2' },
+    { label: t('create.step.datetime'), icon: '3' },
     { label: t('create.step.capacity'), icon: '4' },
-    // v11.80: neuer Schritt 5 für Team-Anmeldung. Die folgenden Steps
-    // ruecken um eins nach hinten.
-    { label: t('create.step.team'), icon: '5' },
-    { label: t('create.step.fields'), icon: '6' },
-    { label: t('create.step.communication'), icon: '7' },
+    { label: t('create.step.fields'), icon: '5' },
+    { label: t('create.step.communication'), icon: '6' },
+    // v15.0: Team-Anmeldung kommt jetzt nach Kommunikation (vorher nach
+    // Kapazität). Reihenfolge spiegelt den realen Setup-Workflow besser
+    // wider: erst die Komm-Texte stehen, dann entscheidet der Organizer
+    // ob Team-Anmeldung relevant ist.
+    { label: t('create.step.team'), icon: '7' },
     { label: t('create.step.documents'), icon: '8' },
     { label: t('create.step.funzone'), icon: '9' },
   ];
@@ -3873,13 +3986,14 @@ export default function EventCreationPage(): React.ReactElement {
         // v9.14: description ist optional — kein Pflichtfeld mehr
         break;
       case 1:
-        // Schritt 2 (Ort & Programm) ist ohne Pflicht-Validierung —
-        // Adresse / Agenda / Transferzeiten sind alle optional. Datum-
-        // Checks laufen jetzt in case 0.
+        // Schritt 2 (Sub-Events) ist ohne Pflicht-Validierung — der
+        // Organizer kann den Schritt auch komplett leer lassen.
+        // (v15.0: Sub-Events kommen jetzt VOR Ort & Programm.)
         break;
       case 2:
-        // Schritt 3 (Sub-Events) ist ohne Pflicht-Validierung — der
-        // Organizer kann den Schritt auch komplett leer lassen.
+        // Schritt 3 (Ort & Programm) ist ohne Pflicht-Validierung —
+        // Adresse / Agenda / Transferzeiten sind alle optional. Datum-
+        // Checks laufen in case 0 (Grundlagen).
         break;
       case 3:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
@@ -3909,6 +4023,79 @@ export default function EventCreationPage(): React.ReactElement {
   // bleibt aus Kompatibilitaetsgruenden mit den 7 bestehenden Call-Sites.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderStepIntro = (_bulletsDe: string[], _bulletsEn: string[]): React.ReactElement | null => null;
+
+  // v15.0: kleine TabStrip-Komponente fuer pro-Sub-Event-Tabs in den
+  // Schritten 3 (Ort), 4 (Kapazitaet) und 6 (Felder). Visuell konsistent
+  // mit dem Komm-Tab-Pattern in Schritt 7 (gruene Unterstreichung des
+  // aktiven Tabs, leichte Hover/Active-Styles). Tab 0 ist immer das
+  // Haupt-Event, Tabs 1..N entsprechen `subEvents[0..N-1]`.
+  const renderPerEventTabStrip = (
+    activeIdx: number,
+    onChange: (idx: number) => void,
+    mainLabel: string,
+    ariaLabel: string,
+  ): React.ReactElement | null => {
+    if (subEvents.length === 0) return null;
+    const tabs: Array<{ label: string; isMain: boolean }> = [
+      { label: mainLabel, isMain: true },
+      ...subEvents.map(s => ({
+        label: (s.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(),
+        isMain: false,
+      })),
+    ];
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <div
+          role="tablist"
+          aria-label={ariaLabel}
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
+            borderBottom: '1px solid var(--dex-gray-200)',
+            paddingBottom: 0,
+          }}
+        >
+          {tabs.map((tab, tabIdx) => {
+            const active = tabIdx === activeIdx;
+            return (
+              <button
+                key={tabIdx}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onChange(tabIdx)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px',
+                  border: '1px solid var(--dex-gray-200)',
+                  borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                  borderRadius: '8px 8px 0 0',
+                  background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                  color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                  fontWeight: active ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  marginBottom: -1,
+                  whiteSpace: 'nowrap',
+                  maxWidth: 280,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                }}
+                title={tab.label}
+              >
+                {tab.isMain && (
+                  <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                    {isDe ? 'Haupt' : 'Main'}
+                  </span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   // Nutzungsbedingungen-Modal: zeigt sich beim ersten Aufruf der
   // Create-Event-Seite. Nach Akzeptieren wird die Maske weggeklappt; bei
@@ -4320,7 +4507,12 @@ export default function EventCreationPage(): React.ReactElement {
                         padding: '12px 16px',
                         borderRadius: 8,
                         boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
-                        fontFamily: 'inherit',
+                        // v15: explizit Sans-Serif — vorher 'inherit', was
+                        // den serif-Font des parent „i"-Icons (s. unten
+                        // fontFamily:'serif' fuer das i-Glyph) übernommen
+                        // hat und den ganzen Tooltip Times-artig erscheinen
+                        // ließ. Jetzt 1:1 wie InfoTooltip.
+                        fontFamily: 'Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif',
                         fontSize: '0.82rem',
                         lineHeight: 1.55,
                         fontWeight: 400,
@@ -5514,10 +5706,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>
 
-              {/* ===== Step 1: Ort & Programm ===== */}
-              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              {/* ===== Step 3 (v15.0: vormals Step 2): Ort & Programm ===== */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 2 — Ort & Programm' : 'Step 2 — Location & Programme'}
+                {isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & Programme'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -5554,6 +5746,72 @@ export default function EventCreationPage(): React.ReactElement {
                     : <>All inputs in this step — <strong>venue, address, agenda and transfer times</strong> — are shown to attendees directly on the <strong>registration page</strong> and later under <strong>{'„My Events“'}</strong>.</>}
                 </div>
               </div>
+
+              {/* v15.0: pro-Sub-Event-Tabs fuer den Ort. Tab 0 = Haupt-Event
+                  (komplette Ort/Adresse/Agenda/Transferzeiten-UI). Tabs N>0 =
+                  schlanke Ort-only-UI pro Sub-Event mit Inheritance-Toggle.
+                  Agenda + Transferzeiten bleiben Top-Level — die werden pro
+                  Sub-Event NICHT gepflegt. */}
+              {renderPerEventTabStrip(
+                activeLocationTabIdx,
+                setActiveLocationTabIdx,
+                `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
+                isDe ? 'Event-Tab wechseln (Ort & Programm)' : 'Switch event tab (location & programme)'
+              )}
+
+              {activeLocationTabIdx > 0 && (() => {
+                const seIdx = activeLocationTabIdx - 1;
+                const se = subEvents[seIdx];
+                if (!se) return null;
+                const inherit = se.inheritLocationFromParent !== false;
+                return (
+                  <div>
+                    <div style={{
+                      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                      padding: '14px 16px', marginBottom: 16,
+                      border: '1px solid var(--dex-gray-200)',
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={inherit}
+                          onChange={e => {
+                            const v = e.target.checked;
+                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritLocationFromParent: v } : x));
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                          {isDe ? 'Ort vom Hauptevent übernehmen' : 'Use main event location'}
+                        </span>
+                      </label>
+                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Standard. Deaktivieren, wenn dieses Sub-Event an einem anderen Ort stattfindet.'
+                          : 'Default. Disable if this sub-event takes place at a different location.'}
+                      </p>
+                    </div>
+                    <div className="form-group" style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                      <label className="form-label">
+                        {isDe ? 'Ort dieses Sub-Events' : 'Location of this sub-event'}
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={se.location || ''}
+                        placeholder={t('create.subevents.location.placeholder')}
+                        disabled={inherit}
+                        onChange={e => {
+                          const v = e.target.value;
+                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, location: v } : x));
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ display: activeLocationTabIdx === 0 ? 'block' : 'none' }}>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={9} />
@@ -5829,15 +6087,19 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               </div>
 
-              </div>{/* close Step 2 (Ort & Programm) */}
+              </div>{/* v15.0: close activeLocationTabIdx===0 wrapper (Top-Level Ort/Adresse/Agenda/Transfer) */}
 
-              {/* ===== Step 3 (v14.8, NEU): Sub-Events =====
+              </div>{/* close Step 3 (Ort & Programm) */}
+
+              {/* ===== Step 2 (v15.0, vormals Step 3): Sub-Events =====
                   Sub-Events (Workshops / Sessions / Programmpunkte), plus
                   Bezeichnungs-Dropdown und Anmelde-Modus (Hauptevent +
-                  Sub-Events vs. nur Sub-Events). */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+                  Sub-Events vs. nur Sub-Events).
+                  v15.0: vorgezogen vor „Ort & Programm", damit die folgenden
+                  Steps pro-Sub-Event-Tabs anbieten koennen. */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events'}
+                {isDe ? 'Schritt 2 — Sub-Events' : 'Step 2 — Sub-events'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -5905,7 +6167,7 @@ export default function EventCreationPage(): React.ReactElement {
                       >
                         {presets.map(p => (
                           <option key={p.key} value={p.key}>
-                            {p.singular} / {p.plural}
+                            {p.plural}
                           </option>
                         ))}
                         <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
@@ -5964,13 +6226,17 @@ export default function EventCreationPage(): React.ReactElement {
                   )} />
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  {/* v14.9: Radios mit accentColor in der App-Grünfärbung +
+                      alignItems:center, damit der Kreis exakt auf der
+                      Mittellinie des Labels sitzt (vorher Browser-Blau und
+                      leicht oberhalb der Textbaseline). */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="subEventsMode"
                       checked={!subEventsOnlyMode}
                       onChange={() => setSubEventsOnlyMode(false)}
-                      style={{ marginTop: 2 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
                     />
                     <span style={{ fontSize: '0.88rem' }}>
                       {isDe
@@ -5978,13 +6244,13 @@ export default function EventCreationPage(): React.ReactElement {
                         : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>}
                     </span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="subEventsMode"
                       checked={!!subEventsOnlyMode}
                       onChange={() => setSubEventsOnlyMode(true)}
-                      style={{ marginTop: 2 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
                     />
                     <span style={{ fontSize: '0.88rem' }}>
                       {isDe
@@ -6047,14 +6313,8 @@ export default function EventCreationPage(): React.ReactElement {
                       const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
                       return new Date(y, mo - 1, da, h, mi, 0, 0);
                     })() : null;
-                    const deadlineObj = se.registrationDeadline ? (() => {
-                      const local = isoToLocal(se.registrationDeadline);
-                      if (!local) return null;
-                      const [dp, tp] = local.split('T');
-                      const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10));
-                      const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
-                      return new Date(y, mo - 1, da, h, mi, 0, 0);
-                    })() : null;
+                    // v15: deadlineObj entfernt — der Anmeldeschluss-Editor
+                    // wandert nach Schritt 4 (Kapazität) in den Sub-Event-Tab.
                     const dateToBerlinIso = (d: Date | null): string => {
                       if (!d) return '';
                       const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -6095,13 +6355,11 @@ export default function EventCreationPage(): React.ReactElement {
                           </button>
                         </div>
 
-                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss + Max.
-                            v10.23: 4. Spalte von 120 auf 170 erweitert — der
-                            DE-Label "Max. Teilnehmer (0 = unbegrenzt)" ist
-                            sonst zu lang und der Hinweis "0 = unbegrenzt"
-                            wird ueber dem Eingabefeld in eine zweite Zeile
-                            umgebrochen. */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 170px', gap: 10, marginBottom: 10 }}>
+                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss.
+                            v15.0: „Max. Teilnehmer" entfaellt aus dieser
+                            Karte — Kapazitaet wird jetzt in Schritt 4
+                            (Kapazitaet) pro Sub-Event-Tab gepflegt. */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
                             <DatePicker
@@ -6150,62 +6408,16 @@ export default function EventCreationPage(): React.ReactElement {
                               autoComplete="off"
                             />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.deadline')}</label>
-                            <DatePicker
-                              selected={deadlineObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, registrationDeadline: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              placeholderText="Optional"
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              maxDate={startDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.max')}</label>
-                            <input
-                              type="number"
-                              min={0}
-                              className="form-input"
-                              value={se.maxParticipants || 0}
-                              onChange={e => {
-                                const v = parseInt(e.target.value, 10) || 0;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, maxParticipants: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
+                          {/* v15: Anmeldeschluss raus aus der Sub-Event-Card —
+                              wird jetzt in Schritt 4 (Kapazität & Sichtbarkeit)
+                              pro Sub-Event-Tab gepflegt (analog zur Kapazität
+                              mit „vom Hauptevent übernehmen"-Toggle). */}
                         </div>
 
-                        {/* Ort + Beschreibung */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.location')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.location || ''}
-                              placeholder={t('create.subevents.location.placeholder')}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, location: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
+                        {/* Beschreibung. v15.0: „Ort" entfaellt aus dieser
+                            Karte — wird in Schritt 3 (Ort & Programm) pro
+                            Sub-Event-Tab gepflegt. */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.description')}</label>
                             <input
@@ -6221,33 +6433,10 @@ export default function EventCreationPage(): React.ReactElement {
                           </div>
                         </div>
 
-                        {/* Toggles: Mails + Outlook */}
-                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingTop: 6, borderTop: '1px dashed var(--dex-gray-200)' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={!se.disableEmails}
-                              onChange={e => {
-                                const v = !e.target.checked;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableEmails: v } : x));
-                              }}
-                              style={{ width: 14, height: 14, cursor: 'pointer' }}
-                            />
-                            {t('create.subevents.emails')}
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={!se.disableOutlook}
-                              onChange={e => {
-                                const v = !e.target.checked;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, disableOutlook: v } : x));
-                              }}
-                              style={{ width: 14, height: 14, cursor: 'pointer' }}
-                            />
-                            {t('create.subevents.outlook')}
-                          </label>
-                        </div>
+                        {/* v15: Mail- und Outlook-Toggles raus aus der Sub-Event-
+                            Card — sie leben jetzt ausschliesslich in Schritt 6
+                            (Kommunikation) pro Sub-Event-Tab. Hier bleibt nur
+                            das absolut Notwendige zur Anlage des Sub-Events. */}
                       </div>
                     );
                   })}
@@ -6266,6 +6455,11 @@ export default function EventCreationPage(): React.ReactElement {
                         maxParticipants: 0,
                         disableEmails: false,
                         disableOutlook: false,
+                        // v15.0: neue Sub-Events erben Default-maessig alle
+                        // Per-Tab-Felder vom Hauptevent.
+                        inheritLocationFromParent: true,
+                        inheritCapacityFromParent: true,
+                        inheritCustomFieldsFromParent: true,
                       };
                       setSubEvents([...subEvents, newSub]);
                     }}
@@ -6273,7 +6467,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <Plus size={14} /> {t('create.subevents.add')}
                   </button>
                 </div>
-              </div>{/* close Step 3 (Sub-Events) */}
+              </div>{/* close Step 2 (Sub-Events) */}
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
@@ -6301,6 +6495,99 @@ export default function EventCreationPage(): React.ReactElement {
                   'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
                 ]
               )}
+
+              {/* v15.0: pro-Sub-Event-Tabs fuer Kapazitaet. Tab 0 = Haupt-
+                  Event (komplette Sichtbarkeit/Deadlines/MaxParticipants/
+                  Split-UI). Tabs N>0 = schlanke MaxParticipants-only-UI pro
+                  Sub-Event mit Inheritance-Toggle. Sichtbarkeit, Filter,
+                  Deadlines, Split-Capacity bleiben Top-Level — pro Sub-Event
+                  ist nur die Platzzahl relevant. */}
+              {renderPerEventTabStrip(
+                activeCapacityTabIdx,
+                setActiveCapacityTabIdx,
+                `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
+                isDe ? 'Event-Tab wechseln (Kapazität)' : 'Switch event tab (capacity)'
+              )}
+
+              {activeCapacityTabIdx > 0 && (() => {
+                const seIdx = activeCapacityTabIdx - 1;
+                const se = subEvents[seIdx];
+                if (!se) return null;
+                const inherit = se.inheritCapacityFromParent !== false;
+                return (
+                  <div>
+                    <div style={{
+                      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                      padding: '14px 16px', marginBottom: 16,
+                      border: '1px solid var(--dex-gray-200)',
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={inherit}
+                          onChange={e => {
+                            const v = e.target.checked;
+                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritCapacityFromParent: v } : x));
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                          {isDe ? 'Kapazität vom Hauptevent übernehmen' : 'Use main event capacity'}
+                        </span>
+                      </label>
+                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Standard. Deaktivieren, um für dieses Sub-Event eine eigene maximale Teilnehmerzahl festzulegen.'
+                          : 'Default. Disable to set a separate maximum attendee count for this sub-event.'}
+                      </p>
+                    </div>
+                    <div className="form-group" style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                      <label className="form-label">
+                        {isDe ? 'Max. Teilnehmer für dieses Sub-Event (0 = unbegrenzt)' : 'Max. attendees for this sub-event (0 = unlimited)'}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="form-input"
+                        value={se.maxParticipants || 0}
+                        disabled={inherit}
+                        onChange={e => {
+                          const v = parseInt(e.target.value, 10) || 0;
+                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, maxParticipants: v } : x));
+                        }}
+                        style={{ maxWidth: 200 }}
+                      />
+                    </div>
+                    {/* v15: Anmeldeschluss pro Sub-Event hier in Schritt 4
+                        Kapazität & Sichtbarkeit. Leerlassen → Hauptevent-Deadline
+                        wird beim Save übernommen (kein separater Inherit-Toggle
+                        nötig, das Verhalten ist über das leere Feld eindeutig). */}
+                    <div className="form-group">
+                      <label className="form-label">
+                        {isDe ? 'Anmeldeschluss für dieses Sub-Event (optional)' : 'Registration deadline for this sub-event (optional)'}
+                      </label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={se.registrationDeadline ? (isoToLocal(se.registrationDeadline) || '') : ''}
+                        onChange={e => {
+                          const v = e.target.value;
+                          const iso = v ? berlinLocalToUtcIso(v) : '';
+                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, registrationDeadline: iso } : x));
+                        }}
+                        style={{ maxWidth: 280 }}
+                      />
+                      <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Leer lassen → der Anmeldeschluss des Hauptevents gilt automatisch.'
+                          : 'Leave empty → the main event\'s deadline applies automatically.'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ display: activeCapacityTabIdx === 0 ? 'block' : 'none' }}>
 
               {/* v9.24: Sichtbarkeits-Steuerungen aus Step 0 hierher verschoben.
                   Die Frage 'wer darf das Event sehen' passt logisch zu Kapazitaet/Fristen
@@ -7254,15 +7541,18 @@ export default function EventCreationPage(): React.ReactElement {
               </label>
               </div>
 
-              </div>
+              </div>{/* v15.0: close activeCapacityTabIdx===0 wrapper (Top-Level Sichtbarkeit/Deadlines/Max/Split) */}
+
+              </div>{/* close Step 4 (Kapazitaet & Sichtbarkeit) */}
 
               {/* ===== Step 5 (v14.8: vormals Step 4): Team-Anmeldung =====
                   Renderblock für den Wizard-Schritt Team-Anmeldung.
                   Konfiguriert Team-Anmeldung-Toggle + Teamgröße +
-                  Team-Name-Frage. */}
-              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+                  Team-Name-Frage. v15: Index 4 → 6 (Team kommt jetzt nach
+                  Kommunikation). */}
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 5 — Team-Anmeldung' : 'Step 5 — Team Registration'}
+                {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -7500,30 +7790,17 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              {/* Hinweis-Box: tatsächliche Logik folgt mit v11.82+ */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '12px 14px', marginBottom: 16,
-                background: 'rgba(237,139,0,0.08)',
-                border: '1px solid var(--dex-orange, #ed8b00)',
-                borderRadius: 'var(--dex-radius, 12px)',
-                fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-                lineHeight: 1.55,
-              }}>
-                <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
-                <div>
-                  {isDe
-                    ? <><strong>Hinweis:</strong> Die tatsächliche Team-Anmelde-Logik (Multi-Person-Form, automatische Mails, Outlook-Einladungen, Slot-Beitritt) folgt mit dem nächsten Release. Aktuell wird diese Konfiguration nur gespeichert — die Auswirkung auf die Anmeldeseite kommt mit <strong>v11.82+</strong>.</>
-                    : <><strong>Note:</strong> The actual team registration logic (multi-person form, automatic emails, Outlook invites, slot join) will follow with the next release. Currently this configuration is only stored — the impact on the registration page comes with <strong>v11.82+</strong>.</>}
-                </div>
-              </div>
+              {/* v15: alter Hinweis „Logik folgt mit v11.82+" entfernt —
+                  die komplette Team-Anmelde-Logik (Multi-Person-Form,
+                  Mails, Outlook, Slot-Beitritt, Lead-Approval, Admin-Center-
+                  Team-Management) ist seit v11.82–v11.86 live. */}
 
               </div>
 
-              {/* ===== Step 6 (v14.8: vormals Step 5): Registrierungsfelder ===== */}
-              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+              {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields'}
+                {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -7531,41 +7808,10 @@ export default function EventCreationPage(): React.ReactElement {
                   : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 6 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
               </p>
 
-              {/* v11.80: Anrede-Toggle */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={askSalutation}
-                    onChange={e => setAskSalutation(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
-                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
-                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v15: Anrede-Toggle ist nach UNTEN den Datenschutz-Hinweis
+                  gewandert — Organizer soll erst den Sammle-keine-sensiblen-
+                  Daten-Hinweis lesen, dann erst die Optional-Anrede-Checkbox
+                  setzen. Siehe weiter unten. */}
 
               {renderStepIntro(
                 [
@@ -7614,6 +7860,44 @@ export default function EventCreationPage(): React.ReactElement {
                     ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
                     : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
                 </div>
+              </div>
+
+              {/* v15: Anrede-Toggle UNTER dem Datenschutz-Hinweis — Organizer
+                  liest erst die Pflicht zur Datensparsamkeit, danach kommt die
+                  optionale Frage „brauche ich überhaupt eine Anrede?". */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={askSalutation}
+                    onChange={e => setAskSalutation(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
+                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
+                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
@@ -7705,17 +7989,272 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
+              {/* v15.0: pro-Sub-Event-Tabs fuer Felder. Tab 0 = Haupt-Event
+                  (komplette Custom-Fields-Liste, B2Run-Startbloecke etc.).
+                  Tabs N>0 = schlanke per-Sub-Event-Felder-UI mit Inheritance-
+                  Toggle. Im subEventsOnlyMode wird Tab 0 zu „Uebergreifende
+                  Felder" / „Cross-cutting fields" — die wirken dann auf alle
+                  Sub-Event-Anmeldungen. */}
+              {renderPerEventTabStrip(
+                activeFieldsTabIdx,
+                setActiveFieldsTabIdx,
+                subEventsOnlyMode
+                  ? (isDe ? 'Übergreifende Felder' : 'Cross-cutting fields')
+                  : `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
+                isDe ? 'Event-Tab wechseln (Felder)' : 'Switch event tab (fields)'
+              )}
+
+              {activeFieldsTabIdx > 0 && (() => {
+                const seIdx = activeFieldsTabIdx - 1;
+                const se = subEvents[seIdx];
+                if (!se) return null;
+                const inherit = se.inheritCustomFieldsFromParent !== false;
+                const seFields = se.customFields || [];
+                return (
+                  <div>
+                    <div style={{
+                      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                      padding: '14px 16px', marginBottom: 16,
+                      border: '1px solid var(--dex-gray-200)',
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={inherit}
+                          onChange={e => {
+                            const v = e.target.checked;
+                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritCustomFieldsFromParent: v } : x));
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                          {isDe ? 'Felder vom Hauptevent übernehmen' : 'Use main event fields'}
+                        </span>
+                      </label>
+                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Standard. Deaktivieren, um für dieses Sub-Event eigene Zusatz-Fragen festzulegen.'
+                          : 'Default. Disable to define separate extra questions for this sub-event.'}
+                      </p>
+                    </div>
+                    <div style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: '0.95rem' }}>
+                          {se.title || (isDe ? '(unbenanntes Sub-Event)' : '(unnamed sub-event)')}
+                        </strong>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                          disabled={inherit}
+                          onClick={() => addSubEventCustomField(se.id)}
+                        >
+                          <Plus size={12} /> {isDe ? 'Feld hinzufügen' : 'Add field'}
+                        </button>
+                        {customFields.length > 0 && seFields.length === 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                            disabled={inherit}
+                            onClick={() => copyParentFieldsToSubEvent(se.id)}
+                            title={isDe ? `Dupliziert die ${customFields.length} Felder vom Hauptevent als Startpunkt` : 'Duplicates the main-event fields as a starting point'}
+                          >
+                            {isDe ? `Vom Hauptevent kopieren (${customFields.length})` : `Copy from main event (${customFields.length})`}
+                          </button>
+                        )}
+                      </div>
+                      {seFields.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)', fontStyle: 'italic' }}>
+                          {isDe
+                            ? 'Keine zusätzlichen Felder definiert. Solange die Übernahme aktiv ist, gelten die Felder des Hauptevents.'
+                            : 'No additional fields defined. While inheritance is active, the main-event fields apply.'}
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {seFields.map((field, idx) => (
+                            <div
+                              key={field.id}
+                              style={{
+                                background: 'var(--dex-gray-50, #fafafa)',
+                                borderRadius: 12,
+                                padding: 16,
+                                border: '1px solid var(--dex-gray-200)',
+                              }}
+                            >
+                              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                                <span style={{
+                                  flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                                  background: 'var(--dex-green, #86bc25)', color: '#fff',
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  fontWeight: 700, fontSize: '0.78rem',
+                                }}>{idx + 1}</span>
+                                <input
+                                  className="form-input"
+                                  value={field.label}
+                                  placeholder={isDe ? 'Frage / Feld-Label (z.B. „Welche Strecke?")' : 'Question / field label (e.g. „Which distance?")'}
+                                  onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
+                                  disabled={inherit}
+                                  style={{
+                                    flex: '0 1 320px', minWidth: 180, maxWidth: 320,
+                                    fontSize: '1rem', fontWeight: 600,
+                                    padding: '8px 12px',
+                                    color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
+                                  }}
+                                />
+                                <select
+                                  className="form-select"
+                                  value={field.type}
+                                  disabled={inherit}
+                                  onChange={e => updateSubEventCustomField(se.id, field.id, { type: e.target.value as CustomFieldInput['type'] })}
+                                  title={isDe ? 'Art des Feldes' : 'Field type'}
+                                  style={{
+                                    flex: '0 0 200px', maxWidth: 200,
+                                    background: 'rgba(134,188,37,0.08)',
+                                    border: '1px solid var(--dex-green, #86bc25)',
+                                    color: 'var(--dex-green-dark, #4a7c1f)',
+                                    fontWeight: 600,
+                                    padding: '8px 10px',
+                                  }}
+                                >
+                                  <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
+                                  <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
+                                  <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
+                                  <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                </select>
+                                <label
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    padding: '6px 12px', borderRadius: 999,
+                                    fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                    cursor: inherit ? 'not-allowed' : 'pointer', userSelect: 'none',
+                                    border: `1px solid ${field.required ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                    background: field.required ? 'rgba(134,188,37,0.10)' : '#fff',
+                                    color: field.required ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={field.required}
+                                    disabled={inherit}
+                                    onChange={e => updateSubEventCustomField(se.id, field.id, { required: e.target.checked })}
+                                    style={{ display: 'none' }}
+                                  />
+                                  <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>{field.required ? '✓' : '○'}</span>
+                                  {t('create.required')}
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSubEventCustomField(se.id, field.id)}
+                                  disabled={inherit}
+                                  title={isDe ? 'Feld entfernen' : 'Remove field'}
+                                  style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: inherit ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                                >
+                                  <X size={18} />
+                                </button>
+                              </div>
+                              <div style={{ marginLeft: 32, marginTop: 10 }}>
+                                <input
+                                  className="form-input"
+                                  placeholder={isDe
+                                    ? 'Beschreibung (optional, erscheint als „i"-Tooltip neben dem Feld)'
+                                    : 'Description (optional, shown as „i" tooltip next to the field)'}
+                                  value={field.helpText || ''}
+                                  disabled={inherit}
+                                  onChange={e => updateSubEventCustomField(se.id, field.id, { helpText: e.target.value })}
+                                  style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
+                                />
+                              </div>
+                              {field.type === 'select' && (
+                                <div style={{
+                                  marginTop: 10, marginLeft: 32, padding: '12px 14px',
+                                  background: '#fff',
+                                  border: '1px solid var(--dex-gray-200)',
+                                  borderRadius: 8,
+                                }}>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', fontWeight: 600, marginBottom: 8 }}>
+                                    {isDe ? 'Antwort-Optionen' : 'Answer options'}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {field.options.map((opt, oidx) => (
+                                      <div key={oidx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                        <span style={{
+                                          flexShrink: 0, width: 22, height: 22, borderRadius: '50%',
+                                          background: 'var(--dex-gray-200)', color: 'var(--dex-gray-700)',
+                                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                          fontWeight: 700, fontSize: '0.72rem',
+                                        }}>{oidx + 1}</span>
+                                        <input
+                                          className="form-input"
+                                          placeholder={isDe ? `Option ${oidx + 1}` : `Option ${oidx + 1}`}
+                                          value={opt}
+                                          disabled={inherit}
+                                          onChange={e => {
+                                            const next = field.options.slice();
+                                            next[oidx] = e.target.value;
+                                            updateSubEventCustomField(se.id, field.id, { options: next });
+                                          }}
+                                          style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
+                                        />
+                                        {field.options.length > 1 && (
+                                          <button
+                                            type="button"
+                                            disabled={inherit}
+                                            onClick={() => {
+                                              const next = field.options.filter((_, i) => i !== oidx);
+                                              updateSubEventCustomField(se.id, field.id, { options: next });
+                                            }}
+                                            title={isDe ? 'Option entfernen' : 'Remove option'}
+                                            style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', padding: 4, cursor: inherit ? 'not-allowed' : 'pointer' }}
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      disabled={inherit}
+                                      onClick={() => updateSubEventCustomField(se.id, field.id, { options: [...field.options, ''] })}
+                                      style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--dex-gray-300)', padding: '4px 12px', fontSize: '0.78rem', borderRadius: 6, cursor: inherit ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-700)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}
+                                    >
+                                      <Plus size={12} /> {isDe ? 'Option hinzufügen' : 'Add option'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Tab 0 (Haupt-Event bzw. Uebergreifende Felder): die
+                  bestehende Hauptevent-Felder-UI bleibt unveraendert; nur
+                  die Sektion „Felder pro Sub-Event" weiter unten wird in
+                  v15.0 ausgeblendet, weil pro Sub-Event jetzt einen
+                  eigenen Tab. */}
+              <div style={{ display: activeFieldsTabIdx === 0 ? 'block' : 'none' }}>
               {/* Dynamische Felder */}
               <div>
                 {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
-                    Sub-Event-Block weiter unten (v10.11+). */}
+                    Sub-Event-Block weiter unten (v10.11+).
+                    v15.0: im subEventsOnlyMode lautet die Ueberschrift
+                    „Uebergreifend fuer alle <childTermPlural>". */}
                 <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
-                  {isDe ? 'Felder für das Hauptevent' : 'Fields for the main event'}
+                  {subEventsOnlyMode
+                    ? (isDe
+                        ? `Übergreifend für alle ${(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}`
+                        : `Across all ${(childTermPlural || 'sub-events').trim() || 'sub-events'}`)
+                    : (isDe ? 'Felder für das Hauptevent' : 'Fields for the main event')}
                 </h3>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
-                    ? 'Diese Felder werden bei jeder Anmeldung abgefragt — egal ob das Event Sub-Events hat oder nicht. Für Sub-Event-spezifische Fragen siehe Bereich „Felder pro Sub-Event" weiter unten.'
-                    : 'These fields are asked at every registration — regardless of whether the event has sub-events. For sub-event-specific questions see „Fields per sub-event" below.'}
+                    ? 'Diese Felder werden bei jeder Anmeldung abgefragt — egal ob das Event Sub-Events hat oder nicht. Für Sub-Event-spezifische Fragen wechsle oben auf den jeweiligen Sub-Event-Tab.'
+                    : 'These fields are asked at every registration — regardless of whether the event has sub-events. For sub-event-specific questions switch to the respective sub-event tab above.'}
                 </p>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <StepBadge n={19} />
@@ -8340,9 +8879,14 @@ export default function EventCreationPage(): React.ReactElement {
               {/* === Bereich 2: Felder pro Sub-Event (v10.11+) ============
                   Jedes Sub-Event hat eine eigene Custom-Fields-Liste, die bei
                   der Anmeldung auf einem Sub-Event zusätzlich zu den Hauptevent-
-                  Feldern gerendert wird. Ersetzt die hardcoded Fun-/Durchstarter-
-                  Frage durch frei konfigurierbare Auswahl-Fragen. */}
-              <div style={{ marginTop: 32, paddingTop: 24, borderTop: '2px solid var(--dex-gray-200)' }}>
+                  Feldern gerendert wird.
+                  v15.0: dieser Bereich wird per pro-Sub-Event-Tab oben
+                  ersetzt — Block bleibt im Code (mit display:none), um die
+                  Inline-Helper-Funktionen `addSubEventCustomField` /
+                  `updateSubEventCustomField` etc. nicht entfernen zu muessen
+                  und sicherzustellen, dass der Tab-N>0-Code identische
+                  Verhaltens-Garantien hat. */}
+              <div style={{ display: 'none', marginTop: 32, paddingTop: 24, borderTop: '2px solid var(--dex-gray-200)' }}>
                 <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
                   {isDe ? 'Felder pro Sub-Event' : 'Fields per sub-event'}
                 </h3>
@@ -8619,12 +9163,14 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              </div>{/* close Step 4 */}
+              </div>{/* v15.0: close activeFieldsTabIdx===0 wrapper (Top-Level Felder + hidden Bereich 2) */}
 
-              {/* ===== Step 7 (v14.8: vormals Step 6): Kommunikation ===== */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+              </div>{/* close Step 5 (Felder) — v15 index 4 */}
+
+              {/* ===== Step 6 (v15: vormals Step 7): Kommunikation ===== */}
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication'}
+                  {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -10069,6 +10615,33 @@ export default function EventCreationPage(): React.ReactElement {
             showIf: f.showIf,
           })),
           isFictive,
+          // v14.10: Sub-Events + Sub-Only-Mode + Bezeichnungs-Term an die
+          // Vorschau weiterreichen, damit der Organizer auch die Sub-Event-
+          // Auswahl im Anmeldeformular sieht (vorher fehlte sie komplett).
+          subEvents: subEvents.map(s => ({
+            id: s.id,
+            title: s.title,
+            location: s.location,
+            startDate: s.startDate,
+            endDate: s.endDate,
+            maxParticipants: s.maxParticipants,
+            description: s.description,
+            customFields: (s.customFields || []).map(f => ({
+              id: f.id,
+              label: f.label,
+              type: f.type,
+              required: f.required,
+              visible: f.visible !== false,
+              options: f.type === 'select' ? f.options : undefined,
+              helpText: f.helpText,
+              multi: f.multi,
+              showIf: f.showIf,
+            })),
+          })),
+          subEventsOnlyMode,
+          requireSubEventSelection: requireSubEventSelection || subEventsOnlyMode,
+          childEventTermSingular: childTermSingular,
+          childEventTermPlural: childTermPlural,
         }}
       />
 
