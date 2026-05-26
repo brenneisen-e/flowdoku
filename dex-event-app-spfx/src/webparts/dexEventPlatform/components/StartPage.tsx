@@ -42,6 +42,16 @@ export default function StartPage(): React.ReactElement {
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
   const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent;
+  // v13.11: Reines Check-In-Team — User ist per qrScannerEmails Mitglied
+  // mindestens eines AKTIVEN Events, hat aber sonst keine Organizer-Rechte.
+  // Die Organizer-Kachel wird dann klickbar und navigiert auf die
+  // Check-In-Seite. Ein kleines „Check-In"-Badge oben rechts macht klar,
+  // dass die Berechtigung auf Check-In beschränkt ist (kein Event-Edit,
+  // keine Massenmails, keine Rollen-Verwaltung).
+  const isCheckInTeamOfActive = !isOrganizer && !!currentEmailLc && (events || []).some(e => {
+    if (e.status !== 'Active') return false;
+    return (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+  });
   // v12.5: Grid bleibt immer 3-spaltig — auch User sehen die Organizer-
   // Kachel (ausgegraut + CTA-Overlay).
   const showAdminTile = true;
@@ -93,6 +103,37 @@ export default function StartPage(): React.ReactElement {
             </div>
             <h2>{t('start.admin')}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
+          </div>
+        ) : isCheckInTeamOfActive ? (
+          // v13.11: Check-In-Team-Variante — klickbar, leitet auf die
+          // Check-In-Seite. Rechts oben sitzt ein Badge „Check-In" als
+          // Hinweis, dass nur die Check-In-Funktion freigeschaltet ist.
+          <div
+            className="card card-clickable start-card start-card--admin"
+            onClick={() => navigate('check-in')}
+            style={{ position: 'relative' }}
+          >
+            <div
+              style={{
+                position: 'absolute', top: 12, right: 12,
+                background: 'var(--dex-green, #86bc25)', color: '#fff',
+                padding: '4px 10px', borderRadius: 999,
+                fontSize: '0.72rem', fontWeight: 700,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                letterSpacing: 0.3, textTransform: 'uppercase',
+              }}
+            >
+              {locale === 'de' ? 'Check-In' : 'Check-in'}
+            </div>
+            <div className="start-card__icon">
+              <Settings size={64} strokeWidth={1} />
+            </div>
+            <h2>{t('start.admin')}</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de'
+                ? 'Teilnehmer einchecken (Scan + manuell)'
+                : 'Check in attendees (scan + manual)'}
+            </p>
           </div>
         ) : (
           // v12.5: Ausgegraute Organizer-Kachel mit CTA-Overlay-Button

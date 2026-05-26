@@ -171,19 +171,29 @@ export default function Header(): React.ReactElement {
             }} />
           </button>
         )}
-        {/* v7.2: QR-Code-Icon generell nur auf Mobile. Am Desktop ist
-            der Kamera-Scan nicht sinnvoll (keine Backkamera) und der
-            manuelle Check-In läuft am Desktop direkt über die Admin-
-            Center-Teilnehmertabelle. */}
-        {canCheckIn && isMobile && (
+        {/* v13.10: Check-In-Button auch auf Desktop sichtbar, damit reine
+            QR-Scanner (ohne Admin-Center-Zugang) den manuellen
+            Namens-Such-Check-In auf der Check-In-Seite erreichen. Der
+            Kamera-Scanner selbst macht am Desktop wenig Sinn (keine
+            Rückkamera), die Teilnehmer-Einchecken-Liste direkt darunter
+            funktioniert dort aber genauso wie auf dem Handy. */}
+        {canCheckIn && (
           <button
             className="header-icon-btn"
             onClick={() => navigate('check-in')}
             title={t('header.checkin')}
-            style={currentPage === 'check-in' ? { background: 'var(--dex-gray-200)' } : {}}
+            style={{
+              ...(currentPage === 'check-in' ? { background: 'var(--dex-gray-200)' } : {}),
+              ...(isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }),
+            }}
             aria-label={t('header.checkin')}
           >
             <QrCode size={20} />
+            {!isMobile && (
+              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
+                {t('header.checkin')}
+              </span>
+            )}
           </button>
         )}
         {/* v9.29: Refresh-Button im Header — ersetzt die alten in-page

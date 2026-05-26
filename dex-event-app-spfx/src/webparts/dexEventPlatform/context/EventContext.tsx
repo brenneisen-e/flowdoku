@@ -2548,10 +2548,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // alle bestehenden Flows (DEX_CreateOutlookEvent, DEX_Outlook_Einladungen,
   // Teilnehmerliste, Organizer-Kalendereinladungen, Declines, QR-Codes,
   // Warteliste, ...) unverändert — ein Sub-Event ist einfach ein Event.
-  const topLevelEvents = React.useMemo(
-    () => events.filter(e => !e.parentEventId),
-    [events]
-  );
+  // v13.11: topLevelEvents wird unten direkt aus `eventsForConsumer`
+  // gefiltert, weil die Demo-Impersonation pro Event qrScannerEmails
+  // shadowen muss.
   const childEventsOf = React.useCallback(
     (parentEventId: string): DeloitteEvent[] => {
       if (!parentEventId) return [];
@@ -2563,11 +2562,36 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     [events]
   );
 
+  // v13.11: Demo-Impersonation kann den synthetischen Demo-User per
+  // qrScannerEmails einem konkreten Event als Check-In-Helfer
+  // zuordnen. Wir injizieren die Demo-Mail in das gewählte Event,
+  // damit Header/StartPage/AdminPage die übliche Permission-Logik
+  // unverändert nutzen können.
+  const eventsForConsumer = React.useMemo(() => {
+    try {
+      if (typeof window === 'undefined') return events;
+      const raw = window.localStorage?.getItem('dex_demo_impersonation');
+      if (!raw) return events;
+      const payload = JSON.parse(raw);
+      const targetId: string = payload?.checkInEventId || '';
+      const demoEmail: string = (payload?.email || '').toLowerCase();
+      if (!targetId || !demoEmail) return events;
+      return events.map(e => {
+        if (e.id !== targetId) return e;
+        const current = (e.qrScannerEmails || []).map(x => x.toLowerCase());
+        if (current.indexOf(demoEmail) >= 0) return e;
+        return { ...e, qrScannerEmails: [...(e.qrScannerEmails || []), demoEmail] };
+      });
+    } catch { return events; }
+  }, [events]);
+
   return React.createElement(
     EventContext.Provider,
     {
       value: {
-        events, topLevelEvents, childEventsOf, isEventsLoading,
+        events: eventsForConsumer,
+        topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
+        childEventsOf, isEventsLoading,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];
