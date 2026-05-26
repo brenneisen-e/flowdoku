@@ -838,6 +838,14 @@ export default function MyEventsPage(): React.ReactElement {
     parentTitle: string;
     subEvents: { id: string; title: string }[];
     resolve: (_choice: 'cascade' | 'parent-only' | 'abort') => void;
+    /** v14.7: Wenn das Event `requireSubEventSelection` hat, ist „nur
+     *  Hauptevent abmelden, Sub-Events behalten" sinnlos (Teilnehmer
+     *  konnte sich gar nicht „nur Hauptevent" anmelden). Stattdessen
+     *  zeigen wir nur die zwei sinnvollen Optionen — alles abmelden ODER
+     *  abbrechen und stattdessen einzelne Sections über „Anmeldung
+     *  ändern" abwählen. Die Begriffe „Haupt-/Sub-Event" werden in
+     *  diesem Modus durch „Event" + „Event-Sections" ersetzt. */
+    isSectionedEvent?: boolean;
   } | null>(null);
 
   React.useEffect(() => {
@@ -1068,6 +1076,7 @@ export default function MyEventsPage(): React.ReactElement {
             parentTitle: entry.event.title,
             subEvents: activeKids,
             resolve,
+            isSectionedEvent: !!entry.event.requireSubEventSelection,
           });
         });
         setCascadeDialog(null);
@@ -2455,25 +2464,51 @@ export default function MyEventsPage(): React.ReactElement {
       {cascadeDialog && (() => {
         const dlg = cascadeDialog;
         const choose = (c: 'cascade' | 'parent-only' | 'abort'): void => dlg.resolve(c);
+        const isSec = !!dlg.isSectionedEvent;
+        // v14.7: Bei „Sectioned"-Events (requireSubEventSelection an) sprechen
+        // wir nicht von „Sub-Event" sondern von „Event-Section". Außerdem
+        // wird die Option „nur Hauptevent abmelden, Sub-Events behalten"
+        // weggelassen — der Teilnehmer war ja gar nicht „nur Hauptevent"
+        // angemeldet (die Pflichtwahl hat das verhindert). Stattdessen
+        // Hinweis aufs Anmelde-Bearbeiten für einzelne Sections.
+        const title = isSec
+          ? (isDe ? 'Komplett vom Event abmelden?' : 'Cancel registration entirely?')
+          : (isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?');
         return (
           <Modal
             open={true}
             onClose={() => choose('abort')}
             maxWidth={520}
-            ariaLabel={isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?'}
+            ariaLabel={title}
           >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {isDe ? 'Auch von Sub-Events abmelden?' : 'Cancel sub-events too?'}
+                {title}
               </h3>
               <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? <>Du bist für <strong>{dlg.subEvents.length}</strong> Sub-Event{dlg.subEvents.length === 1 ? '' : 's'} von <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong> angemeldet:</>
-                  : <>You are registered for <strong>{dlg.subEvents.length}</strong> sub-event{dlg.subEvents.length === 1 ? '' : 's'} of <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong>:</>
+                {isSec
+                  ? (isDe
+                      ? <>Du bist für <strong>{dlg.subEvents.length}</strong> Event-Section{dlg.subEvents.length === 1 ? '' : 's'} von <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong> angemeldet:</>
+                      : <>You are registered for <strong>{dlg.subEvents.length}</strong> event section{dlg.subEvents.length === 1 ? '' : 's'} of <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong>:</>)
+                  : (isDe
+                      ? <>Du bist für <strong>{dlg.subEvents.length}</strong> Sub-Event{dlg.subEvents.length === 1 ? '' : 's'} von <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong> angemeldet:</>
+                      : <>You are registered for <strong>{dlg.subEvents.length}</strong> sub-event{dlg.subEvents.length === 1 ? '' : 's'} of <strong>&bdquo;{dlg.parentTitle}&ldquo;</strong>:</>)
                 }
               </p>
               <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
                 {dlg.subEvents.map(s => <li key={s.id}>{s.title}</li>)}
               </ul>
+              {isSec && (
+                <div style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'rgba(0,118,168,0.08)',
+                  border: '1px solid var(--dex-blue, #0076a8)',
+                  fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.45,
+                }}>
+                  {isDe
+                    ? <>Du willst nur <strong>einzelne Sections</strong> abwählen (z.B. &bdquo;Dinner absagen, aber Meeting bleibt&ldquo;)? Dann breche hier ab und nutze stattdessen <strong>&bdquo;Anmeldung bearbeiten&ldquo;</strong> auf der Event-Karte — dort kannst du gezielt einzelne Sections an- oder abwählen, ohne die ganze Teilnahme zu stornieren.</>
+                    : <>Want to drop only <strong>individual sections</strong> (e.g. &bdquo;cancel dinner, keep meeting&ldquo;)? Then abort here and use <strong>&bdquo;Edit registration&ldquo;</strong> on the event card instead — there you can pick / deselect individual sections without cancelling the whole registration.</>}
+                </div>
+              )}
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.4 }}>
                 {isDe
                   ? 'Wähle wie weiter:'
@@ -2485,19 +2520,25 @@ export default function MyEventsPage(): React.ReactElement {
                   onClick={() => choose('cascade')}
                   style={{ fontSize: '0.9rem', padding: '10px 16px' }}
                 >
-                  {isDe
-                    ? `Alles abmelden (Hauptevent + ${dlg.subEvents.length} Sub-Event${dlg.subEvents.length === 1 ? '' : 's'})`
-                    : `Cancel everything (main event + ${dlg.subEvents.length} sub-event${dlg.subEvents.length === 1 ? '' : 's'})`}
+                  {isSec
+                    ? (isDe
+                        ? `Ja, komplett abmelden (Event + ${dlg.subEvents.length} Section${dlg.subEvents.length === 1 ? '' : 's'})`
+                        : `Yes, cancel entirely (event + ${dlg.subEvents.length} section${dlg.subEvents.length === 1 ? '' : 's'})`)
+                    : (isDe
+                        ? `Alles abmelden (Hauptevent + ${dlg.subEvents.length} Sub-Event${dlg.subEvents.length === 1 ? '' : 's'})`
+                        : `Cancel everything (main event + ${dlg.subEvents.length} sub-event${dlg.subEvents.length === 1 ? '' : 's'})`)}
                 </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => choose('parent-only')}
-                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
-                >
-                  {isDe
-                    ? 'Nur Hauptevent abmelden, Sub-Events behalten'
-                    : 'Cancel main event only, keep sub-events'}
-                </button>
+                {!isSec && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => choose('parent-only')}
+                    style={{ fontSize: '0.9rem', padding: '10px 16px' }}
+                  >
+                    {isDe
+                      ? 'Nur Hauptevent abmelden, Sub-Events behalten'
+                      : 'Cancel main event only, keep sub-events'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => choose('abort')}
@@ -2828,10 +2869,16 @@ function MyEventSubEvents(props: {
 
   if (props.childEvents.length === 0) return null;
 
+  // v14.7: Bei sectioned Events („Event-Sections"-Format) nennen wir die
+  // Kinder „Sections" statt „Sub-Events" — entkoppelt sprachlich vom
+  // „Hauptevent + Sub-Event"-Konzept, das hier eh nicht mehr passt.
+  const isSectionedEvent = !!props.parentEvent.requireSubEventSelection;
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-        {isDe ? 'Sub-Events' : 'Sub-events'}
+        {isSectionedEvent
+          ? (isDe ? 'Event-Sections' : 'Event sections')
+          : (isDe ? 'Sub-Events' : 'Sub-events')}
       </div>
       {/* v10.22: kurzer Hinweis dass Sessions jederzeit nachträglich
           an/abgemeldet werden können — Mail + Kalendereintrag laufen
@@ -3048,20 +3095,27 @@ function MyEventSubEvents(props: {
       {peerCancelDialog && (() => {
         const dlg = peerCancelDialog;
         const choose = (c: 'all' | 'one' | 'abort'): void => dlg.resolve(c);
+        // v14.7: bei Sectioned-Events Sprache auf „Sections" umstellen.
+        const peerTerm = isSectionedEvent
+          ? (isDe ? 'Section' : 'section')
+          : (isDe ? 'Sub-Event' : 'sub-event');
+        const peerTermPl = isSectionedEvent
+          ? (isDe ? 'Sections' : 'sections')
+          : (isDe ? 'Sub-Events' : 'sub-events');
         return (
           <Modal
             open={true}
             onClose={() => choose('abort')}
             maxWidth={520}
-            ariaLabel={isDe ? 'Auch andere Sub-Events abmelden?' : 'Cancel other sub-events too?'}
+            ariaLabel={isDe ? `Auch andere ${peerTermPl} abmelden?` : `Cancel other ${peerTermPl} too?`}
           >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {isDe ? 'Auch andere Sub-Events abmelden?' : 'Cancel other sub-events too?'}
+                {isDe ? `Auch andere ${peerTermPl} abmelden?` : `Cancel other ${peerTermPl} too?`}
               </h3>
               <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
                 {isDe
-                  ? <>Du meldest dich von <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong> ab. Du bist außerdem für <strong>{dlg.peers.length}</strong> weiteres Sub-Event{dlg.peers.length === 1 ? '' : 's'} angemeldet:</>
-                  : <>You are cancelling <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong>. You are also registered for <strong>{dlg.peers.length}</strong> other sub-event{dlg.peers.length === 1 ? '' : 's'}:</>
+                  ? <>Du meldest dich von <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong> ab. Du bist außerdem für <strong>{dlg.peers.length}</strong> {dlg.peers.length === 1 ? `weitere${isSectionedEvent ? '' : 's'} ${peerTerm}` : `weitere ${peerTermPl}`} angemeldet:</>
+                  : <>You are cancelling <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong>. You are also registered for <strong>{dlg.peers.length}</strong> other {dlg.peers.length === 1 ? peerTerm : peerTermPl}:</>
                 }
               </p>
               <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
