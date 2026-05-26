@@ -2376,7 +2376,15 @@ export default function AdminPage(): React.ReactElement {
     perChild: Record<string, SPRegistration | undefined>;
     activeCount: number;
   };
-  const consolidatedRows: ConsolidatedRow[] = React.useMemo(() => {
+  // v15.2 HOTFIX: React.useMemo entfernt — der Hook stand NACH dem early
+  // return `if (!selectedEvent)` weiter oben (~Zeile 1940) und feuerte
+  // damit nur, wenn ein Event selektiert war. Das verletzte die Rules of
+  // Hooks (React error #310 „Rendered more hooks than during the previous
+  // render") und crashte die App, sobald der User vom Event-Picker auf
+  // eine Detail-Ansicht wechselte. Berechnung läuft jetzt pro Render —
+  // ist günstig genug, weil consolidatedFiltered weiter unten ohnehin
+  // pro Render neu rechnet.
+  const consolidatedRows: ConsolidatedRow[] = (() => {
     if (!isConsolidatedMode || !selectedEvent) return [];
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
     const byEmail: Record<string, ConsolidatedRow> = {};
@@ -2418,8 +2426,7 @@ export default function AdminPage(): React.ReactElement {
       }
     }
     return Object.values(byEmail);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConsolidatedMode, selectedEvent?.id, subEventRegsByEventId, consolidatedChildren.map(c => c.id).join(',')]);
+  })();
   // v14.11: Such-Filter + Sort für die konsolidierten Zeilen.
   const consolidatedFiltered: ConsolidatedRow[] = (() => {
     const q = (searchQuery || '').toLowerCase().trim();
