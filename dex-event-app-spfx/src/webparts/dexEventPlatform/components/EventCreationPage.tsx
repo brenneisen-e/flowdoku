@@ -723,6 +723,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [mainCommDisabledAck, setMainCommDisabledAck] = React.useState<boolean>(
     !!editEvent && (!!editEvent.disableEmails || !!editEvent.disableOutlook),
   );
+  // v14.5: Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend".
+  // Wird im RegistrationForm erzwungen — der Submit-Button blockiert, bis
+  // der Teilnehmer ein Sub-Event angehakt hat. Sinnvoll wenn die Haupt-
+  // Event-Kommunikation aus ist und alle Mails/Outlook-Termine nur über
+  // die Sub-Events laufen.
+  const [requireSubEventSelection, setRequireSubEventSelection] = React.useState<boolean>(
+    !!editEvent && !!editEvent.requireSubEventSelection,
+  );
   // v8.5: Organizer-BCC-Modi (Anmeldung + Abmeldung).
   const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
     editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
@@ -785,13 +793,14 @@ export default function EventCreationPage(): React.ReactElement {
           _eventLogo, _outlookLogo, _b2run,
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
+          _requireSubEventSelection,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
-        void _splitDisplayOrderReversed;
+        void _splitDisplayOrderReversed; void _requireSubEventSelection;
         return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
@@ -2419,16 +2428,18 @@ export default function EventCreationPage(): React.ReactElement {
     const effDisableEmails = topComm.disableEmails;
     const effDisableOutlook = topComm.disableOutlook;
 
-    // v14.4: Wenn das Hauptevent Sub-Events hat UND die Kommunikation auf
-    // Top-Level abgestellt ist, muss der Organizer bestätigen, dass
-    // Teilnehmer sich für mindestens ein Sub-Event anmelden — sonst landen
-    // sie ohne Bestätigungs-Mail und ohne Kalender-Termin in der Liste.
+    // v14.4 / v14.5: Wenn das Hauptevent Sub-Events hat UND die
+    // Kommunikation auf Top-Level abgestellt ist, muss entweder der
+    // „Sub-Event verpflichtend"-Toggle aktiv sein (erzwingt es im
+    // Anmeldeformular) ODER der Organizer den Ack-Haken gesetzt haben.
+    // Sonst landen Teilnehmer ohne Bestätigungs-Mail und ohne Kalender-
+    // Termin in der Liste.
     const hasSubs = subEventsRef.current.some(s => s.title && s.title.trim());
-    if (hasSubs && (effDisableEmails || effDisableOutlook) && !mainCommDisabledAck) {
+    if (hasSubs && (effDisableEmails || effDisableOutlook) && !requireSubEventSelection && !mainCommDisabledAck) {
       // eslint-disable-next-line no-alert
       alert(isDe
-        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte bestätige in Schritt 6 (Kommunikation, Tab „Haupt-Event"), dass Teilnehmer sich für mindestens ein Sub-Event anmelden müssen — sonst bekommen sie keine Bestätigung.'
-        : 'You disabled communication for the main event. Please confirm in step 6 (Communication, tab „Main event") that attendees must register for at least one sub-event — otherwise they get no confirmation.');
+        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 6 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
+        : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
       return;
     }
 
@@ -2589,7 +2600,10 @@ export default function EventCreationPage(): React.ReactElement {
       // beim Speichern auf einem Sub-Tab die Sub-Overrides fälschlich aufs
       // Hauptevent gemerged.
       const topOverrides = topComm.emailTemplateOverrides || {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0)
+      const requireSubEventConfig = requireSubEventSelection
+        ? { _requireSubEventSelection: true }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -2598,6 +2612,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...coOrganizerConfig,
             ...testTeamConfig,
             ...splitDispRevConfig,
+            ...requireSubEventConfig,
             ...topOverrides,
           })
         : '';
@@ -8563,6 +8578,33 @@ export default function EventCreationPage(): React.ReactElement {
                         <strong>{t('create.notifications.triggerupdate')}</strong>
                         <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
                           {t('create.notifications.triggerupdate.desc')}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                  {/* v14.5: Toggle „Anmeldung für mindestens ein Sub-Event
+                      verpflichtend". Nur auf dem Haupt-Event-Tab und nur wenn
+                      Sub-Events existieren — sonst hat der Schalter keinen
+                      Effekt. Erzwingt im Anmeldeformular die Auswahl
+                      mindestens eines Sub-Events. */}
+                  {activeCommTabIdx === 0 && subEvents.length > 0 && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <input
+                        type="checkbox"
+                        checked={requireSubEventSelection}
+                        onChange={e => setRequireSubEventSelection(e.target.checked)}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.9rem' }}>
+                        <strong>
+                          {isDe
+                            ? 'Anmeldung für mindestens ein Sub-Event verpflichtend'
+                            : 'Require selecting at least one sub-event'}
+                        </strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2, lineHeight: 1.4 }}>
+                          {isDe
+                            ? 'Wenn aktiv, kann sich kein Teilnehmer „nur fürs Hauptevent" anmelden — er muss im Anmeldeformular mindestens ein Sub-Event auswählen. Empfohlen, sobald die Hauptevent-Kommunikation oben ausgeschaltet ist, damit niemand stumm in der Liste landet.'
+                            : 'When on, no attendee can register „main event only" — they must pick at least one sub-event in the registration form. Recommended whenever main-event communication above is off, so nobody lands in the list silently.'}
                         </span>
                       </span>
                     </label>

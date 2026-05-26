@@ -569,6 +569,17 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
+    // v14.5: Wenn der Organizer `requireSubEventSelection` aktiviert hat
+    // (Toggle in Schritt 6), MUSS der Teilnehmer mindestens ein Sub-Event
+    // angehakt haben — sonst landet er ohne Kommunikation in der Liste,
+    // weil die Hauptevent-Mails/Outlook deaktiviert sind.
+    if (event && event.requireSubEventSelection && childEvents.length > 0 && selectedSessions.size === 0) {
+      setError(t('reg.require.subevent') || (locale === 'de'
+        ? 'Für dieses Event musst du mindestens ein Sub-Event auswählen — sonst kannst du dich nicht anmelden.'
+        : 'For this event you must pick at least one sub-event — otherwise you cannot register.'));
+      return;
+    }
+
     // v9.22: Externe Email-Adresse bei "Für andere Person registrieren" —
     // Warnung anzeigen bevor der Anmelde-Flow startet.
     if (registerForOther && email && !externalEmailConfirmedRef.current) {
@@ -1488,6 +1499,19 @@ export default function RegistrationPage(): React.ReactElement {
               {childEvents.length > 0 && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
+                  {/* v14.5: Pflicht-Hinweis wenn Organizer requireSubEventSelection aktiv hat. */}
+                  {event && event.requireSubEventSelection && (
+                    <div style={{
+                      padding: '8px 12px', borderRadius: 8,
+                      background: 'rgba(237,139,0,0.10)',
+                      border: '1px solid var(--dex-orange, #ed8b00)',
+                      fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600,
+                    }}>
+                      {locale === 'de'
+                        ? 'Pflicht: bitte mindestens ein Sub-Event auswählen.'
+                        : 'Required: please pick at least one sub-event.'}
+                    </div>
+                  )}
                   {childEvents.map(ce => {
                     const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
