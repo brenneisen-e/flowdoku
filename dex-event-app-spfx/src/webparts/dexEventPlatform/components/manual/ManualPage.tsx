@@ -9,6 +9,8 @@
 
 import * as React from 'react';
 import { useRoles } from '../../context/RoleContext';
+import { useEvents } from '../../context/EventContext';
+import { useCurrentUser } from '../../context/UserContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { ManualSection, ManualPerspectiveBlock, ManualStep, ManualPerspective } from './types';
 import { PlaceholderShot } from './ManualMockups';
@@ -30,14 +32,30 @@ const CATEGORY_LABEL: Record<string, { de: string; en: string }> = {
 
 export default function ManualPage(): React.ReactElement {
   const { currentUserRole } = useRoles();
+  const { events } = useEvents();
+  const { currentUser } = useCurrentUser();
   const { locale, setLocale } = useLanguage();
   const isDe = locale === 'de';
 
+  // v13.9: User mit Check-In-Rechten pro Event (qrScannerEmails / organizerEmails
+  // / coOrganizerEmails) bekommen im Handbuch die Organizer-Sicht freigeschaltet,
+  // damit sie die Anleitungen für Check-In, Teilnehmer-Verwaltung etc. sehen —
+  // auch ohne globale Organizer-Rolle in DEX_Roles.
+  const currentEmailLc = (currentUser.email || '').toLowerCase();
+  const hasPerEventCheckInRights = !!currentEmailLc && (events || []).some(e => {
+    const qr = (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+    if (qr) return true;
+    const org = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+    if (org) return true;
+    return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+  });
+  const effectiveRole: 'User' | 'Organizer' | 'Admin' =
+    currentUserRole === 'User' && hasPerEventCheckInRights ? 'Organizer' : (currentUserRole as 'User' | 'Organizer' | 'Admin');
+
   const allSections = React.useMemo(() => getManualSections(locale), [locale]);
   const visibleSections = React.useMemo(() => {
-    // Admin sieht alles, Organizer sieht User+Organizer, User sieht nur User-Sektionen.
-    return allSections.filter(s => s.visibleFor.indexOf(currentUserRole as 'User' | 'Organizer' | 'Admin') >= 0);
-  }, [allSections, currentUserRole]);
+    return allSections.filter(s => s.visibleFor.indexOf(effectiveRole) >= 0);
+  }, [allSections, effectiveRole]);
 
   // v6.23: Deep-Link-Support. Wenn die URL `?section=<id>` enthält (z.B.
   // ?action=manual&section=check-in), starten wir direkt in dieser Sektion —
@@ -136,8 +154,8 @@ export default function ManualPage(): React.ReactElement {
         </div>
         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 4 }}>
           {isDe
-            ? `Rolle: ${currentUserRole} · ${visibleSections.length} Kapitel`
-            : `Role: ${currentUserRole} · ${visibleSections.length} chapters`}
+            ? `Rolle: ${effectiveRole}${effectiveRole !== currentUserRole ? ' (Check-In-Helfer)' : ''} · ${visibleSections.length} Kapitel`
+            : `Role: ${effectiveRole}${effectiveRole !== currentUserRole ? ' (check-in helper)' : ''} · ${visibleSections.length} chapters`}
         </div>
         <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginBottom: 14 }}>
           {isDe ? 'App-Version' : 'App version'} <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{APP_VERSION}</strong>
