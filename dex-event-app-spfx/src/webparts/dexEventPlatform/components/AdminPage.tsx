@@ -4978,10 +4978,15 @@ export default function AdminPage(): React.ReactElement {
                 // and confirm") brechen jetzt um statt mit Ellipsis abgeschnitten
                 // zu werden. Begrenzte maxWidth + Wortumbruch — der Header bleibt
                 // lesbar ohne dass der User hovern muss.
+                // v15.4.1: wordBreak:'break-word' war zu aggressiv (Edge
+                // brach kurze Wörter wie „Vorname" → „Vorna\nme"). Jetzt
+                // overflowWrap:'break-word' — Umbruch nur an Wort-Grenzen
+                // oder wenn ein einzelnes Wort breiter als die Spalte ist.
                 const baseStyle: React.CSSProperties = {
                   textAlign: 'left', padding: 8,
                   whiteSpace: 'normal',
-                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  hyphens: 'auto',
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
