@@ -10073,6 +10073,33 @@ export default function EventCreationPage(): React.ReactElement {
             showIf: f.showIf,
           })),
           isFictive,
+          // v14.10: Sub-Events + Sub-Only-Mode + Bezeichnungs-Term an die
+          // Vorschau weiterreichen, damit der Organizer auch die Sub-Event-
+          // Auswahl im Anmeldeformular sieht (vorher fehlte sie komplett).
+          subEvents: subEvents.map(s => ({
+            id: s.id,
+            title: s.title,
+            location: s.location,
+            startDate: s.startDate,
+            endDate: s.endDate,
+            maxParticipants: s.maxParticipants,
+            description: s.description,
+            customFields: (s.customFields || []).map(f => ({
+              id: f.id,
+              label: f.label,
+              type: f.type,
+              required: f.required,
+              visible: f.visible !== false,
+              options: f.type === 'select' ? f.options : undefined,
+              helpText: f.helpText,
+              multi: f.multi,
+              showIf: f.showIf,
+            })),
+          })),
+          subEventsOnlyMode,
+          requireSubEventSelection: requireSubEventSelection || subEventsOnlyMode,
+          childEventTermSingular: childTermSingular,
+          childEventTermPlural: childTermPlural,
         }}
       />
 

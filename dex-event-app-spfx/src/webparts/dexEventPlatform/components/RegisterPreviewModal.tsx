@@ -43,6 +43,34 @@ export interface RegisterPreviewData {
     showIf?: { fieldId: string; values: string[] };
   }>;
   isFictive?: boolean;
+  /** v14.10: Sub-Event-Drafts für die Vorschau — damit der Organizer im
+   *  Anmeldeformular die Sub-Event-Liste sieht (vorher fehlte sie komplett). */
+  subEvents?: Array<{
+    id: string;
+    title: string;
+    location?: string;
+    startDate: string;
+    endDate: string;
+    maxParticipants?: number;
+    description?: string;
+    customFields?: Array<{
+      id: string;
+      label: string;
+      type: string;
+      required: boolean;
+      visible?: boolean;
+      options?: string[];
+      helpText?: string;
+      multi?: boolean;
+      showIf?: { fieldId: string; values: string[] };
+    }>;
+  }>;
+  /** v14.10: subEventsOnlyMode + childEventTerm zur korrekten Darstellung
+   *  in der Vorschau (Pflicht-Hinweis, Anmelde-Checkbox-Sichtbarkeit). */
+  subEventsOnlyMode?: boolean;
+  requireSubEventSelection?: boolean;
+  childEventTermSingular?: string;
+  childEventTermPlural?: string;
 }
 
 export interface RegisterPreviewModalProps {
@@ -53,10 +81,11 @@ export interface RegisterPreviewModalProps {
 
 // Synthetischen DeloitteEvent aus dem Wizard-Form-State bauen, sodass
 // RegistrationPage ihn ueber den EventContext finden kann.
+const SYNTH_PARENT_ID = '__preview_synth_event__';
+
 function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
-  const id = '__preview_synth_event__';
   return {
-    id,
+    id: SYNTH_PARENT_ID,
     eventNumber: 0,
     title: data.title || '(kein Titel)',
     type: 'Other',
@@ -89,6 +118,10 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     outlookBody: '',
     emailLanguage: 'DE',
     isFictive: !!data.isFictive,
+    subEventsOnlyMode: !!data.subEventsOnlyMode,
+    requireSubEventSelection: !!data.requireSubEventSelection,
+    childEventTermSingular: data.childEventTermSingular,
+    childEventTermPlural: data.childEventTermPlural,
     agenda: [],
     transferTimes: [],
     documents: [],
@@ -109,9 +142,62 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
   };
 }
 
+// v14.10: Sub-Event-Drafts als synthetische DeloitteEvent-Children bauen,
+// damit die RegistrationPage sie über childEventsOf(parentId) findet.
+function buildSynthChildEvents(data: RegisterPreviewData): DeloitteEvent[] {
+  return (data.subEvents || [])
+    .filter(s => s.title && s.title.trim().length > 0)
+    .map((s, idx) => ({
+      id: `${SYNTH_PARENT_ID}_child_${idx}`,
+      parentEventId: SYNTH_PARENT_ID,
+      eventNumber: idx + 1,
+      title: s.title,
+      type: 'Other',
+      status: 'Active',
+      organizers: data.organizers || [],
+      organizerEmails: data.organizerEmails || [],
+      qrScannerNames: [],
+      qrScannerEmails: [],
+      location: s.location || '',
+      locationAudience: [],
+      audienceFilter: [],
+      filterMode: 'OR',
+      startDate: s.startDate ? new Date(s.startDate).toISOString() : '',
+      endDate: s.endDate ? new Date(s.endDate).toISOString() : '',
+      registrationDeadline: '',
+      lastDeregisterDate: '',
+      description: s.description || '',
+      maxParticipants: s.maxParticipants || 0,
+      currentParticipants: 0,
+      waitlistCount: 0,
+      imageUrl: '',
+      outlookBody: '',
+      emailLanguage: 'DE',
+      isFictive: !!data.isFictive,
+      agenda: [],
+      transferTimes: [],
+      documents: [],
+      quiz: [],
+      eventSpecificFields: (s.customFields || [])
+        .filter(f => f.visible !== false && f.label && f.label.trim().length > 0)
+        .map(f => ({
+          id: f.id,
+          label: f.label,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          type: (f.type as any) || 'text',
+          required: !!f.required,
+          options: f.options,
+          helpText: f.helpText || '',
+          ...(f.multi ? { multi: true } : {}),
+          ...(f.showIf ? { showIf: f.showIf } : {}),
+        })),
+    }));
+}
+
 export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open, onClose, data }) => {
   if (!open) return null;
   const synthEvent = React.useMemo(() => buildSynthEvent(data), [data]);
+  const synthChildren = React.useMemo(() => buildSynthChildEvents(data), [data]);
 
   return (
     <div
@@ -149,7 +235,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
               </span>
             )}
             <span style={{ marginLeft: 10, fontSize: '0.7rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
-              · Read-only Vorschau · Klicks deaktiviert
+              · Vorschau · echte Anmeldung deaktiviert
             </span>
           </h3>
           <button
@@ -184,12 +270,11 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
               }} />
               <div
                 className="dex-preview-scope"
-                // v11.92: pointerEvents 'none' verhinderte auch das Scrollen mit
-                // Mausrad/Touch — daher jetzt 'auto' am Scroll-Container und
-                // Klicks per Capture-Phase abfangen. Form-Inputs werden via CSS
-                // (siehe .dex-preview-scope) ohnehin read-only/inert gehalten.
-                onClickCapture={e => { e.preventDefault(); e.stopPropagation(); }}
-                onKeyDownCapture={e => { e.preventDefault(); e.stopPropagation(); }}
+                // v14.10: Klicks sind jetzt erlaubt (Organizer kann durchklicken,
+                // Sub-Events anhaken, Felder ausfüllen) — der EventContext-Stub
+                // in PreviewContextStack hat `registerForEvent` als asyncNoop,
+                // ein echter Submit passiert also nie. Nur Form-Submit-Events
+                // abfangen, damit kein Page-Reload getriggert wird.
                 onSubmitCapture={e => { e.preventDefault(); e.stopPropagation(); }}
                 style={{
                   background: '#fff', borderRadius: 4,
@@ -201,7 +286,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                   role="User"
                   page="register"
                   selectedEventId={synthEvent.id}
-                  extraEvents={[synthEvent]}
+                  extraEvents={[synthEvent, ...synthChildren]}
                 >
                   <Header />
                   <RegistrationPage />

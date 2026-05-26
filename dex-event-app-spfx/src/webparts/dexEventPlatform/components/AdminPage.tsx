@@ -4004,12 +4004,7 @@ export default function AdminPage(): React.ReactElement {
             rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
         <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Users size={18} /> Teilnehmer ({isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length})
-            {isConsolidatedMode && (
-              <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
-                — {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {isDe ? 'Sub-Events' : 'sub-events'}
-              </span>
-            )}
+            <Users size={18} /> Teilnehmer ({activeRegs.length})
           </h3>
           <input
             type="text"
@@ -4590,31 +4585,13 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'action') {
                   return <th key={id} style={{ textAlign: 'left', padding: 8 }}>Aktion</th>;
                 }
-                // v14.9: pastel A = event-level (parent) fields, pastel B = sub-event-specific fields.
-                // Pastel-Hintergrund nur im Sub-Event-Detail-View (parentEventForSelected gesetzt),
-                // sonst neutraler Hintergrund wie bisher.
-                const inSubEventDetail = !!parentEventForSelected;
-                const pastelAHeader: React.CSSProperties = inSubEventDetail ? { background: 'rgba(0, 118, 168, 0.15)' } : {};
-                const pastelBHeader: React.CSSProperties = inSubEventDetail ? { background: 'rgba(255, 191, 0, 0.18)' } : {};
-                if (id.indexOf('cfp-') === 0) {
-                  const cfId = id.substring(4);
-                  const field = (parentEventForSelected?.eventSpecificFields || []).find(f => f.id === cfId);
-                  if (!field) return null;
-                  const label = field.label || '';
-                  return (
-                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelAHeader }} title={`${label} — Hauptevent-Feld`}>
-                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
-                      {hideButton(id)}
-                    </th>
-                  );
-                }
                 if (id.indexOf('cf-') === 0) {
                   const cfId = id.substring(3);
                   const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelBHeader }} title={inSubEventDetail ? `${label} — Sub-Event-Feld` : label}>
+                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem' }} title={label}>
                       {label.length > 22 ? label.substring(0, 20) + '…' : label}
                       {hideButton(id)}
                     </th>
@@ -4737,44 +4714,6 @@ export default function AdminPage(): React.ReactElement {
                     </td>
                   );
                 }
-                // v14.9: cfp-* sind Parent-Event-Custom-Fields (Pastel A) im
-                // Sub-Event-Detail-View. Wert kommt entweder aus reg.CustomData
-                // (Sub-Events erben i.d.R. die Parent-Felder via Wizard-Copy)
-                // oder, falls leer, aus dem SP-Internal-Name-Property.
-                const inSubEventDetailCell = !!parentEventForSelected;
-                const pastelACell: React.CSSProperties = inSubEventDetailCell ? { background: 'rgba(0, 118, 168, 0.08)' } : {};
-                const pastelBCell: React.CSSProperties = inSubEventDetailCell ? { background: 'rgba(255, 191, 0, 0.10)' } : {};
-                if (id.indexOf('cfp-') === 0) {
-                  const cfId = id.substring(4);
-                  const field = (parentEventForSelected?.eventSpecificFields || []).find(f => f.id === cfId);
-                  if (!field) return null;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const spName = (field as any).spInternalName || '';
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  let val: any = spName ? (reg as any)[spName] : undefined;
-                  if ((val === undefined || val === null || val === '') && reg.CustomData) {
-                    try {
-                      const cd = JSON.parse(reg.CustomData);
-                      val = cd[field.id];
-                    } catch { /* no-op */ }
-                  }
-                  let display: React.ReactNode = '-';
-                  if (val !== undefined && val !== null && val !== '') {
-                    if (field.type === 'checkbox') {
-                      const truthy = val === true || val === 'true' || val === 1 || val === '1';
-                      display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
-                    } else if (field.type === 'select' && field.multi) {
-                      display = String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', ');
-                    } else {
-                      display = String(val);
-                    }
-                  }
-                  return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelACell }} title={String(val || '')}>
-                      {display}
-                    </td>
-                  );
-                }
                 if (id.indexOf('cf-') === 0) {
                   const cfId = id.substring(3);
                   const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
@@ -4804,7 +4743,7 @@ export default function AdminPage(): React.ReactElement {
                     }
                   }
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }} title={String(val || '')}>
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(val || '')}>
                       {display}
                     </td>
                   );
