@@ -6,6 +6,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code agent worktrees (ephemeral)
+.claude/
+
 # Node
 node_modules/
 .wrangler/
