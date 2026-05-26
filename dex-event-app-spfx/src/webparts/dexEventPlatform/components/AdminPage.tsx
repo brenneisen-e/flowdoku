@@ -25,6 +25,7 @@ import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
+import InternationalSearchToggle from './InternationalSearchToggle';
 import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
@@ -715,7 +716,23 @@ export default function AdminPage(): React.ReactElement {
   const [adminAddMemberConsent, setAdminAddMemberConsent] = React.useState(false);
   const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
   const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
+  const [adminAddMemberIncludeIntl, setAdminAddMemberIncludeIntl] = React.useState(false);
   const adminAddMemberQueryTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    const q = adminAddMemberQuery.trim();
+    if (q.length >= 2 && !adminAddMemberPick) {
+      (async () => {
+        setAdminAddMemberSearching(true);
+        try {
+          const res = await searchUsers(q, adminAddMemberIncludeIntl);
+          setAdminAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
+        } catch { setAdminAddMemberResults([]); }
+        setAdminAddMemberSearching(false);
+      })().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminAddMemberIncludeIntl]);
   // Lead-Transfer-Dropdown: pro Team ein offener Dropdown-Index (TeamId-Key).
   const [leadTransferOpenFor, setLeadTransferOpenFor] = React.useState<string | null>(null);
   const [leadTransferBusy, setLeadTransferBusy] = React.useState(false);
@@ -6605,7 +6622,7 @@ export default function AdminPage(): React.ReactElement {
                           adminAddMemberQueryTimer.current = setTimeout(async () => {
                             setAdminAddMemberSearching(true);
                             try {
-                              const res = await searchUsers(val);
+                              const res = await searchUsers(val, adminAddMemberIncludeIntl);
                               setAdminAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
                             } catch { setAdminAddMemberResults([]); }
                             setAdminAddMemberSearching(false);
@@ -6614,6 +6631,11 @@ export default function AdminPage(): React.ReactElement {
                           setAdminAddMemberResults([]);
                         }
                       }}
+                    />
+                    <InternationalSearchToggle
+                      checked={adminAddMemberIncludeIntl}
+                      onChange={setAdminAddMemberIncludeIntl}
+                      isDe={isDe}
                     />
                     {(adminAddMemberResults.length > 0 || adminAddMemberSearching) && (
                       <div style={{

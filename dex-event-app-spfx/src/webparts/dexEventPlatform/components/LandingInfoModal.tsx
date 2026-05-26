@@ -110,7 +110,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000,
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 10000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
       onClick={onClose}

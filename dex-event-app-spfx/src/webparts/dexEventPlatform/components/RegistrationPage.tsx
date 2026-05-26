@@ -18,6 +18,7 @@ import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
 import Modal from './Modal';
+import InternationalSearchToggle from './InternationalSearchToggle';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -491,6 +492,7 @@ export default function RegistrationPage(): React.ReactElement {
     mobilePhone?: string;
   } | null>(null);
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
+  const [userSearchIncludeIntl, setUserSearchIncludeIntl] = React.useState(false);
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!event) {
@@ -680,7 +682,7 @@ export default function RegistrationPage(): React.ReactElement {
         const emailLc = email.trim().toLowerCase();
         let targetJobTitle = userResults.find(u => u.email.toLowerCase() === emailLc)?.jobTitle || '';
         if (!targetJobTitle) {
-          const fresh = await searchUsers(email.trim());
+          const fresh = await searchUsers(email.trim(), userSearchIncludeIntl);
           targetJobTitle = fresh.find(u => u.email.toLowerCase() === emailLc)?.jobTitle || '';
         }
         if (!isAllowedTargetForAssistant(targetJobTitle)) {
@@ -1792,7 +1794,7 @@ export default function RegistrationPage(): React.ReactElement {
                         if (val.length >= 2) {
                           searchTimerRef.current = setTimeout(async () => {
                             setIsSearchingUser(true);
-                            const results = await searchUsers(val);
+                            const results = await searchUsers(val, userSearchIncludeIntl);
                             setUserResults(results);
                             setIsSearchingUser(false);
                           }, 300);
@@ -1801,6 +1803,22 @@ export default function RegistrationPage(): React.ReactElement {
                         }
                       }}
                       placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
+                    />
+                    <InternationalSearchToggle
+                      checked={userSearchIncludeIntl}
+                      onChange={async next => {
+                        setUserSearchIncludeIntl(next);
+                        const val = userSearch.trim();
+                        if (val.length >= 2) {
+                          setIsSearchingUser(true);
+                          try {
+                            const results = await searchUsers(val, next);
+                            setUserResults(results);
+                          } catch { /* */ }
+                          setIsSearchingUser(false);
+                        }
+                      }}
+                      isDe={locale === 'de'}
                     />
                     {isSearchingUser && (
                       <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
@@ -2150,8 +2168,8 @@ export default function RegistrationPage(): React.ReactElement {
                           next[idx] = v;
                           setTeamMembers(next);
                         }}
-                        searchUsers={async (q) => {
-                          const results = await searchUsers(q);
+                        searchUsers={async (q, includeIntl) => {
+                          const results = await searchUsers(q, includeIntl);
                           return results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location, jobTitle: r.jobTitle }));
                         }}
                         searchUserByEmail={searchUser}
@@ -2855,7 +2873,7 @@ export default function RegistrationPage(): React.ReactElement {
 function UserFieldPicker(props: {
   value: string;
   onChange: (v: string) => void;
-  searchUsers: (q: string) => Promise<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>;
+  searchUsers: (q: string, includeIntl?: boolean) => Promise<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>;
   // v11.98: Profil-Lookup für die selektierte Person, damit der Chip
   // auch nach Reload den JobTitle + Standort zeigt (props.value enthält
   // nur "Name <email>" — Standort/Title wären sonst weg).
@@ -2871,10 +2889,13 @@ function UserFieldPicker(props: {
     if (!m) return null;
     return { name: m[1].trim(), email: m[2].trim() };
   };
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
   const initialParsed = parseValue(props.value);
   const [query, setQuery] = React.useState(initialParsed ? '' : (props.value || ''));
   const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>([]);
   const [isSearching, setIsSearching] = React.useState(false);
+  const [includeIntl, setIncludeIntl] = React.useState(false);
   // v11.91: Selected merkt sich zusätzlich Standort und JobTitle, damit
   // der Chip dieselben Infos zeigt wie die Dropdown-Treffer.
   const [selected, setSelected] = React.useState<{ name: string; email: string; location?: string; jobTitle?: string } | null>(initialParsed);
@@ -2963,7 +2984,7 @@ function UserFieldPicker(props: {
             if (val.length >= 2) {
               timerRef.current = setTimeout(async () => {
                 setIsSearching(true);
-                try { setResults(await props.searchUsers(val)); }
+                try { setResults(await props.searchUsers(val, includeIntl)); }
                 catch { setResults([]); }
                 setIsSearching(false);
               }, 300);
@@ -2983,6 +3004,23 @@ function UserFieldPicker(props: {
           }}
           placeholder={props.placeholder}
           style={props.errorStyle}
+        />
+      )}
+      {!hasSelection && (
+        <InternationalSearchToggle
+          checked={includeIntl}
+          onChange={async next => {
+            setIncludeIntl(next);
+            const val = query.trim();
+            if (val.length >= 2) {
+              setIsSearching(true);
+              try { setResults(await props.searchUsers(val, next)); }
+              catch { setResults([]); }
+              setIsSearching(false);
+            }
+          }}
+          isDe={isDe}
+          compact
         />
       )}
       {isSearching && !hasSelection && (

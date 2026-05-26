@@ -35,7 +35,7 @@ interface RoleContextType {
   removeRole: (itemId: number) => Promise<boolean>;
   refreshRoles: () => Promise<void>;
   searchUser: (email: string) => Promise<{ displayName: string; location: string; jobTitle: string; department?: string; mobilePhone?: string } | null>;
-  searchUsers: (query: string) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
+  searchUsers: (query: string, includeInternational?: boolean) => Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>;
   searchGroups: (query: string) => Promise<Array<{ email: string; displayName: string }>>;
   getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null>;
   searchUsersByLocation: (location: string) => Promise<Array<{ email: string; displayName: string; firstName: string; lastName: string; location: string; jobTitle: string }>>;
@@ -223,8 +223,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     return spService.searchUserByEmail(email);
   }
 
-  async function searchUsers(query: string): Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>> {
-    return spService.searchUsers(query);
+  async function searchUsers(query: string, includeInternational: boolean = false): Promise<Array<{ email: string; displayName: string; location: string; jobTitle: string }>> {
+    return spService.searchUsers(query, includeInternational);
   }
 
   async function searchGroups(query: string): Promise<Array<{ email: string; displayName: string }>> {

@@ -12,6 +12,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Trash2, X } from './Icons';
 import Modal from './Modal';
+import InternationalSearchToggle from './InternationalSearchToggle';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -21,6 +22,8 @@ export default function SettingsPage(): React.ReactElement {
     addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
   // v13.0: Settings/Rollenverwaltung ist Admin-only. Vorher konnte ein
   // Demo-User die Seite öffnen — Admin-Controls waren zwar versteckt,
   // aber der Seitenzugriff selbst war frei. Wir nutzen originalIsAdmin
@@ -98,6 +101,7 @@ export default function SettingsPage(): React.ReactElement {
   const [userFound, setUserFound] = React.useState<boolean | null>(null);
   const [suggestions, setSuggestions] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [includeIntl, setIncludeIntl] = React.useState(false);
   const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Timer cleanup bei Unmount
@@ -115,7 +119,7 @@ export default function SettingsPage(): React.ReactElement {
     if (query.length >= 2) {
       searchTimer.current = setTimeout(async () => {
         setIsSearching(true);
-        const results = await searchUsers(query);
+        const results = await searchUsers(query, includeIntl);
         setSuggestions(results);
         setShowSuggestions(results.length > 0);
         setIsSearching(false);
@@ -125,6 +129,23 @@ export default function SettingsPage(): React.ReactElement {
       setShowSuggestions(false);
     }
   };
+
+  React.useEffect(() => {
+    if (newEmail.length >= 2 && userFound !== true) {
+      (async () => {
+        setIsSearching(true);
+        try {
+          const results = await searchUsers(newEmail, includeIntl);
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+        } catch {
+          setSuggestions([]);
+        }
+        setIsSearching(false);
+      })().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeIntl]);
 
   const selectSuggestion = (suggestion: { email: string; displayName: string; location: string }): void => {
     setNewEmail(suggestion.email);
@@ -378,6 +399,9 @@ export default function SettingsPage(): React.ReactElement {
                           Suche...
                         </span>
                       )}
+                      <div style={{ marginTop: 2 }}>
+                        <InternationalSearchToggle checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
+                      </div>
                       {/* v11.75: explizite „Keine Treffer"-Box wenn die Suche
                           fertig ist und 0 Treffer hat — sonst wirkt der Picker
                           stumm und der Admin weiss nicht, ob die Suche lief. */}

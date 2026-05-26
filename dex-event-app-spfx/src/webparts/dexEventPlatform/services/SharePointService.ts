@@ -766,7 +766,7 @@ export class SharePointService {
    * User-Suche mit Autocomplete: sucht nach Name oder Email-Fragment.
    * Nutzt die SharePoint ClientPeoplePickerSearchUser API.
    */
-  public async searchUsers(query: string): Promise<Array<{
+  public async searchUsers(query: string, includeInternational: boolean = false): Promise<Array<{
     email: string;
     displayName: string;
     location: string;
@@ -922,6 +922,20 @@ export class SharePointService {
         all.push(...filtered);
       }
     }
+
+    // v13.6: Member-Firm-Filter. Default: nur @deloitte.de (DEALL-Equivalent).
+    // Mit includeInternational=true zusaetzlich @deloitte.com erlaubt (internationale
+    // Member-Firms wie DEUS/DECH/DECEMEA, die alle auf @deloitte.com mappen). Andere
+    // Domains (Gast-Accounts, externe Tenants) bleiben in beiden Modi geblockt.
+    const allowedSuffixes = includeInternational
+      ? ['@deloitte.de', '@deloitte.com']
+      : ['@deloitte.de'];
+    const memberFirmFiltered = all.filter(u => {
+      const mail = (u.email || '').toLowerCase();
+      return allowedSuffixes.some(s => mail.endsWith(s));
+    });
+    all.length = 0;
+    all.push(...memberFirmFiltered);
 
     // Location + JobTitle per User Profile nachladen
     for (const user of all) {
