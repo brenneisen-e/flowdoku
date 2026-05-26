@@ -836,7 +836,10 @@ export default function MyEventsPage(): React.ReactElement {
   // die User-Wahl awaiten kann statt window.confirm.
   const [cascadeDialog, setCascadeDialog] = React.useState<{
     parentTitle: string;
-    subEvents: { id: string; title: string }[];
+    // v15.8: zusätzlich Start-Datum und Ort pro Sub-Event mitliefern,
+    // damit das Modal eine vollständige Info-Liste zeigen kann (vorher
+    // nur Titel). Felder optional, fallbacks im Render.
+    subEvents: { id: string; title: string; startDate?: string; location?: string }[];
     resolve: (_choice: 'cascade' | 'parent-only' | 'abort') => void;
     /** v14.7: Wenn das Event `requireSubEventSelection` hat, ist „nur
      *  Hauptevent abmelden, Sub-Events behalten" sinnlos (Teilnehmer
@@ -1061,12 +1064,19 @@ export default function MyEventsPage(): React.ReactElement {
     const childIdsToCancel: string[] = [];
     if (entry) {
       const kids = childEventsOf(eventId);
-      const activeKids: { id: string; title: string }[] = [];
+      // v15.8: zusätzlich startDate und location pro Sub-Event mitschicken
+      // damit das Cancel-Modal Ort + Zeit anzeigen kann.
+      const activeKids: { id: string; title: string; startDate?: string; location?: string }[] = [];
       for (const ce of kids) {
         try {
           const reg = await getMyRegistration(ce.id);
           if (reg && reg.Status !== 'Abgemeldet') {
-            activeKids.push({ id: ce.id, title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event') });
+            activeKids.push({
+              id: ce.id,
+              title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event'),
+              startDate: ce.startDate || '',
+              location: ce.location || '',
+            });
           }
         } catch { /* ignore */ }
       }
@@ -2495,7 +2505,22 @@ export default function MyEventsPage(): React.ReactElement {
                 }
               </p>
               <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
-                {dlg.subEvents.map(s => <li key={s.id}>{s.title}</li>)}
+                {/* v15.8: pro Sub-Event Titel + Datum + Ort listen, damit
+                    der User auf einen Blick sieht was er da abmeldet. */}
+                {dlg.subEvents.map(s => {
+                  const dateStr = s.startDate
+                    ? new Date(s.startDate).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '';
+                  const subParts = [dateStr, s.location].filter(Boolean).join(' · ');
+                  return (
+                    <li key={s.id} style={{ marginBottom: 4 }}>
+                      <div style={{ fontWeight: 600 }}>{s.title}</div>
+                      {subParts && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{subParts}</div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               {isSec && (
                 <div style={{
@@ -2775,10 +2800,15 @@ function MyEventSubEvents(props: {
   // v11.34: Cascade-Cancel-Dialog fuer Sub-Event-Cancel — fragt ob auch
   // die anderen aktiven Sub-Events des gleichen Parents abgemeldet
   // werden sollen (Peer-Cancel).
+  // v15.8: Peer-Cancel-Modal mit Checkbox-Liste statt drei-Buttons —
+  // User hakt direkt an, welche zusätzlichen Sub-Events er mitabmelden
+  // will (Target ist immer fix abgemeldet, weil er ja explizit den
+  // Cancel-Button geklickt hat). resolve liefert das Set der peer-IDs
+  // zurück oder 'abort' wenn der Modal-User komplett abbricht.
   const [peerCancelDialog, setPeerCancelDialog] = React.useState<{
     targetTitle: string;
-    peers: { id: string; title: string }[];
-    resolve: (_choice: 'all' | 'one' | 'abort') => void;
+    peers: { id: string; title: string; startDate?: string; location?: string }[];
+    resolve: (_choice: { peerIds: string[] } | 'abort') => void;
   } | null>(null);
 
   const refresh = React.useCallback(async (): Promise<void> => {
@@ -2837,16 +2867,21 @@ function MyEventSubEvents(props: {
     if (currentlyRegistered) {
       const peers = props.childEvents
         .filter(ce => ce.id !== childEventId && registeredSet.has(ce.id))
-        .map(ce => ({ id: ce.id, title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event') }));
+        .map(ce => ({
+          id: ce.id,
+          title: ce.title || (isDe ? 'Sub-Event' : 'Sub-event'),
+          startDate: ce.startDate || '',
+          location: ce.location || '',
+        }));
       if (peers.length > 0) {
         const target = props.childEvents.find(ce => ce.id === childEventId);
         const targetTitle = (target && target.title) || (isDe ? 'dieses Sub-Event' : 'this sub-event');
-        const choice = await new Promise<'all' | 'one' | 'abort'>(resolve => {
+        const choice = await new Promise<{ peerIds: string[] } | 'abort'>(resolve => {
           setPeerCancelDialog({ targetTitle, peers, resolve });
         });
         setPeerCancelDialog(null);
         if (choice === 'abort') return;
-        if (choice === 'all') peerIdsToCancel = peers.map(p => p.id);
+        peerIdsToCancel = choice.peerIds;
       }
     }
     setBusyId(childEventId);
@@ -3089,73 +3124,122 @@ function MyEventSubEvents(props: {
         );
       })()}
 
-      {/* v11.34: Peer-Cancel-Modal — beim Cancel eines Sub-Events fragen,
-          ob die anderen aktiven Sub-Events des gleichen Parents auch
-          abgemeldet werden sollen. */}
-      {peerCancelDialog && (() => {
-        const dlg = peerCancelDialog;
-        const choose = (c: 'all' | 'one' | 'abort'): void => dlg.resolve(c);
-        // v14.7: bei Sectioned-Events Sprache auf „Sections" umstellen.
-        const peerTerm = isSectionedEvent
-          ? (isDe ? 'Section' : 'section')
-          : (isDe ? 'Sub-Event' : 'sub-event');
-        const peerTermPl = isSectionedEvent
-          ? (isDe ? 'Sections' : 'sections')
-          : (isDe ? 'Sub-Events' : 'sub-events');
-        return (
-          <Modal
-            open={true}
-            onClose={() => choose('abort')}
-            maxWidth={520}
-            ariaLabel={isDe ? `Auch andere ${peerTermPl} abmelden?` : `Cancel other ${peerTermPl} too?`}
-          >
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {isDe ? `Auch andere ${peerTermPl} abmelden?` : `Cancel other ${peerTermPl} too?`}
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
-                {isDe
-                  ? <>Du meldest dich von <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong> ab. Du bist außerdem für <strong>{dlg.peers.length}</strong> {dlg.peers.length === 1 ? `weitere${isSectionedEvent ? '' : 's'} ${peerTerm}` : `weitere ${peerTermPl}`} angemeldet:</>
-                  : <>You are cancelling <strong>&bdquo;{dlg.targetTitle}&ldquo;</strong>. You are also registered for <strong>{dlg.peers.length}</strong> other {dlg.peers.length === 1 ? peerTerm : peerTermPl}:</>
-                }
-              </p>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--dex-gray-700)', maxHeight: 200, overflowY: 'auto' }}>
-                {dlg.peers.map(p => <li key={p.id}>{p.title}</li>)}
-              </ul>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => choose('all')}
-                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
-                >
-                  {isDe
-                    ? `Alle abmelden (das gewählte + ${dlg.peers.length} weiteres)`
-                    : `Cancel all (selected + ${dlg.peers.length} other${dlg.peers.length === 1 ? '' : 's'})`}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => choose('one')}
-                  style={{ fontSize: '0.9rem', padding: '10px 16px' }}
-                >
-                  {isDe
-                    ? 'Nur das gewählte abmelden'
-                    : 'Cancel only the selected one'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => choose('abort')}
-                  style={{
-                    background: 'transparent', border: 'none',
-                    color: 'var(--dex-gray-500)', cursor: 'pointer',
-                    fontSize: '0.85rem', textDecoration: 'underline',
-                    padding: '6px 16px',
-                  }}
-                >
-                  {isDe ? 'Abbrechen — nichts abmelden' : 'Cancel — keep everything'}
-                </button>
-              </div>
-          </Modal>
-        );
-      })()}
+      {/* v15.8: Peer-Cancel-Modal mit Checkbox-Liste. User hakt direkt
+          an, welche zusätzlichen Sub-Events er mitabmelden will.
+          Default: target ist immer abgemeldet (lock-Checkbox); peers
+          unchecked. Klick auf „Abmelden" verarbeitet die Auswahl. */}
+      {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={isSectionedEvent} />}
     </div>
+  );
+}
+
+// v15.8: Peer-Cancel-Modal mit Checkbox-Liste pro Sub-Event.
+// Target ist locked und immer ausgewählt (User hat ja explizit Cancel
+// geklickt); Peers sind initial unchecked. Eine „Bestätigen"-Aktion
+// schickt die peer-IDs der angehakten Sub-Events an den resolver.
+function PeerCancelCheckboxModal(props: {
+  dlg: {
+    targetTitle: string;
+    peers: { id: string; title: string; startDate?: string; location?: string }[];
+    resolve: (_choice: { peerIds: string[] } | 'abort') => void;
+  };
+  isDe: boolean;
+  isSectionedEvent: boolean;
+}): React.ReactElement {
+  const { dlg, isDe, isSectionedEvent } = props;
+  const [selectedPeerIds, setSelectedPeerIds] = React.useState<Set<string>>(new Set());
+  const peerTermPl = isSectionedEvent
+    ? (isDe ? 'Sections' : 'sections')
+    : (isDe ? 'Sub-Events' : 'sub-events');
+  const togglePeer = (id: string): void => {
+    setSelectedPeerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const formatLine = (startDate?: string, location?: string): string => {
+    const dateStr = startDate
+      ? new Date(startDate).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    return [dateStr, location].filter(Boolean).join(' · ');
+  };
+  const totalCount = 1 + selectedPeerIds.size;
+  return (
+    <Modal
+      open={true}
+      onClose={() => dlg.resolve('abort')}
+      maxWidth={560}
+      ariaLabel={isDe ? 'Abmeldung — Auswahl' : 'Cancellation — selection'}
+    >
+      <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+        {isDe ? `Welche ${peerTermPl} möchtest du abmelden?` : `Which ${peerTermPl} do you want to cancel?`}
+      </h3>
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+        {isDe
+          ? 'Hak die Einträge an, die du abmelden willst. Nicht angehakte Anmeldungen bleiben erhalten.'
+          : 'Tick the entries you want to cancel. Unticked registrations stay active.'}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+        <label style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+          borderRadius: 8,
+          border: '1px solid var(--dex-red, #d62828)',
+          background: 'rgba(214,40,40,0.06)',
+        }}>
+          <input type="checkbox" checked={true} disabled style={{ marginTop: 3, accentColor: 'var(--dex-red, #d62828)' }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{dlg.targetTitle}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--dex-red-dark, #8b1414)', marginTop: 2 }}>
+              {isDe ? 'Dieses hast du gerade zur Abmeldung gewählt' : 'You just selected this one to cancel'}
+            </div>
+          </div>
+        </label>
+        {dlg.peers.map(p => {
+          const checked = selectedPeerIds.has(p.id);
+          const meta = formatLine(p.startDate, p.location);
+          return (
+            <label key={p.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+              borderRadius: 8,
+              border: `1px solid ${checked ? 'var(--dex-red, #d62828)' : 'var(--dex-gray-200)'}`,
+              background: checked ? 'rgba(214,40,40,0.04)' : '#fff',
+              cursor: 'pointer',
+              transition: 'border-color 0.15s, background 0.15s',
+            }}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => togglePeer(p.id)}
+                style={{ marginTop: 3, accentColor: 'var(--dex-red, #d62828)', cursor: 'pointer' }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>{p.title}</div>
+                {meta && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{meta}</div>
+                )}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => dlg.resolve('abort')}
+        >
+          {isDe ? 'Abbrechen' : 'Cancel'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => dlg.resolve({ peerIds: Array.from(selectedPeerIds) })}
+          style={{ background: 'var(--dex-red, #d62828)', borderColor: 'var(--dex-red, #d62828)' }}
+        >
+          {isDe ? `Abmelden (${totalCount})` : `Cancel ${totalCount}`}
+        </button>
+      </div>
+    </Modal>
   );
 }
