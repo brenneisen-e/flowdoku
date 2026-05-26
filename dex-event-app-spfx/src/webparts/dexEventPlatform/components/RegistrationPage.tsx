@@ -2409,7 +2409,11 @@ export default function RegistrationPage(): React.ReactElement {
                   {tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
                 </p>
 
-                {/* Haupt-Event-Checkbox */}
+                {/* v15.7: Hauptevent-Card auch hier ausblenden bei
+                    subEventsOnlyMode — gleicher Fix wie der primäre Pfad
+                    weiter oben. Vorher wurde dieser Render-Pfad (Register
+                    for someone else) übersehen. */}
+                {!event.subEventsOnlyMode && (
                 <label style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
                   borderRadius: 8,
@@ -2433,6 +2437,7 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </div>
                 </label>
+                )}
 
                 {/* Sessions */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
