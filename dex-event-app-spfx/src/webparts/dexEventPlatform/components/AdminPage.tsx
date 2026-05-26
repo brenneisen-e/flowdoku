@@ -2499,6 +2499,24 @@ export default function AdminPage(): React.ReactElement {
     const totalColSpan = 6 + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
     return (
       <div style={{ overflowX: 'auto' }}>
+        {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
+            was die zwei Hintergrundfarben bedeuten. */}
+        {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+            {parentCustomFields.length > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, ...PASTEL_A_HEADER, border: '1px solid rgba(0, 118, 168, 0.3)' }} />
+                {isDe ? 'Felder des Hauptevents' : 'Main-event fields'}
+              </span>
+            )}
+            {childCustomFieldsByChild.some(x => x.fields.length > 0) && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, ...PASTEL_B_HEADER, border: '1px solid rgba(255, 191, 0, 0.4)' }} />
+                {isDe ? 'Felder eines Sub-Events' : 'Sub-event fields'}
+              </span>
+            )}
+          </div>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
@@ -2548,17 +2566,38 @@ export default function AdminPage(): React.ReactElement {
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
                     {parentCustomFields.map(f => {
                       let val = '';
-                      for (const ch of consolidatedChildren) {
-                        const r = row.perChild[ch.id];
-                        if (!r) continue;
+                      // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
+                      // PARENT-Teilnehmerliste auflösen (registrations =
+                      // selectedEvent.id-Regs), erst danach Fallback auf
+                      // Sub-Event-CustomData. Vorher wurde nur Sub-Event-
+                      // CustomData gelesen — Parent-Felder waren immer leer.
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+                      if (parentReg) {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const spName = (f as any).spInternalName || '';
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        let v: any = spName ? (r as any)[spName] : undefined;
-                        if ((v === undefined || v === null || v === '') && r.CustomData) {
-                          try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
+                        let v: unknown = spName ? parentReg[spName] : undefined;
+                        if ((v === undefined || v === null || v === '') && parentReg.CustomData) {
+                          try { v = JSON.parse(parentReg.CustomData)[f.id]; } catch { /* */ }
                         }
-                        if (v !== undefined && v !== null && v !== '') { val = String(v); break; }
+                        if (v !== undefined && v !== null && v !== '') val = String(v);
+                      }
+                      // Fallback: Sub-Event-CustomData durchsuchen (Legacy-Events,
+                      // bei denen Parent-Felder in Sub-Event-CustomData kopiert
+                      // wurden — z.B. bei Wizard-„Vom Hauptevent kopieren").
+                      if (!val) {
+                        for (const ch of consolidatedChildren) {
+                          const r = row.perChild[ch.id];
+                          if (!r) continue;
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const spName = (f as any).spInternalName || '';
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          let v: any = spName ? (r as any)[spName] : undefined;
+                          if ((v === undefined || v === null || v === '') && r.CustomData) {
+                            try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
+                          }
+                          if (v !== undefined && v !== null && v !== '') { val = String(v); break; }
+                        }
                       }
                       return (
                         <td key={`pcv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_A_CELL }} title={val}>

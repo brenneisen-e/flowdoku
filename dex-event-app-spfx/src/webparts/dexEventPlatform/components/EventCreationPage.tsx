@@ -6410,10 +6410,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                {/* v15.3: Radio-Cards im Stil der Registration-Page —
-                    grüner Border + pastell-grüner Hintergrund wenn aktiv,
-                    klick-fähige ganze Card. Konsistent mit dem Pattern, das
-                    der User auf der Anmelde-Seite gewohnt ist. */}
+                {/* v15.3.1: Custom-styled Radio-Cards in echtem Deloitte-Grün —
+                    weil Edge mit accentColor uneinheitlich rendert (mal solid,
+                    mal hollow), hier explizite Visual-Komposition: nativer
+                    Input visually-hidden + eigener grüner Outer-Border-Kreis
+                    mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
+                    allen Browsern + matched die Optik der Registration-Page. */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                   {[false, true].map(modeVal => {
                     const selected = !!subEventsOnlyMode === modeVal;
@@ -6429,13 +6431,39 @@ export default function EventCreationPage(): React.ReactElement {
                           transition: 'border-color 0.15s, background 0.15s',
                         }}
                       >
+                        {/* Hidden native radio for accessibility + form-state */}
                         <input
                           type="radio"
                           name="subEventsMode"
                           checked={selected}
                           onChange={() => setSubEventsOnlyMode(modeVal)}
-                          style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0, marginTop: 2 }}
+                          style={{
+                            position: 'absolute', opacity: 0, pointerEvents: 'none',
+                            width: 1, height: 1, margin: -1, padding: 0,
+                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
+                          }}
                         />
+                        {/* Visual custom radio */}
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: 'inline-block',
+                            width: 18, height: 18, borderRadius: '50%',
+                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
+                            background: '#fff',
+                            position: 'relative', flexShrink: 0,
+                            marginTop: 2,
+                            transition: 'border-color 0.15s',
+                          }}
+                        >
+                          {selected && (
+                            <span style={{
+                              position: 'absolute', inset: 3,
+                              borderRadius: '50%',
+                              background: 'var(--dex-green, #86bc25)',
+                            }} />
+                          )}
+                        </span>
                         <span style={{ fontSize: '0.88rem', flex: 1 }}>
                           {modeVal === false
                             ? (isDe
