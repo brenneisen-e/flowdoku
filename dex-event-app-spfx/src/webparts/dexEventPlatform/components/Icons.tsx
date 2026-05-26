@@ -39,8 +39,11 @@ export const Book = ({ size = 20 }: IconProps): React.ReactElement => (
   </svg>
 );
 
-export const QrCode = ({ size = 20 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+export const QrCode = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
+  // v13.14: strokeWidth-Prop respektiert — die StartPage-Kachel ruft sie
+  // mit strokeWidth={1} auf, damit die Kontur zu Calendar/Pin/Settings
+  // passt; im Header wird der Default 2 verwendet.
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="7" rx="1" />
     <rect x="14" y="3" width="7" height="7" rx="1" />
     <rect x="3" y="14" width="7" height="7" rx="1" />
