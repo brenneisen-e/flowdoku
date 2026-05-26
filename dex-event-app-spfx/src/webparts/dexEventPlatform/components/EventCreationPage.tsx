@@ -6483,7 +6483,9 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginTop: 0 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={13} />
-                    {t('create.subevents')}
+                    {/* v15.5: dynamische Bezeichnung — verwendet den oben
+                        gewählten Plural-Term statt fix „Sub-Events". */}
+                    {(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
