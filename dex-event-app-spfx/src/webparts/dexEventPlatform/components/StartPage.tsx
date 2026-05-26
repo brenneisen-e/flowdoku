@@ -6,7 +6,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings } from './Icons';
+import { Calendar, Pin, Settings, QrCode } from './Icons';
 import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
@@ -42,19 +42,24 @@ export default function StartPage(): React.ReactElement {
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
   const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent;
-  // v13.11: Reines Check-In-Team — User ist per qrScannerEmails Mitglied
-  // mindestens eines AKTIVEN Events, hat aber sonst keine Organizer-Rechte.
-  // Die Organizer-Kachel wird dann klickbar und navigiert auf die
-  // Check-In-Seite. Ein kleines „Check-In"-Badge oben rechts macht klar,
-  // dass die Berechtigung auf Check-In beschränkt ist (kein Event-Edit,
-  // keine Massenmails, keine Rollen-Verwaltung).
-  const isCheckInTeamOfActive = !isOrganizer && !!currentEmailLc && (events || []).some(e => {
+  // v13.12: Check-In-Team-Mitgliedschaft = User ist in qrScannerEmails
+  // mindestens eines AKTIVEN Events. Wenn ja: eine eigene 4. Kachel
+  // „Check-In" erscheint mit QrCode-Icon + Pulse-Animation. Die
+  // Organizer-Kachel bleibt für reine Check-In-Helfer trotzdem ausgegraut
+  // (keine Verwirrung über die tatsächlichen Berechtigungen — Check-In ist
+  // ein eigener, klar abgegrenzter Bereich).
+  const isCheckInTeamOfActive = !!currentEmailLc && (events || []).some(e => {
     if (e.status !== 'Active') return false;
-    return (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
+    if ((e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc)) return true;
+    if ((e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc)) return true;
+    return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
   // v12.5: Grid bleibt immer 3-spaltig — auch User sehen die Organizer-
   // Kachel (ausgegraut + CTA-Overlay).
+  // v13.12: Wenn der User Check-In-Team-Mitgliedschaft hat, kommt eine
+  // 4. Kachel dazu → 4-spaltiges Grid.
   const showAdminTile = true;
+  const showCheckInTile = isCheckInTeamOfActive;
 
   return (
     <div className="page-container">
@@ -80,8 +85,20 @@ export default function StartPage(): React.ReactElement {
           0%   { transform: rotate(0deg) scale(1); }
           100% { transform: rotate(360deg) scale(1); }
         }
+        @keyframes dexStartIconScanPulse {
+          0%   { transform: scale(1); filter: drop-shadow(0 0 0 rgba(134,188,37,0.0)); }
+          40%  { transform: scale(1.12); filter: drop-shadow(0 0 6px rgba(134,188,37,0.55)); }
+          70%  { transform: scale(0.96); filter: drop-shadow(0 0 0 rgba(134,188,37,0.0)); }
+          100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(134,188,37,0.0)); }
+        }
+        .start-card--checkin:hover .start-card__icon svg { animation: dexStartIconScanPulse 0.9s ease; }
+        .start-grid--with-checkin { grid-template-columns: 1fr 1fr 1fr 1fr !important; }
+        @media (max-width: 900px) {
+          .start-grid--with-checkin { grid-template-columns: 1fr 1fr !important; }
+          .start-grid--with-checkin .start-card--checkin { grid-column: 1 / -1; }
+        }
       `}</style>
-      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}`}>
+      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}`}>
         <div className="card card-clickable start-card" onClick={() => navigate('register')}>
           <div className="start-card__icon">
             <Calendar size={64} strokeWidth={1} />
@@ -104,40 +121,11 @@ export default function StartPage(): React.ReactElement {
             <h2>{t('start.admin')}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
           </div>
-        ) : isCheckInTeamOfActive ? (
-          // v13.11: Check-In-Team-Variante — klickbar, leitet auf die
-          // Check-In-Seite. Rechts oben sitzt ein Badge „Check-In" als
-          // Hinweis, dass nur die Check-In-Funktion freigeschaltet ist.
-          <div
-            className="card card-clickable start-card start-card--admin"
-            onClick={() => navigate('check-in')}
-            style={{ position: 'relative' }}
-          >
-            <div
-              style={{
-                position: 'absolute', top: 12, right: 12,
-                background: 'var(--dex-green, #86bc25)', color: '#fff',
-                padding: '4px 10px', borderRadius: 999,
-                fontSize: '0.72rem', fontWeight: 700,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                letterSpacing: 0.3, textTransform: 'uppercase',
-              }}
-            >
-              {locale === 'de' ? 'Check-In' : 'Check-in'}
-            </div>
-            <div className="start-card__icon">
-              <Settings size={64} strokeWidth={1} />
-            </div>
-            <h2>{t('start.admin')}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de'
-                ? 'Teilnehmer einchecken (Scan + manuell)'
-                : 'Check in attendees (scan + manual)'}
-            </p>
-          </div>
         ) : (
           // v12.5: Ausgegraute Organizer-Kachel mit CTA-Overlay-Button
-          // — User können so direkt anfragen Organizer zu werden.
+          // — User können so direkt anfragen Organizer zu werden. Bleibt
+          // ausgegraut auch für reine Check-In-Helfer (v13.12), die haben
+          // ja keine Organizer-Rechte — Check-In ist eine eigene Kachel.
           <div
             className="card start-card start-card--admin"
             style={{ position: 'relative', cursor: 'default', opacity: 0.55 }}
@@ -169,6 +157,26 @@ export default function StartPage(): React.ReactElement {
                 {locale === 'de' ? 'Organizer werden?' : 'Want to become an organizer?'}
               </button>
             </div>
+          </div>
+        )}
+        {/* v13.12: Vierte Kachel „Check-In" — nur sichtbar wenn der User
+            in mindestens einem aktiven Event als QR-Scanner / Organizer /
+            Co-Organizer eingetragen ist. Eigenes QR-Code-Icon und eigene
+            Scan-Pulse-Animation, klar abgegrenzt von der Admin-Kachel. */}
+        {showCheckInTile && (
+          <div
+            className="card card-clickable start-card start-card--checkin"
+            onClick={() => navigate('check-in')}
+          >
+            <div className="start-card__icon">
+              <QrCode size={64} />
+            </div>
+            <h2>{locale === 'de' ? 'Check-In' : 'Check-in'}</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de'
+                ? 'Teilnehmer einchecken (Scan + manuell)'
+                : 'Check in attendees (scan + manual)'}
+            </p>
           </div>
         )}
       </div>
