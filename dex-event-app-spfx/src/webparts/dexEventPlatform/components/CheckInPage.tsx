@@ -15,7 +15,7 @@ import { useLanguage } from '../context/LanguageContext';
 import QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
-  const { events } = useEvents();
+  const { events, getAllRegistrations } = useEvents();
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { t } = useLanguage();
@@ -70,23 +70,18 @@ export default function CheckInPage(): React.ReactElement {
   }, [selectedEventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadRegsForSearch = React.useCallback(async (eventId: string): Promise<void> => {
-    if (!eventId || !eventService) return;
+    if (!eventId) return;
     if (searchRegsCache[eventId]) return; // bereits geladen
-    const ev = events.find(e => e.id === eventId);
-    if (!ev || !ev.subsiteUrl) {
-      setSearchLoadError('Event nicht gefunden oder ohne Subsite.');
-      return;
-    }
     setIsLoadingSearchRegs(true);
     setSearchLoadError('');
     try {
-      const regs = await eventService.getAllRegistrations(ev.subsiteUrl);
+      const regs = await getAllRegistrations(eventId);
       setSearchRegsCache(prev => ({ ...prev, [eventId]: regs }));
     } catch {
       setSearchLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
     setIsLoadingSearchRegs(false);
-  }, [eventService, events, searchRegsCache]);
+  }, [getAllRegistrations, searchRegsCache]);
 
   // v7.14: Sobald nameSearchEventId gesetzt ist, Teilnehmerliste vorab laden,
   // damit die Live-Liste ohne Vorab-Tippen sichtbar ist.

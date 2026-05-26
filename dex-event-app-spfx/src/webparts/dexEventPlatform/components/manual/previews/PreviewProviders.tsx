@@ -87,8 +87,10 @@ const emailFor = (p: DemoPerson): string =>
   `${p.firstName.toLowerCase().replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c] || c))}.${p.surname.toLowerCase().replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c] || c))}@deloitte.de`;
 
 const demoRegistrations: SPRegistration[] = demoPeople.map((p, idx) => {
-  const isActive = p.status !== 'Warteliste';
-  const tid = isActive ? idx + 1 : 100 + idx;
+  // TeilnehmerIDs müssen lückenlos 1..N (über aktive UND Warteliste)
+  // durchlaufen, sonst zeigt AdminPage die orange „IDs sind ggf. nicht
+  // korrekt"-Warnbox (siehe `recentCancellation` in AdminPage.tsx).
+  const tid = idx + 1;
   const regDate = new Date(2026, 7, 5 + idx).toISOString();
   const checkedIn = p.status === 'Eingecheckt';
   return {
