@@ -7790,23 +7790,10 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
-              {/* Hinweis-Box: tatsächliche Logik folgt mit v11.82+ */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '12px 14px', marginBottom: 16,
-                background: 'rgba(237,139,0,0.08)',
-                border: '1px solid var(--dex-orange, #ed8b00)',
-                borderRadius: 'var(--dex-radius, 12px)',
-                fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-                lineHeight: 1.55,
-              }}>
-                <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
-                <div>
-                  {isDe
-                    ? <><strong>Hinweis:</strong> Die tatsächliche Team-Anmelde-Logik (Multi-Person-Form, automatische Mails, Outlook-Einladungen, Slot-Beitritt) folgt mit dem nächsten Release. Aktuell wird diese Konfiguration nur gespeichert — die Auswirkung auf die Anmeldeseite kommt mit <strong>v11.82+</strong>.</>
-                    : <><strong>Note:</strong> The actual team registration logic (multi-person form, automatic emails, Outlook invites, slot join) will follow with the next release. Currently this configuration is only stored — the impact on the registration page comes with <strong>v11.82+</strong>.</>}
-                </div>
-              </div>
+              {/* v15: alter Hinweis „Logik folgt mit v11.82+" entfernt —
+                  die komplette Team-Anmelde-Logik (Multi-Person-Form,
+                  Mails, Outlook, Slot-Beitritt, Lead-Approval, Admin-Center-
+                  Team-Management) ist seit v11.82–v11.86 live. */}
 
               </div>
 
@@ -7821,41 +7808,10 @@ export default function EventCreationPage(): React.ReactElement {
                   : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 6 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
               </p>
 
-              {/* v11.80: Anrede-Toggle */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={askSalutation}
-                    onChange={e => setAskSalutation(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
-                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
-                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v15: Anrede-Toggle ist nach UNTEN den Datenschutz-Hinweis
+                  gewandert — Organizer soll erst den Sammle-keine-sensiblen-
+                  Daten-Hinweis lesen, dann erst die Optional-Anrede-Checkbox
+                  setzen. Siehe weiter unten. */}
 
               {renderStepIntro(
                 [
@@ -7904,6 +7860,44 @@ export default function EventCreationPage(): React.ReactElement {
                     ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
                     : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
                 </div>
+              </div>
+
+              {/* v15: Anrede-Toggle UNTER dem Datenschutz-Hinweis — Organizer
+                  liest erst die Pflicht zur Datensparsamkeit, danach kommt die
+                  optionale Frage „brauche ich überhaupt eine Anrede?". */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={askSalutation}
+                    onChange={e => setAskSalutation(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
+                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
+                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
