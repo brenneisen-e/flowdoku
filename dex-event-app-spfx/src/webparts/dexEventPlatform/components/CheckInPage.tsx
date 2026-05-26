@@ -10,6 +10,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 import QrScanner from 'qr-scanner';
@@ -18,12 +19,13 @@ export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations } = useEvents();
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
+  const { currentUser } = useCurrentUser();
   const { t } = useLanguage();
-  // v6.22: aktueller User-E-Mail aus SPFx-Kontext, brauchen wir für Organizer-/
-  // QR-Scanner-Zuordnung (statt nur tenant-weite isOrganizer/isAdmin-Flags).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const spCtx = (window as any).__dexSpfxContext;
-  const currentEmailLc: string = (spCtx?.pageContext?.user?.email || '').toLowerCase();
+  // v6.22 / v13.11: aktueller User-E-Mail über UserContext — der respektiert
+  // die Demo-Impersonation (sonst greift hier immer die echte SPFx-Identität
+  // des Admins, und Demo-Modus „Check-In-Team" käme nie an die Check-In-
+  // Seite ran, weil die qrScannerEmails-Injektion auf die Demo-Mail zeigt).
+  const currentEmailLc: string = (currentUser.email || '').toLowerCase();
   // Events, die der aktuelle User einchecken darf: Admin = alle, sonst nur die
   // Events in denen er Organizer oder QR-Code-Scanner ist (per E-Mail-Match).
   const accessibleEvents = React.useMemo(() => {

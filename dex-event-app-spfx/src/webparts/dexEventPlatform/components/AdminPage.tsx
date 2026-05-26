@@ -5394,8 +5394,23 @@ export default function AdminPage(): React.ReactElement {
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }
                       const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+                      // v13.12: {{ORB_URL}}-Platzhalter für die Vorschau auflösen,
+                      // damit das DEX-Orb-Bild im Modal sichtbar ist statt als
+                      // kaputtes Bild-Icon zu landen. Reihenfolge: event-eigenes
+                      // _eventLogo (aus EmailTemplateOverrides) → globaler Default-
+                      // Orb aus dem Logo-Cache → leerer String (im Echtversand
+                      // ersetzt der Power-Automate-Flow ohnehin selbst).
+                      let eventOrb = '';
+                      try {
+                        const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+                        if (ov && typeof ov._eventLogo === 'string') eventOrb = ov._eventLogo;
+                      } catch { /* */ }
+                      const previewBody = emailData.body.replace(
+                        /\{\{ORB_URL\}\}/g,
+                        eventOrb || getCachedOrbBase64() || '',
+                      );
                       setQrPreviewSubject(emailData.subject);
-                      setQrPreviewHtml(emailData.body);
+                      setQrPreviewHtml(previewBody);
                       setQrPreviewOpen(true);
                     } finally { setQrPreviewLoading(false); }
                   }}
