@@ -92,6 +92,12 @@ export interface DeloitteEvent {
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
+  /** v14.5: Wenn true UND es existieren Sub-Events, muss der Teilnehmer
+   *  beim Anmelden mindestens ein Sub-Event auswählen. Typischer Use-Case:
+   *  Hauptevent-Kommunikation ist abgestellt (disableEmails/disableOutlook),
+   *  Kommunikation läuft nur über die Sub-Events — dann darf niemand „nur
+   *  Hauptevent" anmelden, sonst landet er ohne Bestätigung im System. */
+  requireSubEventSelection?: boolean;
   /** v8.5: Granulare Organizer-Benachrichtigung bei Anmeldungen.
    *  - 'never' (Default): Organizer bekommt nichts mit
    *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt

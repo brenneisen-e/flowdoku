@@ -604,6 +604,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
+      // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
+      // JSON (kein neues SP-Feld nötig).
+      requireSubEventSelection: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._requireSubEventSelection);
+        } catch { return false; }
+      })(),
       // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
       // als false interpretiert (kein Hinweis anzeigen).
       outlookDirty: !!e.OutlookDirty,

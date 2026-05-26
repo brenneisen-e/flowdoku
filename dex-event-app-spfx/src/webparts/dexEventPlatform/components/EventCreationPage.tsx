@@ -714,6 +714,23 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
+  // v14.4: Acknowledgement, dass bei Top-Level-Kommunikation = AUS die
+  // Teilnehmer sich für mindestens ein Sub-Event anmelden müssen. Vorausgewählt
+  // für Events, die schon mit deaktivierter Kommunikation gespeichert sind
+  // (alter Lauf ist bereits durch die Gate-Logik durchgekommen). Bei neuen
+  // Events / frisch umgeschaltetem Toggle bleibt der Haken aus, der Save
+  // ist dann blockiert bis bestätigt.
+  const [mainCommDisabledAck, setMainCommDisabledAck] = React.useState<boolean>(
+    !!editEvent && (!!editEvent.disableEmails || !!editEvent.disableOutlook),
+  );
+  // v14.5: Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend".
+  // Wird im RegistrationForm erzwungen — der Submit-Button blockiert, bis
+  // der Teilnehmer ein Sub-Event angehakt hat. Sinnvoll wenn die Haupt-
+  // Event-Kommunikation aus ist und alle Mails/Outlook-Termine nur über
+  // die Sub-Events laufen.
+  const [requireSubEventSelection, setRequireSubEventSelection] = React.useState<boolean>(
+    !!editEvent && !!editEvent.requireSubEventSelection,
+  );
   // v8.5: Organizer-BCC-Modi (Anmeldung + Abmeldung).
   const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
     editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
@@ -776,13 +793,14 @@ export default function EventCreationPage(): React.ReactElement {
           _eventLogo, _outlookLogo, _b2run,
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
+          _requireSubEventSelection,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
         void _eventLogo; void _outlookLogo; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
-        void _splitDisplayOrderReversed;
+        void _splitDisplayOrderReversed; void _requireSubEventSelection;
         return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
@@ -861,6 +879,13 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody?: string;
     outlookHeading?: string;
     outlookSubheading?: string;
+    /** v14.4: Pro-Sub-Event Mail-Text-Overrides (Anmeldung / Warteliste /
+     *  Abmeldung / Nachruecken). Erlaubt es, jedem Sub-Event eigene Subjects,
+     *  Headings und Bodies zu geben — Frage von 2026-05 (3 Sub-Events sollen
+     *  jeweils eigene An-/Abmelde-Mails versenden können). Vorher landeten
+     *  Änderungen auf einem Sub-Tab fälschlicherweise im Top-Level-Override
+     *  → die Sub-Events feuerten die Haupt-Event-Texte ab. */
+    emailTemplateOverrides?: Record<string, { subject: string; heading: string; bodyHtml: string }>;
     /** v11.57: Snapshot der initialen Outlook-relevanten Felder, um beim Save
      *  zu erkennen, ob die Teilnehmer einen Update-Termin bekommen sollen. */
     initialOutlookEventId?: string;
@@ -876,12 +901,31 @@ export default function EventCreationPage(): React.ReactElement {
     return kids.map(k => {
       // v11.57: Pro-Sub-Event Logo-Bilder aus EmailTemplateOverrides
       // (Piggyback-Pattern, gleich wie Top-Level-Event).
+      // v14.4: zusätzlich die Mail-Text-Overrides (Anmeldung/Warteliste/
+      // Abmeldung/Nachruecken) — vorher landeten Edits auf Sub-Event-Tabs
+      // versehentlich beim Haupt-Event.
       let emailLogo = '';
       let outlookLogo = '';
+      let subOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
       try {
-        const ov = JSON.parse(k.emailTemplateOverrides || '{}');
-        emailLogo = ov?._eventLogo || '';
-        outlookLogo = ov?._outlookLogo || '';
+        const ov = JSON.parse(k.emailTemplateOverrides || '{}') as Record<string, unknown>;
+        emailLogo = (ov?._eventLogo as string) || '';
+        outlookLogo = (ov?._outlookLogo as string) || '';
+        // Piggyback-Keys (mit Unterstrich-Prefix) rausstrippen, der Rest sind
+        // die echten Mail-Template-Overrides pro TemplateType.
+        const filtered: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
+        for (const key of Object.keys(ov)) {
+          if (key.startsWith('_')) continue;
+          const val = ov[key] as { subject?: string; heading?: string; bodyHtml?: string } | undefined;
+          if (val && (val.subject || val.heading || val.bodyHtml)) {
+            filtered[key] = {
+              subject: val.subject || '',
+              heading: val.heading || '',
+              bodyHtml: val.bodyHtml || '',
+            };
+          }
+        }
+        subOverrides = filtered;
       } catch { /* */ }
       const parsedHeads = parseOutlookHeadings(k.outlookBody || '');
       return {
@@ -900,6 +944,7 @@ export default function EventCreationPage(): React.ReactElement {
       emailLanguage: k.emailLanguage || (locale === 'de' ? 'DE' : 'EN'),
       emailLogoBase64: emailLogo,
       outlookLogoBase64: outlookLogo,
+      emailTemplateOverrides: subOverrides,
       outlookBody: stripOutlookWrapper(k.outlookBody || ''),
       outlookHeading: parsedHeads.heading || k.title || '',
       outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
@@ -1924,13 +1969,17 @@ export default function EventCreationPage(): React.ReactElement {
         const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2);
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
-      // Sub-Event-EmailTemplateOverrides: aktuell nur die Logo-Piggybacks
-      // (eigene Templates pro Sub-Event sind in v11.57 noch nicht im UI).
-      const subEmailOverrides = (subEmailLogo || subOutlookLogo)
-        ? JSON.stringify({
-            ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
-            ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
-          })
+      // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
+      // + ab v14.4 die echten Mail-Text-Overrides pro Sub-Event
+      // (Anmeldung/Warteliste/Abmeldung/Nachruecken).
+      const subDraftOverrides = draft.emailTemplateOverrides || {};
+      const subOverridesMerged: Record<string, unknown> = {
+        ...subDraftOverrides,
+        ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
+        ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
+      };
+      const subEmailOverrides = Object.keys(subOverridesMerged).length > 0
+        ? JSON.stringify(subOverridesMerged)
         : '';
       const childPayload = {
         title: draft.title.trim(),
@@ -2172,6 +2221,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
+        // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
+        emailTemplateOverrides: { ...emailTemplateOverrides },
       } : s);
       subEventsRef.current = flushed;
       setSubEvents(flushed);
@@ -2189,6 +2240,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
+        emailTemplateOverrides: { ...emailTemplateOverrides },
       };
     }
     // 2) Werte aus dem Ziel-Slot in die Step-5-UI laden.
@@ -2203,6 +2255,7 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookSubheading(snap.outlookSubheading || '');
         setDisableEmails(!!snap.disableEmails);
         setDisableOutlook(!!snap.disableOutlook);
+        setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
       }
     } else {
       const sub = subEvents[nextIdx - 1];
@@ -2215,6 +2268,7 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookSubheading(sub.outlookSubheading || '');
         setDisableEmails(!!sub.disableEmails);
         setDisableOutlook(!!sub.disableOutlook);
+        setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
       }
     }
     setActiveCommTabIdx(nextIdx);
@@ -2230,6 +2284,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }>;
   } | null>(null);
   // v11.57: Bevor wir submitten, muessen die Werte des aktuell sichtbaren
   // Tabs ins zugehoerige Slot zurueckgeschrieben werden — sonst gehen die
@@ -2249,12 +2304,26 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
+        emailTemplateOverrides: { ...emailTemplateOverrides },
       } : s);
       subEventsRef.current = flushed;
       setSubEvents(flushed);
+    } else {
+      // v14.4: Slot 0 (Top-Level) Snapshot synchron mitziehen — sonst sieht
+      // resolveTopLevelCommState beim Save noch die alten Override-Werte und
+      // schreibt sie aufs Hauptevent zurück (statt der frischen Edits).
+      topLevelCommSnapshot.current = {
+        emailLanguage,
+        emailLogoBase64: emailLogoPreview,
+        outlookLogoBase64: outlookLogoPreview,
+        outlookBody,
+        outlookHeading,
+        outlookSubheading,
+        disableEmails,
+        disableOutlook,
+        emailTemplateOverrides: { ...emailTemplateOverrides },
+      };
     }
-    // Slot 0 (Top-Level) wird ohnehin direkt von den State-Variablen gespeist
-    // — kein Flush noetig.
   };
 
   /**
@@ -2277,6 +2346,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }>;
   } => {
     if (activeCommTabIdx === 0) {
       return {
@@ -2288,6 +2358,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         disableEmails,
         disableOutlook,
+        emailTemplateOverrides,
       };
     }
     const snap = topLevelCommSnapshot.current;
@@ -2304,6 +2375,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookSubheading,
       disableEmails,
       disableOutlook,
+      emailTemplateOverrides,
     };
   };
 
@@ -2341,9 +2413,6 @@ export default function EventCreationPage(): React.ReactElement {
   const handleSubmit = async (): Promise<void> => {
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
-    setIsSubmitting(true);
-    setError('');
-    setProgress(0);
 
     // v11.93: Top-Level-Kommunikations-Werte sauber resolven (s. Helper-
     // Doku oben). Sonst würden, falls beim Speichern ein Sub-Event-Tab
@@ -2358,6 +2427,25 @@ export default function EventCreationPage(): React.ReactElement {
     const effOutlookSubheading = topComm.outlookSubheading;
     const effDisableEmails = topComm.disableEmails;
     const effDisableOutlook = topComm.disableOutlook;
+
+    // v14.4 / v14.5: Wenn das Hauptevent Sub-Events hat UND die
+    // Kommunikation auf Top-Level abgestellt ist, muss entweder der
+    // „Sub-Event verpflichtend"-Toggle aktiv sein (erzwingt es im
+    // Anmeldeformular) ODER der Organizer den Ack-Haken gesetzt haben.
+    // Sonst landen Teilnehmer ohne Bestätigungs-Mail und ohne Kalender-
+    // Termin in der Liste.
+    const hasSubs = subEventsRef.current.some(s => s.title && s.title.trim());
+    if (hasSubs && (effDisableEmails || effDisableOutlook) && !requireSubEventSelection && !mainCommDisabledAck) {
+      // eslint-disable-next-line no-alert
+      alert(isDe
+        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 6 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
+        : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+    setProgress(0);
 
     // Schritt 1: Bild wird spaeter (nach Event-Erstellung) als Item-Attachment hochgeladen.
     // Bestehende URL beibehalten (z.B. bei Edit ohne neues Bild).
@@ -2508,7 +2596,14 @@ export default function EventCreationPage(): React.ReactElement {
       // v11.93: Top-Level-Logos aus dem Resolver lesen, NICHT direkt aus
       // den State-Variablen — sonst wird beim Speichern aus einem Sub-Tab
       // das Sub-Logo aufs Haupt-Event geschrieben.
-      updates['EmailTemplateOverrides'] = (Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0)
+      // v14.4: Mail-Text-Overrides ebenfalls aus dem Resolver — vorher wurden
+      // beim Speichern auf einem Sub-Tab die Sub-Overrides fälschlich aufs
+      // Hauptevent gemerged.
+      const topOverrides = topComm.emailTemplateOverrides || {};
+      const requireSubEventConfig = requireSubEventSelection
+        ? { _requireSubEventSelection: true }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -2517,7 +2612,8 @@ export default function EventCreationPage(): React.ReactElement {
             ...coOrganizerConfig,
             ...testTeamConfig,
             ...splitDispRevConfig,
-            ...emailTemplateOverrides,
+            ...requireSubEventConfig,
+            ...topOverrides,
           })
         : '';
       // v9.21: ActiveFrom als SP-DateTime
@@ -8418,13 +8514,23 @@ export default function EventCreationPage(): React.ReactElement {
                   </p>
                 </div>
 
-                {/* Benachrichtigungen abschalten — v9.39: collapsed by default. */}
-                <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
+                {/* Benachrichtigungen abschalten — v9.39: collapsed by default.
+                    v14.4: pre-open, wenn wir auf dem Haupt-Event-Tab sind und
+                    Sub-Events existieren — der Organizer soll die Toggles
+                    sehen können, um das Hauptevent stumm zu stellen während
+                    Sub-Events einzeln kommunizieren. */}
+                <details
+                  className="form-group"
+                  open={activeCommTabIdx === 0 && subEvents.length > 0 ? true : undefined}
+                  style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}
+                >
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
                     <StepBadge n={21} />
                     {t('create.notifications')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
-                      {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
+                      {(disableEmails || disableOutlook)
+                        ? (isDe ? '⚠ Kommunikation deaktiviert' : '⚠ Communication disabled')
+                        : (isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust')}
                     </span>
                   </summary>
                   <div style={{ marginTop: 12 }}>
@@ -8475,6 +8581,66 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       </span>
                     </label>
+                  )}
+                  {/* v14.5: Toggle „Anmeldung für mindestens ein Sub-Event
+                      verpflichtend". Nur auf dem Haupt-Event-Tab und nur wenn
+                      Sub-Events existieren — sonst hat der Schalter keinen
+                      Effekt. Erzwingt im Anmeldeformular die Auswahl
+                      mindestens eines Sub-Events. */}
+                  {activeCommTabIdx === 0 && subEvents.length > 0 && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                      <input
+                        type="checkbox"
+                        checked={requireSubEventSelection}
+                        onChange={e => setRequireSubEventSelection(e.target.checked)}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.9rem' }}>
+                        <strong>
+                          {isDe
+                            ? 'Anmeldung für mindestens ein Sub-Event verpflichtend'
+                            : 'Require selecting at least one sub-event'}
+                        </strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2, lineHeight: 1.4 }}>
+                          {isDe
+                            ? 'Wenn aktiv, kann sich kein Teilnehmer „nur fürs Hauptevent" anmelden — er muss im Anmeldeformular mindestens ein Sub-Event auswählen. Empfohlen, sobald die Hauptevent-Kommunikation oben ausgeschaltet ist, damit niemand stumm in der Liste landet.'
+                            : 'When on, no attendee can register „main event only" — they must pick at least one sub-event in the registration form. Recommended whenever main-event communication above is off, so nobody lands in the list silently.'}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                  {/* v14.4: Acknowledgement-Pflicht bei deaktivierter
+                      Hauptevent-Kommunikation + vorhandenen Sub-Events. */}
+                  {activeCommTabIdx === 0 && subEvents.length > 0 && (disableEmails || disableOutlook) && (
+                    <div style={{
+                      marginTop: 16, padding: 14,
+                      background: 'rgba(237,139,0,0.10)',
+                      border: '2px solid var(--dex-orange, #ed8b00)',
+                      borderRadius: 10,
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                        {isDe ? '⚠ Hinweis: Kommunikation für das Hauptevent ist deaktiviert' : '⚠ Note: communication for the main event is disabled'}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <>Wer sich <strong>nur für das Hauptevent</strong> anmeldet (und kein Sub-Event auswählt), bekommt damit weder eine Bestätigungs-Mail noch einen Kalender-Termin. Stelle sicher, dass die Teilnehmer im Anmeldeformular <strong>immer mindestens ein Sub-Event</strong> angeben müssen — sonst verlierst du sie kommunikativ.</>
+                          : <>Whoever registers <strong>only for the main event</strong> (without picking a sub-event) gets neither a confirmation email nor a calendar invite. Make sure attendees are required to pick <strong>at least one sub-event</strong> in the registration form — otherwise you lose them communication-wise.</>}
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={mainCommDisabledAck}
+                          onChange={e => setMainCommDisabledAck(e.target.checked)}
+                          style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>
+                          {isDe
+                            ? 'Ja, mir ist bewusst, dass Teilnehmer sich für mindestens ein Sub-Event anmelden müssen, um Kommunikation zu erhalten.'
+                            : 'Yes, I understand attendees need to register for at least one sub-event to receive communication.'}
+                        </span>
+                      </label>
+                    </div>
                   )}
                   </div>
                 </details>
