@@ -3720,6 +3720,57 @@ export default function EventCreationPage(): React.ReactElement {
     }
   }, [currentStep]);
 
+  // v15.6: Hinweis-Banner für den Hauptevent-Tab in den Steps 3/4/5, wenn
+  // subEventsOnlyMode aktiv ist. Der Hauptevent ist dann nicht buchbar — die
+  // Einstellungen aus diesem Tab werden zur Laufzeit ignoriert. Der Tab bleibt
+  // sichtbar (Konsistenz mit den restlichen Steps), wird aber ausgegraut, und
+  // ein gelber Hinweis-Banner sagt explizit, dass der Organizer auf einen
+  // [childTermPlural]-Tab wechseln soll, um die Konfiguration zu pflegen.
+  //
+  // WICHTIG: kein Hook — reines, render-loses Helper. Damit fügt diese
+  // Funktion keinen zusätzlichen useState/useEffect/useMemo-Call hinzu und
+  // verletzt die Rules of Hooks nicht (Rules of Hooks: alle Hooks vor dem
+  // early return weiter unten).
+  const renderHauptGreyoutBanner = (): React.ReactElement | null => {
+    if (!subEventsOnlyMode) return null;
+    const termPlural = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        padding: '12px 14px', marginBottom: 16,
+        background: 'rgba(237,139,0,0.08)',
+        border: '1px solid var(--dex-orange, #ed8b00)',
+        borderRadius: 'var(--dex-radius, 12px)',
+        fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+        lineHeight: 1.5,
+      }}>
+        <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', flexShrink: 0, marginTop: 2 }} />
+        <div>
+          {isDe ? (
+            <>
+              <strong>Hauptevent ist im aktuellen Modus nicht buchbar</strong> — diese Einstellungen werden nicht verwendet. Wechsle auf einen {termPlural}-Tab, um dort die Konfiguration zu pflegen.
+            </>
+          ) : (
+            <>
+              <strong>The main event is not bookable in the current mode</strong> — these settings are not used. Switch to a {termPlural} tab to maintain the configuration there.
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // v15.6: Style-Helfer für den ausgegrauten Hauptevent-Tab-Inhalt. Bei
+  // subEventsOnlyMode wird der gesamte Hauptevent-Tab-Inhalt mit Opacity 0.55
+  // und pointer-events:none umhüllt, damit der Organizer optisch sofort sieht,
+  // dass dieser Bereich aktuell wirkungslos ist. Der Hinweis-Banner steht
+  // außerhalb der Hülle, bleibt also klar lesbar.
+  const hauptGreyoutWrapperStyle = (): React.CSSProperties => (
+    subEventsOnlyMode
+      ? { opacity: 0.55, pointerEvents: 'none', userSelect: 'none' }
+      : {}
+  );
+
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -5851,7 +5902,10 @@ export default function EventCreationPage(): React.ReactElement {
                       </button>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{isDe ? 'Veranstaltungsort' : 'Venue'}</label>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={9} />
+                        {t('create.location')}
+                      </label>
                       <input
                         className="form-input"
                         value={se.location || ''}
@@ -5860,7 +5914,10 @@ export default function EventCreationPage(): React.ReactElement {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{isDe ? 'Adresse' : 'Address'}</label>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={10} />
+                        {isDe ? 'Adresse' : 'Address'}
+                      </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
                         <input className="form-input" value={seAddr.street} onChange={e => updateSub({ locationAddress: { ...seAddr, street: e.target.value } })} placeholder="Straße" />
                         <input className="form-input" value={seAddr.houseNo} onChange={e => updateSub({ locationAddress: { ...seAddr, houseNo: e.target.value } })} placeholder="Hausnr." />
@@ -5872,7 +5929,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        {isDe ? 'Agenda' : 'Agenda'}
+                        <StepBadge n={11} />
+                        {t('create.agenda')}
                       </label>
                       {seAgenda
                         .slice()
@@ -5930,7 +5988,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        {isDe ? 'Transferzeiten' : 'Transfer times'}
+                        <StepBadge n={12} />
+                        {t('create.transfers')}
                       </label>
                       {seTransfers.map(tt => (
                         <div key={tt.id} style={{
@@ -5997,6 +6056,8 @@ export default function EventCreationPage(): React.ReactElement {
               })()}
 
               <div style={{ display: activeLocationTabIdx === 0 ? 'block' : 'none' }}>
+              {renderHauptGreyoutBanner()}
+              <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={9} />
@@ -6272,6 +6333,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               </div>
 
+              </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 3) */}
               </div>{/* v15.0: close activeLocationTabIdx===0 wrapper (Top-Level Ort/Adresse/Agenda/Transfer) */}
 
               </div>{/* close Step 3 (Ort & Programm) */}
@@ -6771,14 +6833,32 @@ export default function EventCreationPage(): React.ReactElement {
                       </button>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">
+                    {/* v15.6: Sichtbarkeits-Sektion analog Hauptevent —
+                        Header mit Auge-Icon plus erklärender Lead-Text. */}
+                    <div style={{
+                      paddingBottom: 12, marginBottom: 16,
+                      borderBottom: '2px solid var(--dex-gray-100)',
+                    }}>
+                      <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Icon iconName="Hide3" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                        {isDe ? 'Sichtbarkeit' : 'Visibility'}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                        {isDe
+                          ? <>Auch dieses Sub-Event ist standardmäßig für <strong>alle Mitarbeiter von Deloitte Deutschland</strong> sichtbar. Über Standortfilter und Mailverteiler kannst du den Empfängerkreis gezielt einschränken — unabhängig vom Hauptevent.</>
+                          : <>By default this sub-event is visible for <strong>all Deloitte Germany employees</strong>. Use the location filter and mailing lists below to restrict the audience — independent from the main event.</>}
+                      </p>
+                    </div>
+
+                    <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={13} />
                         {isDe ? 'Standortfilter' : 'Location filter'}
                       </label>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 8px' }}>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                         {isDe
-                          ? 'Wähle Standorte aus, an denen dieses Sub-Event sichtbar sein soll. Leer = für alle sichtbar.'
-                          : 'Pick locations where this sub-event should be visible. Empty = visible to everyone.'}
+                          ? <>Wählst du hier einen oder mehrere Standorte aus, sehen <strong>nur Mitarbeiter mit diesen Standorten</strong> dieses Sub-Event. Leer = für alle sichtbar.</>
+                          : <>If you pick one or more locations here, <strong>only employees from those locations</strong> will see this sub-event. Empty = visible to everyone.</>}
                       </p>
                       <LocationMultiSelect
                         options={locationOptions}
@@ -6788,14 +6868,15 @@ export default function EventCreationPage(): React.ReactElement {
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">
-                        {isDe ? 'Mailverteiler / einzelne User (kommagetrennt)' : 'Mailing lists / individual users (comma separated)'}
+                    <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={14} />
+                        {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
                       </label>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 8px' }}>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                         {isDe
-                          ? 'Mail-Adressen oder Gruppen, kommagetrennt. Leer = keine zusätzliche Einschränkung.'
-                          : 'Email addresses or groups, comma-separated. Empty = no extra restriction.'}
+                          ? <>Mail-Adressen oder Gruppen, kommagetrennt. Leer = keine zusätzliche Einschränkung. Du kannst auch direkt eine Verteiler-Mail eintippen (z.B. <code>SAPAlliance@deloitte.com</code>) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.</>
+                          : <>Email addresses or groups, comma-separated. Empty = no extra restriction. You can also type a distribution list directly (e.g. <code>SAPAlliance@deloitte.com</code>) or special groups like <code>DEALL</code>, <code>DEKOELN</code>.</>}
                       </p>
                       <textarea
                         className="form-input"
@@ -6808,117 +6889,186 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
 
                     {(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) && (
-                      <div className="form-group">
-                        <label className="form-label">
-                          {isDe ? 'Filterverknüpfung' : 'Filter logic'}
+                      <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <StepBadge n={15} />
+                          {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                         </label>
-                        <div style={{ display: 'flex', gap: 16 }}>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
+                          {isDe
+                            ? <>Beide Filter sind gesetzt — bestimmt, ob für eine Person <strong>einer</strong> der Filter (ODER) oder <strong>beide</strong> (UND) zutreffen müssen, damit das Sub-Event in ihrer Liste auftaucht.</>
+                            : <>Both filters are set — defines whether a person needs to match <strong>either</strong> filter (OR) or <strong>both</strong> filters (AND) for the sub-event to appear in their list.</>}
+                        </p>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                             <input
                               type="radio"
                               name={`subFilterMode-${se.id}`}
                               checked={(se.filterMode || 'OR') === 'OR'}
                               onChange={() => updateSub({ filterMode: 'OR' })}
                             />
-                            {isDe ? 'ODER (eine Bedingung reicht)' : 'OR (one condition is enough)'}
+                            <strong>{isDe ? 'ODER' : 'OR'}</strong>
+                            <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– {isDe ? 'Einer der Filter reicht' : 'one filter is enough'}</span>
                           </label>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', cursor: 'pointer' }}>
                             <input
                               type="radio"
                               name={`subFilterMode-${se.id}`}
                               checked={se.filterMode === 'AND'}
                               onChange={() => updateSub({ filterMode: 'AND' })}
                             />
-                            {isDe ? 'UND (beide Bedingungen)' : 'AND (both conditions)'}
+                            <strong>{isDe ? 'UND' : 'AND'}</strong>
+                            <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>– {isDe ? 'Beides muss zutreffen' : 'both must match'}</span>
                           </label>
                         </div>
                       </div>
                     )}
 
-                    <div className="form-group">
-                      <label className="form-label">
-                        {isDe ? 'Anmeldeschluss für dieses Sub-Event (optional)' : 'Registration deadline for this sub-event (optional)'}
+                    {/* Deadlines: zwei DatePicker nebeneinander, gleicher Look
+                        wie im Hauptevent. */}
+                    <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 16 : 15} />
+                        {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                       </label>
-                      <input
-                        type="datetime-local"
-                        className="form-input"
-                        value={se.registrationDeadline ? (isoToLocal(se.registrationDeadline) || '') : ''}
-                        onChange={e => {
-                          const v = e.target.value;
-                          const iso = v ? berlinLocalToUtcIso(v) : '';
-                          updateSub({ registrationDeadline: iso });
-                        }}
-                        style={{ maxWidth: 280 }}
-                      />
-                      <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                         {isDe
-                          ? 'Leer lassen → der Anmeldeschluss des Hauptevents gilt automatisch.'
-                          : 'Leave empty → the main event\'s deadline applies automatically.'}
+                          ? <>Frei pro Sub-Event setzbar. Leer lassen → die Fristen des Hauptevents gelten.</>
+                          : <>Settable per sub-event. Leave empty → the main event’s deadlines apply.</>}
                       </p>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        {isDe ? 'Letzte Abmeldemöglichkeit für dieses Sub-Event (optional)' : 'Last cancellation date for this sub-event (optional)'}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        className="form-input"
-                        value={se.lastDeregisterDate ? (isoToLocal(se.lastDeregisterDate) || '') : ''}
-                        onChange={e => {
-                          const v = e.target.value;
-                          const iso = v ? berlinLocalToUtcIso(v) : '';
-                          updateSub({ lastDeregisterDate: iso });
-                        }}
-                        style={{ maxWidth: 280 }}
-                      />
-                      <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? 'Bis zu diesem Stichtag können sich Teilnehmer selbst abmelden. Leer = keine Frist.'
-                          : 'Until this cutoff attendees can self-cancel. Empty = no cutoff.'}
-                      </p>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        {isDe ? 'Max. Teilnehmer für dieses Sub-Event (0 = unbegrenzt)' : 'Max. attendees for this sub-event (0 = unlimited)'}
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="form-input"
-                        value={se.maxParticipants || 0}
-                        onChange={e => {
-                          const v = parseInt(e.target.value, 10) || 0;
-                          updateSub({ maxParticipants: v });
-                        }}
-                        style={{ maxWidth: 200 }}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        {isDe ? 'Warteliste' : 'Waitlist'}
-                      </label>
-                      <div className="toggle-wrapper" style={{ marginTop: 4 }}>
-                        <label className="toggle">
-                          <input
-                            type="checkbox"
-                            checked={typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true}
-                            onChange={e => updateSub({ waitlistEnabled: e.target.checked })}
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label">{t('create.deadline')}</label>
+                          <DatePicker
+                            selected={se.registrationDeadline ? new Date(se.registrationDeadline) : null}
+                            onChange={(date: Date | null) => {
+                              if (!date) { updateSub({ registrationDeadline: '' }); return; }
+                              const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                              updateSub({ registrationDeadline: berlinLocalToUtcIso(local) });
+                            }}
+                            showTimeSelect
+                            timeFormat="HH:mm"
+                            timeIntervals={15}
+                            timeCaption="Uhrzeit"
+                            dateFormat="dd.MM.yyyy, HH:mm"
+                            locale="de"
+                            placeholderText={isDe ? 'Anmelde-Deadline' : 'Registration deadline'}
+                            className="form-input"
+                            wrapperClassName="dex-datepicker-wrapper"
+                            calendarClassName="dex-datepicker-calendar"
+                            popperPlacement="bottom-start"
+                            isClearable
+                            autoComplete="off"
                           />
-                          <span className="toggle-slider" />
-                        </label>
-                        <span style={{ fontSize: '0.9rem' }}>
-                          {(typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true) ? t('create.enabled') : t('create.disabled')}
-                        </span>
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label">{t('create.lastcancel')}</label>
+                          <DatePicker
+                            selected={se.lastDeregisterDate ? new Date(se.lastDeregisterDate) : null}
+                            onChange={(date: Date | null) => {
+                              if (!date) { updateSub({ lastDeregisterDate: '' }); return; }
+                              const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                              updateSub({ lastDeregisterDate: berlinLocalToUtcIso(local) });
+                            }}
+                            showTimeSelect
+                            timeFormat="HH:mm"
+                            timeIntervals={15}
+                            timeCaption="Uhrzeit"
+                            dateFormat="dd.MM.yyyy, HH:mm"
+                            locale="de"
+                            placeholderText={isDe ? 'Abmeldefrist' : 'Last cancellation'}
+                            className="form-input"
+                            wrapperClassName="dex-datepicker-wrapper"
+                            calendarClassName="dex-datepicker-calendar"
+                            popperPlacement="bottom-start"
+                            isClearable
+                            autoComplete="off"
+                          />
+                        </div>
                       </div>
+                    </div>
+
+                    {/* Teilnehmerzahl & Warteliste — analog Hauptevent als
+                        eine kombinierte Card mit „Unbegrenzt"-Toggle und
+                        Warteliste-Toggle. Split-Capacity bleibt Hauptevent-only
+                        (Scope-Eingrenzung, siehe v15.6 Refactor-Plan). */}
+                    <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 17 : 16} />
+                        {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
+                      </label>
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label">
+                            {isDe ? 'Max. Teilnehmer (0 = unbegrenzt)' : 'Max. attendees (0 = unlimited)'}
+                          </label>
+                          <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
+                            <label className="toggle">
+                              <input
+                                type="checkbox"
+                                checked={(se.maxParticipants || 0) === 0}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    updateSub({ maxParticipants: 0, waitlistEnabled: false });
+                                  } else {
+                                    updateSub({ maxParticipants: 50 });
+                                  }
+                                }}
+                              />
+                              <span className="toggle-slider" />
+                            </label>
+                            <span style={{ fontSize: '0.9rem' }}>
+                              {(se.maxParticipants || 0) === 0
+                                ? (isDe ? 'Unbegrenzt' : 'Unlimited')
+                                : (`${se.maxParticipants} ${isDe ? 'Plätze' : 'seats'}`)}
+                            </span>
+                          </div>
+                          {(se.maxParticipants || 0) > 0 && (
+                            <input
+                              type="number"
+                              min={0}
+                              className="form-input"
+                              value={se.maxParticipants || 0}
+                              onChange={e => {
+                                const v = parseInt(e.target.value, 10) || 0;
+                                updateSub({ maxParticipants: v });
+                              }}
+                              placeholder={isDe ? 'Anzahl' : 'Count'}
+                            />
+                          )}
+                        </div>
+                        {(se.maxParticipants || 0) > 0 && (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">{t('create.waitlist')}</label>
+                            <div className="toggle-wrapper" style={{ marginTop: 8 }}>
+                              <label className="toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true}
+                                  onChange={e => updateSub({ waitlistEnabled: e.target.checked })}
+                                />
+                                <span className="toggle-slider" />
+                              </label>
+                              <span style={{ fontSize: '0.9rem' }}>
+                                {(typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true) ? t('create.enabled') : t('create.disabled')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <em>Hinweis: <strong>Geteilte Kapazität</strong> (zwei Gruppen mit eigener Platzzahl) ist aktuell nur auf Hauptevent-Ebene möglich — Sub-Events nutzen die einfache Gesamtkapazität.</em>
+                          : <em>Note: <strong>Split capacity</strong> (two groups with separate seat counts) is currently main-event-only — sub-events use the simple total capacity.</em>}
+                      </p>
                     </div>
                   </div>
                 );
               })()}
 
               <div style={{ display: activeCapacityTabIdx === 0 ? 'block' : 'none' }}>
+              {renderHauptGreyoutBanner()}
+              <div style={hauptGreyoutWrapperStyle()}>
 
               {/* v9.24: Sichtbarkeits-Steuerungen aus Step 0 hierher verschoben.
                   Die Frage 'wer darf das Event sehen' passt logisch zu Kapazitaet/Fristen
@@ -7872,6 +8022,7 @@ export default function EventCreationPage(): React.ReactElement {
               </label>
               </div>
 
+              </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
               </div>{/* v15.0: close activeCapacityTabIdx===0 wrapper (Top-Level Sichtbarkeit/Deadlines/Max/Split) */}
 
               </div>{/* close Step 4 (Kapazitaet & Sichtbarkeit) */}
@@ -8346,6 +8497,37 @@ export default function EventCreationPage(): React.ReactElement {
                 };
                 return (
                   <div>
+                    {/* v15.6: Lead-paragraph analog Hauptevent-Tab. */}
+                    <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                      {isDe
+                        ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (Vorname, Nachname, E-Mail) und Profil-Daten (Job Title, Standort, Department, Telefon) werden automatisch erfasst. Hier ergänzt du <strong>nur Zusatzfragen speziell für dieses Sub-Event</strong>. Wenn das Sub-Event keine eigenen Fragen braucht, kannst du diese Sektion leer lassen.</>
+                        : <><strong>Optional</strong> — the standard attendee data (first name, last name, email) and profile data (job title, location, department, phone) are captured automatically. Here you only add <strong>extra questions specific to this sub-event</strong>. If the sub-event needs no extra questions, you can leave this section empty.</>}
+                    </p>
+
+                    {/* v15.6: Datenschutz-Hinweis (orange Box) analog
+                        Hauptevent-Tab — gleicher Wortlaut, damit der Organizer
+                        beim Anlegen von Sub-Event-Feldern dieselbe Datensparsamkeits-
+                        Erinnerung sieht. */}
+                    <div style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '12px 14px', marginBottom: 16,
+                      background: 'rgba(237,139,0,0.06)',
+                      border: '1px solid var(--dex-orange, #ed8b00)',
+                      borderRadius: 'var(--dex-radius, 12px)',
+                      fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+                      lineHeight: 1.5,
+                    }}>
+                      <span style={{ flexShrink: 0, fontSize: '1.1rem', lineHeight: 1, color: 'var(--dex-orange, #ed8b00)', fontWeight: 700 }}>⚠</span>
+                      <div>
+                        <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
+                          {isDe ? 'Sammle keine sensiblen personenbezogenen Daten' : 'Do not collect sensitive personal data'}
+                        </strong>{' '}
+                        {isDe
+                          ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
+                          : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
+                      </div>
+                    </div>
+
                     {/* v15.3: „Anrede abfragen"-Toggle pro Sub-Event */}
                     <div style={{
                       background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
@@ -8575,6 +8757,8 @@ export default function EventCreationPage(): React.ReactElement {
                   v15.0 ausgeblendet, weil pro Sub-Event jetzt einen
                   eigenen Tab. */}
               <div style={{ display: activeFieldsTabIdx === 0 ? 'block' : 'none' }}>
+              {renderHauptGreyoutBanner()}
+              <div style={hauptGreyoutWrapperStyle()}>
               {/* Dynamische Felder */}
               <div>
                 {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
@@ -9500,6 +9684,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
+              </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 5) */}
               </div>{/* v15.0: close activeFieldsTabIdx===0 wrapper (Top-Level Felder + hidden Bereich 2) */}
 
               </div>{/* close Step 5 (Felder) — v15 index 4 */}
