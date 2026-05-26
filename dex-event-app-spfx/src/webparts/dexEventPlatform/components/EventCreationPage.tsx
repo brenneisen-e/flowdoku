@@ -2308,22 +2308,10 @@ export default function EventCreationPage(): React.ReactElement {
       } : s);
       subEventsRef.current = flushed;
       setSubEvents(flushed);
-    } else {
-      // v14.4: Slot 0 (Top-Level) Snapshot synchron mitziehen — sonst sieht
-      // resolveTopLevelCommState beim Save noch die alten Override-Werte und
-      // schreibt sie aufs Hauptevent zurück (statt der frischen Edits).
-      topLevelCommSnapshot.current = {
-        emailLanguage,
-        emailLogoBase64: emailLogoPreview,
-        outlookLogoBase64: outlookLogoPreview,
-        outlookBody,
-        outlookHeading,
-        outlookSubheading,
-        disableEmails,
-        disableOutlook,
-        emailTemplateOverrides: { ...emailTemplateOverrides },
-      };
     }
+    // Slot 0 (Top-Level) wird ohnehin direkt von den State-Variablen gespeist
+    // — kein Snapshot-Flush noetig (resolveTopLevelCommState liest auf Tab 0
+    // direkt aus dem State, der Snapshot wird nur für Sub-Tab-Pfade benutzt).
   };
 
   /**

@@ -219,7 +219,15 @@ export default function RegistrationPage(): React.ReactElement {
   // - teamName: optionaler Team-Name (nur sichtbar wenn event.askTeamName).
   // - teamMembers: N-1 People-Picker-Slots, jeder „<DisplayName> <email>".
   // - teamConsentConfirmed: Pflicht-Checkbox „alle Mitglieder haben zugestimmt".
-  const isTeamCapable = !!event?.teamRegistrationEnabled && (event?.teamSize || 0) >= 2;
+  // v14.5: Wenn der Organizer `requireSubEventSelection` aktiviert hat, ist
+  // Team-Anmeldung nicht kombinierbar — der Team-Flow registriert nur fürs
+  // Hauptevent (keine Sub-Event-Auswahl möglich), würde also entweder am
+  // Submit-Gate scheitern (verwirrend) oder das Event-Setup unterlaufen.
+  // Deshalb hier den Toggle hart ausblenden, damit die Inkonsistenz gar
+  // nicht erst entsteht.
+  const isTeamCapable = !!event?.teamRegistrationEnabled
+    && (event?.teamSize || 0) >= 2
+    && !(event?.requireSubEventSelection && childEvents.length > 0);
   const teamSize = event?.teamSize || 0;
   const teamPartialAllowed = !!event?.teamPartialAllowed;
   const [isTeamMode, setIsTeamMode] = React.useState(false);
