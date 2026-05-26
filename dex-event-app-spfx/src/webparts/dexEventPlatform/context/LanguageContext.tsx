@@ -413,6 +413,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkin.cancelled': 'Teilnehmer ist abgemeldet — Check-in nicht möglich',
     'checkin.next': 'Nächsten Teilnehmer scannen',
     'checkin.sessioncount': 'eingecheckt in dieser Session',
+    'checkin.pickevent': 'Wähle das Event, für das du eincheckst:',
+    'checkin.noaccess': 'Du hast keinen Zugriff auf den Check-In. Wende dich an einen Admin, wenn du als Organizer oder QR-Scanner eingetragen werden solltest.',
 
     // Profile
     'profile.details': 'Profil Details',
@@ -845,6 +847,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkin.cancelled': 'Participant is cancelled — check-in not possible',
     'checkin.next': 'Scan next participant',
     'checkin.sessioncount': 'checked in this session',
+    'checkin.pickevent': 'Pick the event you are checking in for:',
+    'checkin.noaccess': 'You do not have access to check-in. Reach out to an admin if you should be added as an organizer or QR scanner.',
 
     // Profile
     'profile.details': 'Profile Details',
