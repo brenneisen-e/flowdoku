@@ -731,6 +731,19 @@ export default function EventCreationPage(): React.ReactElement {
   const [requireSubEventSelection, setRequireSubEventSelection] = React.useState<boolean>(
     !!editEvent && !!editEvent.requireSubEventSelection,
   );
+  // v14.8: „Nur Sub-Events"-Modus. Wenn true, ist die Hauptevent-Anmeldung im
+  // Teilnehmerformular ausgeblendet. Impliziert requireSubEventSelection=true.
+  const [subEventsOnlyMode, setSubEventsOnlyMode] = React.useState<boolean>(
+    !!editEvent && !!editEvent.subEventsOnlyMode,
+  );
+  // v14.8: Organizer-konfigurierbarer Begriff für die untergeordneten Events
+  // (Standard „Sub-Event" / „Sub-Events", alternativ Workshop / Session etc.).
+  const [childTermSingular, setChildTermSingular] = React.useState<string>(
+    (editEvent && editEvent.childEventTermSingular) || '',
+  );
+  const [childTermPlural, setChildTermPlural] = React.useState<string>(
+    (editEvent && editEvent.childEventTermPlural) || '',
+  );
   // v8.5: Organizer-BCC-Modi (Anmeldung + Abmeldung).
   const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
     editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
@@ -794,6 +807,7 @@ export default function EventCreationPage(): React.ReactElement {
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
+          _subEventsOnlyMode, _childEventTerm,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -801,6 +815,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _eventLogo; void _outlookLogo; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
+        void _subEventsOnlyMode; void _childEventTerm;
         return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
@@ -2195,7 +2210,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
-   * v11.57: Tab-Wechsel im Schritt 6 (Kommunikation). Der aktuelle Step-6-
+   * v11.57: Tab-Wechsel im Schritt 7 (Kommunikation). Der aktuelle Step-6-
    * UI-State (emailLanguage, outlookBody, disableEmails, disableOutlook,
    * Logo-Previews, Outlook-Heading) wird in das ausgehende Tab-Slot
    * geschrieben, danach werden die Felder aus dem neuen Tab-Slot geladen.
@@ -2588,10 +2603,21 @@ export default function EventCreationPage(): React.ReactElement {
       // beim Speichern auf einem Sub-Tab die Sub-Overrides fälschlich aufs
       // Hauptevent gemerged.
       const topOverrides = topComm.emailTemplateOverrides || {};
-      const requireSubEventConfig = requireSubEventSelection
+      // v14.8: subEventsOnlyMode impliziert requireSubEventSelection — wenn die
+      // Hauptevent-Anmeldung gar nicht mehr angeboten wird, MUSS jeder Teilnehmer
+      // mindestens einen Sub-Event auswählen, sonst kommt keine Anmeldung zustande.
+      const effRequireSubEventSelection = requireSubEventSelection || subEventsOnlyMode;
+      const requireSubEventConfig = effRequireSubEventSelection
         ? { _requireSubEventSelection: true }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0)
+      // v14.8: Sub-Events-Only-Modus + Custom-Bezeichnung als Piggyback.
+      const subEventsOnlyConfig = subEventsOnlyMode
+        ? { _subEventsOnlyMode: true }
+        : {};
+      const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
+        ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
+        : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -2601,6 +2627,8 @@ export default function EventCreationPage(): React.ReactElement {
             ...testTeamConfig,
             ...splitDispRevConfig,
             ...requireSubEventConfig,
+            ...subEventsOnlyConfig,
+            ...childTermConfig,
             ...topOverrides,
           })
         : '';
@@ -3054,8 +3082,20 @@ export default function EventCreationPage(): React.ReactElement {
           const splitDispRevExtra = splitDisplayOrderReversed && useSplitCapacities
             ? { _splitDisplayOrderReversed: true }
             : {};
+          // v14.8: subEventsOnlyMode + custom childEventTerm piggybacken;
+          // subEventsOnlyMode impliziert requireSubEventSelection.
+          const effRequireSubEventSelection = requireSubEventSelection || subEventsOnlyMode;
+          const reqSubEvtExtra = effRequireSubEventSelection
+            ? { _requireSubEventSelection: true }
+            : {};
+          const subEvtsOnlyExtra = subEventsOnlyMode
+            ? { _subEventsOnlyMode: true }
+            : {};
+          const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
+            ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
+            : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3065,6 +3105,9 @@ export default function EventCreationPage(): React.ReactElement {
                 ...qrExtra,
                 ...coExtra,
                 ...ttExtra,
+                ...reqSubEvtExtra,
+                ...subEvtsOnlyExtra,
+                ...childTermExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -3390,6 +3433,42 @@ export default function EventCreationPage(): React.ReactElement {
         });
       }
     }
+    // v14.8: Items aus persistiertem OutlookDirty-Flag nachziehen. Wenn ein
+    // Sub-Event oder das Hauptevent in einer früheren Session als „Outlook-
+    // Update ausstehend" markiert wurde (User hat den Haken damals nicht
+    // gesetzt → OutlookDirty=true wurde in SP geschrieben), soll der nächste
+    // Save trotzdem das Modal anbieten — auch ohne neue inhaltliche Änderung
+    // in dieser Session. Sonst bleibt der Dirty-Flag ewig hängen und der
+    // Yellow-Hint in Schritt 1 wird nie aufgelöst.
+    const hasItemForEvent = (id: string): boolean => items.some(it => it.eventId === id);
+    // Hauptevent
+    if (editEvent.outlookDirty && !disableOutlook
+        && (editEvent.outlookEventId || editEvent.calendarLink)
+        && !hasItemForEvent(editEvent.id)) {
+      items.push({
+        kind: 'top',
+        eventId: editEvent.id,
+        title: title || editEvent.title || '',
+        changedFields: [],
+      });
+    }
+    // Sub-Events
+    for (const s of subEventsRef.current) {
+      if (!s.dbId) continue;
+      if (s.disableOutlook) continue;
+      const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
+      if (!hasOutlookEvId) continue;
+      const childEvt = childEventsOf(editEvent.id).find(c => c.id === s.dbId);
+      if (childEvt && childEvt.outlookDirty && !hasItemForEvent(s.dbId)) {
+        items.push({
+          kind: 'sub',
+          eventId: s.dbId,
+          title: s.title || '',
+          changedFields: [],
+          noOutlookYet: false,
+        });
+      }
+    }
     // v11.79: gated debug log — siehe oben.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window !== 'undefined' && (window as any).__dexDebug) {
@@ -3508,11 +3587,11 @@ export default function EventCreationPage(): React.ReactElement {
     }
   }, [subEvents.length, activeCommTabIdx]);
 
-  // Templates laden wenn Step 6 (Kommunikation, currentStep === 5) erreicht wird
+  // Templates laden wenn Step 7 (Kommunikation, currentStep === 6) erreicht wird
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
   // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
   React.useEffect(() => {
-    if (currentStep === 5 && emailTemplates.length === 0) {
+    if (currentStep === 6 && emailTemplates.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
@@ -3676,7 +3755,7 @@ export default function EventCreationPage(): React.ReactElement {
       'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt)',
       'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
       'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
-      'Pflichtfelder pro Gruppe in Schritt 5 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
+      'Pflichtfelder pro Gruppe in Schritt 6 (z.B. Leistungsnachweis nur für eine bestimmte Gruppe)',
     ],
     [
       'Feldtyp wählen: Text, Zahl, Dropdown, Checkbox, Personen-Suche oder Roommate (Doppelzimmer)',
@@ -3759,14 +3838,17 @@ export default function EventCreationPage(): React.ReactElement {
   const steps = [
     { label: t('create.step.basics'), icon: '1' },
     { label: t('create.step.datetime'), icon: '2' },
-    { label: t('create.step.capacity'), icon: '3' },
-    // v11.80: neuer Schritt 4 für Team-Anmeldung. Die folgenden Steps
+    // v14.8: neuer Schritt 3 für Sub-Events. Die folgenden Steps
     // ruecken um eins nach hinten.
-    { label: t('create.step.team'), icon: '4' },
-    { label: t('create.step.fields'), icon: '5' },
-    { label: t('create.step.communication'), icon: '6' },
-    { label: t('create.step.documents'), icon: '7' },
-    { label: t('create.step.funzone'), icon: '8' },
+    { label: t('create.step.subevents'), icon: '3' },
+    { label: t('create.step.capacity'), icon: '4' },
+    // v11.80: neuer Schritt 5 für Team-Anmeldung. Die folgenden Steps
+    // ruecken um eins nach hinten.
+    { label: t('create.step.team'), icon: '5' },
+    { label: t('create.step.fields'), icon: '6' },
+    { label: t('create.step.communication'), icon: '7' },
+    { label: t('create.step.documents'), icon: '8' },
+    { label: t('create.step.funzone'), icon: '9' },
   ];
 
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
@@ -3792,10 +3874,14 @@ export default function EventCreationPage(): React.ReactElement {
         break;
       case 1:
         // Schritt 2 (Ort & Programm) ist ohne Pflicht-Validierung —
-        // Adresse / Agenda / Transferzeiten / Sub-Events sind alle
-        // optional. Datum-Checks laufen jetzt in case 0.
+        // Adresse / Agenda / Transferzeiten sind alle optional. Datum-
+        // Checks laufen jetzt in case 0.
         break;
       case 2:
+        // Schritt 3 (Sub-Events) ist ohne Pflicht-Validierung — der
+        // Organizer kann den Schritt auch komplett leer lassen.
+        break;
+      case 3:
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
         if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
         if (!unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
@@ -4137,12 +4223,27 @@ export default function EventCreationPage(): React.ReactElement {
         </div>
       )}
       <div>
-        {/* ===== Step Progress Bar ===== */}
+        {/* ===== Step Progress Bar =====
+            v14.8: drei Layout-Fixes für das 9-Schritt-Layout:
+            (1) Linie endet exakt auf der Mittelachse des ersten/letzten
+                Kreises — vorher fix `left/right: 10%`, was zufällig nur
+                für n=8 stimmte; jetzt dynamisch über `100 / (steps.length * 2)`.
+            (2) Linie etwas dicker (5 statt 3 px) + abgerundet — sonst
+                verschwindet sie bei 9 Schritten optisch.
+            (3) `alignItems: flex-start` statt `center` — sonst rutschen
+                Kreise nach unten, wenn ein Label (z.B. „Kapazität &
+                Sichtbarkeit") umbricht.
+            Die Linie sitzt bei top=17, height=5 (Mitte bei 19.5 px) —
+            das deckt sich exakt mit der Mitte der 40-px-Kreise. */}
         <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+          {(() => {
+            const sidePct = 100 / (steps.length * 2);
+            const spanPct = 100 - 2 * sidePct;
+            return (
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
             {/* Verbindungslinie */}
-            <div style={{ position: 'absolute', top: 20, left: '10%', right: '10%', height: 3, background: 'var(--dex-gray-200)', zIndex: 0 }} />
-            <div style={{ position: 'absolute', top: 20, left: '10%', height: 3, background: 'var(--dex-green)', zIndex: 1, width: `${Math.min(currentStep / (steps.length - 1) * 80, 80)}%`, transition: 'width 0.4s ease' }} />
+            <div style={{ position: 'absolute', top: 17, left: `${sidePct}%`, right: `${sidePct}%`, height: 5, background: 'var(--dex-gray-200)', borderRadius: 3, zIndex: 0 }} />
+            <div style={{ position: 'absolute', top: 17, left: `${sidePct}%`, height: 5, background: 'var(--dex-green)', borderRadius: 3, zIndex: 1, width: `${(currentStep / Math.max(1, steps.length - 1)) * spanPct}%`, transition: 'width 0.4s ease' }} />
             {steps.map((step, idx) => (
               <div
                 key={idx}
@@ -4244,6 +4345,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             ))}
           </div>
+            );
+          })()}
         </div>
 
         {/* ===== Formular ===== */}
@@ -4656,7 +4759,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>verantwortlichen Personen</strong> für dieses Event — beliebige Deloitte-User per Graph-Suche. Du selbst bist standardmäßig vorbefüllt, kannst aber Co-Organizer hinzunehmen oder dich selbst rauslöschen.<br /><br />
                       <strong>Anzeige in der App:</strong> Organizer dürfen das Event <strong>bearbeiten, deaktivieren, löschen</strong>, die <strong>Teilnehmerliste</strong> einsehen, <strong>QR-Codes versenden</strong> und <strong>Massenmails</strong> verschicken. Sie tauchen auf der Anmelde-Seite und in Meine Events als <strong>Ansprechpartner</strong> mit Foto + Mail-Adresse auf.<br /><br />
-                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
+                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 7 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
                       <strong>Reihenfolge zählt:</strong> der erste Organizer ist der Haupt-Organizer und wird in Mails als Absender-Name verwendet.
                     </>
                   ) : (
@@ -5512,14 +5615,14 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> den <strong>Programmablauf des Events</strong> als Liste — pro Punkt: Datum, Start- und Endzeit, Titel, optionale Beschreibung und ein Icon (z.B. Kaffee, Vortrag, Pause).<br /><br />
                       <strong>Anzeige in der App:</strong> erscheint als <strong>schöner Timeline-Block</strong> auf der Anmelde-Seite und in Meine Events — Punkte werden automatisch nach Datum + Uhrzeit sortiert. Mehrtägige Events werden tageweise gruppiert.<br /><br />
-                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 6).<br /><br />
+                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 7).<br /><br />
                       <strong>Empfehlung:</strong> hilft Teilnehmern, sich auf den Tag einzustellen — bei Tagungen oder Auswärtsterminen sehr empfohlen, bei kurzen Office-Events optional.
                     </>
                   ) : (
                     <>
                       <strong>What you set here:</strong> the <strong>event programme</strong> as a list — per item: date, start/end time, title, optional description and an icon (e.g. coffee, talk, break).<br /><br />
                       <strong>Shown in the app:</strong> shown as a <strong>nice timeline block</strong> on the registration page and in My Events — items are auto-sorted by date + time. Multi-day events are grouped per day.<br /><br />
-                      <strong>Automation:</strong> the agenda is <strong>not</strong> automatically pulled into the Outlook event body (there is a dedicated field <strong>Text in the Outlook event</strong> in step 5 for that).<br /><br />
+                      <strong>Automation:</strong> the agenda is <strong>not</strong> automatically pulled into the Outlook event body (there is a dedicated field <strong>Text in the Outlook event</strong> in step 7 for that).<br /><br />
                       <strong>Tip:</strong> helps attendees plan their day — strongly recommended for off-site events / conferences, optional for short office events.
                     </>
                   )} />
@@ -5726,8 +5829,174 @@ export default function EventCreationPage(): React.ReactElement {
                 </button>
               </div>
 
+              </div>{/* close Step 2 (Ort & Programm) */}
+
+              {/* ===== Step 3 (v14.8, NEU): Sub-Events =====
+                  Sub-Events (Workshops / Sessions / Programmpunkte), plus
+                  Bezeichnungs-Dropdown und Anmelde-Modus (Hauptevent +
+                  Sub-Events vs. nur Sub-Events). */}
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                {isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events'}
+              </h2>
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                {isDe
+                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Hier legst du auch fest, wie diese Bausteine in der App heißen und ob sich Teilnehmer nur für Sub-Events oder zusätzlich auch fürs Hauptevent anmelden können.</>
+                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Here you also configure what these building blocks are called in the app and whether attendees register only for sub-events or for the main event as well.</>}
+              </p>
+
+              {/* Bezeichnungs-Dropdown */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> wie die untergeordneten Bausteine in der App genannt werden. Die <strong>Standardbezeichnung</strong> ist &bdquo;Sub-Event&ldquo;. Du kannst aber z.B. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; oder &bdquo;Event-Section&ldquo; auswählen — oder eine eigene Bezeichnung (Singular + Plural) eintippen.<br /><br />
+                      <strong>Anzeige in der App:</strong> der gewählte Begriff erscheint überall dort, wo bisher &bdquo;Sub-Event(s)&ldquo; stand — z.B. im Anmeldeformular der Teilnehmer (&bdquo;Verfügbare Workshops&ldquo;), in &bdquo;Meine Events&ldquo; und im Admin Center.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> how the child building blocks are named throughout the app. The <strong>default</strong> is &bdquo;Sub-event&ldquo;. You can pick e.g. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; or &bdquo;Event section&ldquo; — or type your own singular + plural.<br /><br />
+                      <strong>Shown in the app:</strong> the chosen term replaces &bdquo;Sub-event(s)&ldquo; everywhere — e.g. in the attendee registration form (&bdquo;Available workshops&ldquo;), in &bdquo;My events&ldquo; and in the admin center.
+                    </>
+                  )} />
+                </label>
+                {(() => {
+                  const presets = [
+                    { key: 'subevent',     singular: isDe ? 'Sub-Event' : 'Sub-event',         plural: isDe ? 'Sub-Events' : 'Sub-events' },
+                    { key: 'workshop',     singular: 'Workshop',                                plural: 'Workshops' },
+                    { key: 'session',      singular: 'Session',                                 plural: 'Sessions' },
+                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Program item', plural: isDe ? 'Programmpunkte' : 'Program items' },
+                    { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
+                  ];
+                  const matchKey = (() => {
+                    const s = (childTermSingular || '').trim();
+                    const p = (childTermPlural || '').trim();
+                    if (!s && !p) return 'subevent';
+                    const hit = presets.find(x => x.singular === s && x.plural === p);
+                    return hit ? hit.key : 'custom';
+                  })();
+                  return (
+                    <>
+                      <select
+                        className="form-input"
+                        value={matchKey}
+                        onChange={e => {
+                          const k = e.target.value;
+                          if (k === 'custom') {
+                            // Switch to custom — clear if currently a preset, otherwise keep
+                            if (matchKey !== 'custom') {
+                              setChildTermSingular('');
+                              setChildTermPlural('');
+                            }
+                            return;
+                          }
+                          const preset = presets.find(x => x.key === k);
+                          if (preset) {
+                            setChildTermSingular(preset.singular);
+                            setChildTermPlural(preset.plural);
+                          }
+                        }}
+                        style={{ marginTop: 6, maxWidth: 360 }}
+                      >
+                        {presets.map(p => (
+                          <option key={p.key} value={p.key}>
+                            {p.singular} / {p.plural}
+                          </option>
+                        ))}
+                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
+                      </select>
+                      {matchKey === 'custom' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Singular' : 'Singular'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermSingular}
+                              onChange={e => setChildTermSingular(e.target.value)}
+                              placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Plural' : 'Plural'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermPlural}
+                              onChange={e => setChildTermPlural(e.target.value)}
+                              placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Anmelde-Modus */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 16,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Anmelde-Modus' : 'Registration mode'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
+                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
+                      <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> whether attendees can additionally register for sub-events alongside the main event (default) or whether there is <strong>no main-event registration at all</strong> and registration runs exclusively via individual sub-events.<br /><br />
+                      <strong>Shown in the app:</strong> in &bdquo;Sub-events only&ldquo; mode the main-event registration checkbox in the attendee form is hidden — the attendee must pick at least one sub-event. In step 7 (Communication) the main-event tab is greyed out, because main-event communication does not apply in this mode.<br /><br />
+                      <strong>Tip:</strong> use &bdquo;Sub-events only&ldquo; for multi-day programmes where every attendee picks from a pool of slots and a main-event slot makes no sense.
+                    </>
+                  )} />
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="subEventsMode"
+                      checked={!subEventsOnlyMode}
+                      onChange={() => setSubEventsOnlyMode(false)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span style={{ fontSize: '0.88rem' }}>
+                      {isDe
+                        ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
+                        : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>}
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="subEventsMode"
+                      checked={!!subEventsOnlyMode}
+                      onChange={() => setSubEventsOnlyMode(true)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span style={{ fontSize: '0.88rem' }}>
+                      {isDe
+                        ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
+                        : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
                 {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
-                <div className="form-group" style={{ marginTop: 32 }}>
+                <div className="form-group" style={{ marginTop: 0 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={13} />
                     {t('create.subevents')}
@@ -6004,12 +6273,12 @@ export default function EventCreationPage(): React.ReactElement {
                     <Plus size={14} /> {t('create.subevents.add')}
                   </button>
                 </div>
-              </div>
+              </div>{/* close Step 3 (Sub-Events) */}
 
-              {/* ===== Step 2: Kapazität, Fristen & Sichtbarkeit ===== */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
+              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 3 — Kapazität & Sichtbarkeit' : 'Step 3 — Capacity & Visibility'}
+                {isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & Visibility'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -6550,7 +6819,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <>
                         <strong>Letzte Abmeldemöglichkeit</strong> — bis zu diesem Stichtag können sich Teilnehmer <strong>ohne Rückfrage</strong> selbst abmelden.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> nach dem Stichtag ist der <strong>Abmelden-Button für reguläre User ausgeblendet</strong> — sie müssen aktiv den Organizer kontaktieren, der dann manuell abmeldet. <strong>Organizer und Co-Organizer</strong> können weiterhin jederzeit Teilnehmer abmelden.<br /><br />
-                        <strong>Automatismen:</strong> je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden — damit Hotel, Catering oder Bus angepasst werden können.<br /><br />
+                        <strong>Automatismen:</strong> je nach Einstellung in <strong>Schritt 7 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden — damit Hotel, Catering oder Bus angepasst werden können.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
@@ -6831,7 +7100,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
 
                   {/* v10.24: Leistungsnachweis-Pflicht-Toggle wurde entfernt.
-                      Stattdessen kann der Organizer in Schritt 5 (Felder) ein
+                      Stattdessen kann der Organizer in Schritt 6 (Felder) ein
                       eigenes Pflichtfeld vom Typ Checkbox anlegen und es ueber
                       'Sichtbar fuer Teilnehmergruppe → Nur Gruppe A' gezielt
                       auf eine Split-Gruppe einschraenken. Das ersetzt den
@@ -6846,11 +7115,11 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     {isDe ? (
                       <>
-                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 5 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
+                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 6 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
                       </>
                     ) : (
                       <>
-                        Want to show an extra required field only for one of the two groups — e.g. a checkbox &ldquo;Performance proof available&rdquo; just for the fast-runner group? Add the field in <strong>step 4 (Fields)</strong> and set the <strong>&ldquo;Visible for attendee group&rdquo;</strong> selector there to <strong>&ldquo;{(splitLabelA || '').trim() || 'Group A'} only&rdquo;</strong> or <strong>&ldquo;{(splitLabelB || '').trim() || 'Group B'} only&rdquo;</strong>. The field will then be shown or hidden dynamically as the attendee picks one of the two boxes.
+                        Want to show an extra required field only for one of the two groups — e.g. a checkbox &ldquo;Performance proof available&rdquo; just for the fast-runner group? Add the field in <strong>step 6 (Fields)</strong> and set the <strong>&ldquo;Visible for attendee group&rdquo;</strong> selector there to <strong>&ldquo;{(splitLabelA || '').trim() || 'Group A'} only&rdquo;</strong> or <strong>&ldquo;{(splitLabelB || '').trim() || 'Group B'} only&rdquo;</strong>. The field will then be shown or hidden dynamically as the attendee picks one of the two boxes.
                       </>
                     )}
                   </div>
@@ -6987,14 +7256,13 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>
 
-              {/* ===== Step 4 (v11.80, NEU): Team-Anmeldung =====
-                  Renderblock für den neuen Wizard-Schritt 4. Konfiguriert
-                  Team-Anmeldung-Toggle + Teamgröße + Team-Name-Frage.
-                  Die tatsächliche Multi-Person-Anmelde-Logik folgt mit
-                  v11.81+; aktuell wird nur die Konfiguration persistiert. */}
-              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              {/* ===== Step 5 (v14.8: vormals Step 4): Team-Anmeldung =====
+                  Renderblock für den Wizard-Schritt Team-Anmeldung.
+                  Konfiguriert Team-Anmeldung-Toggle + Teamgröße +
+                  Team-Name-Frage. */}
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 4 — Team-Anmeldung' : 'Step 4 — Team Registration'}
+                {isDe ? 'Schritt 5 — Team-Anmeldung' : 'Step 5 — Team Registration'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
@@ -7252,15 +7520,15 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>
 
-              {/* ===== Step 5 (v11.80: vormals Step 4): Registrierungsfelder ===== */}
-              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+              {/* ===== Step 6 (v14.8: vormals Step 5): Registrierungsfelder ===== */}
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
               <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
+                {isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields'}
               </h2>
               <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                 {isDe
-                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 5 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du oben das <strong>Anrede</strong>-Dropdown einblenden. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
-                  : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 5 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
+                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 6 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du oben das <strong>Anrede</strong>-Dropdown einblenden. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
+                  : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 6 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
               </p>
 
               {/* v11.80: Anrede-Toggle */}
@@ -8351,12 +8619,12 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              </div>{/* close Step 3 */}
+              </div>{/* close Step 4 */}
 
-              {/* ===== Step 6 (v11.80: vormals Step 5): Kommunikation ===== */}
-              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+              {/* ===== Step 7 (v14.8: vormals Step 6): Kommunikation ===== */}
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
+                  {isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -8399,13 +8667,18 @@ export default function EventCreationPage(): React.ReactElement {
                     >
                       {[{ label: `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (s.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))].map((tab, tabIdx) => {
                         const active = tabIdx === activeCommTabIdx;
+                        // v14.8: Haupt-Event-Tab visuell deaktivieren, wenn der
+                        // „Nur Sub-Events"-Modus aktiv ist — kein Click, keine
+                        // Sichtbarkeit als Ziel der Konfiguration.
+                        const isDisabledMain = tab.isMain && subEventsOnlyMode;
                         return (
                           <button
                             key={tabIdx}
                             type="button"
                             role="tab"
                             aria-selected={active}
-                            onClick={() => switchCommTab(tabIdx)}
+                            aria-disabled={isDisabledMain}
+                            onClick={() => { if (!isDisabledMain) switchCommTab(tabIdx); }}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 8,
                               padding: '8px 14px',
@@ -8416,7 +8689,8 @@ export default function EventCreationPage(): React.ReactElement {
                               color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
                               fontWeight: active ? 700 : 500,
                               fontSize: '0.85rem',
-                              cursor: 'pointer',
+                              cursor: isDisabledMain ? 'not-allowed' : 'pointer',
+                              opacity: isDisabledMain ? 0.4 : 1,
                               marginBottom: -1,
                               whiteSpace: 'nowrap',
                               maxWidth: 280,
@@ -8424,7 +8698,9 @@ export default function EventCreationPage(): React.ReactElement {
                               textOverflow: 'ellipsis',
                               transition: 'background 0.15s, color 0.15s, border-color 0.15s',
                             }}
-                            title={tab.label}
+                            title={isDisabledMain
+                              ? (isDe ? 'Hauptevent-Kommunikation nicht relevant — „Nur Sub-Events"-Modus aktiv' : 'Main-event communication not relevant — „sub-events only" mode active')
+                              : tab.label}
                           >
                             {tab.isMain && (
                               <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
@@ -8432,6 +8708,17 @@ export default function EventCreationPage(): React.ReactElement {
                               </span>
                             )}
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
+                            {isDisabledMain && (
+                              <span style={{
+                                fontSize: '0.65rem', fontWeight: 600,
+                                padding: '2px 6px', borderRadius: 8,
+                                background: 'var(--dex-gray-200, #e0e0e0)',
+                                color: 'var(--dex-gray-600)',
+                                marginLeft: 4,
+                              }}>
+                                {isDe ? 'nicht relevant — nur Sub-Events' : 'not relevant — sub-events only'}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -8480,6 +8767,36 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 )}
 
+                {/* v14.8: „Nur Sub-Events"-Modus + auf Haupt-Event-Tab → Banner
+                    statt Kommunikations-Settings rendern. Der User soll keine
+                    Werte für ein nicht-existentes Hauptevent-Anmelden pflegen. */}
+                {subEventsOnlyMode && activeCommTabIdx === 0 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '14px 16px', marginBottom: 8,
+                    background: 'rgba(255,193,7,0.10)',
+                    border: '1px solid rgba(255,152,0,0.55)',
+                    borderRadius: 'var(--dex-radius, 12px)',
+                    fontSize: '0.9rem', color: 'var(--dex-gray-700)',
+                    lineHeight: 1.55,
+                  }}>
+                    <Icon iconName="Info" style={{ fontSize: 20, color: '#e67e22', flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      {isDe
+                        ? <>
+                            <strong>Hauptevent-Kommunikation ist in diesem Modus nicht relevant.</strong><br />
+                            Du hast in Schritt 3 (Sub-Events) den Modus <strong>&bdquo;Nur {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}&ldquo;</strong> gewählt — Teilnehmer können sich gar nicht fürs Hauptevent anmelden, deshalb gibt es auch keine Bestätigungs-Mails und keinen Outlook-Termin fürs Hauptevent. Wechsle auf den Tab eines Sub-Events, um dort die Kommunikation zu konfigurieren.
+                          </>
+                        : <>
+                            <strong>Main-event communication is not relevant in this mode.</strong><br />
+                            You picked the <strong>&bdquo;{(childTermPlural || 'sub-events').trim() || 'sub-events'} only&ldquo;</strong> mode in step 3 (Sub-events) — attendees cannot register for the main event, so no confirmation emails or Outlook invites are sent for it. Switch to a sub-event tab to configure communication there.
+                          </>}
+                    </div>
+                  </div>
+                )}
+
+                {!(subEventsOnlyMode && activeCommTabIdx === 0) && (
+                <>
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={20} />
@@ -8939,13 +9256,15 @@ export default function EventCreationPage(): React.ReactElement {
                 })}
                   </div>
                 </details>
+                </>
+                )}{/* end !(subEventsOnlyMode && tab===0) wrapper, v14.8 */}
 
-              </div>{/* close Step 4 */}
+              </div>{/* close Step 7 (Kommunikation) */}
 
-              {/* ===== Step 7 (v11.80: vormals Step 6): Dokumente ===== */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+              {/* ===== Step 8 (v14.8: vormals Step 7): Dokumente ===== */}
+              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 7 — Dokumente' : 'Step 7 — Documents'}
+                  {isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -9111,12 +9430,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   )}
                 </div>
-              </div>{/* close Step 5 */}
+              </div>{/* close Step 8 (Dokumente) */}
 
-              {/* ===== Step 8 (v11.80: vormals Step 7): Fun-Zone ===== */}
-              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
+              {/* ===== Step 9 (v14.8: vormals Step 8): Fun-Zone ===== */}
+              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
                 <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
-                  {isDe ? 'Schritt 8 — Fun-Zone' : 'Step 8 — Fun Zone'}
+                  {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
                 </h2>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                   {isDe
@@ -9428,7 +9747,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <button type="button" className="btn btn-outline" onClick={addQuizQuestion} style={{ fontSize: '0.85rem', padding: '8px 20px' }}>
                   <Plus size={14} /> {t('create.funzone.addquestion')}
                 </button>
-              </div>{/* close Step 6 */}
+              </div>{/* close Step 9 (Fun-Zone) */}
 
             </div>{/* close creation-form */}
           </div>{/* close card */}
