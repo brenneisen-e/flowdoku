@@ -11,7 +11,7 @@ import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { canCreateEvents } = useRoles();
+  const { canCreateEvents, isAdmin } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -56,10 +56,13 @@ export default function StartPage(): React.ReactElement {
   });
   // v12.5: Grid bleibt immer 3-spaltig — auch User sehen die Organizer-
   // Kachel (ausgegraut + CTA-Overlay).
-  // v13.12: Wenn der User Check-In-Team-Mitgliedschaft hat, kommt eine
-  // 4. Kachel dazu → 4-spaltiges Grid.
+  // v13.12 / v14.3: Wenn der User Check-In-Team-Mitgliedschaft hat ODER
+  // Admin / Organizer ist, kommt die 4. Check-In-Kachel dazu → 4-spaltiges
+  // Grid. Admins und Organizer können ohnehin überall einchecken — sie
+  // sollen den Direkteinstieg also auch immer prominent auf der Startseite
+  // sehen, nicht erst über den Header-Button suchen müssen.
   const showAdminTile = true;
-  const showCheckInTile = isCheckInTeamOfActive;
+  const showCheckInTile = isCheckInTeamOfActive || isAdmin || isOrganizer;
 
   return (
     <div className="page-container">
