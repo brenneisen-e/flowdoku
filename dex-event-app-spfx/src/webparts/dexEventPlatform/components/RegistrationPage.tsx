@@ -1478,7 +1478,10 @@ export default function RegistrationPage(): React.ReactElement {
                 {t('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
               </p>
 
-              {/* Haupt-Event-Checkbox */}
+              {/* v15.3.1: Haupt-Event-Checkbox nur zeigen wenn Anmeldung
+                  fürs Hauptevent überhaupt möglich ist. Im subEventsOnlyMode
+                  läuft die Anmeldung exklusiv über Sub-Events. */}
+              {!event.subEventsOnlyMode && (
               <label style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
                 borderRadius: 8,
@@ -1502,6 +1505,7 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                 </div>
               </label>
+              )}
 
               {/* Sessions */}
               {childEvents.length > 0 && (
