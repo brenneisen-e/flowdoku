@@ -743,6 +743,11 @@ export default function EventCreationPage(): React.ReactElement {
   );
   // v14.8: Organizer-konfigurierbarer Begriff für die untergeordneten Events
   // (Standard „Sub-Event" / „Sub-Events", alternativ Workshop / Session etc.).
+  // v15.9: separater `customTermMode`-Flag, damit „Eigene Bezeichnung…"
+  // im Dropdown auch dann angeklebt bleibt, wenn beide Inputs noch leer
+  // sind (sonst kippt die Heuristik unten auf 'subevent' zurück und die
+  // Custom-Inputs verschwinden bevor der User tippen kann).
+  const [customTermMode, setCustomTermMode] = React.useState<boolean>(false);
   const [childTermSingular, setChildTermSingular] = React.useState<string>(
     (editEvent && editEvent.childEventTermSingular) || '',
   );
@@ -6387,6 +6392,10 @@ export default function EventCreationPage(): React.ReactElement {
                     { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
                   ];
                   const matchKey = (() => {
+                    // v15.9: customTermMode hat Priorität — wer in den
+                    // Custom-Modus geklickt hat bleibt dort, auch wenn
+                    // beide Inputs noch leer sind.
+                    if (customTermMode) return 'custom';
                     const s = (childTermSingular || '').trim();
                     const p = (childTermPlural || '').trim();
                     if (!s && !p) return 'subevent';
@@ -6401,13 +6410,15 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => {
                           const k = e.target.value;
                           if (k === 'custom') {
-                            // Switch to custom — clear if currently a preset, otherwise keep
-                            if (matchKey !== 'custom') {
-                              setChildTermSingular('');
-                              setChildTermPlural('');
-                            }
+                            // v15.9: Custom-Modus sticky machen, auch ohne
+                            // initiale Werte — sonst kippt der Dropdown
+                            // sofort zurück auf 'subevent'.
+                            setCustomTermMode(true);
                             return;
                           }
+                          // Preset gewählt → Custom-Modus aufheben + Werte
+                          // aus dem Preset übernehmen.
+                          setCustomTermMode(false);
                           const preset = presets.find(x => x.key === k);
                           if (preset) {
                             setChildTermSingular(preset.singular);
