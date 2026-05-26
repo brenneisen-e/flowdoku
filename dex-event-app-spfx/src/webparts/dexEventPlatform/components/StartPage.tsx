@@ -180,8 +180,8 @@ export default function StartPage(): React.ReactElement {
             <h2>{locale === 'de' ? 'Check-In' : 'Check-in'}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>
               {locale === 'de'
-                ? 'Teilnehmer einchecken (Scan + manuell)'
-                : 'Check in attendees (scan + manual)'}
+                ? 'Teilnehmer einchecken'
+                : 'Check in attendees'}
             </p>
           </div>
         )}
