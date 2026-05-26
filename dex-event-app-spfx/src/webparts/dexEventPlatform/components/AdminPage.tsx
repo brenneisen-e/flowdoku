@@ -1274,9 +1274,13 @@ export default function AdminPage(): React.ReactElement {
     const userIds = (selectedEvent?.eventSpecificFields || [])
       .filter(f => f.type === 'user' || f.type === 'roommate')
       .map(f => f.id);
+    // v14.8: Anrede-Spalte nur anbieten, wenn das Event die Anrede beim
+    // Anmelden tatsächlich abfragt (askSalutation). Sonst landet eine leere
+    // Spalte voller „-" im Admin-Center, die niemand braucht.
+    const askSal = !!selectedEvent?.askSalutation;
     const cols: Array<{ id: string; label: string; alwaysVisible?: boolean }> = [
       { id: 'id', label: '#', alwaysVisible: true },
-      { id: 'anrede', label: 'Anrede' },
+      ...(askSal ? [{ id: 'anrede', label: 'Anrede' }] : []),
       // v11.26: getrennte Vorname / Nachname Spalten statt der einen
       // kombinierten 'name'-Spalte. Alte localStorage-Eintraege mit 'name'
       // werden im useEffect-Loader unten in 'vorname','nachname' migriert.

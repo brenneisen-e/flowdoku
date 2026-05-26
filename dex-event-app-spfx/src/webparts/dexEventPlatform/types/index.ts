@@ -98,6 +98,23 @@ export interface DeloitteEvent {
    *  Kommunikation läuft nur über die Sub-Events — dann darf niemand „nur
    *  Hauptevent" anmelden, sonst landet er ohne Bestätigung im System. */
   requireSubEventSelection?: boolean;
+  /** v14.8: „Nur Sub-Events"-Modus. Wenn true, gibt es kein
+   *  Hauptevent-Anmelde-Angebot mehr — die Anmelde-Checkbox für das
+   *  Hauptevent ist im RegistrationForm ausgeblendet, der Teilnehmer
+   *  meldet sich ausschließlich für einzelne Sub-Events an. Die
+   *  Hauptevent-Kommunikation (Mails, Outlook) ist dadurch implizit
+   *  irrelevant — der entsprechende Tab in Schritt 6 wird ausgegraut.
+   *  Konsistenzregel: subEventsOnlyMode=true impliziert
+   *  requireSubEventSelection=true. */
+  subEventsOnlyMode?: boolean;
+  /** v14.8: Organizer-konfigurierbarer Begriff für die untergeordneten
+   *  Events. Default „Sub-Event(s)" (DE/EN). Per Wizard-Dropdown auch
+   *  „Workshop", „Session", „Programmpunkt", „Event-Section" oder
+   *  Freitext (Singular + Plural). Wird überall im User-facing Text
+   *  verwendet. Persistiert als Piggyback `_childEventTerm` in
+   *  EmailTemplateOverrides. */
+  childEventTermSingular?: string;
+  childEventTermPlural?: string;
   /** v8.5: Granulare Organizer-Benachrichtigung bei Anmeldungen.
    *  - 'never' (Default): Organizer bekommt nichts mit
    *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt

@@ -606,11 +606,35 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       disableOutlook: !!e.DisableOutlook,
       // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
       // JSON (kein neues SP-Feld nötig).
+      // v14.8: subEventsOnlyMode + childEventTerm zusätzlich aus dem
+      // Piggyback-Blob auslesen. subEventsOnlyMode impliziert
+      // requireSubEventSelection (auch wenn der Flag nicht explizit gesetzt
+      // ist).
       requireSubEventSelection: ((): boolean => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
-          return !!(ov && ov._requireSubEventSelection);
+          return !!(ov && (ov._requireSubEventSelection || ov._subEventsOnlyMode));
         } catch { return false; }
+      })(),
+      subEventsOnlyMode: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._subEventsOnlyMode);
+        } catch { return false; }
+      })(),
+      childEventTermSingular: ((): string | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._childEventTerm && typeof ov._childEventTerm.singular === 'string' ? ov._childEventTerm.singular : '';
+          return v || undefined;
+        } catch { return undefined; }
+      })(),
+      childEventTermPlural: ((): string | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._childEventTerm && typeof ov._childEventTerm.plural === 'string' ? ov._childEventTerm.plural : '';
+          return v || undefined;
+        } catch { return undefined; }
       })(),
       // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
       // als false interpretiert (kein Hinweis anzeigen).
