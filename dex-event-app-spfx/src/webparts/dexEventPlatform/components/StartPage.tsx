@@ -92,7 +92,13 @@ export default function StartPage(): React.ReactElement {
           100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(134,188,37,0.0)); }
         }
         .start-card--checkin:hover .start-card__icon svg { animation: dexStartIconScanPulse 0.9s ease; }
-        .start-grid--with-checkin { grid-template-columns: 1fr 1fr 1fr 1fr !important; }
+        /* v13.14: 4-Spalten-Variante. Grid bekommt mehr Maximalbreite,
+           damit alle vier Kacheln gleich breit UND nicht zu schmal sind. */
+        .start-grid--with-checkin {
+          grid-template-columns: 1fr 1fr 1fr 1fr !important;
+          max-width: 1200px !important;
+        }
+        .start-grid--with-checkin .start-card { width: 100%; }
         @media (max-width: 900px) {
           .start-grid--with-checkin { grid-template-columns: 1fr 1fr !important; }
           .start-grid--with-checkin .start-card--checkin { grid-column: 1 / -1; }
@@ -169,7 +175,7 @@ export default function StartPage(): React.ReactElement {
             onClick={() => navigate('check-in')}
           >
             <div className="start-card__icon">
-              <QrCode size={64} />
+              <QrCode size={64} strokeWidth={1} />
             </div>
             <h2>{locale === 'de' ? 'Check-In' : 'Check-in'}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>
