@@ -19,7 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
-import { wrapTemplateForStorage } from './EmailTemplates';
+import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
 
 /**
  * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -173,24 +173,213 @@ const OUTLOOK_DECLINE_DIGEST_BODY_DE = wrapTemplateForStorage(
 // Nachruecken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
 // weil die Flow-seite den BodyHtml raw verwendet (ohne wrapTemplate). Client-Code
 // erkennt die Pre-Wrap in buildEmailFromTemplate() und skippt den Wrap dann.
+// v12.11/v12.12: Nachr\u00FCcken-Mail-Text pr\u00E4zisiert \u2014 der alte \u201ESpot available"-
+// Subject war missverst\u00E4ndlich (klang wie ein Angebot). Outlook-Verweis
+// entfernt, weil nicht jedes Event Outlook-Termine versendet.
 const NACHRUECKEN_BODY_EN = wrapTemplateForStorage(
   '#86bc25',
-  'You got a spot!',
+  'You\u2019ve got a spot!',
   'Event {{EventTitle}}',
   `<p>Dear {{Name}},</p>
-<p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>{{EventTitle}}</strong>.</p>
-<p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p>
+<p>Great news! A spot has become available \u2014 you have <strong>moved up from the waitlist</strong> for the event <strong>{{EventTitle}}</strong> and are now a <strong>confirmed participant</strong>.</p>
+<p>You are now on the official participant list.</p>
+<p>You can review your participation any time in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>\u201CMy Events\u201D</strong>.</p>
+<p>If you are unable to attend after all, please cancel your registration as soon as possible via the App so that the next person on the waitlist can move up.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
 );
 
 const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
   '#86bc25',
-  'Du bist nachger\u00FCckt!',
+  'Du hast einen Platz!',
   'Event {{EventTitle}}',
   `<p>Hallo {{Name}},</p>
-<p>gute Nachrichten! Ein Platz ist frei geworden und du bist von der Warteliste <strong>als Teilnehmer best\u00E4tigt</strong> f\u00FCr das Event <strong>{{EventTitle}}</strong>.</p>
-<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig \u00FCber die <a href="{{AppUrl}}">Event Experience Platform</a> ab.</p>
+<p>gute Nachrichten! Ein Platz ist frei geworden \u2014 du bist von der <strong>Warteliste nachger\u00FCckt</strong> f\u00FCr das Event <strong>{{EventTitle}}</strong> und bist jetzt <strong>fester Teilnehmer</strong>.</p>
+<p>Du stehst nun auf der offiziellen Teilnehmerliste.</p>
+<p>Deine Teilnahme kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>\u201EMeine Events\u201C</strong> einsehen.</p>
+<p>Falls du doch nicht teilnehmen kannst, melde dich bitte zeitnah \u00FCber die App ab, damit die n\u00E4chste Person von der Warteliste nachr\u00FCcken kann.</p>
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// v12.13: Team-bezogene Mail-Vorlagen — vorher inline in EventContext.tsx
+// als ad-hoc-HTML zusammengebaut, jetzt zentral in DEX_EmailTemplates
+// hinterlegt damit Admins sie genauso wie Anmeldung/Abmeldung/Nachrücken
+// anpassen können. Platzhalter pro Template siehe Inline-Kommentare.
+
+// {{Name}} (Empfänger-Vorname), {{NewMemberName}} (voller Name des
+// neuen Mitglieds), {{TeamName}} (kann leer sein), {{EventTitle}}.
+const TEAM_MEMBER_JOINED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team update', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{NewMemberName}}</strong> joined your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>.</p>
+<p>You can see the current team status in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_MEMBER_JOINED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Update', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{NewMemberName}}</strong> ist deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beigetreten.</p>
+<p>Den aktuellen Team-Stand siehst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>„Meine Events"</strong>.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Lead-Vorname), {{RequesterName}} (voll), {{TeamName}},
+// {{EventTitle}}, {{ApproveUrl}}, {{RejectUrl}}.
+const TEAM_JOIN_REQUEST_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team join request', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{RequesterName}}</strong> would like to join your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>. Please decide:</p>
+<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>
+<p style="font-size:0.85rem;color:#666;">Note: the buttons lead you to the app; the request block lives under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_JOIN_REQUEST_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Beitritts-Anfrage', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{RequesterName}}</strong> möchte deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beitreten. Bitte entscheide:</p>
+<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestätigen</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>
+<p style="font-size:0.85rem;color:#666;">Hinweis: die Buttons führen dich in die App; den Beitritts-Anfragen-Block findest du unter <strong>„Meine Events"</strong>.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Anfrager-Vorname), {{EventTitle}}.
+const TEAM_JOIN_REJECTED_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Team join request declined', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>your join request for the team at the event <strong>{{EventTitle}}</strong> was declined by the team lead.</p>
+<p>You can still register individually if capacity allows — or join another open team via the registration page.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_JOIN_REJECTED_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Team-Beitritts-Anfrage abgelehnt', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>deine Beitritts-Anfrage zum Team beim Event <strong>{{EventTitle}}</strong> wurde vom Team-Lead abgelehnt.</p>
+<p>Du kannst dich gerne einzeln anmelden, falls die Kapazität noch reicht — oder einem anderen offenen Team über die Anmeldeseite beitreten.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{NewLeadName}}, {{TeamName}},
+// {{EventTitle}}, {{NewLeadBlock}} (HTML-Block — leer falls Empfänger
+// nicht der neue Lead ist, sonst der zusätzliche Hinweis-Absatz).
+const TEAM_LEAD_TRANSFERRED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Team lead change', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>The team lead role in your team {{TeamName}} has been transferred to <strong>{{NewLeadName}}</strong>.</p>
+{{NewLeadBlock}}
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_LEAD_TRANSFERRED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Team-Lead-Wechsel', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Die Team-Lead-Rolle in deinem Team {{TeamName}} wurde an <strong>{{NewLeadName}}</strong> übergeben.</p>
+{{NewLeadBlock}}
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{CancelledName}}, {{TeamName}},
+// {{EventTitle}}, {{ActiveCount}}, {{TeamSize}}, {{NewLeadBlock}}
+// (leer, falls Empfänger nicht zum neuen Lead ernannt wurde).
+const TEAM_MEMBER_CANCELLED_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Team update', 'Event {{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>a member of your team {{TeamName}} has cancelled their registration for the event <strong>{{EventTitle}}</strong>:</p>
+<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
+<p>Current team occupancy: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
+{{NewLeadBlock}}
+<p>What you can do now:</p>
+<ul>
+<li>Do nothing — your seat stays reserved for the team for now.</li>
+<li>As team lead: add a replacement person via <strong>“My Events”</strong>.</li>
+<li>Other participants can join the open slot via the registration page (if the organizer enabled “Public open slots”).</li>
+</ul>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const TEAM_MEMBER_CANCELLED_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Team-Update', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>ein Mitglied deines Teams {{TeamName}} hat sich vom Event <strong>{{EventTitle}}</strong> abgemeldet:</p>
+<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
+<p>Aktuelle Team-Belegung: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
+{{NewLeadBlock}}
+<p>Was du jetzt machen kannst:</p>
+<ul>
+<li>Nichts tun — euer Platz bleibt erstmal für das Team reserviert.</li>
+<li>Als Team-Lead: über <strong>„Meine Events"</strong> eine andere Person nachträglich hinzufügen.</li>
+<li>Andere Teilnehmer können ggf. den freien Slot über die Event-Anmeldeseite belegen (sofern der Organizer „Unvollständige Teams öffentlich sichtbar" aktiviert hat).</li>
+</ul>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// v13.0: Vier weitere Templates aus dem Inline-Code geholt — analog zur
+// Team-Migration in v12.13/v12.14.
+
+// {{Name}} (Empfänger-Vorname), {{RegistrantName}} (voller Name dessen,
+// der sie als Zimmerpartner ausgewählt hat), {{EventTitle}}, {{AppUrl}}.
+const ROOMMATE_REQUEST_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Roommate request', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p><strong>{{RegistrantName}}</strong> has selected you as their <strong>roommate</strong> for the event <strong>{{EventTitle}}</strong>.</p>
+<p>To confirm the match, please pick <strong>{{RegistrantName}}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const ROOMMATE_REQUEST_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Zimmerpartner-Anfrage', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p><strong>{{RegistrantName}}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>{{EventTitle}}</strong> angegeben.</p>
+<p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>{{RegistrantName}}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{GroupLabel}} (neue Gruppe), {{EventTitle}}, {{AppUrl}}.
+const GROUP_SWITCH_CONFIRMED_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Group switch', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>Your group switch to <strong>{{GroupLabel}}</strong> for <strong>{{EventTitle}}</strong> is confirmed. You are now regularly registered in this group.</p>
+<p>You can review your participation any time in the <a href="{{AppUrl}}">Event Experience Platform</a> under <strong>“My Events”</strong>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const GROUP_SWITCH_CONFIRMED_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Gruppen-Wechsel', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Dein Gruppen-Wechsel zu <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>
+<p>Deine Teilnahme kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter <strong>„Meine Events"</strong> einsehen.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+const GROUP_SWITCH_WAITLIST_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Group switch — on waitlist', '{{EventTitle}}',
+  `<p>Hello {{Name}},</p>
+<p>You requested to switch to the <strong>{{GroupLabel}}</strong> group for <strong>{{EventTitle}}</strong>. The group is currently full, so your registration is on the <strong>{{GroupLabel}} waitlist</strong>.</p>
+<p>You will be promoted automatically as soon as a spot frees up. You don't need to do anything else.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const GROUP_SWITCH_WAITLIST_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Gruppen-Wechsel — auf Warteliste', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>Du hast den Wechsel in die Gruppe <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe {{GroupLabel}}</strong>.</p>
+<p>Sobald jemand absagt, rückst du automatisch nach. Du musst nichts weiter tun.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
+// {{Name}} (Empfänger-Vorname), {{EventTitle}}, {{WaitlistPositionBlock}}
+// (optionaler HTML-Block mit „Du stehst jetzt auf Warteliste-Platz X" —
+// leer wenn keine Position bekannt).
+const OVERBOOK_APOLOGY_BODY_EN = wrapTemplateForStorage(
+  '#ed8b00', 'Registration corrected', '{{EventTitle}}',
+  `<p>Hi {{Name}},</p>
+<p>We sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>{{EventTitle}}</strong> although capacity was already full.</p>
+<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>
+{{WaitlistPositionBlock}}
+<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>
+<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`
+);
+const OVERBOOK_APOLOGY_BODY_DE = wrapTemplateForStorage(
+  '#ed8b00', 'Anmeldung korrigiert', '{{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>{{EventTitle}}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>
+<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>
+{{WaitlistPositionBlock}}
+<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>
+<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
 // Fester Listenname auf jeder Subsite
@@ -1256,7 +1445,7 @@ export class EventService {
         BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">Event Experience Platform</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
         BodyHtml: '<p>Dear {{Name}},</p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Spot available: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You got a spot!',
+      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
         BodyHtml: NACHRUECKEN_BODY_EN },
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
         BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
@@ -1271,7 +1460,7 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">Event Experience Platform</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Platz frei: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du bist nachgerückt!',
+      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
@@ -1291,6 +1480,44 @@ export class EventService {
         BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
       { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
         BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
+      // v12.13: Team-bezogene Templates (vorher inline in EventContext.tsx).
+      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
+      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
+      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
+      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
+      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
+      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
+      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
+      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
+      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
+      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
+      // v13.0: Restliche bisher-inline-Mails (Zimmerpartner, Gruppen-Wechsel, Überbuchung).
+      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
+        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
+      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
+        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
+      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
+      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -1412,6 +1639,15 @@ export class EventService {
    * noch die OOTB-Version ohne diese Felder. Diese Funktion zieht den BodyHtml
    * (sowie Subject + Heading) auf den aktuellen Code-Stand nach.
    */
+  /**
+   * v12.12: Öffentliche Re-Seed-Funktion für Admins. Stößt das Update aller
+   * Standard-Templates an — überschreibt eventuelle individuelle Änderungen
+   * in DEX_EmailTemplates mit den aktuellen Default-Texten aus dem Code.
+   */
+  public async reseedDefaultEmailTemplates(): Promise<void> {
+    await this.upgradeStandardEmailTemplates('DEX_EmailTemplates');
+  }
+
   private async upgradeStandardEmailTemplates(listName: string): Promise<void> {
     const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
     void APP_URL; // Reserviert fuer spaetere Templates die {{AppUrl}} hardcoden
@@ -1423,7 +1659,7 @@ export class EventService {
         BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">Event Experience Platform</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
         BodyHtml: '<p>Dear {{Name}},</p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Spot available: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You got a spot!',
+      { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
         BodyHtml: NACHRUECKEN_BODY_EN },
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
         BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">Event Experience Platform</a>.</p><p>Regards,<br>Team Event Experience Platform</p>' },
@@ -1436,7 +1672,7 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">Event Experience Platform</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">Event Experience Platform</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Platz frei: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du bist nachgerückt!',
+      { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">Event Experience Platform</a> verwalten.</p><p>Viele Grüße,<br>Team Event Experience Platform</p>' },
@@ -1450,6 +1686,50 @@ export class EventService {
         BodyHtml: OUTLOOK_FORWARD_BODY_EN },
       { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
         BodyHtml: OUTLOOK_FORWARD_BODY_DE },
+      // v9.38: OutlookDeclineDigest
+      { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
+      { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
+        BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
+      // v12.13: Team-Templates auch im Re-Seed-Pfad, sonst greift der Admin-
+      // Reseed-Button die Texte nicht.
+      { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
+      { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
+      { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
+      { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
+        BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
+      { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
+      { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
+        BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
+      { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
+      { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
+        BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
+      { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
+      { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
+        BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
+      // v13.0: Zimmerpartner, Gruppen-Wechsel, Überbuchung (vorher inline).
+      { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
+        BodyHtml: ROOMMATE_REQUEST_BODY_EN },
+      { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
+        BodyHtml: ROOMMATE_REQUEST_BODY_DE },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
+      { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
+        BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
+      { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
+        BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
+      { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
+      { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
+        BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
     ];
 
     let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
@@ -4173,7 +4453,14 @@ export class EventService {
   public async ensureTeamJoinRequestsList(): Promise<void> {
     const listName = 'DEX_TeamJoinRequests';
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) {
+      // v13.0: Backfill für ältere Installationen, die die Liste vor
+      // v11.83 angelegt haben (DecidedDate/DecidedByEmail damals nicht
+      // vorhanden). Ohne diesen Patch schlägt decideTeamJoinRequest
+      // beim MERGE auf die fehlenden Felder mit HTTP 400 fehl.
+      await this.ensureMissingTeamJoinRequestsFields(listName);
+      return;
+    }
 
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
@@ -4215,6 +4502,36 @@ export class EventService {
     try {
       await this.setQueueListPermissions(listName);
     } catch { /* best-effort */ }
+  }
+
+  /**
+   * v13.0: Backfill fehlender Felder in einer bestehenden DEX_TeamJoinRequests-
+   * Liste. Greift bei Tenants die die Liste vor v11.83 angelegt haben.
+   */
+  private async ensureMissingTeamJoinRequestsFields(listName: string): Promise<void> {
+    const wanted = [
+      { title: 'DecidedDate', type: 4 },
+      { title: 'DecidedByEmail', type: 2 },
+    ];
+    for (const f of wanted) {
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('${f.title}')?$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (resp.ok) continue; // existiert
+      } catch { /* anlegen */ }
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+          'Required': false,
+        });
+      } catch (e) {
+        console.warn(`[DEX] ensureMissingTeamJoinRequestsFields: failed to add '${f.title}':`, e);
+      }
+    }
   }
 
   /**
@@ -5102,36 +5419,58 @@ export class EventService {
    * für „Bestätigen mit Mail". Der Admin kann den Text im Modal vor dem
    * Versand editieren.
    */
-  public buildOverbookApologyEmail(
+  // v13.0: Lädt das OverbookingApology-Template aus DEX_EmailTemplates;
+  // wenn das Template existiert wird daraus die Mail gebaut (inkl.
+  // Reseed-Funktionalität für Admins). Fallback ist der alte Inline-Text
+  // damit ältere Tenants ohne Template-Update nicht ohne Mail dastehen.
+  public async buildOverbookApologyEmail(
     name: string,
     eventTitle: string,
     lang: string,
     waitlistPos?: number
-  ): { subject: string; body: string } {
+  ): Promise<{ subject: string; body: string }> {
     const isDe = (lang || 'EN').toUpperCase() === 'DE';
     const first = (name || '').split(' ')[0] || name;
     const hasPos = typeof waitlistPos === 'number' && waitlistPos > 0;
+    const posBlock = hasPos
+      ? (isDe
+        ? `<p>Du stehst jetzt auf <strong>Warteliste-Platz ${waitlistPos}</strong>.</p>`
+        : `<p>You are now <strong>waitlist position ${waitlistPos}</strong>.</p>`)
+      : '';
+    const tpl = await this.getEmailTemplate('OverbookingApology', lang).catch(() => null);
+    const vars: Record<string, string> = {
+      Name: first || name,
+      EventTitle: eventTitle,
+      WaitlistPositionBlock: posBlock,
+      WaitlistPosition: hasPos ? String(waitlistPos) : '',
+      AppUrl: `${this.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+    };
+    if (tpl) {
+      return buildEmailFromTemplate(tpl, vars);
+    }
+    // Fallback-Inline (alte Pfade)
+    const heading = isDe ? 'Anmeldung korrigiert' : 'Registration corrected';
     if (isDe) {
       const inner = `<p>Hallo ${first},</p>`
         + `<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>${eventTitle}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>`
         + `<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>`
-        + (hasPos ? `<p>Du stehst jetzt auf <strong>Warteliste-Platz ${waitlistPos}</strong>.</p>` : '')
+        + posBlock
         + `<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>`
         + `<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`;
       return {
         subject: `Wichtig: Korrektur deiner Anmeldung — ${eventTitle}`,
-        body: wrapTemplateForStorage('#ed8b00', 'Anmeldung korrigiert', eventTitle, inner),
+        body: wrapTemplateForStorage('#ed8b00', heading, eventTitle, inner),
       };
     }
     const inner = `<p>Hi ${first},</p>`
       + `<p>we sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>${eventTitle}</strong> although capacity was already full.</p>`
       + `<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>`
-      + (hasPos ? `<p>You are now <strong>waitlist position ${waitlistPos}</strong>.</p>` : '')
+      + posBlock
       + `<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>`
       + `<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`;
     return {
       subject: `Important: correction of your registration — ${eventTitle}`,
-      body: wrapTemplateForStorage('#ed8b00', 'Registration corrected', eventTitle, inner),
+      body: wrapTemplateForStorage('#ed8b00', heading, eventTitle, inner),
     };
   }
 
@@ -5655,7 +5994,14 @@ export class EventService {
         }
       }
 
-      // Ersten Warteliste-Teilnehmer finden (aelteste RegistrationDate zuerst).
+      // v12.10: Nachrück-Sortierung jetzt nach TeilnehmerID asc statt
+      // RegistrationDate. Hintergrund: nach dem IDReorder-Flow sind die
+      // TeilnehmerIDs durchlaufend (1..N aktiv, N+1.. Warteliste). Wenn
+      // also Platz 100 frei wird, soll TID 101 (= erster auf der Liste)
+      // nachrücken — unabhängig davon, ob TID 103 zeitlich gesehen vor
+      // TID 101 registriert war (z.B. nach Re-Registration oder Wechsel
+      // der Gruppe). RegistrationDate sortierte chronologisch, was bei
+      // umverteilten IDs zur falschen Reihenfolge führte.
       // Bei B2Run-Split-Kapazitäten: nur die passende Warteliste durchsuchen
       // (PreferredStarterType == onlyWithPreferredType).
       let filter = `Status eq 'Warteliste'`;
@@ -5664,7 +6010,7 @@ export class EventService {
         filter += ` and PreferredStarterType eq '${esc}'`;
       }
       const resp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=RegistrationDate asc&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=${encodeURIComponent(filter)}&$orderby=TeilnehmerID asc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return { success: false };

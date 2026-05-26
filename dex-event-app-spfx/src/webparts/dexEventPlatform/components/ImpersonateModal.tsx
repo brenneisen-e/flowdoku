@@ -14,6 +14,7 @@
 import * as React from 'react';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
+import Modal from './Modal';
 
 interface ImpersonateModalProps {
   open: boolean;
@@ -88,26 +89,14 @@ export default function ImpersonateModal({ open, onClose }: ImpersonateModalProp
     window.location.reload();
   };
 
-  if (!open) return null;
+  // v13.1: Modal-Wrapper-Komponente — kapselt Backdrop/Escape/Padding.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: 16,
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      maxWidth={520}
+      ariaLabel={isDe ? 'Demo-Modus' : 'Demo mode'}
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16, padding: '24px 28px',
-          maxWidth: 520, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}
-      >
         <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--dex-gray-800)' }}>
           {isDe ? 'Demo-Modus: als User testen' : 'Demo mode: act as a user'}
         </h2>
@@ -181,7 +170,6 @@ export default function ImpersonateModal({ open, onClose }: ImpersonateModalProp
             {isDe ? 'Demo-Modus starten' : 'Start demo mode'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

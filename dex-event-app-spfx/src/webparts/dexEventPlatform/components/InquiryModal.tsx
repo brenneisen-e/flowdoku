@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
+import Modal from './Modal';
 
 interface InquiryModalProps {
   open: boolean;
@@ -51,26 +52,14 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
     }
   }
 
-  if (!open) return null;
+  // v13.1: Modal-Wrapper-Komponente — kapselt Backdrop/Escape/Padding.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={() => { if (!sending) onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 9999, padding: 16,
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      dismissable={!sending}
+      ariaLabel={locale === 'de' ? 'DEX-Anfrage' : 'DEX inquiry'}
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16, padding: '24px 28px',
-          maxWidth: 480, width: '100%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}
-      >
         <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--dex-gray-800)' }}>
           {locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
         </h2>
@@ -81,28 +70,30 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
         </p>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
           {locale === 'de' ? 'Dein Name' : 'Your name'}
+          {/* v13.0: form-input statt inline-style — konsistente Höhe / Border. */}
           <input
             type="text"
+            className="form-input"
             value={name}
             onChange={e => setName(e.target.value)}
             disabled={sending}
-            style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.9rem' }}
           />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
           {locale === 'de' ? 'Event-Name' : 'Event name'}
           <input
             type="text"
+            className="form-input"
             value={eventName}
             onChange={e => setEventName(e.target.value)}
             disabled={sending}
             placeholder={locale === 'de' ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
-            style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.9rem' }}
           />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
           {locale === 'de' ? 'Was brauchst du?' : 'What do you need?'}
           <textarea
+            className="form-textarea"
             value={message}
             onChange={e => setMessage(e.target.value)}
             disabled={sending}
@@ -110,7 +101,6 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
             placeholder={locale === 'de'
               ? 'Kurz beschreiben: Anzahl Teilnehmer, Termin, gewünschte Funktionen...'
               : 'Briefly describe: number of participants, date, features needed...'}
-            style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'inherit', resize: 'vertical' }}
           />
         </label>
         {status === 'success' && (
@@ -138,7 +128,6 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
               : (locale === 'de' ? 'Anfrage senden' : 'Send inquiry')}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

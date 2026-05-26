@@ -210,6 +210,10 @@ interface EventContextType {
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
+  /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
+   *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
+   *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
+  reseedDefaultEmailTemplates: () => Promise<void>;
   /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
    *  ein einziger schneller REST-Call, fuer Boot-Loader-Anzeige. */
   getKpiCache: () => Promise<{ participants: number; events: number } | null>;
@@ -1020,15 +1024,28 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             : (partnerName.split(/\s+/)[0] || '');
           const registrantFullName = `${firstNameToUse} ${lastNameToUse}`.trim() || nameToUse;
           const isDe = (lang || 'EN').toUpperCase() === 'DE';
-          const subject = isDe
-            ? `Zimmerpartner-Anfrage: ${event.title}`
-            : `Roommate request: ${event.title}`;
-          const inner = isDe
-            ? `<p>Hallo ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>${event.title}</strong> angegeben.</p><p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>${registrantFullName}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-            : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p><p>If you'd like to confirm the match, please pick <strong>${registrantFullName}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`;
-          const body = wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner);
+          // v13.0: Roommate-Mail aus TemplateType=RoommateRequest.
+          const tpl = await eventService.getEmailTemplate('RoommateRequest', lang).catch(() => null);
+          const vars: Record<string, string> = {
+            Name: partnerFirstName || partnerName,
+            RegistrantName: registrantFullName,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let mail: { subject: string; body: string };
+          if (tpl) {
+            mail = buildEmailFromTemplate(tpl, vars);
+          } else {
+            const inner = isDe
+              ? `<p>Hallo ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>${event.title}</strong> angegeben.</p>`
+              : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p>`;
+            mail = {
+              subject: isDe ? `Zimmerpartner-Anfrage: ${event.title}` : `Roommate request: ${event.title}`,
+              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner),
+            };
+          }
           eventService.queueEmail(
-            subject, partnerEmail, partnerName, body, 'Info', event.title, eventId
+            mail.subject, partnerEmail, partnerName, mail.body, 'RoommateRequest', event.title, eventId
           ).catch(err => console.warn('[DEX] roommate queueEmail failed:', err));
         }
       }
@@ -1460,26 +1477,39 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       ).catch(err => console.warn('[DEX] addTeamMember upsertParticipant failed:', err));
     }
 
-    // Info-Mail an die anderen aktiven Mitglieder — knapp, im Layout
-    // gewrappt. Best-effort.
+    // v12.14: Info-Mail an verbleibende Mitglieder kommt jetzt aus
+    // DEX_EmailTemplates (TemplateType=TeamMemberJoined). Pre-Wrap +
+    // Variable-Substitution durch buildEmailFromTemplate.
     if (!event.disableEmails) {
+      const tpl = await eventService.getEmailTemplate('TeamMemberJoined', lang).catch(() => null);
+      const newMemberFullName = `${parsed.firstName} ${parsed.lastName}`.trim();
+      const teamNameStr = teamName ? `„${teamName}"` : '';
       for (const other of activeMembers) {
         const otherFirst = other.Vorname || '';
-        const subject = isDe
-          ? `Neues Team-Mitglied bei Event ${event.title}`
-          : `New team member for event ${event.title}`;
-        const inner = isDe
-          ? `<p>Hallo ${otherFirst},</p>`
-            + `<p><strong>${parsed.firstName} ${parsed.lastName}</strong> ist eurem Team${teamName ? ` „${teamName}"` : ''} beigetreten.</p>`
-            + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
-          : `<p>Hello ${otherFirst},</p>`
-            + `<p><strong>${parsed.firstName} ${parsed.lastName}</strong> joined your team${teamName ? ` „${teamName}"` : ''}.</p>`
-            + `<p>Best regards,<br>Your event team</p>`;
-        const html = wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner);
+        const otherFull = `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail;
+        const vars: Record<string, string> = {
+          Name: otherFirst || otherFull,
+          NewMemberName: newMemberFullName,
+          TeamName: teamNameStr,
+          EventTitle: event.title,
+          AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+        };
+        let mail: { subject: string; body: string };
+        if (tpl) {
+          mail = buildEmailFromTemplate(tpl, vars);
+        } else {
+          // Fallback: alter Inline-Text falls Template nicht geseeded ist.
+          const inner = isDe
+            ? `<p>Hallo ${otherFirst},</p><p><strong>${newMemberFullName}</strong> ist eurem Team ${teamNameStr} beigetreten.</p>`
+            : `<p>Hello ${otherFirst},</p><p><strong>${newMemberFullName}</strong> joined your team ${teamNameStr}.</p>`;
+          mail = {
+            subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+          };
+        }
         eventService.queueEmail(
-          subject, other.ParticipantEmail,
-          `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail,
-          html, 'Info', event.title, eventId
+          mail.subject, other.ParticipantEmail, otherFull,
+          mail.body, 'TeamMemberJoined', event.title, eventId
         ).catch(() => { /* best-effort */ });
       }
     }
@@ -1552,32 +1582,47 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (!ok) return { ok: false, reason: 'transfer-failed' };
     }
 
-    // Info-Mails an alle aktiven Mitglieder — best-effort.
+    // v12.14: Info-Mails an alle aktiven Mitglieder kommen jetzt aus
+    // TemplateType=TeamLeadTransferred. {{NewLeadBlock}}-Platzhalter wird
+    // pro Empfänger gefüllt — für den neuen Lead ein zusätzlicher Hinweis,
+    // sonst leer.
     if (!event.disableEmails) {
-      const lang = (event.emailLanguage || 'EN').toUpperCase();
-      const isDe = lang === 'DE';
+      const lang = event.emailLanguage || 'EN';
+      const isDe = lang.toUpperCase() === 'DE';
+      const tpl = await eventService.getEmailTemplate('TeamLeadTransferred', lang).catch(() => null);
       const newLeadName = `${newLead.Vorname || ''} ${newLead.Nachname || ''}`.trim() || newLead.ParticipantEmail;
       const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+      const teamNameStr = teamName ? `„${teamName}"` : '';
+      const newLeadBlockHtml = isDe
+        ? `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>Du bist ab jetzt Team-Lead.</strong> Du kannst neue Mitglieder über „Meine Events" hinzufügen und ggf. Beitritts-Anfragen entscheiden.</p>`
+        : `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>You are now the team lead.</strong> You can add new members via „My Events" and decide on join requests if any.</p>`;
       for (const other of active) {
         const otherFirst = other.Vorname || '';
-        const subject = isDe
-          ? `Team-Lead-Rolle uebergeben — Event ${event.title}`
-          : `Team lead role transferred — event ${event.title}`;
+        const otherFull = `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail;
         const isNewLeadMember = other.Id === newLead.Id;
-        const inner = isDe
-          ? `<p>Hallo ${otherFirst},</p>`
-            + `<p>Die Team-Lead-Rolle in eurem Team${teamName ? ` „${teamName}"` : ''} wurde an <strong>${newLeadName}</strong> uebergeben.</p>`
-            + (isNewLeadMember ? `<p>Du bist ab jetzt Team-Lead — du kannst neue Mitglieder ueber „Meine Events" hinzufuegen und ggf. Beitritts-Anfragen entscheiden.</p>` : '')
-            + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
-          : `<p>Hello ${otherFirst},</p>`
-            + `<p>The team lead role in your team${teamName ? ` „${teamName}"` : ''} has been transferred to <strong>${newLeadName}</strong>.</p>`
-            + (isNewLeadMember ? `<p>You are now the team lead — you can add new members via „My Events" and decide on join requests if any.</p>` : '')
-            + `<p>Best regards,<br>Your event team</p>`;
-        const html = wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner);
+        const vars: Record<string, string> = {
+          Name: otherFirst || otherFull,
+          NewLeadName: newLeadName,
+          TeamName: teamNameStr,
+          EventTitle: event.title,
+          NewLeadBlock: isNewLeadMember ? newLeadBlockHtml : '',
+          AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+        };
+        let mail: { subject: string; body: string };
+        if (tpl) {
+          mail = buildEmailFromTemplate(tpl, vars);
+        } else {
+          const inner = isDe
+            ? `<p>Hallo ${otherFirst},</p><p>Die Team-Lead-Rolle in deinem Team ${teamNameStr} wurde an <strong>${newLeadName}</strong> übergeben.</p>${isNewLeadMember ? newLeadBlockHtml : ''}`
+            : `<p>Hello ${otherFirst},</p><p>The team lead role in your team ${teamNameStr} has been transferred to <strong>${newLeadName}</strong>.</p>${isNewLeadMember ? newLeadBlockHtml : ''}`;
+          mail = {
+            subject: isDe ? `Team-Lead-Wechsel — ${event.title}` : `Team lead change — ${event.title}`,
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner),
+          };
+        }
         eventService.queueEmail(
-          subject, other.ParticipantEmail,
-          `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail,
-          html, 'Info', event.title, eventId
+          mail.subject, other.ParticipantEmail, otherFull,
+          mail.body, 'TeamLeadTransferred', event.title, eventId
         ).catch(() => { /* best-effort */ });
       }
     }
@@ -1628,31 +1673,39 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     });
     if (!result.ok) return { ok: false, reason: 'queue-failed' };
 
-    // Lead-Notification-Mail.
+    // v12.14: Lead-Notification kommt jetzt aus TemplateType=TeamJoinRequest.
     if (!event.disableEmails) {
-      const lang = (event.emailLanguage || 'EN').toUpperCase();
-      const isDe = lang === 'DE';
+      const lang = event.emailLanguage || 'EN';
+      const isDe = lang.toUpperCase() === 'DE';
+      const tpl = await eventService.getEmailTemplate('TeamJoinRequest', lang).catch(() => null);
       const leadFirst = lead.Vorname || '';
-      const subject = isDe
-        ? `Team-Beitritts-Anfrage fuer Event ${event.title}`
-        : `Team join request for event ${event.title}`;
+      const leadFull = `${lead.Vorname || ''} ${lead.Nachname || ''}`.trim() || lead.ParticipantEmail;
       const appUrl = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=teamjoin&request=${result.itemId || 0}`;
-      const inner = isDe
-        ? `<p>Hallo ${leadFirst},</p>`
-          + `<p><strong>${currentUserName}</strong> moechte deinem Team${teamNameFromMembers ? ` „${teamNameFromMembers}"` : ''} beim Event „${event.title}" beitreten. Bitte entscheide:</p>`
-          + `<p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestaetigen</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>`
-          + `<p style="font-size:0.85rem;color:#666;">Hinweis: die Buttons fuehren dich auf die App; dort findest du den Beitritts-Anfragen-Block in „Meine Events".</p>`
-          + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
-        : `<p>Hello ${leadFirst},</p>`
-          + `<p><strong>${currentUserName}</strong> would like to join your team${teamNameFromMembers ? ` „${teamNameFromMembers}"` : ''} for event „${event.title}". Please decide:</p>`
-          + `<p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>`
-          + `<p style="font-size:0.85rem;color:#666;">Note: the buttons lead you to the app; the request block lives in „My Events".</p>`
-          + `<p>Best regards,<br>Your event team</p>`;
-      const html = wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner);
+      const teamNameStr = teamNameFromMembers ? `„${teamNameFromMembers}"` : '';
+      const vars: Record<string, string> = {
+        Name: leadFirst || leadFull,
+        RequesterName: currentUserName,
+        TeamName: teamNameStr,
+        EventTitle: event.title,
+        ApproveUrl: `${appUrl}&decision=approve`,
+        RejectUrl: `${appUrl}&decision=reject`,
+        AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      };
+      let mail: { subject: string; body: string };
+      if (tpl) {
+        mail = buildEmailFromTemplate(tpl, vars);
+      } else {
+        const inner = isDe
+          ? `<p>Hallo ${leadFirst},</p><p><strong>${currentUserName}</strong> möchte deinem Team ${teamNameStr} beitreten.</p><p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestätigen</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>`
+          : `<p>Hello ${leadFirst},</p><p><strong>${currentUserName}</strong> would like to join your team ${teamNameStr}.</p><p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>`;
+        mail = {
+          subject: isDe ? `Team-Beitritts-Anfrage — ${event.title}` : `Team join request — ${event.title}`,
+          body: wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner),
+        };
+      }
       eventService.queueEmail(
-        subject, lead.ParticipantEmail,
-        `${lead.Vorname || ''} ${lead.Nachname || ''}`.trim() || lead.ParticipantEmail,
-        html, 'Info', event.title, eventId
+        mail.subject, lead.ParticipantEmail, leadFull,
+        mail.body, 'TeamJoinRequest', event.title, eventId
       ).catch(() => { /* best-effort */ });
     }
 
@@ -1716,25 +1769,32 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Reject
     const ok = await eventService.decideTeamJoinRequest(requestId, 'Rejected', currentUserEmail);
+    // v12.14: Absage-Mail aus TemplateType=TeamJoinRejected.
     if (!event.disableEmails) {
-      const lang = (event.emailLanguage || 'EN').toUpperCase();
-      const isDe = lang === 'DE';
-      const subject = isDe
-        ? `Team-Beitritts-Anfrage abgelehnt — Event ${event.title}`
-        : `Team join request declined — event ${event.title}`;
-      const inner = isDe
-        ? `<p>Hallo ${req.RequesterDisplayName.split(',').pop()?.trim() || req.RequesterDisplayName},</p>`
-          + `<p>deine Beitritts-Anfrage zum Team beim Event „${event.title}" wurde vom Team-Lead abgelehnt.</p>`
-          + `<p>Du kannst dich gerne einzeln anmelden, falls die Kapazitaet noch reicht — oder einem anderen offenen Team beitreten.</p>`
-          + `<p>Beste Gruesse,<br>Dein Event-Team</p>`
-        : `<p>Hello ${req.RequesterDisplayName.split(',').pop()?.trim() || req.RequesterDisplayName},</p>`
-          + `<p>your join request for the team at event „${event.title}" was declined by the team lead.</p>`
-          + `<p>You can register individually if capacity allows — or join another open team.</p>`
-          + `<p>Best regards,<br>Your event team</p>`;
-      const html = wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner);
+      const lang = event.emailLanguage || 'EN';
+      const isDe = lang.toUpperCase() === 'DE';
+      const tpl = await eventService.getEmailTemplate('TeamJoinRejected', lang).catch(() => null);
+      const requesterFirst = req.RequesterDisplayName.split(',').pop()?.trim() || req.RequesterDisplayName;
+      const vars: Record<string, string> = {
+        Name: requesterFirst,
+        EventTitle: event.title,
+        AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      };
+      let mail: { subject: string; body: string };
+      if (tpl) {
+        mail = buildEmailFromTemplate(tpl, vars);
+      } else {
+        const inner = isDe
+          ? `<p>Hallo ${requesterFirst},</p><p>deine Beitritts-Anfrage zum Team beim Event „${event.title}" wurde vom Team-Lead abgelehnt.</p>`
+          : `<p>Hello ${requesterFirst},</p><p>your join request for the team at event „${event.title}" was declined by the team lead.</p>`;
+        mail = {
+          subject: isDe ? `Team-Beitritts-Anfrage abgelehnt — ${event.title}` : `Team join request declined — ${event.title}`,
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Beitritts-Anfrage abgelehnt' : 'Team join request declined', `Event ${event.title}`, inner),
+        };
+      }
       eventService.queueEmail(
-        subject, req.RequesterEmail, req.RequesterDisplayName,
-        html, 'Info', event.title, req.EventId
+        mail.subject, req.RequesterEmail, req.RequesterDisplayName,
+        mail.body, 'TeamJoinRejected', event.title, req.EventId
       ).catch(() => { /* best-effort */ });
     }
     return ok;
@@ -2095,58 +2155,53 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }
 
-    // Info-Mails an die verbleibenden Mitglieder.
+    // v12.14: Info-Mails kommen aus TemplateType=TeamMemberCancelled.
+    // {{NewLeadBlock}}-Platzhalter wird für den Auto-Promote-Empfänger
+    // gefüllt, für alle anderen leer.
     if (event.disableEmails) return;
-    const lang = (event.emailLanguage || 'EN').toUpperCase();
-    const isDe = lang === 'DE';
+    const lang = event.emailLanguage || 'EN';
+    const isDe = lang.toUpperCase() === 'DE';
+    const tpl = await eventService.getEmailTemplate('TeamMemberCancelled', lang).catch(() => null);
     const teamSizeCfg = event.teamSize || (remaining.length + 1);
     const cancelledFullName = `${cancelledReg.Vorname || ''} ${cancelledReg.Nachname || ''}`.trim() || cancelledReg.ParticipantEmail;
-    const subject = isDe
-      ? `Team-Update fuer Event ${event.title}`
-      : `Team update for event ${event.title}`;
-    const heading = isDe ? 'Team-Update' : 'Team update';
-    const subheading = `Event ${event.title}`;
+    const teamNameStr = teamName ? `„${teamName}"` : '';
+    const newLeadBlockHtml = isDe
+      ? `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>Du bist jetzt der neue Team-Lead.</strong> Du kannst über „Meine Events" eine neue Person hinzufügen, falls der frei gewordene Platz wieder gefüllt werden soll.</p>`
+      : `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>You are the new team lead now.</strong> You can add a replacement member via „My Events" if you want to fill the freed slot.</p>`;
 
     for (const m of remaining) {
       const mFirst = m.Vorname || (m.ParticipantName || '').split(/[ ,]+/)[0] || '';
+      const mFull = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail;
       const isNewLead = newLeadId !== null && m.Id === newLeadId;
-      const greeting = isDe ? `Hallo ${mFirst},` : `Hello ${mFirst},`;
-      const intro = isDe
-        ? `<p>ein Mitglied deines Teams${teamName ? ` „${teamName}"` : ''} hat sich vom Event abgemeldet:</p>`
-          + `<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">${cancelledFullName}</p>`
-        : `<p>a member of your team${teamName ? ` „${teamName}"` : ''} has cancelled their registration:</p>`
-          + `<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">${cancelledFullName}</p>`;
-      const occupancy = isDe
-        ? `<p>Aktuelle Team-Belegung: <strong>${remaining.length}/${teamSizeCfg}</strong></p>`
-        : `<p>Current team occupancy: <strong>${remaining.length}/${teamSizeCfg}</strong></p>`;
-      const leadPromote = isNewLead
-        ? (isDe
-          ? `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>Du bist jetzt der neue Team-Lead.</strong> Du kannst ueber „Meine Events" eine neue Person hinzufuegen, falls der frei gewordene Platz wieder gefuellt werden soll.</p>`
-          : `<p style="padding:10px 14px;background:rgba(134,188,37,0.10);border:1px solid #86bc25;border-radius:6px;"><strong>You are the new team lead now.</strong> You can add a replacement member via „My Events" if you want to fill the freed slot.</p>`)
-        : '';
-      const options = isDe
-        ? `<p>Was du jetzt machen kannst:</p>`
-          + `<ul>`
-          + `<li>Nichts tun — euer Platz bleibt erstmal fuer das Team reserviert.</li>`
-          + `<li>Als Team-Lead: ueber „Meine Events" eine andere Person nachtraeglich hinzufuegen.</li>`
-          + `<li>Andere Teilnehmer koennen ggf. den freien Slot ueber die Event-Anmeldeseite belegen (sofern der Organizer „Unvollstaendige Teams oeffentlich sichtbar" aktiviert hat).</li>`
-          + `</ul>`
-        : `<p>What you can do now:</p>`
-          + `<ul>`
-          + `<li>Do nothing — your seat stays reserved for the team for now.</li>`
-          + `<li>As team lead: add a replacement person via „My Events".</li>`
-          + `<li>Other participants can join the open slot via the registration page (if the organizer enabled „Public open slots").</li>`
-          + `</ul>`;
-      const closing = isDe ? `<p>Beste Gruesse,<br>Dein Event-Team</p>` : `<p>Best regards,<br>Your event team</p>`;
-      const innerHtml = `<p>${greeting}</p>${intro}${occupancy}${leadPromote}${options}${closing}`;
-      const html = wrapTemplate('#86bc25', heading, subheading, innerHtml);
+      const vars: Record<string, string> = {
+        Name: mFirst || mFull,
+        CancelledName: cancelledFullName,
+        TeamName: teamNameStr,
+        EventTitle: event.title,
+        ActiveCount: String(remaining.length),
+        TeamSize: String(teamSizeCfg),
+        NewLeadBlock: isNewLead ? newLeadBlockHtml : '',
+        AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      };
+      let mail: { subject: string; body: string };
+      if (tpl) {
+        mail = buildEmailFromTemplate(tpl, vars);
+      } else {
+        const inner = isDe
+          ? `<p>Hallo ${mFirst},</p><p>${cancelledFullName} hat sich vom Team ${teamNameStr} abgemeldet (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`
+          : `<p>Hello ${mFirst},</p><p>${cancelledFullName} cancelled their registration from team ${teamNameStr} (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`;
+        mail = {
+          subject: isDe ? `Team-Update — ${event.title}` : `Team update — ${event.title}`,
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+        };
+      }
       try {
         await eventService.queueEmail(
-          subject,
+          mail.subject,
           m.ParticipantEmail,
-          `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantEmail,
-          html,
-          'Info',
+          mFull,
+          mail.body,
+          'TeamMemberCancelled',
           event.title,
           eventId
         );
@@ -2372,23 +2427,36 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const labelA = (event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
           const labelB = (event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
           const newLabel = newType === 'Durchstarter' ? labelA : labelB;
-          const subj = isDeMail
-            ? (result.status === 'Warteliste'
-              ? `Gruppen-Wechsel — auf Warteliste: ${event.title}`
-              : `Gruppen-Wechsel bestätigt: ${event.title}`)
-            : (result.status === 'Warteliste'
-              ? `Group switch — added to waitlist: ${event.title}`
-              : `Group switch confirmed: ${event.title}`);
-          const innerBody = isDeMail
-            ? (result.status === 'Warteliste'
-              ? `<p>Du hast den Wechsel in die Gruppe <strong>${newLabel}</strong> für <strong>${event.title}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe ${newLabel}</strong>. Sobald jemand absagt, rückst du automatisch nach.</p>`
-              : `<p>Dein Gruppen-Wechsel zu <strong>${newLabel}</strong> für <strong>${event.title}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>`)
-            : (result.status === 'Warteliste'
-              ? `<p>You requested to switch to the <strong>${newLabel}</strong> group for <strong>${event.title}</strong>. The group is currently full, so your registration is on the <strong>${newLabel} waitlist</strong>. You will be promoted automatically as soon as a spot frees up.</p>`
-              : `<p>Your group switch to <strong>${newLabel}</strong> for <strong>${event.title}</strong> is confirmed. You are now regularly registered in this group.</p>`);
-          const heading = isDeMail ? 'Gruppen-Wechsel' : 'Group switch';
-          const body = wrapTemplate('#86bc25', heading, event.title, innerBody);
-          await eventService.queueEmail(subj, currentUserEmail, currentUserName, body, 'Info', event.title, eventId)
+          // v13.0: Mail aus DB-Template — Confirmed bzw. Waitlist-Variante.
+          const isWaitlist = result.status === 'Warteliste';
+          const templateType = isWaitlist ? 'GroupSwitchWaitlist' : 'GroupSwitchConfirmed';
+          const tpl = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+          const firstName = currentUserName.split(',').pop()?.trim().split(' ')[0] || currentUserName.split(' ')[0];
+          const vars: Record<string, string> = {
+            Name: firstName,
+            GroupLabel: newLabel,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let mail: { subject: string; body: string };
+          if (tpl) {
+            mail = buildEmailFromTemplate(tpl, vars);
+          } else {
+            const innerBody = isDeMail
+              ? (isWaitlist
+                ? `<p>Du hast den Wechsel in die Gruppe <strong>${newLabel}</strong> für <strong>${event.title}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe ${newLabel}</strong>.</p>`
+                : `<p>Dein Gruppen-Wechsel zu <strong>${newLabel}</strong> für <strong>${event.title}</strong> ist bestätigt.</p>`)
+              : (isWaitlist
+                ? `<p>You requested to switch to the <strong>${newLabel}</strong> group for <strong>${event.title}</strong>. The group is currently full, so your registration is on the <strong>${newLabel} waitlist</strong>.</p>`
+                : `<p>Your group switch to <strong>${newLabel}</strong> for <strong>${event.title}</strong> is confirmed.</p>`);
+            mail = {
+              subject: isDeMail
+                ? (isWaitlist ? `Gruppen-Wechsel — auf Warteliste: ${event.title}` : `Gruppen-Wechsel bestätigt: ${event.title}`)
+                : (isWaitlist ? `Group switch — added to waitlist: ${event.title}` : `Group switch confirmed: ${event.title}`),
+              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody),
+            };
+          }
+          await eventService.queueEmail(mail.subject, currentUserEmail, currentUserName, mail.body, templateType, event.title, eventId)
             .catch(err => console.warn('[DEX] switchSplitGroup mail failed:', err));
         } catch { /* */ }
       }
@@ -2412,6 +2480,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * der DEX_Emails-Queue, mit dem Anfrager im Cc-Feld. Body wird ins Deloitte-
    * Template (gruener Header, Footer) gewrappt.
    */
+  // v12.12: Re-Seed-Aktion durchreichen.
+  async function reseedDefaultEmailTemplates(): Promise<void> {
+    await eventService.reseedDefaultEmailTemplates();
+  }
+
   async function sendAdminInquiry(
     requesterName: string,
     requesterEmail: string,
@@ -2512,6 +2585,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
+        reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),

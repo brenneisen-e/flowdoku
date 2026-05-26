@@ -6,6 +6,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
+import { useRoles } from '../context/RoleContext';
 
 interface PermissionRow {
   category: string;
@@ -232,6 +233,12 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Administration', feature: 'Rollen-Matrix einsehen',
     description: 'Diese Übersichtsseite öffnen.',
     user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
+  { category: 'Administration', feature: 'Demo-Modus: als User testen (v12.7)',
+    description: 'Im Header-User-Menü unter „Rollenverwaltung" einen beliebigen Deloitte-User + Standort wählen — die App agiert dann so als wäre man dieser User (Rolle „User", Standortfilter aktiv). Beendet wird die Impersonation über einen orangen Sticky-Banner ganz oben. Nützlich um Sicht und Berechtigungen eines Users zu prüfen ohne sich selbst auszuloggen.',
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
+  { category: 'Administration', feature: 'Default-Mail-Templates re-seeden (v12.11+)',
+    description: 'In den Settings-Einstellungen mit einem Klick alle Standard-Mail-Vorlagen in DEX_EmailTemplates (Anmeldung, Warteliste, Abmeldung, Nachrücken, Team-Mails, Zimmerpartner, Gruppen-Wechsel, Überbuchungs-Entschuldigung etc.) auf die im Code hinterlegten Default-Texte zurücksetzen. Eigene Anpassungen werden überschrieben. Notwendig nach App-Updates, die die Standard-Texte verbessert haben.',
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'User suchen',
     description: 'Tenant-weite User-Suche (People-Picker) in den Admin-Settings nutzen.',
     user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
@@ -307,6 +314,24 @@ function renderCell(value: boolean | string): React.ReactElement {
 
 export default function RoleMatrixPage(): React.ReactElement {
   const { navigate } = useNavigation();
+  // v13.0: Admin-Guard hinzugefügt — laut CLAUDE.md-Rollenmatrix ist
+  // "Rollen-Matrix einsehen" Admin-only. Vorher fehlte der Schutz —
+  // jeder User (auch Demo-impersoniert) konnte die Seite öffnen. Wir
+  // nutzen originalIsAdmin damit der Admin-im-Demo-Modus seine eigene
+  // Matrix weiterhin testen kann.
+  const { originalIsAdmin } = useRoles();
+  React.useEffect(() => {
+    if (!originalIsAdmin) navigate('start');
+  }, [originalIsAdmin, navigate]);
+  if (!originalIsAdmin) {
+    return (
+      <div className="page-container">
+        <div className="card" style={{ padding: 24 }}>
+          <p>Diese Seite ist nur für Administratoren zugänglich.</p>
+        </div>
+      </div>
+    );
+  }
 
   const categories = Array.from(new Set(PERMISSIONS.map(p => p.category)));
 

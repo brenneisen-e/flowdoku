@@ -784,3 +784,156 @@ Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. 
 | **CLAUDE.md** | `CLAUDE.md` | Neue Konventionen, neue SharePoint-Listen, neue Schema-Felder: hier ergänzen, damit die Projekt-Regeln aktuell bleiben. |
 
 Beim Review eines Feature-Commits wird geprüft: **Handbuch ✓, Rollenmatrix ✓, Flowchart ✓, ggf. Flow-JSONs ✓.** Fehlt einer, blockiert das den Release.
+
+### Demo-Impersonation für Admins (v12.7)
+
+Admins können testweise als beliebiger User mit ausgewähltem Standort
+durch die App navigieren. Eintrag im Header-User-Menü (Foto oben rechts)
+unter "Rollenverwaltung": **„Demo: als User testen"**.
+
+Mechanik:
+- Modal mit People-Picker (`searchUsers`) für die Zielperson + Standort-
+  Pflichtfeld (steuert den Standortfilter aus Schritt 3 Event-Wizard).
+- Aktivierung speichert das Tripel `{email, firstName, surname, location}`
+  in `localStorage` unter dem Key `dex_demo_impersonation`. Die App
+  re-loaded danach automatisch.
+- Beim Boot lesen `RoleContext` und `UserContext` den localStorage-Key:
+  - `RoleContext`: `effectiveRole = 'User'`, `isAdmin = false`,
+    `canCreateEvents = false`. Aber `originalIsAdmin = true` bleibt
+    erhalten — das nutzen `Header` und Admin-Pages, um zu erkennen
+    dass es sich um einen echten Admin im Demo-Modus handelt
+    (Demo-Menü-Eintrag bleibt sichtbar, kritische Pages bleiben
+    zugänglich).
+  - `UserContext`: `firstName / surname / email / location` werden mit
+    den Impersonations-Werten überschrieben — das treibt sowohl die
+    Anzeige als auch den Standortfilter in `EventListPage`.
+- Oranger Sticky-Banner ganz oben (`DexEventPlatform.tsx →
+  ImpersonationBanner`) zeigt den aktuellen Status und hat einen
+  „Demo-Modus beenden"-Button. Klick löscht den localStorage-Key
+  und reloaded.
+
+**Permission-Guards die `originalIsAdmin` statt `isAdmin` prüfen
+müssen** (sonst können Admins im Demo-Modus eigene Admin-Funktionen
+nicht mehr testen):
+- `SettingsPage`, `RoleMatrixPage`: frühe Navigation zurück zu „start"
+  wenn `!originalIsAdmin` (v12.15).
+- `Header`-Menü-Eintrag „Demo: als User testen": Sichtbarkeit
+  via `originalIsAdmin` (vorhanden seit v12.7).
+
+### Mail-Template-Architektur (v12.11–v13.0)
+
+Alle automatischen App-Mails leben jetzt in `DEX_EmailTemplates` als
+Tenant-anpassbare Vorlagen mit Platzhalter-Substitution. Vorher war
+ein guter Teil davon ad-hoc inline in `EventContext.tsx` /
+`EventService.ts` als HTML zusammengebaut.
+
+**Vollständige Template-Liste (DE + EN je Template):**
+- `Anmeldung`, `Warteliste`, `Abmeldung`, `Nachruecken`, `EventErstellt`
+- `OutlookDeclineReminder`, `OutlookDeclineReminder_OnBehalfOf`,
+  `OutlookForwardNotification`, `OutlookDeclineDigest`
+- **Team (v12.13–v12.14):** `TeamMemberJoined`, `TeamJoinRequest`,
+  `TeamJoinRejected`, `TeamLeadTransferred`, `TeamMemberCancelled`
+- **v13.0:** `RoommateRequest`, `GroupSwitchConfirmed`,
+  `GroupSwitchWaitlist`, `OverbookingApology`
+
+**Reseed-Button (v12.11):** Admin → Settings → Karte „Default-Mail-
+Templates re-seed" → Confirm. Ruft
+`eventService.reseedDefaultEmailTemplates()` auf, was alle Standard-
+Einträge in DEX_EmailTemplates mit den im Code definierten Defaults
+überschreibt. Notwendig nach App-Updates, die die Standard-Texte
+verändert haben — z.B. v12.11 (Nachrücken-Mail), v12.13 (Team-Mails),
+v13.0 (Roommate / GroupSwitch / OverbookingApology). Eigene Tenant-
+Anpassungen an Subject / Heading / Body gehen dabei verloren.
+
+**Pattern bei jedem `queueEmail`-Call:**
+```ts
+const tpl = await eventService.getEmailTemplate('TemplateType', lang);
+if (tpl) {
+  const { subject, body } = buildEmailFromTemplate(tpl, vars);
+  await eventService.queueEmail(subject, recipient, name, body,
+    'TemplateType', event.title, eventId);
+} else {
+  // Inline-Fallback für Tenants ohne geseedetes Template
+  // ...
+}
+```
+
+`templateType`-Parameter in `queueEmail` wird konsequent auf den
+echten Template-Namen gesetzt (kein generisches „Info" mehr für
+identifizierbare Mails) — erleichtert das Debugging in der
+DEX_Emails-Queue.
+
+### Warteliste-Nachrück-Sortierung (v12.10)
+
+Vorher: erster Warteliste-Eintrag nach `RegistrationDate asc`.
+
+Neu (v12.10): erster Warteliste-Eintrag nach `TeilnehmerID asc`.
+
+Hintergrund: nach dem `DEX_IDReorder`-Flow sind die TIDs durchlaufend
+(1..N aktiv, N+1..M Warteliste). Bei einer freien Position 100 soll
+TID 101 nachrücken — unabhängig davon, ob z.B. TID 103 zeitlich
+gesehen früher registriert war (Reaktivierung nach Cancel,
+Group-Switch etc.).
+
+Code: `EventService.promoteFirstWaitlistItem` nutzt jetzt
+`$orderby=TeilnehmerID asc`. `AdminPage`-Warteliste-Anzeige sortiert
+ebenfalls nach `TeilnehmerID`.
+
+**Power-Automate-Flow `DEX_IDReorder_TeilnehmerIDs`:** die App-seitige
+Promote-Logik läuft nur beim Admin-Cancel-Pfad. Der eigentliche
+User-Self-Cancel-Nachrück-Pfad lebt im Power-Automate-Flow. Damit der
+auch nach TeilnehmerID sortiert, muss in jedem Nachrück-Branch
+(Standard, Durchstarter, Funstarter, Shared) die Order-By-Klausel auf
+`TeilnehmerID asc` umgestellt werden. Anleitung folgt in
+`docs/flow-jsons.md`.
+
+### Shared `<Modal>`-Komponente (v13.1)
+
+Vorher hatte jede Modal-Komponente (~17 Stück) das gleiche Backdrop-
++ Card-Layout selbst implementiert mit leicht unterschiedlichem
+z-index, Padding, Backdrop-Opacity. Seit v13.1 lebt in
+`components/Modal.tsx` ein wiederverwendbarer Wrapper:
+
+```tsx
+<Modal open={open} onClose={onClose} maxWidth={520}
+       dismissable={!busy} ariaLabel="Demo-Modus">
+  ...
+</Modal>
+```
+
+Übernommen: `InquiryModal` und `ImpersonateModal`. Weitere Modals
+können bei Touch auf den Wrapper umgestellt werden — der bestehende
+Inline-Code funktioniert weiterhin, ist aber Migrationskandidat
+beim nächsten gezielten Touch der Datei.
+
+### EventCreationPage-Refactor — offene Arbeit
+
+`EventCreationPage.tsx` ist mit ~10.700 Zeilen die mit Abstand
+größte Datei. Sie umfasst 8 Wizard-Schritte plus ~30 Modals und
+diverse Sub-Logiken. Refactor-Wunsch: jeden Wizard-Step in eine
+eigene Datei `components/eventCreation/Step1Basics.tsx` etc.
+aufteilen. **Aktuell ungeschnitten** — Risiko vs. Nutzen ist hoch,
+weil viele States über Step-Grenzen geteilt werden. Wenn die Datei
+in Zukunft erneut wachsen würde, hier ansetzen.
+
+### Aktionen-Dropdown im Admin-Center (v12.7–v12.8)
+
+Statt ~20 Action-Kacheln in einem 4-Spalten-Grid sammeln sich alle
+Aktionen in einer Dropdown-Liste **direkt in der Event-Detail-Card**
+unter „Aktuell registriert".
+
+Mechanik:
+- Neuer Context `ActionsRegistryContext` (in `AdminPage.tsx`) — jeder
+  `<ActionTile>` registriert sich beim Mount mit `{key, title, desc,
+  badge, onClick, href, disabled}` und rendert in diesem Modus
+  `null`.
+- `<ActionsDropdown>` liest die Registry, sortiert alphabetisch nach
+  Titel und rendert eine Liste-Box. Hover-Tooltip links zeigt die
+  ausführliche `desc` der gerade gehoverten Aktion.
+- ActionTiles mit `children` (z.B. Excel-Export-Sub-Dropdown) werden
+  weiterhin als Kachel sichtbar gerendert — sie brauchen die
+  visible-UI für die Sub-Menüs.
+
+Ergebnis: Detail-Ansicht aufgeräumter, alle Aktionen in einer
+einzigen klar strukturierten Liste mit Hover-Erklärung. Layout
+einspaltig (vorher 2-spaltig mit separater Aktionen-Card rechts).
