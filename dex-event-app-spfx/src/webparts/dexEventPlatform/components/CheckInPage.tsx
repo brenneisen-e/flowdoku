@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
+import OrganizerList from './OrganizerList';
 import QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
@@ -20,7 +21,8 @@ export default function CheckInPage(): React.ReactElement {
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { currentUser } = useCurrentUser();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   // v6.22 / v13.11: aktueller User-E-Mail über UserContext — der respektiert
   // die Demo-Impersonation (sonst greift hier immer die echte SPFx-Identität
   // des Admins, und Demo-Modus „Check-In-Team" käme nie an die Check-In-
@@ -36,6 +38,23 @@ export default function CheckInPage(): React.ReactElement {
       return orgMatch || qrMatch;
     });
   }, [events, isAdmin, currentEmailLc]);
+  // v15.3: Picker zeigt per Default nur aktive Events (gleicher Filter wie
+  // EventListPage). Toggle „Nur aktive" oben rechts, der das aufweicht.
+  const [onlyActiveCheckIn, setOnlyActiveCheckIn] = React.useState<boolean>(true);
+  const visibleCheckInEvents = React.useMemo(() => {
+    if (!onlyActiveCheckIn) return accessibleEvents;
+    const now = Date.now();
+    return accessibleEvents.filter(e => {
+      if (e.status !== 'Active') return false;
+      if (e.isFictive) return false;
+      const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
+      if (activeFromTs > 0 && activeFromTs > now) return false;
+      // Vergangene Events ebenfalls ausblenden (EndDate < heute - 1 Tag)
+      const endTs = e.endDate ? new Date(e.endDate).getTime() : 0;
+      if (endTs > 0 && endTs < now - 24 * 60 * 60 * 1000) return false;
+      return true;
+    });
+  }, [accessibleEvents, onlyActiveCheckIn]);
   const scannerRef = React.useRef<QrScanner | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [resultMessage, setResultMessage] = React.useState('');
@@ -491,33 +510,75 @@ export default function CheckInPage(): React.ReactElement {
       );
     }
     return (
-      <div className="page-container" role="main">
-        <h2 className="mb-16">{t('checkin.title') || 'Check-In'}</h2>
+      <div className="page-container" role="main" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+          <h2 style={{ margin: 0 }}>{t('checkin.title') || 'Check-In'}</h2>
+          {/* v15.3: Toggle „Nur aktive" — identisches Pattern wie EventListPage. */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+            <input
+              type="checkbox"
+              checked={onlyActiveCheckIn}
+              onChange={e => setOnlyActiveCheckIn(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+            />
+            <span>{isDe ? 'Nur aktive Events' : 'Active events only'}</span>
+          </label>
+        </div>
         <p style={{ color: 'var(--dex-gray-600)', marginBottom: 16, fontSize: '0.9rem' }}>
           {t('checkin.pickevent') || 'Wähle das Event, für das du eincheckst:'}
         </p>
-        {accessibleEvents.length === 0 ? (
+        {visibleCheckInEvents.length === 0 ? (
           <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
-            {t('checkin.noevents') || 'Keine Events verfügbar.'}
+            {onlyActiveCheckIn
+              ? (isDe ? 'Keine aktiven Events. Toggle oben deaktivieren, um auch ältere zu sehen.' : 'No active events. Untoggle „Active events only" to see older ones.')
+              : (t('checkin.noevents') || 'Keine Events verfügbar.')}
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {accessibleEvents.map(ev => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {visibleCheckInEvents.map(ev => (
               <button
                 key={ev.id}
                 className="card"
                 onClick={() => navigate('check-in', ev.id)}
                 style={{
-                  textAlign: 'left', padding: 16,
+                  textAlign: 'left', padding: 14,
                   background: '#fff', border: '1px solid var(--dex-gray-200)',
                   borderRadius: 12, cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', gap: 4,
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.1s',
                 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--dex-green, #86bc25)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(134,188,37,0.12)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dex-gray-200)'; e.currentTarget.style.boxShadow = 'none'; }}
               >
-                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{ev.title}</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                  {ev.startDate ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
-                  {ev.location ? ` · ${ev.location}` : ''}
+                {/* v15.3: Event-Bild als Thumbnail links — Fallback grünes Gradient mit Initialen. */}
+                <div style={{
+                  flex: '0 0 auto', width: 84, height: 84, borderRadius: 10,
+                  background: ev.imageUrl
+                    ? `url(${ev.imageUrl}) center/cover no-repeat`
+                    : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: '1.4rem',
+                  overflow: 'hidden', flexShrink: 0,
+                }}>
+                  {!ev.imageUrl && ev.title ? ev.title.charAt(0).toUpperCase() : ''}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)', marginBottom: 2 }}>{ev.title}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                    {ev.startDate ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+                    {ev.location ? ` · ${ev.location}` : ''}
+                  </div>
+                  {/* v15.3: Organizer-Chips mit Hover-Profilfoto (gleiches OrganizerList wie auf der Registrierungsseite). */}
+                  {(ev.organizers && ev.organizers.length > 0) && (
+                    <div style={{ marginTop: 6 }}>
+                      <OrganizerList
+                        names={ev.organizers}
+                        emails={ev.organizerEmails || []}
+                        size="sm"
+                        compact
+                      />
+                    </div>
+                  )}
                 </div>
               </button>
             ))}
