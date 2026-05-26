@@ -153,42 +153,31 @@ export function checkInSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 2,
-            title: isDe ? 'Weg A (Standard): Namens-Suche im Admin Center' : 'Path A (default): search by name in the admin center',
+            title: isDe ? 'Weg A (Standard): „Teilnehmer einchecken" auf der Check-In-Seite' : 'Path A (default): „Check in attendees" panel on the check-in page',
             description: (
               <>
                 {isDe
-                  ? 'Der einfachste Weg — funktioniert auf jedem Gerät (Laptop, Tablet, Handy) ohne Setup. Im Admin Center deines Events tippst du oberhalb der Teilnehmertabelle in das Suchfeld den Namen, Vornamen, die E-Mail oder die Teilnehmer-ID — alle Felder werden parallel durchsucht, ein Suchbegriff reicht. Die Tabelle filtert sich sofort. Rechts in der Aktionen-Spalte klickst du bei der richtigen Zeile auf „Einchecken" — der Status springt auf „Eingecheckt", die grüne KPI-Kachel zählt um 1 hoch. Der Teilnehmer kann seinen Namen direkt aus der Bestätigungsmail ablesen (steht unter dem QR-Code), und du musst nichts installieren oder konfigurieren.'
-                  : 'The simplest path — works on any device (laptop, tablet, phone) without any setup. In the admin center of your event, type the name, first name, email or attendee ID into the search box above the participant table — all fields are searched in parallel, one term is enough. The table filters instantly. In the right-hand action column click „Check-in" on the matching row — status flips to „Checked-in", the green KPI tile increments by 1. The attendee can read their name directly from the confirmation email (printed below the QR code), and you don\'t need to install or configure anything.'}
+                  ? 'Der einfachste Weg — funktioniert auf Laptop, Tablet UND Handy ohne irgendein Setup. Du öffnest die Check-In-Seite (am Handy über den „Jetzt einchecken"-Shortcut im Header, am Laptop über das Admin-Center → Button „Check-In"). Direkt unter dem Live-Scanner-Block siehst du die Karte „Teilnehmer einchecken" mit allen Teilnehmern des Events. Im Suchfeld tippst du Vorname, Nachname oder E-Mail — die Liste filtert sofort. Pro Zeile rechts den grünen „Einchecken"-Button klicken → Status springt auf „Eingecheckt", die KPI-Kachel zählt um 1 hoch. Mit dem Toggle „Nur offene" rechts neben dem Suchfeld blendest du bereits Eingecheckte aus, damit die Liste am Eingang immer nur die nicht-eingecheckten Teilnehmer zeigt. Der Teilnehmer kann seinen Namen direkt aus der Bestätigungsmail ablesen (steht unter dem QR-Code), du brauchst weder Kamera noch SharePoint-App-Workaround.'
+                  : 'The simplest path — works on laptop, tablet AND phone without any setup. Open the check-in page (on phone via the „Check in now" shortcut in the header, on laptop via Admin Center → „Check-in" button). Directly below the live-scanner block you see the „Check in attendees" card with all participants of the event. Type a first name, last name or email into the search box — the list filters instantly. In each row click the green „Check-in" button on the right → status flips to „Checked-in", the KPI tile increments by 1. The „Only open" toggle next to the search box hides already-checked-in entries so the list at the door only shows non-checked-in attendees. The attendee can read their name directly from the confirmation email (printed below the QR code) — no camera, no SharePoint-app workaround needed.'}
               </>
             ),
             mockup: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Callout variant="tip" title={isDe ? 'Funktioniert auch hervorragend am Handy' : 'Works great on a phone too'}>
+                <Callout variant="tip" title={isDe ? 'Funktioniert auf jedem Gerät' : 'Works on every device'}>
                   {isDe
-                    ? 'Die Teilnehmertabelle ist responsive — auf dem Handy genauso bedienbar wie am Desktop. Bei sehr großen Listen ist Desktop entspannter (mehr Zeilen gleichzeitig sichtbar), aber kleines Event mit 30-50 Personen geht problemlos vom Handy.'
-                    : 'The participant table is responsive — you can use it on a phone just as on desktop. For very large lists a desktop is more relaxed (more rows visible at once), but a small event with 30-50 people is fine from the phone.'}
+                    ? 'Am Laptop / Tablet öffnest du die Check-In-Seite aus dem Admin-Center heraus (Button „Check-In") — der Weg über den mobilen Header-Shortcut existiert dort nicht, der Punkt selbst ist aber identisch. Am Handy ist der Header-Shortcut der schnellste Weg dorthin.'
+                    : 'On laptop / tablet, open the check-in page from the admin center (button „Check-in") — the mobile header shortcut does not exist there, but the page itself is identical. On phone the header shortcut is the fastest route.'}
                 </Callout>
                 <AppPreview
-                  label={isDe ? 'Desktop-Ansicht: Admin Center → Teilnehmertabelle mit Suchfeld + Einchecken-Buttons' : 'Desktop view: admin center → participant table with search + check-in buttons'}
+                  label={isDe ? 'Check-In-Seite: Live-Scanner + Teilnehmer-einchecken-Liste (echte Ansicht)' : 'Check-in page: live scanner + check-in-attendees list (real view)'}
                   role="Organizer"
-                  page="admin"
-                  selectedEventId={DEMO_EVENT_ID}
-                  width={1024}
-                  device="laptop"
-                >
-                  <Header />
-                  <AdminPage />
-                </AppPreview>
-                <AppPreview
-                  label={isDe ? 'Mobile-Ansicht: gleiche Tabelle am Handy' : 'Mobile view: same table on phone'}
-                  role="Organizer"
-                  page="admin"
+                  page="check-in"
                   selectedEventId={DEMO_EVENT_ID}
                   width={430}
                   device="phone"
                 >
                   <Header />
-                  <AdminPage />
+                  <CheckInPage />
                 </AppPreview>
               </div>
             ),
