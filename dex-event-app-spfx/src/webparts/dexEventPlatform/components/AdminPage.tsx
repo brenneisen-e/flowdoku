@@ -559,7 +559,9 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
 
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
-  const { topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
+  // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
+  // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -586,6 +588,20 @@ export default function AdminPage(): React.ReactElement {
   // (kleinere Gruppe zuerst). Per Toggle umschaltbar auf zusammengeführte
   // Sicht. Default: 'split'. Bei Events ohne Split-Kapazität ohne Wirkung.
   const [splitParticipantsView, setSplitParticipantsView] = React.useState<'split' | 'merged'>('split');
+  // v14.11: subEventsOnlyMode-Konsolidierung. Wenn das selektierte Hauptevent
+  // im „Nur Sub-Events"-Modus ist und Sub-Events hat, hat das Hauptevent
+  // selbst keine direkten Teilnehmer — stattdessen werden alle Sub-Event-
+  // Teilnehmer pro Person zu einer Zeile aggregiert (Matrix-View mit einer
+  // X-Spalte pro Sub-Event). Hier halten wir die rohen Registrierungen je
+  // Sub-Event.
+  const [subEventRegsByEventId, setSubEventRegsByEventId] = React.useState<Record<string, SPRegistration[]>>({});
+  const [isLoadingSubEventRegs, setIsLoadingSubEventRegs] = React.useState(false);
+  const [expandedConsolidatedEmail, setExpandedConsolidatedEmail] = React.useState<string | null>(null);
+  // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
+  // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
+  // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
+  const [consolidatedSort, setConsolidatedSort] = React.useState<string>('nachname');
+  const [consolidatedSortAsc, setConsolidatedSortAsc] = React.useState<boolean>(true);
   // v11.0: Bei Events mit Teilnehmer-Upload alle Attachment-Listen
   // einmalig laden, sobald sich registrations oder das ausgewählte
   // Event ändern. Damit zeigt der „Anhang"-Button in der Action-Spalte
@@ -618,6 +634,40 @@ export default function AdminPage(): React.ReactElement {
     return () => window.removeEventListener('dex-refresh-page', onRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent]);
+  // v14.11: subEventsOnlyMode — alle Sub-Event-Anmeldungen einsammeln, um
+  // den konsolidierten Matrix-View pro Person zu rendern. Nur aktiv, wenn
+  // das selektierte Event tatsächlich Hauptevent ohne eigene Anmeldungen
+  // (subEventsOnlyMode) ist und es Sub-Events gibt.
+  React.useEffect(() => {
+    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) {
+      setSubEventRegsByEventId({});
+      return;
+    }
+    const children = childEventsOf(selectedEvent.id);
+    if (children.length === 0) {
+      setSubEventRegsByEventId({});
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingSubEventRegs(true);
+    (async () => {
+      const map: Record<string, SPRegistration[]> = {};
+      for (const ch of children) {
+        try {
+          const regs = await getAllRegistrations(ch.id);
+          map[ch.id] = regs;
+        } catch {
+          map[ch.id] = [];
+        }
+      }
+      if (!cancelled) {
+        setSubEventRegsByEventId(map);
+        setIsLoadingSubEventRegs(false);
+      }
+    })().catch(() => { if (!cancelled) setIsLoadingSubEventRegs(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -1312,6 +1362,23 @@ export default function AdminPage(): React.ReactElement {
       const roommateLabel = (firstRoommate?.label || firstUser?.label || 'Zimmerpartner').trim();
       cols.push({ id: 'roommate', label: roommateLabel });
     }
+    // v14.11: Wenn ein Sub-Event selektiert ist, blenden wir die
+    // Custom-Fields des Parent-Events (Pastel A) zusätzlich ein. Die
+    // eigenen Sub-Event-Fields (Pastel B) folgen direkt danach. ID-
+    // Präfix `cfp-` unterscheidet Parent- von Sub-Event-Feldern (`cf-`).
+    const parentForCols: DeloitteEvent | null = (selectedEvent && selectedEvent.parentEventId)
+      ? (allEvents.find(e => e.id === selectedEvent.parentEventId) || null)
+      : null;
+    if (parentForCols) {
+      const ownIds = new Set((selectedEvent?.eventSpecificFields || []).map(f => f.id));
+      for (const f of (parentForCols.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
+        // Sub-Events erben Parent-Felder evtl. 1:1 (Wizard kopiert das beim
+        // Anlegen). Nicht doppelt ausgeben, wenn das eigene Feld die
+        // gleiche ID hat — in dem Fall reicht die Sub-Event-Spalte.
+        if (ownIds.has(f.id)) continue;
+        cols.push({ id: `cfp-${f.id}`, label: f.label });
+      }
+    }
     for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
       cols.push({ id: `cf-${f.id}`, label: f.label });
     }
@@ -1319,9 +1386,16 @@ export default function AdminPage(): React.ReactElement {
     return cols;
   }, [
     selectedEvent?.id,
+    selectedEvent?.parentEventId,
     selectedEvent?.durchstarterCapacity,
     selectedEvent?.funstarterCapacity,
     (selectedEvent?.eventSpecificFields || []).map(f => `${f.id}:${f.type}:${f.label}`).join(','),
+    // v14.11: Parent-Custom-Fields als Dep
+    (() => {
+      if (!selectedEvent?.parentEventId) return '';
+      const p = allEvents.find(e => e.id === selectedEvent.parentEventId);
+      return (p?.eventSpecificFields || []).map(f => `${f.id}:${f.type}:${f.label}`).join(',');
+    })(),
   ]);
 
   const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
@@ -2274,6 +2348,302 @@ export default function AdminPage(): React.ReactElement {
     // der Nachrück-Logik in promoteFirstWaitlistItem (siehe EventService).
     .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
   const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
+  // v14.11: konsolidierte Matrix-Zeilen für den „Nur Sub-Events"-Modus
+  // (subEventsOnlyMode). Aggregation per ParticipantEmail (lowercase).
+  // Standard-Felder werden aus der ersten gefundenen Sub-Event-
+  // Registrierung kopiert. Pro Sub-Event wird ein Map-Eintrag mit der
+  // jeweiligen aktiven Registrierung gehalten (oder undefined).
+  const isConsolidatedMode = !!(selectedEvent
+    && selectedEvent.subEventsOnlyMode
+    && childEventsOf(selectedEvent.id).length > 0);
+  const consolidatedChildren: DeloitteEvent[] = isConsolidatedMode
+    ? childEventsOf(selectedEvent!.id)
+    : [];
+  // v14.11: wenn ein Sub-Event direkt selektiert ist, das Parent-Event
+  // ermitteln — der Sub-Event-Detail-View blendet dessen Custom-Fields
+  // (Pastel A) zusätzlich neben den eigenen (Pastel B) ein.
+  const parentEventForSelected: DeloitteEvent | null = (selectedEvent && selectedEvent.parentEventId)
+    ? (allEvents.find(e => e.id === selectedEvent.parentEventId) || null)
+    : null;
+  type ConsolidatedRow = {
+    emailKey: string;
+    email: string;
+    vorname: string;
+    nachname: string;
+    jobTitle: string;
+    location: string;
+    teilnehmerId: number | null;
+    perChild: Record<string, SPRegistration | undefined>;
+    activeCount: number;
+  };
+  const consolidatedRows: ConsolidatedRow[] = React.useMemo(() => {
+    if (!isConsolidatedMode || !selectedEvent) return [];
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    const byEmail: Record<string, ConsolidatedRow> = {};
+    for (const ch of consolidatedChildren) {
+      const regs = subEventRegsByEventId[ch.id] || [];
+      for (const r of regs) {
+        if (ACTIVE.indexOf(r.Status) < 0) continue;
+        const emailKey = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (!emailKey) continue;
+        let row = byEmail[emailKey];
+        if (!row) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const anyR = r as any;
+          row = {
+            emailKey,
+            email: r.ParticipantEmail || '',
+            vorname: r.Vorname || ((r.ParticipantName || '').split(' ')[0] || ''),
+            nachname: r.Nachname || (() => {
+              const parts = (r.ParticipantName || '').trim().split(/\s+/);
+              return parts.length > 1 ? parts.slice(1).join(' ') : '';
+            })(),
+            jobTitle: anyR.JobTitle || '',
+            location: anyR.Location || '',
+            teilnehmerId: r.TeilnehmerID || null,
+            perChild: {},
+            activeCount: 0,
+          };
+          byEmail[emailKey] = row;
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const anyR = r as any;
+          if (!row.jobTitle && anyR.JobTitle) row.jobTitle = anyR.JobTitle;
+          if (!row.location && anyR.Location) row.location = anyR.Location;
+          if (!row.vorname && r.Vorname) row.vorname = r.Vorname;
+          if (!row.nachname && r.Nachname) row.nachname = r.Nachname;
+        }
+        row.perChild[ch.id] = r;
+        row.activeCount += 1;
+      }
+    }
+    return Object.values(byEmail);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConsolidatedMode, selectedEvent?.id, subEventRegsByEventId, consolidatedChildren.map(c => c.id).join(',')]);
+  // v14.11: Such-Filter + Sort für die konsolidierten Zeilen.
+  const consolidatedFiltered: ConsolidatedRow[] = (() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    const matches = (row: ConsolidatedRow): boolean => {
+      if (!q) return true;
+      return row.vorname.toLowerCase().indexOf(q) >= 0
+        || row.nachname.toLowerCase().indexOf(q) >= 0
+        || row.email.toLowerCase().indexOf(q) >= 0
+        || String(row.teilnehmerId || '').indexOf(q) >= 0;
+    };
+    const filtered = consolidatedRows.filter(matches);
+    const cs = consolidatedSort;
+    const dir = consolidatedSortAsc ? 1 : -1;
+    const cmp = (a: ConsolidatedRow, b: ConsolidatedRow): number => {
+      if (cs === 'id') return ((a.teilnehmerId || 0) - (b.teilnehmerId || 0)) * dir;
+      if (cs === 'vorname') return a.vorname.localeCompare(b.vorname, 'de') * dir;
+      if (cs === 'nachname') return a.nachname.localeCompare(b.nachname, 'de') * dir;
+      if (cs === 'email') return a.email.localeCompare(b.email) * dir;
+      if (cs === 'jobTitle') return a.jobTitle.localeCompare(b.jobTitle, 'de') * dir;
+      if (cs === 'location') return a.location.localeCompare(b.location, 'de') * dir;
+      if (cs && cs.indexOf('child:') === 0) {
+        const cid = cs.substring(6);
+        const ra = a.perChild[cid] ? 1 : 0;
+        const rb = b.perChild[cid] ? 1 : 0;
+        return (rb - ra) * dir;
+      }
+      return 0;
+    };
+    return filtered.sort(cmp);
+  })();
+  // v14.11: konsolidierter Matrix-View. Wird nur gerendert, wenn das
+  // selektierte Hauptevent `subEventsOnlyMode === true` ist und mind.
+  // ein Sub-Event hat. Standard-Spalten neutral, parent-event-level
+  // Custom-Fields in Pastel A (hellblau), pro Sub-Event eine X-Spalte,
+  // sub-event-spezifische Custom-Fields in Pastel B (hellgelb)
+  // gruppiert pro Sub-Event-Header.
+  const renderConsolidatedView = (): React.ReactNode => {
+    if (!selectedEvent) return null;
+    if (isLoadingSubEventRegs) {
+      return <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Sub-Event-Teilnehmer...' : 'Loading sub-event participants...'}</p>;
+    }
+    if (consolidatedRows.length === 0) {
+      return <p style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Noch keine Anmeldungen in den Sub-Events.' : 'No registrations in the sub-events yet.'}</p>;
+    }
+    // v14.11: pastel A = event-level (parent) fields, pastel B = sub-event-specific fields
+    const PASTEL_A_HEADER: React.CSSProperties = { background: 'rgba(0, 118, 168, 0.15)' };
+    const PASTEL_A_CELL: React.CSSProperties = { background: 'rgba(0, 118, 168, 0.08)' };
+    const PASTEL_B_HEADER: React.CSSProperties = { background: 'rgba(255, 191, 0, 0.18)' };
+    const PASTEL_B_CELL: React.CSSProperties = { background: 'rgba(255, 191, 0, 0.10)' };
+    const parentCustomFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim());
+    const parentIds = new Set(parentCustomFields.map(f => f.id));
+    const childCustomFieldsByChild: Array<{ child: DeloitteEvent; fields: typeof parentCustomFields }> = consolidatedChildren.map(c => {
+      const own = (c.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim() && !parentIds.has(f.id));
+      return { child: c, fields: own };
+    });
+    const handleSortConsolidated = (key: string): void => {
+      if (consolidatedSort === key) setConsolidatedSortAsc(!consolidatedSortAsc);
+      else { setConsolidatedSort(key); setConsolidatedSortAsc(true); }
+    };
+    const sortArrow = (key: string): string => key === consolidatedSort ? (consolidatedSortAsc ? ' ▲' : ' ▼') : '';
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    const abbreviate = (s: string, max: number): string => s.length > max ? s.substring(0, max - 1) + '…' : s;
+    const totalColSpan = 6 + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}>#{sortArrow('id')}</th>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</th>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+              {parentCustomFields.map(f => (
+                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {abbreviate(f.label, 22)}
+                </th>
+              ))}
+              {childCustomFieldsByChild.map(({ child, fields }) => (
+                <React.Fragment key={`sub-${child.id}`}>
+                  <th
+                    style={{ textAlign: 'center', padding: 8, cursor: 'pointer', userSelect: 'none', borderLeft: '1px solid var(--dex-gray-200)' }}
+                    onClick={() => handleSortConsolidated(`child:${child.id}`)}
+                    title={child.title}
+                  >
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{abbreviate(child.title || '?', 16)}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
+                  </th>
+                  {fields.map(f => (
+                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
+                      <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(child.title || '?', 18)}</div>
+                      <div style={{ fontWeight: 600 }}>{abbreviate(f.label, 20)}</div>
+                    </th>
+                  ))}
+                </React.Fragment>
+              ))}
+              <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Details' : 'Details'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {consolidatedFiltered.map((row, idx) => {
+              const isExpanded = expandedConsolidatedEmail === row.emailKey;
+              return (
+                <React.Fragment key={row.emailKey}>
+                  <tr style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{row.teilnehmerId ?? (idx + 1)}</td>
+                    <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
+                    <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
+                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                    {parentCustomFields.map(f => {
+                      let val = '';
+                      for (const ch of consolidatedChildren) {
+                        const r = row.perChild[ch.id];
+                        if (!r) continue;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const spName = (f as any).spInternalName || '';
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        let v: any = spName ? (r as any)[spName] : undefined;
+                        if ((v === undefined || v === null || v === '') && r.CustomData) {
+                          try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
+                        }
+                        if (v !== undefined && v !== null && v !== '') { val = String(v); break; }
+                      }
+                      return (
+                        <td key={`pcv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_A_CELL }} title={val}>
+                          {val || '-'}
+                        </td>
+                      );
+                    })}
+                    {childCustomFieldsByChild.map(({ child, fields }) => {
+                      const r = row.perChild[child.id];
+                      const isReg = !!r && ACTIVE.indexOf(r.Status) >= 0;
+                      return (
+                        <React.Fragment key={`scv-${child.id}`}>
+                          <td style={{ padding: 8, textAlign: 'center', borderLeft: '1px solid var(--dex-gray-200)' }}
+                              title={r ? `${translateStatus(r.Status, isDe)} — TID ${r.TeilnehmerID || '?'}` : (isDe ? 'Nicht angemeldet' : 'Not registered')}>
+                            {isReg ? (
+                              r.Status === 'Warteliste'
+                                ? <span style={{ color: 'var(--dex-orange, #ed8b00)', fontSize: '0.78rem' }} title={translateStatus(r.Status, isDe)}>W</span>
+                                : <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Check size={16} /></span>
+                            ) : (
+                              <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
+                            )}
+                          </td>
+                          {fields.map(f => {
+                            let val = '';
+                            if (r) {
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              const spName = (f as any).spInternalName || '';
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              let v: any = spName ? (r as any)[spName] : undefined;
+                              if ((v === undefined || v === null || v === '') && r.CustomData) {
+                                try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ }
+                              }
+                              if (v !== undefined && v !== null && v !== '') val = String(v);
+                            }
+                            return (
+                              <td key={`scv-${child.id}-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL }} title={val}>
+                                {val || (r ? '-' : '')}
+                              </td>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                    <td style={{ padding: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => setExpandedConsolidatedEmail(isExpanded ? null : row.emailKey)}
+                      >
+                        {isExpanded ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Details' : 'Details')}
+                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr style={{ background: 'var(--dex-gray-50, #f7f7f7)' }}>
+                      <td colSpan={totalColSpan} style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                            {isDe ? 'Anmeldungen von' : 'Registrations of'} {row.vorname} {row.nachname}
+                          </div>
+                          {consolidatedChildren.map(ch => {
+                            const r = row.perChild[ch.id];
+                            if (!r) {
+                              return (
+                                <div key={`exp-${ch.id}`} style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                                  {ch.title} — {isDe ? 'nicht angemeldet' : 'not registered'}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={`exp-${ch.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.82rem' }}>
+                                <span style={{ fontWeight: 500, minWidth: 200 }}>{ch.title}</span>
+                                <span className={`badge ${r.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(r.Status, isDe)}</span>
+                                <span style={{ color: 'var(--dex-gray-500)' }}>TID {r.TeilnehmerID || '?'}</span>
+                                <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{formatDate(r.RegistrationDate)}</span>
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ marginLeft: 'auto', fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                  onClick={() => setSelectedEvent(ch)}
+                                >
+                                  {isDe ? 'In Sub-Event öffnen' : 'Open in sub-event'} <ExternalLink size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
   // Seit v6.5: getrennte Wartelisten bei B2Run-Split-Kapazitäten (Durchstarter/Funstarter).
   // Die Split-Aktivierung erkennen wir daran, dass beide Kapazitäts-Felder gesetzt und > 0 sind.
   const isSplitCapacity = !!selectedEvent
@@ -4004,7 +4374,12 @@ export default function AdminPage(): React.ReactElement {
             rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
         <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Users size={18} /> Teilnehmer ({activeRegs.length})
+            <Users size={18} /> Teilnehmer ({isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length})
+            {isConsolidatedMode && (
+              <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
+                — {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {isDe ? 'Sub-Events' : 'sub-events'}
+              </span>
+            )}
           </h3>
           <input
             type="text"
@@ -4500,6 +4875,12 @@ export default function AdminPage(): React.ReactElement {
           <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
         ) : isLoadingRegs ? (
           <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Teilnehmer...</p>
+        ) : isConsolidatedMode ? (
+          // v14.11: konsolidierter Matrix-View für Events im
+          // „Nur Sub-Events"-Modus. Eine Zeile pro eindeutigem Teilnehmer,
+          // X-Spalten pro Sub-Event, plus Event-Level- (Pastel A) und
+          // Sub-Event-Level- (Pastel B) Custom-Field-Spalten gruppiert.
+          renderConsolidatedView()
         ) : activeRegs.length === 0 ? (
           <p style={{ color: 'var(--dex-gray-400)' }}>Noch keine Teilnehmer registriert.</p>
         ) : (
@@ -4585,13 +4966,31 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'action') {
                   return <th key={id} style={{ textAlign: 'left', padding: 8 }}>Aktion</th>;
                 }
+                // v14.11: pastel A = event-level (parent) fields, pastel B = sub-event-specific fields.
+                // Pastel-Hintergrund nur im Sub-Event-Detail-View (parentEventForSelected gesetzt),
+                // sonst neutraler Hintergrund wie bisher.
+                const inSubEventDetail = !!parentEventForSelected;
+                const pastelAHeader: React.CSSProperties = inSubEventDetail ? { background: 'rgba(0, 118, 168, 0.15)' } : {};
+                const pastelBHeader: React.CSSProperties = inSubEventDetail ? { background: 'rgba(255, 191, 0, 0.18)' } : {};
+                if (id.indexOf('cfp-') === 0) {
+                  const cfId = id.substring(4);
+                  const field = (parentEventForSelected?.eventSpecificFields || []).find(f => f.id === cfId);
+                  if (!field) return null;
+                  const label = field.label || '';
+                  return (
+                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {hideButton(id)}
+                    </th>
+                  );
+                }
                 if (id.indexOf('cf-') === 0) {
                   const cfId = id.substring(3);
                   const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem' }} title={label}>
+                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
                       {label.length > 22 ? label.substring(0, 20) + '…' : label}
                       {hideButton(id)}
                     </th>
@@ -4714,6 +5113,44 @@ export default function AdminPage(): React.ReactElement {
                     </td>
                   );
                 }
+                // v14.11: cfp-* sind Parent-Event-Custom-Fields (Pastel A) im
+                // Sub-Event-Detail-View. Wert kommt entweder aus reg.CustomData
+                // (Sub-Events erben i.d.R. die Parent-Felder via Wizard-Copy)
+                // oder, falls leer, aus dem SP-Internal-Name-Property.
+                const inSubEventDetailCell = !!parentEventForSelected;
+                const pastelACell: React.CSSProperties = inSubEventDetailCell ? { background: 'rgba(0, 118, 168, 0.08)' } : {};
+                const pastelBCell: React.CSSProperties = inSubEventDetailCell ? { background: 'rgba(255, 191, 0, 0.10)' } : {};
+                if (id.indexOf('cfp-') === 0) {
+                  const cfId = id.substring(4);
+                  const field = (parentEventForSelected?.eventSpecificFields || []).find(f => f.id === cfId);
+                  if (!field) return null;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const spName = (field as any).spInternalName || '';
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  let val: any = spName ? (reg as any)[spName] : undefined;
+                  if ((val === undefined || val === null || val === '') && reg.CustomData) {
+                    try {
+                      const cd = JSON.parse(reg.CustomData);
+                      val = cd[field.id];
+                    } catch { /* no-op */ }
+                  }
+                  let display: React.ReactNode = '-';
+                  if (val !== undefined && val !== null && val !== '') {
+                    if (field.type === 'checkbox') {
+                      const truthy = val === true || val === 'true' || val === 1 || val === '1';
+                      display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
+                    } else if (field.type === 'select' && field.multi) {
+                      display = String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', ');
+                    } else {
+                      display = String(val);
+                    }
+                  }
+                  return (
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelACell }} title={String(val || '')}>
+                      {display}
+                    </td>
+                  );
+                }
                 if (id.indexOf('cf-') === 0) {
                   const cfId = id.substring(3);
                   const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
@@ -4743,7 +5180,7 @@ export default function AdminPage(): React.ReactElement {
                     }
                   }
                   return (
-                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }} title={String(val || '')}>
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }} title={String(val || '')}>
                       {display}
                     </td>
                   );
