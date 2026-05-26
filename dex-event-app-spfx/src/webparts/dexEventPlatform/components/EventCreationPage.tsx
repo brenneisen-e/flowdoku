@@ -5905,7 +5905,7 @@ export default function EventCreationPage(): React.ReactElement {
                       >
                         {presets.map(p => (
                           <option key={p.key} value={p.key}>
-                            {p.singular} / {p.plural}
+                            {p.plural}
                           </option>
                         ))}
                         <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
@@ -5964,13 +5964,17 @@ export default function EventCreationPage(): React.ReactElement {
                   )} />
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  {/* v14.9: Radios mit accentColor in der App-Grünfärbung +
+                      alignItems:center, damit der Kreis exakt auf der
+                      Mittellinie des Labels sitzt (vorher Browser-Blau und
+                      leicht oberhalb der Textbaseline). */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="subEventsMode"
                       checked={!subEventsOnlyMode}
                       onChange={() => setSubEventsOnlyMode(false)}
-                      style={{ marginTop: 2 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
                     />
                     <span style={{ fontSize: '0.88rem' }}>
                       {isDe
@@ -5978,13 +5982,13 @@ export default function EventCreationPage(): React.ReactElement {
                         : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>}
                     </span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="subEventsMode"
                       checked={!!subEventsOnlyMode}
                       onChange={() => setSubEventsOnlyMode(true)}
-                      style={{ marginTop: 2 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
                     />
                     <span style={{ fontSize: '0.88rem' }}>
                       {isDe
