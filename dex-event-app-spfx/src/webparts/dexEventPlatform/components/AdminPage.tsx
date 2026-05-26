@@ -2411,7 +2411,7 @@ export default function AdminPage(): React.ReactElement {
       <ActionsRegistryProvider>
       <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
         <div className="card" style={{ padding: 24 }}>
-          {/* Header: Event-Titel + Status-Badge */}
+          {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
             <span className="badge" style={{
@@ -2420,6 +2420,34 @@ export default function AdminPage(): React.ReactElement {
             }}>
               {selectedEvent.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status)}
             </span>
+            {/* v13.11: Event bearbeiten + Check-In starten als Schnell-
+                Buttons direkt neben dem Status-Badge — die häufigsten
+                Aktionen aus dem Aktionen-Dropdown nach oben gezogen,
+                damit Organizer am Eventtag nicht erst scrollen müssen. */}
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+              {(isAdmin || isOrganizerFor(selectedEvent)) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => navigate('edit-event', selectedEvent.id)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                  title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
+                >
+                  <Pencil size={14} />
+                  {isDe ? 'Event bearbeiten' : 'Edit event'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate('check-in', selectedEvent.id)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
+              >
+                <Hash size={14} />
+                {isDe ? 'Check-In starten' : 'Start check-in'}
+              </button>
+            </div>
           </div>
           {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
               unabhaengig vom Bildformat (cover-Crop sorgt fuer den Kreis). */}
