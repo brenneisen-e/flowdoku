@@ -2683,6 +2683,49 @@ fälschlich vorrücken.
 `Teilnehmer`-Liste. SP-OData-Sortierung auf Number-Feldern funktioniert
 direkt — keine Konvertierung nötig.
 
-**Sobald die Änderung im Tenant durchgeklickt und gespeichert ist:**
-bitte den neuen Flow-JSON exportieren und in `docs/flow-jsons.md` unter
-dem Abschnitt `DEX_IDReorder_TeilnehmerIDs` einpflegen.
+**Status 2026-07-XX (Tenant durchgeklickt):**
+- ✅ `Get_Waitlist_First` (Standard / Single-Capacity) — `$orderby=TeilnehmerID asc` (siehe JSON-Snippet weiter oben in dieser Datei).
+- ✅ `Get_Waitlist_First_Durchstarter` (Split-A) — siehe Snapshot unten.
+- ✅ `Get_Waitlist_First_Funstarter` (Split-B) — siehe Snapshot unten.
+
+### Snapshot Get_Waitlist_First_Durchstarter (v12.10)
+
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail,PreferredStarterType&$filter=Status eq ''Warteliste'' and PreferredStarterType eq ''Durchstarter''&$orderby=TeilnehmerID asc&$top=1')"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "HttpRequest"
+    }
+  }
+}
+```
+
+### Snapshot Get_Waitlist_First_Funstarter (v12.10)
+
+```json
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail,PreferredStarterType&$filter=Status eq ''Warteliste'' and PreferredStarterType eq ''Funstarter''&$orderby=TeilnehmerID asc&$top=1')"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "HttpRequest"
+    }
+  }
+}
+```
+
+**Unterschied zur Standard-Action:** zusätzliches `PreferredStarterType` im `$select` und im `$filter`. Sortierung in allen drei Branches identisch: `$orderby=TeilnehmerID asc`.
