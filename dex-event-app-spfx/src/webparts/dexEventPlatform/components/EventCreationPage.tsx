@@ -6056,8 +6056,12 @@ export default function EventCreationPage(): React.ReactElement {
               })()}
 
               <div style={{ display: activeLocationTabIdx === 0 ? 'block' : 'none' }}>
-              {renderHauptGreyoutBanner()}
-              <div style={hauptGreyoutWrapperStyle()}>
+              {/* v15.7: Step 3 NICHT mehr ausgrauen wenn subEventsOnlyMode —
+                  Ort/Adresse/Agenda/Transferzeiten sind übergreifende
+                  Event-Infos (gehen auf die Event-Detail-Seite, in „Meine
+                  Events"-Card usw.). Sie bleiben immer relevant, auch wenn
+                  das Hauptevent nicht anmeldbar ist. */}
+              <div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={9} />
