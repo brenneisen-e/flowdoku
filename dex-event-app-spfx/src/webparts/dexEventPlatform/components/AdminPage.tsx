@@ -1424,7 +1424,14 @@ export default function AdminPage(): React.ReactElement {
           }
           const knownOrder = migratedOrder.filter((id: string) => allIds.indexOf(id) >= 0);
           const missing = allIds.filter(id => knownOrder.indexOf(id) < 0);
-          setColumnOrder([...knownOrder, ...missing]);
+          // v15.3: neu hinzugekommene Spalten (z.B. nach Custom-Field-Anlage
+          // an einem bestehenden Event) VOR der „Aktion"-Spalte einreihen,
+          // nicht hinten dran — sonst landen sie rechts neben den Buttons.
+          const actionPos = knownOrder.indexOf('action');
+          const mergedOrder = actionPos >= 0
+            ? [...knownOrder.slice(0, actionPos), ...missing, ...knownOrder.slice(actionPos)]
+            : [...knownOrder, ...missing];
+          setColumnOrder(mergedOrder);
           // 'name' aus hidden auch herausfiltern (wenn jemals manuell hidden gesetzt wurde,
           // unwahrscheinlich da alwaysVisible — aber defensiv).
           setHiddenColumns(parsed.hidden.filter((id: string) => id !== 'name' && allIds.indexOf(id) >= 0));
@@ -4927,7 +4934,19 @@ export default function AdminPage(): React.ReactElement {
               };
 
               const renderHeader = (id: string): React.ReactNode => {
-                const baseStyle: React.CSSProperties = { textAlign: 'left', padding: 8, whiteSpace: 'nowrap' };
+                // v15.3: lange Spalten-Überschriften (Custom-Field-Labels wie
+                // „Please check if you have marked all parts you want to attend
+                // and confirm") brechen jetzt um statt mit Ellipsis abgeschnitten
+                // zu werden. Begrenzte maxWidth + Wortumbruch — der Header bleibt
+                // lesbar ohne dass der User hovern muss.
+                const baseStyle: React.CSSProperties = {
+                  textAlign: 'left', padding: 8,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  maxWidth: 180,
+                  verticalAlign: 'top',
+                  lineHeight: 1.3,
+                };
                 const sortable = sortableCols[id];
                 if (sortable) {
                   return (

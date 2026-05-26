@@ -728,6 +728,11 @@ export default function EventCreationPage(): React.ReactElement {
   // der Teilnehmer ein Sub-Event angehakt hat. Sinnvoll wenn die Haupt-
   // Event-Kommunikation aus ist und alle Mails/Outlook-Termine nur über
   // die Sub-Events laufen.
+  // v15.3: setRequireSubEventSelection wird nicht mehr direkt von der UI
+  // aufgerufen — der Flag wird beim Save aus dem subEventsOnlyMode-Toggle
+  // in Schritt 2 abgeleitet. State bleibt als Read-only für die Save-
+  // Logik (siehe handleSubmit).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [requireSubEventSelection, setRequireSubEventSelection] = React.useState<boolean>(
     !!editEvent && !!editEvent.requireSubEventSelection,
   );
@@ -911,15 +916,35 @@ export default function EventCreationPage(): React.ReactElement {
     initialStartDate?: string;
     initialEndDate?: string;
     initialOutlookBody?: string;
-    /** v15.0: Inheritance-Flags fuer pro-Sub-Event-Tabs in Schritt 3
-     *  (Ort), Schritt 4 (Kapazitaet) und Schritt 6 (Felder). Werden im
-     *  EmailTemplateOverrides-JSON als `_inheritFlags`-Piggyback
-     *  persistiert (analog zu _eventLogo etc.). Default: bei neuen
-     *  Sub-Events alle drei auf `true` — die Felder werden dann vom
-     *  Hauptevent uebernommen und im UI ausgegraut. */
+    /** v15.0 (legacy, ungenutzt ab v15.3): Inheritance-Flags fuer
+     *  pro-Sub-Event-Tabs. Mit v15.3 sind Sub-Events vollwertige Events
+     *  mit eigener Konfiguration — Inherit-Flags wurden ersatzlos
+     *  gestrichen. Felder bleiben optional im Interface, damit
+     *  bestehende Piggyback-JSONs ohne Crash gelesen werden koennen. */
     inheritLocationFromParent?: boolean;
     inheritCapacityFromParent?: boolean;
     inheritCustomFieldsFromParent?: boolean;
+    /** v15.3: pro Sub-Event eigene strukturierte Adresse (analog
+     *  Hauptevent). Persistiert als JSON in `LocationAddress`-Spalte. */
+    locationAddress?: { street: string; houseNo: string; zip: string; city: string };
+    /** v15.3: pro Sub-Event eigene Agenda. Persistiert als JSON in
+     *  `Agenda`-Spalte. */
+    agenda?: AgendaItem[];
+    /** v15.3: pro Sub-Event eigene Transferzeiten. Persistiert als JSON
+     *  in `Transfers`-Spalte. */
+    transferTimes?: Array<{ id: string; location: string; meetingPoint: string; address: string; date: string; departureTime: string; arrivalTime: string; description: string }>;
+    /** v15.3: pro Sub-Event eigene Abmeldefrist. */
+    lastDeregisterDate?: string;
+    /** v15.3: pro Sub-Event eigener Standortfilter (comma-separated). */
+    locationFilter?: string;
+    /** v15.3: pro Sub-Event eigene Zielgruppe (audience-String). */
+    audience?: string;
+    /** v15.3: pro Sub-Event eigene Filterverknuepfung. */
+    filterMode?: 'AND' | 'OR';
+    /** v15.3: pro Sub-Event eigene Warteliste an/aus. */
+    waitlistEnabled?: boolean;
+    /** v15.3: pro Sub-Event eigene Anrede-Abfrage. */
+    askSalutation?: boolean;
   }
   const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
     if (!editEvent) return [];
@@ -1017,7 +1042,38 @@ export default function EventCreationPage(): React.ReactElement {
         helpText: f.helpText,
         showIf: f.showIf,
       })),
-      // v15.0: Inheritance-Flags fuer pro-Sub-Event-Tabs.
+      // v15.3: pro-Sub-Event Felder aus dem Event-Datenmodell laden. Alle
+      // Sub-Events haben jetzt eigene Adresse, Agenda, Transferzeiten,
+      // Deadline, Standortfilter, Audience, Filter-Modus, Warteliste und
+      // Anrede-Toggle — wie der Hauptevent.
+      locationAddress: k.locationAddress ? {
+        street: k.locationAddress.street || '',
+        houseNo: k.locationAddress.houseNo || '',
+        zip: k.locationAddress.zip || '',
+        city: k.locationAddress.city || '',
+      } : { street: '', houseNo: '', zip: '', city: '' },
+      agenda: (k.agenda || []) as AgendaItem[],
+      transferTimes: (k.transferTimes || []).map(tt => ({
+        id: tt.id,
+        location: tt.location || '',
+        meetingPoint: tt.meetingPoint || '',
+        address: tt.address || '',
+        date: tt.date || '',
+        departureTime: tt.departureTime || '',
+        arrivalTime: tt.arrivalTime || '',
+        description: tt.description || '',
+      })),
+      lastDeregisterDate: k.lastDeregisterDate || '',
+      // Form-Felder fuer Standortfilter / Mailverteiler sind comma-separated
+      // Strings, persistiert im Event aber als Arrays — siehe Top-Level-Mapping.
+      locationFilter: (k.locationAudience || []).join(', '),
+      audience: (k.audienceFilter || []).join(', '),
+      filterMode: (k.filterMode === 'AND' ? 'AND' : 'OR') as 'AND' | 'OR',
+      waitlistEnabled: typeof k.waitlistEnabled === 'boolean' ? k.waitlistEnabled : true,
+      askSalutation: !!k.askSalutation,
+      // v15.0 (legacy): Inheritance-Flags werden seit v15.3 nicht mehr
+      // ausgewertet. Bleiben in den geparsten Drafts, weil das Schema
+      // sie noch erlaubt — Wirkung gleich Null.
       inheritLocationFromParent: inheritLoc,
       inheritCapacityFromParent: inheritCap,
       inheritCustomFieldsFromParent: inheritFields,
@@ -2030,52 +2086,48 @@ export default function EventCreationPage(): React.ReactElement {
       // + ab v14.4 die echten Mail-Text-Overrides pro Sub-Event
       // (Anmeldung/Warteliste/Abmeldung/Nachruecken).
       const subDraftOverrides = draft.emailTemplateOverrides || {};
-      // v15.0: Inheritance-Flags pro Sub-Event als Piggyback persistieren,
-      // damit der naechste Load die UI-Toggles korrekt wiederherstellen
-      // kann (statt nur datenbasierte Heuristik).
-      const inheritFlags: Record<string, boolean> = {};
-      if (typeof draft.inheritCapacityFromParent === 'boolean') inheritFlags.capacity = draft.inheritCapacityFromParent;
-      if (typeof draft.inheritCustomFieldsFromParent === 'boolean') inheritFlags.fields = draft.inheritCustomFieldsFromParent;
-      if (typeof draft.inheritLocationFromParent === 'boolean') inheritFlags.location = draft.inheritLocationFromParent;
+      // v15.3: Inheritance-Flags entfallen — Sub-Events sind seit v15.3
+      // vollwertige Events mit eigener Konfiguration. Der Piggyback-Key
+      // `_inheritFlags` wird nicht mehr geschrieben.
       const subOverridesMerged: Record<string, unknown> = {
         ...subDraftOverrides,
         ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
         ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
-        ...(Object.keys(inheritFlags).length > 0 ? { _inheritFlags: inheritFlags } : {}),
       };
       const subEmailOverrides = Object.keys(subOverridesMerged).length > 0
         ? JSON.stringify(subOverridesMerged)
         : '';
-      // v15.0: bei aktivem inherit-Flag wird das Datenfeld leer geschrieben
-      // (Location/MaxParticipants=0/leere CustomFields-Array). Beim Lesen
-      // erkennt die App das (Datenfeld leer + Flag true) und faellt im
-      // Frontend auf den Hauptevent-Wert zurueck.
-      const effLocation = draft.inheritLocationFromParent ? '' : (draft.location || '');
-      const effMaxParticipants = draft.inheritCapacityFromParent ? 0 : (draft.maxParticipants || 0);
-      const effCustomFields = draft.inheritCustomFieldsFromParent ? [] : (draft.customFields || []);
+      // v15.3: Sub-Event-eigene strukturierte Adresse serialisieren (analog
+      // zum Hauptevent-Top-Level-Pattern). Wenn alle vier Komponenten leer
+      // sind, wird ein leerer String gespeichert.
+      const draftAddr = draft.locationAddress || { street: '', houseNo: '', zip: '', city: '' };
+      const draftHasAddress = !!(draftAddr.street || draftAddr.houseNo || draftAddr.zip || draftAddr.city);
+      const draftLocationAddress = draftHasAddress ? JSON.stringify(draftAddr) : '';
+      const draftAgendaJson = JSON.stringify(draft.agenda || []);
+      const draftTransfersJson = JSON.stringify(draft.transferTimes || []);
       const childPayload = {
         title: draft.title.trim(),
         type: 'Other',
         status: 'Active',
         description: draft.description || '',
-        location: effLocation,
-        locationAddress: '',
-        locationFilter: locationFilter,
-        audience: audience,
-        filterMode: filterMode,
+        location: draft.location || '',
+        locationAddress: draftLocationAddress,
+        locationFilter: draft.locationFilter || '',
+        audience: draft.audience || '',
+        filterMode: (draft.filterMode === 'AND' ? 'AND' : 'OR'),
         startDate: draft.startDate || '',
         endDate: draft.endDate || '',
         registrationDeadline: draft.registrationDeadline || '',
-        lastDeregisterDate: '',
-        maxParticipants: effMaxParticipants,
-        waitlistEnabled: true,
+        lastDeregisterDate: draft.lastDeregisterDate || '',
+        maxParticipants: draft.maxParticipants || 0,
+        waitlistEnabled: typeof draft.waitlistEnabled === 'boolean' ? draft.waitlistEnabled : true,
         eventImageUrl: '',
         organizer: sanitizedOrgPair.orgString,
         organizerEmail: sanitizedOrgPair.orgEmailString,
         outlookEventId: '',
         outlookBody: wrappedSubOutlookBody,
-        agenda: '[]',
-        transfers: '[]',
+        agenda: draftAgendaJson,
+        transfers: draftTransfersJson,
         documents: '[]',
         funZone: '[]',
         quizClusterSize: 1,
@@ -2084,7 +2136,8 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails: !!draft.disableEmails,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
-        customFields: effCustomFields,
+        askSalutation: !!draft.askSalutation,
+        customFields: draft.customFields || [],
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
@@ -5747,11 +5800,13 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
-              {/* v15.0: pro-Sub-Event-Tabs fuer den Ort. Tab 0 = Haupt-Event
-                  (komplette Ort/Adresse/Agenda/Transferzeiten-UI). Tabs N>0 =
-                  schlanke Ort-only-UI pro Sub-Event mit Inheritance-Toggle.
-                  Agenda + Transferzeiten bleiben Top-Level — die werden pro
-                  Sub-Event NICHT gepflegt. */}
+              {/* v15.3: pro-Sub-Event-Tabs fuer den Ort. Tab 0 = Haupt-Event
+                  (komplette Ort/Adresse/Agenda/Transferzeiten-UI bleibt
+                  unveraendert). Tabs N>0 = vollwertige Ort/Adresse/Agenda/
+                  Transferzeiten-UI pro Sub-Event — kein Inheritance-Toggle
+                  mehr, jedes Sub-Event hat eigene Werte. Per
+                  „Vom Hauptevent kopieren"-Button kann der Organizer die
+                  Hauptevent-Werte als Startpunkt uebernehmen. */}
               {renderPerEventTabStrip(
                 activeLocationTabIdx,
                 setActiveLocationTabIdx,
@@ -5763,49 +5818,179 @@ export default function EventCreationPage(): React.ReactElement {
                 const seIdx = activeLocationTabIdx - 1;
                 const se = subEvents[seIdx];
                 if (!se) return null;
-                const inherit = se.inheritLocationFromParent !== false;
+                const seAddr = se.locationAddress || { street: '', houseNo: '', zip: '', city: '' };
+                const seAgenda = se.agenda || [];
+                const seTransfers = se.transferTimes || [];
+                const updateSub = (patch: Partial<SubEventDraft>): void => {
+                  setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
+                };
+                const updateSubAgendaItem = (id: string, patch: Partial<AgendaItem>): void => {
+                  updateSub({ agenda: seAgenda.map(a => a.id === id ? { ...a, ...patch } : a) });
+                };
                 return (
                   <div>
-                    <div style={{
-                      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                      padding: '14px 16px', marginBottom: 16,
-                      border: '1px solid var(--dex-gray-200)',
-                    }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={inherit}
-                          onChange={e => {
-                            const v = e.target.checked;
-                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritLocationFromParent: v } : x));
-                          }}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                          {isDe ? 'Ort vom Hauptevent übernehmen' : 'Use main event location'}
-                        </span>
-                      </label>
-                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? 'Standard. Deaktivieren, wenn dieses Sub-Event an einem anderen Ort stattfindet.'
-                          : 'Default. Disable if this sub-event takes place at a different location.'}
-                      </p>
+                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Uebernimmt
+                        Ort, Adresse, Agenda und Transferzeiten vom Hauptevent
+                        als Startwerte fuer dieses Sub-Event. */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                        onClick={() => updateSub({
+                          location: location,
+                          locationAddress: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
+                          agenda: agenda.map(a => ({ ...a, id: `ag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
+                          transferTimes: transferTimes.map(tt => ({ ...tt, id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
+                        })}
+                        title={isDe
+                          ? 'Uebernimmt Ort, Adresse, Agenda und Transferzeiten vom Hauptevent als Startwerte'
+                          : 'Copies location, address, agenda and transfer times from the main event as starting values'}
+                      >
+                        {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
+                      </button>
                     </div>
-                    <div className="form-group" style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
-                      <label className="form-label">
-                        {isDe ? 'Ort dieses Sub-Events' : 'Location of this sub-event'}
-                      </label>
+                    <div className="form-group">
+                      <label className="form-label">{isDe ? 'Veranstaltungsort' : 'Venue'}</label>
                       <input
-                        type="text"
                         className="form-input"
                         value={se.location || ''}
-                        placeholder={t('create.subevents.location.placeholder')}
-                        disabled={inherit}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, location: v } : x));
-                        }}
+                        onChange={e => updateSub({ location: e.target.value })}
+                        placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'}
                       />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{isDe ? 'Adresse' : 'Address'}</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <input className="form-input" value={seAddr.street} onChange={e => updateSub({ locationAddress: { ...seAddr, street: e.target.value } })} placeholder="Straße" />
+                        <input className="form-input" value={seAddr.houseNo} onChange={e => updateSub({ locationAddress: { ...seAddr, houseNo: e.target.value } })} placeholder="Hausnr." />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: 8 }}>
+                        <input className="form-input" value={seAddr.zip} onChange={e => updateSub({ locationAddress: { ...seAddr, zip: e.target.value } })} placeholder="PLZ" />
+                        <input className="form-input" value={seAddr.city} onChange={e => updateSub({ locationAddress: { ...seAddr, city: e.target.value } })} placeholder="Ort" />
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ marginTop: 24 }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+                        {isDe ? 'Agenda' : 'Agenda'}
+                      </label>
+                      {seAgenda
+                        .slice()
+                        .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+                        .map(item => (
+                        <div key={item.id} style={{
+                          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
+                          padding: '10px 12px', marginBottom: 8,
+                          background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
+                          border: '1px solid var(--dex-gray-200)',
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
+                            <input type="date" className="form-input" value={item.date} onChange={e => updateSubAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
+                            <input type="time" className="form-input" value={item.time} onChange={e => updateSubAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
+                            <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateSubAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
+                            <input type="text" className="form-input" value={item.title} onChange={e => updateSubAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
+                            <input type="text" className="form-input" value={item.description || ''} onChange={e => updateSubAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                            <button type="button" onClick={() => updateSub({ agenda: seAgenda.filter(a => a.id !== item.id) })} style={{
+                              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                              fontSize: '1.1rem', padding: '4px', lineHeight: 1,
+                            }} title={t('general.delete')}>
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" className="btn btn-outline" onClick={() => updateSub({
+                        agenda: [...seAgenda, {
+                          id: `ag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                          date: se.startDate ? se.startDate.slice(0, 10) : '',
+                          time: '',
+                          endTime: '',
+                          icon: 'Calendar',
+                          title: '',
+                          description: '',
+                        }],
+                      })} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                        <Plus size={14} /> {t('create.agenda.add')}
+                      </button>
+                    </div>
+                    <div className="form-group" style={{ marginTop: 24 }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
+                        {isDe ? 'Transferzeiten' : 'Transfer times'}
+                      </label>
+                      {seTransfers.map(tt => (
+                        <div key={tt.id} style={{
+                          padding: '12px 14px', marginBottom: 8,
+                          background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                          border: '1px solid var(--dex-gray-200)',
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
+                              <input type="text" className="form-input" value={tt.location} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x) })} placeholder="Stadt..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.meetingpoint')}</label>
+                              <input type="text" className="form-input" value={tt.meetingPoint || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, meetingPoint: e.target.value } : x) })} placeholder="z.B. Hbf..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.address')}</label>
+                              <input type="text" className="form-input" value={tt.address || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, address: e.target.value } : x) })} placeholder="Straße, PLZ Ort" style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
+                              <button type="button" onClick={() => updateSub({ transferTimes: seTransfers.filter(x => x.id !== tt.id) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: '4px', lineHeight: 1 }} title={t('general.delete')}>
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
+                              <input type="date" className="form-input" value={tt.date} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.departure')}</label>
+                              <input type="time" className="form-input" value={tt.departureTime} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, departureTime: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.arrival')}</label>
+                              <input type="time" className="form-input" value={tt.arrivalTime} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, arrivalTime: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.desc')}</label>
+                              <input type="text" className="form-input" value={tt.description || ''} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, description: e.target.value } : x) })} placeholder={t('create.transfers.desc')} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" className="btn btn-outline" onClick={() => updateSub({
+                        transferTimes: [...seTransfers, {
+                          id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                          location: '',
+                          meetingPoint: '',
+                          address: '',
+                          date: se.startDate ? se.startDate.slice(0, 10) : '',
+                          departureTime: '',
+                          arrivalTime: '',
+                          description: '',
+                        }],
+                      })} style={{ fontSize: '0.85rem', padding: '6px 16px', marginTop: 4 }}>
+                        <Plus size={14} /> {t('create.transfers.add')}
+                      </button>
                     </div>
                   </div>
                 );
@@ -6225,39 +6410,44 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                  {/* v14.9: Radios mit accentColor in der App-Grünfärbung +
-                      alignItems:center, damit der Kreis exakt auf der
-                      Mittellinie des Labels sitzt (vorher Browser-Blau und
-                      leicht oberhalb der Textbaseline). */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <input
-                      type="radio"
-                      name="subEventsMode"
-                      checked={!subEventsOnlyMode}
-                      onChange={() => setSubEventsOnlyMode(false)}
-                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
-                    />
-                    <span style={{ fontSize: '0.88rem' }}>
-                      {isDe
-                        ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
-                        : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>}
-                    </span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <input
-                      type="radio"
-                      name="subEventsMode"
-                      checked={!!subEventsOnlyMode}
-                      onChange={() => setSubEventsOnlyMode(true)}
-                      style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
-                    />
-                    <span style={{ fontSize: '0.88rem' }}>
-                      {isDe
-                        ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
-                        : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>}
-                    </span>
-                  </label>
+                {/* v15.3: Radio-Cards im Stil der Registration-Page —
+                    grüner Border + pastell-grüner Hintergrund wenn aktiv,
+                    klick-fähige ganze Card. Konsistent mit dem Pattern, das
+                    der User auf der Anmelde-Seite gewohnt ist. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                  {[false, true].map(modeVal => {
+                    const selected = !!subEventsOnlyMode === modeVal;
+                    return (
+                      <label
+                        key={String(modeVal)}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                          padding: '10px 14px', borderRadius: 8,
+                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="subEventsMode"
+                          checked={selected}
+                          onChange={() => setSubEventsOnlyMode(modeVal)}
+                          style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0, marginTop: 2 }}
+                        />
+                        <span style={{ fontSize: '0.88rem', flex: 1 }}>
+                          {modeVal === false
+                            ? (isDe
+                                ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
+                                : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>)
+                            : (isDe
+                                ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
+                                : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>)}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -6455,11 +6645,18 @@ export default function EventCreationPage(): React.ReactElement {
                         maxParticipants: 0,
                         disableEmails: false,
                         disableOutlook: false,
-                        // v15.0: neue Sub-Events erben Default-maessig alle
-                        // Per-Tab-Felder vom Hauptevent.
-                        inheritLocationFromParent: true,
-                        inheritCapacityFromParent: true,
-                        inheritCustomFieldsFromParent: true,
+                        // v15.3: neue Sub-Events starten leer und vollwertig.
+                        // Default-Werte koennen per „Vom Hauptevent kopieren"-
+                        // Button in den Steps 3/4/5 einmalig vorbelegt werden.
+                        locationAddress: { street: '', houseNo: '', zip: '', city: '' },
+                        agenda: [],
+                        transferTimes: [],
+                        lastDeregisterDate: '',
+                        locationFilter: '',
+                        audience: '',
+                        filterMode: 'OR',
+                        waitlistEnabled: true,
+                        askSalutation: false,
                       };
                       setSubEvents([...subEvents, newSub]);
                     }}
@@ -6513,55 +6710,101 @@ export default function EventCreationPage(): React.ReactElement {
                 const seIdx = activeCapacityTabIdx - 1;
                 const se = subEvents[seIdx];
                 if (!se) return null;
-                const inherit = se.inheritCapacityFromParent !== false;
+                const updateSub = (patch: Partial<SubEventDraft>): void => {
+                  setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
+                };
+                const seLocationFilterList = (se.locationFilter || '').split(',').map(s => s.trim()).filter(Boolean);
                 return (
                   <div>
-                    <div style={{
-                      background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                      padding: '14px 16px', marginBottom: 16,
-                      border: '1px solid var(--dex-gray-200)',
-                    }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={inherit}
-                          onChange={e => {
-                            const v = e.target.checked;
-                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritCapacityFromParent: v } : x));
-                          }}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                          {isDe ? 'Kapazität vom Hauptevent übernehmen' : 'Use main event capacity'}
-                        </span>
-                      </label>
-                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? 'Standard. Deaktivieren, um für dieses Sub-Event eine eigene maximale Teilnehmerzahl festzulegen.'
-                          : 'Default. Disable to set a separate maximum attendee count for this sub-event.'}
-                      </p>
+                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Uebernimmt
+                        Kapazitaets-/Sichtbarkeits-/Deadline-/Filter-Werte
+                        vom Hauptevent als Startwerte fuer dieses Sub-Event. */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                        onClick={() => updateSub({
+                          maxParticipants: parseInt(maxParticipants, 10) || 0,
+                          registrationDeadline: registrationDeadline ? berlinLocalToUtcIso(registrationDeadline) : '',
+                          lastDeregisterDate: lastDeregisterDate ? berlinLocalToUtcIso(lastDeregisterDate) : '',
+                          locationFilter: locationFilter,
+                          audience: audience,
+                          filterMode: filterMode,
+                          waitlistEnabled: waitlistEnabled,
+                        })}
+                        title={isDe
+                          ? 'Uebernimmt Teilnehmerzahl, Deadlines, Sichtbarkeit und Warteliste vom Hauptevent als Startwerte'
+                          : 'Copies capacity, deadlines, visibility and waitlist from the main event as starting values'}
+                      >
+                        {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
+                      </button>
                     </div>
-                    <div className="form-group" style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+
+                    <div className="form-group">
                       <label className="form-label">
-                        {isDe ? 'Max. Teilnehmer für dieses Sub-Event (0 = unbegrenzt)' : 'Max. attendees for this sub-event (0 = unlimited)'}
+                        {isDe ? 'Standortfilter' : 'Location filter'}
                       </label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="form-input"
-                        value={se.maxParticipants || 0}
-                        disabled={inherit}
-                        onChange={e => {
-                          const v = parseInt(e.target.value, 10) || 0;
-                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, maxParticipants: v } : x));
-                        }}
-                        style={{ maxWidth: 200 }}
+                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 8px' }}>
+                        {isDe
+                          ? 'Wähle Standorte aus, an denen dieses Sub-Event sichtbar sein soll. Leer = für alle sichtbar.'
+                          : 'Pick locations where this sub-event should be visible. Empty = visible to everyone.'}
+                      </p>
+                      <LocationMultiSelect
+                        options={locationOptions}
+                        selected={seLocationFilterList}
+                        onChange={list => updateSub({ locationFilter: list.join(', ') })}
+                        isDe={isDe}
                       />
                     </div>
-                    {/* v15: Anmeldeschluss pro Sub-Event hier in Schritt 4
-                        Kapazität & Sichtbarkeit. Leerlassen → Hauptevent-Deadline
-                        wird beim Save übernommen (kein separater Inherit-Toggle
-                        nötig, das Verhalten ist über das leere Feld eindeutig). */}
+
+                    <div className="form-group">
+                      <label className="form-label">
+                        {isDe ? 'Mailverteiler / einzelne User (kommagetrennt)' : 'Mailing lists / individual users (comma separated)'}
+                      </label>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 8px' }}>
+                        {isDe
+                          ? 'Mail-Adressen oder Gruppen, kommagetrennt. Leer = keine zusätzliche Einschränkung.'
+                          : 'Email addresses or groups, comma-separated. Empty = no extra restriction.'}
+                      </p>
+                      <textarea
+                        className="form-input"
+                        value={se.audience || ''}
+                        onChange={e => updateSub({ audience: e.target.value })}
+                        placeholder={isDe ? 'z.B. max@deloitte.de, DEKOELN' : 'e.g. max@deloitte.de, DEKOELN'}
+                        rows={2}
+                        style={{ resize: 'vertical' }}
+                      />
+                    </div>
+
+                    {(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) && (
+                      <div className="form-group">
+                        <label className="form-label">
+                          {isDe ? 'Filterverknüpfung' : 'Filter logic'}
+                        </label>
+                        <div style={{ display: 'flex', gap: 16 }}>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                            <input
+                              type="radio"
+                              name={`subFilterMode-${se.id}`}
+                              checked={(se.filterMode || 'OR') === 'OR'}
+                              onChange={() => updateSub({ filterMode: 'OR' })}
+                            />
+                            {isDe ? 'ODER (eine Bedingung reicht)' : 'OR (one condition is enough)'}
+                          </label>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                            <input
+                              type="radio"
+                              name={`subFilterMode-${se.id}`}
+                              checked={se.filterMode === 'AND'}
+                              onChange={() => updateSub({ filterMode: 'AND' })}
+                            />
+                            {isDe ? 'UND (beide Bedingungen)' : 'AND (both conditions)'}
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="form-group">
                       <label className="form-label">
                         {isDe ? 'Anmeldeschluss für dieses Sub-Event (optional)' : 'Registration deadline for this sub-event (optional)'}
@@ -6573,7 +6816,7 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => {
                           const v = e.target.value;
                           const iso = v ? berlinLocalToUtcIso(v) : '';
-                          setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, registrationDeadline: iso } : x));
+                          updateSub({ registrationDeadline: iso });
                         }}
                         style={{ maxWidth: 280 }}
                       />
@@ -6582,6 +6825,64 @@ export default function EventCreationPage(): React.ReactElement {
                           ? 'Leer lassen → der Anmeldeschluss des Hauptevents gilt automatisch.'
                           : 'Leave empty → the main event\'s deadline applies automatically.'}
                       </p>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">
+                        {isDe ? 'Letzte Abmeldemöglichkeit für dieses Sub-Event (optional)' : 'Last cancellation date for this sub-event (optional)'}
+                      </label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={se.lastDeregisterDate ? (isoToLocal(se.lastDeregisterDate) || '') : ''}
+                        onChange={e => {
+                          const v = e.target.value;
+                          const iso = v ? berlinLocalToUtcIso(v) : '';
+                          updateSub({ lastDeregisterDate: iso });
+                        }}
+                        style={{ maxWidth: 280 }}
+                      />
+                      <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe
+                          ? 'Bis zu diesem Stichtag können sich Teilnehmer selbst abmelden. Leer = keine Frist.'
+                          : 'Until this cutoff attendees can self-cancel. Empty = no cutoff.'}
+                      </p>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">
+                        {isDe ? 'Max. Teilnehmer für dieses Sub-Event (0 = unbegrenzt)' : 'Max. attendees for this sub-event (0 = unlimited)'}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="form-input"
+                        value={se.maxParticipants || 0}
+                        onChange={e => {
+                          const v = parseInt(e.target.value, 10) || 0;
+                          updateSub({ maxParticipants: v });
+                        }}
+                        style={{ maxWidth: 200 }}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">
+                        {isDe ? 'Warteliste' : 'Waitlist'}
+                      </label>
+                      <div className="toggle-wrapper" style={{ marginTop: 4 }}>
+                        <label className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true}
+                            onChange={e => updateSub({ waitlistEnabled: e.target.checked })}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                        <span style={{ fontSize: '0.9rem' }}>
+                          {(typeof se.waitlistEnabled === 'boolean' ? se.waitlistEnabled : true) ? t('create.enabled') : t('create.disabled')}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -8008,36 +8309,44 @@ export default function EventCreationPage(): React.ReactElement {
                 const seIdx = activeFieldsTabIdx - 1;
                 const se = subEvents[seIdx];
                 if (!se) return null;
-                const inherit = se.inheritCustomFieldsFromParent !== false;
+                const inherit = false;  // v15.3: inheritance entfernt — Sub-Events haben eigene Felder
                 const seFields = se.customFields || [];
+                const updateSub = (patch: Partial<SubEventDraft>): void => {
+                  setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, ...patch } : x));
+                };
                 return (
                   <div>
+                    {/* v15.3: „Anrede abfragen"-Toggle pro Sub-Event */}
                     <div style={{
                       background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
                       padding: '14px 16px', marginBottom: 16,
                       border: '1px solid var(--dex-gray-200)',
+                      display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap',
                     }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                         <input
                           type="checkbox"
-                          checked={inherit}
-                          onChange={e => {
-                            const v = e.target.checked;
-                            setSubEvents(subEvents.map((x, i) => i === seIdx ? { ...x, inheritCustomFieldsFromParent: v } : x));
-                          }}
+                          checked={!!se.askSalutation}
+                          onChange={e => updateSub({ askSalutation: e.target.checked })}
                           style={{ cursor: 'pointer' }}
                         />
                         <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                          {isDe ? 'Felder vom Hauptevent übernehmen' : 'Use main event fields'}
+                          {isDe ? 'Anrede für dieses Sub-Event abfragen' : 'Ask for salutation on this sub-event'}
                         </span>
                       </label>
-                      <p style={{ margin: '6px 0 0 26px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe
-                          ? 'Standard. Deaktivieren, um für dieses Sub-Event eigene Zusatz-Fragen festzulegen.'
-                          : 'Default. Disable to define separate extra questions for this sub-event.'}
-                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                        onClick={() => updateSub({ askSalutation: askSalutation })}
+                        title={isDe
+                          ? 'Uebernimmt die Anrede-Abfrage-Einstellung vom Hauptevent'
+                          : 'Copies the salutation toggle from the main event'}
+                      >
+                        {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
+                      </button>
                     </div>
-                    <div style={{ opacity: inherit ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                    <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                         <strong style={{ fontSize: '0.95rem' }}>
                           {se.title || (isDe ? '(unbenanntes Sub-Event)' : '(unnamed sub-event)')}
@@ -8046,7 +8355,6 @@ export default function EventCreationPage(): React.ReactElement {
                           type="button"
                           className="btn btn-outline"
                           style={{ fontSize: '0.78rem', padding: '4px 10px' }}
-                          disabled={inherit}
                           onClick={() => addSubEventCustomField(se.id)}
                         >
                           <Plus size={12} /> {isDe ? 'Feld hinzufügen' : 'Add field'}
@@ -8056,19 +8364,18 @@ export default function EventCreationPage(): React.ReactElement {
                             type="button"
                             className="btn btn-outline"
                             style={{ fontSize: '0.78rem', padding: '4px 10px' }}
-                            disabled={inherit}
                             onClick={() => copyParentFieldsToSubEvent(se.id)}
                             title={isDe ? `Dupliziert die ${customFields.length} Felder vom Hauptevent als Startpunkt` : 'Duplicates the main-event fields as a starting point'}
                           >
-                            {isDe ? `Vom Hauptevent kopieren (${customFields.length})` : `Copy from main event (${customFields.length})`}
+                            {isDe ? `Felder vom Hauptevent kopieren (${customFields.length})` : `Copy fields from main event (${customFields.length})`}
                           </button>
                         )}
                       </div>
                       {seFields.length === 0 ? (
                         <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)', fontStyle: 'italic' }}>
                           {isDe
-                            ? 'Keine zusätzlichen Felder definiert. Solange die Übernahme aktiv ist, gelten die Felder des Hauptevents.'
-                            : 'No additional fields defined. While inheritance is active, the main-event fields apply.'}
+                            ? 'Keine zusätzlichen Felder definiert. Du kannst Felder hinzufügen oder vom Hauptevent kopieren.'
+                            : 'No additional fields defined. You can add fields or copy them from the main event.'}
                         </p>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -9433,33 +9740,13 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
-                  {/* v14.5: Toggle „Anmeldung für mindestens ein Sub-Event
-                      verpflichtend". Nur auf dem Haupt-Event-Tab und nur wenn
-                      Sub-Events existieren — sonst hat der Schalter keinen
-                      Effekt. Erzwingt im Anmeldeformular die Auswahl
-                      mindestens eines Sub-Events. */}
-                  {activeCommTabIdx === 0 && subEvents.length > 0 && (
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
-                      <input
-                        type="checkbox"
-                        checked={requireSubEventSelection}
-                        onChange={e => setRequireSubEventSelection(e.target.checked)}
-                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: '0.9rem' }}>
-                        <strong>
-                          {isDe
-                            ? 'Anmeldung für mindestens ein Sub-Event verpflichtend'
-                            : 'Require selecting at least one sub-event'}
-                        </strong>
-                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2, lineHeight: 1.4 }}>
-                          {isDe
-                            ? 'Wenn aktiv, kann sich kein Teilnehmer „nur fürs Hauptevent" anmelden — er muss im Anmeldeformular mindestens ein Sub-Event auswählen. Empfohlen, sobald die Hauptevent-Kommunikation oben ausgeschaltet ist, damit niemand stumm in der Liste landet.'
-                            : 'When on, no attendee can register „main event only" — they must pick at least one sub-event in the registration form. Recommended whenever main-event communication above is off, so nobody lands in the list silently.'}
-                        </span>
-                      </span>
-                    </label>
-                  )}
+                  {/* v15.3: Toggle „Anmeldung für mindestens ein Sub-Event
+                      verpflichtend" wurde entfernt — der gleiche Effekt wird
+                      jetzt komplett über den „Nur Sub-Events"-Modus in
+                      Schritt 2 (Sub-Events) erzielt. Doppelte Konfiguration
+                      an zwei Stellen war verwirrend. Die requireSubEventSelection-
+                      State-Variable bleibt aus Backward-Compat erhalten (alte
+                      Events haben sie ggf. als Piggyback gesetzt). */}
                   {/* v14.4: Acknowledgement-Pflicht bei deaktivierter
                       Hauptevent-Kommunikation + vorhandenen Sub-Events. */}
                   {activeCommTabIdx === 0 && subEvents.length > 0 && (disableEmails || disableOutlook) && (
@@ -11821,6 +12108,11 @@ export default function EventCreationPage(): React.ReactElement {
                     </label>
                   );
                 }
+                // v15.3: leere changedFields-Liste = Item kommt aus dem
+                // persistierten OutlookDirty-Flag (frühere Session,
+                // wurde damals nicht synchronisiert). Klartext-Hinweis
+                // statt leerer „Geändert:"-Zeile.
+                const isFromPersistedDirty = it.changedFields.length === 0;
                 return (
                   <label
                     key={it.eventId}
@@ -11829,6 +12121,7 @@ export default function EventCreationPage(): React.ReactElement {
                       padding: '12px 14px',
                       borderBottom: isLast ? 'none' : '1px solid var(--dex-gray-200)',
                       cursor: 'pointer',
+                      background: isFromPersistedDirty ? '#fff8e8' : '#fff',
                     }}
                   >
                     <input
@@ -11846,9 +12139,17 @@ export default function EventCreationPage(): React.ReactElement {
                           ? (isDe ? `Hauptevent: ${it.title}` : `Main event: ${it.title}`)
                           : (isDe ? `Sub-Event: ${it.title}` : `Sub-event: ${it.title}`)}
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
-                        {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
-                      </div>
+                      {isFromPersistedDirty ? (
+                        <div style={{ fontSize: '0.78rem', color: '#8a6d3b', marginTop: 4, lineHeight: 1.45 }}>
+                          {isDe
+                            ? <>⏳ <strong>Frühere Änderung nicht synchronisiert</strong> — beim letzten Speichern dieses Events wurden Outlook-relevante Felder geändert, der Outlook-Sync wurde aber damals übersprungen. Haken setzen, um die Teilnehmer jetzt nachträglich per Outlook-Update zu informieren.</>
+                            : <>⏳ <strong>Earlier change not yet synced</strong> — Outlook-relevant fields were changed in a previous save of this event, but the Outlook sync was skipped at the time. Tick the box to send the catch-up Outlook update to attendees now.</>}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 3 }}>
+                          {isDe ? 'Geändert: ' : 'Changed: '}{changedLabels}
+                        </div>
+                      )}
                     </div>
                   </label>
                 );
