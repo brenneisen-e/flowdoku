@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { X } from './Icons';
+import InternationalSearchToggle from './InternationalSearchToggle';
+import { useLanguage } from '../context/LanguageContext';
 
 /**
  * Generischer Massenimport-Dialog für Team-Felder im Event-Wizard.
@@ -50,7 +52,7 @@ interface Props {
   /** Bereits in der Liste vorhandene Emails (Lowercase-Vergleich, für Doppel-Check). */
   existingEmails: string[];
   /** Tenant-User-Lookup (gleicher Service wie der Single-Picker). */
-  searchUsers: (q: string) => Promise<SearchHit[]>;
+  searchUsers: (q: string, includeIntl?: boolean) => Promise<SearchHit[]>;
   /** Wird pro erfolgreich gefundenem User aufgerufen — Caller appendet an seine Arrays. */
   onAdd: (item: BulkImportItem) => void;
 }
@@ -76,9 +78,12 @@ const sortByLastFirst = (a: { lastname: string; firstname: string }, b: { lastna
 };
 
 const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, description, existingEmails, searchUsers, onAdd }) => {
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
   const [text, setText] = React.useState('');
   const [running, setRunning] = React.useState(false);
   const [report, setReport] = React.useState<BulkImportReport | null>(null);
+  const [includeIntl, setIncludeIntl] = React.useState(false);
 
   // Die Lokal-Snapshot-Menge der „bereits drin"-Emails. Wird inkrementell
   // erweitert während des Runs, damit Doppel-Eingaben innerhalb desselben
@@ -158,7 +163,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
       // Schon drin (Email-Identität, case-insensitive)?
       if (item.kind === 'email' && existingLc.has(fLc)) {
         try {
-          const hits = await searchUsers(f);
+          const hits = await searchUsers(f, includeIntl);
           if (hits.length > 0) {
             const { lastname, firstname } = parseDisplayName(hits[0].displayName, f);
             alreadyIn.push({ lastname, firstname, email: f });
@@ -173,7 +178,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
 
       if (item.kind === 'email') {
         try {
-          const hits = await searchUsers(f);
+          const hits = await searchUsers(f, includeIntl);
           const exact = hits.find(h => h.email && h.email.toLowerCase() === fLc);
           if (exact) {
             const { lastname, firstname } = parseDisplayName(exact.displayName, f);
@@ -198,7 +203,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
 
       // Name-Pass.
       const tryName = async (query: string): Promise<SearchHit[]> => {
-        try { return await searchUsers(query); } catch { return []; }
+        try { return await searchUsers(query, includeIntl); } catch { return []; }
       };
       let hits = await tryName(f);
       if ((!hits || hits.length === 0) && f.indexOf(',') >= 0) {
@@ -305,6 +310,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
           onChange={e => setText(e.target.value)}
           disabled={running}
         />
+        <InternationalSearchToggle checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
 
         {report && (
           <div style={{ marginTop: 16, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 'var(--dex-radius)', fontSize: '0.8rem' }}>

@@ -29,6 +29,7 @@ import { flowsSection } from './sections/flows';
 import { faqSection } from './sections/faq';
 import { demoImpersonationSection } from './sections/demoImpersonation';
 import { templatesReseedSection } from './sections/templatesReseed';
+import { peoplePickerScopeSection } from './sections/peoplePickerScope';
 
 export type Locale = 'de' | 'en';
 
@@ -52,6 +53,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     massMailSection(locale),
     inviteMailSection(locale),
     rolesSection(locale),
+    peoplePickerScopeSection(locale),
     demoImpersonationSection(locale),
     templatesSection(locale),
     templatesReseedSection(locale),

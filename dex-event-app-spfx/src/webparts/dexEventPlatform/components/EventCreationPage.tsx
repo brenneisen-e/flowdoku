@@ -21,6 +21,7 @@ import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
 import BulkUserImportModal from './BulkUserImportModal';
 import Modal from './Modal';
+import InternationalSearchToggle from './InternationalSearchToggle';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -358,6 +359,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
   const [isSearchingAudience, setIsSearchingAudience] = React.useState(false);
+  const [audienceIncludeIntl, setAudienceIncludeIntl] = React.useState(false);
   const audienceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Modal: Members einer Gruppe anzeigen
   const [memberModalOpen, setMemberModalOpen] = React.useState(false);
@@ -585,6 +587,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [testTeamResults, setTestTeamResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const testTeamTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [organizerIncludeIntl, setOrganizerIncludeIntl] = React.useState(false);
+  const [testTeamIncludeIntl, setTestTeamIncludeIntl] = React.useState(false);
+  const [qrScannerIncludeIntl, setQrScannerIncludeIntl] = React.useState(false);
+
   // Massenimport-Modale für die drei Team-Felder (Co-Organizer, Test-Team,
   // Check-In Team). Pattern analog zum Audience-Massenimport (Sichtbarkeits-
   // Reiter), aber pro Team-Liste eigenes Modal mit eigenem Import-Target.
@@ -735,6 +741,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
+  const [excludeIncludeIntl, setExcludeIncludeIntl] = React.useState(false);
   // v8.8: Tabellen-Filter (pro Spalte) und Sortierung
   const [excludeFilters, setExcludeFilters] = React.useState<{ email: string; lastName: string; firstName: string; jobTitle: string; location: string }>({
     email: '', lastName: '', firstName: '', jobTitle: '', location: '',
@@ -1166,6 +1173,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [visibilityCacheLoading, setVisibilityCacheLoading] = React.useState(false);
   const [emailSearch, setEmailSearch] = React.useState('');
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
+  const [emailSearchIncludeIntl, setEmailSearchIncludeIntl] = React.useState(false);
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -4713,7 +4721,7 @@ export default function EventCreationPage(): React.ReactElement {
                     // Liste ist der "Hauptorganizer", weitere sind gleichwertig.
                     organizerTimerRef.current = setTimeout(async () => {
                       try {
-                        const results = await searchUsers(q);
+                        const results = await searchUsers(q, organizerIncludeIntl);
                         setOrganizerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
                       } catch { setOrganizerResults([]); }
                     }, 350);
@@ -4723,6 +4731,20 @@ export default function EventCreationPage(): React.ReactElement {
                   }}
                   placeholder={t('create.organizer.placeholder')}
                   style={errorBorderStyle('organizer')}
+                />
+                <InternationalSearchToggle
+                  checked={organizerIncludeIntl}
+                  onChange={async next => {
+                    setOrganizerIncludeIntl(next);
+                    const q = organizerSearch.trim();
+                    if (q.length >= 1) {
+                      try {
+                        const results = await searchUsers(q, next);
+                        setOrganizerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setOrganizerResults([]); }
+                    }
+                  }}
+                  isDe={isDe}
                 />
                 {isSearchingOrganizer && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
@@ -4913,7 +4935,7 @@ export default function EventCreationPage(): React.ReactElement {
                     if (!q) { setTestTeamResults([]); return; }
                     testTeamTimerRef.current = setTimeout(async () => {
                       try {
-                        const results = await searchUsers(q);
+                        const results = await searchUsers(q, testTeamIncludeIntl);
                         setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
                       } catch { setTestTeamResults([]); }
                     }, 350);
@@ -4922,6 +4944,20 @@ export default function EventCreationPage(): React.ReactElement {
                     setTimeout(() => { setTestTeamSearch(''); setTestTeamResults([]); }, 150);
                   }}
                   placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
+                />
+                <InternationalSearchToggle
+                  checked={testTeamIncludeIntl}
+                  onChange={async next => {
+                    setTestTeamIncludeIntl(next);
+                    const q = testTeamSearch.trim();
+                    if (q.length >= 1) {
+                      try {
+                        const results = await searchUsers(q, next);
+                        setTestTeamResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setTestTeamResults([]); }
+                    }
+                  }}
+                  isDe={isDe}
                 />
                 {testTeamResults.length > 0 && (
                   <div style={{
@@ -5064,7 +5100,7 @@ export default function EventCreationPage(): React.ReactElement {
                     // kann QR-Scanner sein. Debounce 350ms.
                     qrScannerTimerRef.current = setTimeout(async () => {
                       try {
-                        const results = await searchUsers(q);
+                        const results = await searchUsers(q, qrScannerIncludeIntl);
                         setQrScannerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
                       } catch { setQrScannerResults([]); }
                     }, 350);
@@ -5073,6 +5109,20 @@ export default function EventCreationPage(): React.ReactElement {
                     setTimeout(() => { setQrScannerSearch(''); setQrScannerResults([]); }, 150);
                   }}
                   placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben (alle Deloitte-User)'}
+                />
+                <InternationalSearchToggle
+                  checked={qrScannerIncludeIntl}
+                  onChange={async next => {
+                    setQrScannerIncludeIntl(next);
+                    const q = qrScannerSearch.trim();
+                    if (q.length >= 1) {
+                      try {
+                        const results = await searchUsers(q, next);
+                        setQrScannerResults(results.map(r => ({ email: r.email, displayName: r.displayName, location: r.location || '' })));
+                      } catch { setQrScannerResults([]); }
+                    }
+                  }}
+                  isDe={isDe}
                 />
                 {qrScannerResults.length > 0 && (
                   <div style={{
@@ -6081,7 +6131,7 @@ export default function EventCreationPage(): React.ReactElement {
                         setIsSearchingAudience(true);
                         try {
                           const [users, groups] = await Promise.all([
-                            searchUsers(val.trim()),
+                            searchUsers(val.trim(), audienceIncludeIntl),
                             searchGroups(val.trim()),
                           ]);
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6097,6 +6147,29 @@ export default function EventCreationPage(): React.ReactElement {
                     }
                   }}
                   placeholder="Personen oder Gruppen suchen (z.B. SAPAlliance, max@deloitte.de, DEKOELN)"
+                />
+                <InternationalSearchToggle
+                  checked={audienceIncludeIntl}
+                  onChange={async next => {
+                    setAudienceIncludeIntl(next);
+                    const q = audienceSearch.trim();
+                    if (q.length >= 2) {
+                      setIsSearchingAudience(true);
+                      try {
+                        const [users, groups] = await Promise.all([
+                          searchUsers(q, next),
+                          searchGroups(q),
+                        ]);
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const u: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = users.map((x: any) => ({ kind: 'user' as const, email: x.email, displayName: x.displayName }));
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const g: Array<{ kind: 'user' | 'group'; email: string; displayName: string }> = groups.map((x: any) => ({ kind: 'group' as const, email: x.email, displayName: x.displayName }));
+                        setAudienceResults([...g, ...u]);
+                      } catch { setAudienceResults([]); }
+                      setIsSearchingAudience(false);
+                    }
+                  }}
+                  isDe={isDe}
                 />
                 {isSearchingAudience && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>Suche...</div>
@@ -9858,7 +9931,7 @@ export default function EventCreationPage(): React.ReactElement {
                   setExcludePage(0);
                   if (v.trim().length < 2) return;
                   try {
-                    const found = await searchUsers(v.trim());
+                    const found = await searchUsers(v.trim(), excludeIncludeIntl);
                     // Nur User, die noch nicht in der resolved-Liste stecken,
                     // anhaengen — sonst Duplikate. seen-Set baut sich durch
                     // resolved + bereits in der Suche gefundene auf.
@@ -9901,6 +9974,50 @@ export default function EventCreationPage(): React.ReactElement {
                 placeholder={isDe ? 'Person suchen (Name oder E-Mail)' : 'Search person (name or email)'}
                 className="form-input"
                 style={{ width: '100%' }}
+              />
+              <InternationalSearchToggle
+                checked={excludeIncludeIntl}
+                onChange={async next => {
+                  setExcludeIncludeIntl(next);
+                  const v = excludeSearch.trim();
+                  if (v.length < 2) return;
+                  try {
+                    const found = await searchUsers(v, next);
+                    setExcludeResolvedUsers(prev => {
+                      const seen = new Set(prev.map(u => u.email.toLowerCase()));
+                      const acc = [...prev];
+                      for (const u of found) {
+                        const k = (u.email || '').toLowerCase();
+                        if (k && !seen.has(k)) {
+                          seen.add(k);
+                          let fn = '';
+                          let ln = '';
+                          const dn = (u.displayName || '').trim();
+                          if (dn.indexOf(',') >= 0) {
+                            const parts = dn.split(',').map(s => s.trim());
+                            ln = parts[0] || '';
+                            fn = parts[1] || '';
+                          } else {
+                            const parts = dn.split(/\s+/);
+                            fn = parts[0] || '';
+                            ln = parts.slice(1).join(' ');
+                          }
+                          acc.push({
+                            email: u.email,
+                            displayName: u.displayName,
+                            firstName: fn,
+                            lastName: ln,
+                            jobTitle: u.jobTitle || '',
+                            location: u.location || '',
+                            source: isDe ? 'Suche' : 'search',
+                          });
+                        }
+                      }
+                      return acc;
+                    });
+                  } catch { /* */ }
+                }}
+                isDe={isDe}
               />
             </div>
 
@@ -10215,7 +10332,7 @@ export default function EventCreationPage(): React.ReactElement {
                   onKeyDown={async e => {
                     if (e.key === 'Enter' && emailSearch.length >= 2) {
                       setIsSearchingEmails(true);
-                      const results = await searchUsers(emailSearch);
+                      const results = await searchUsers(emailSearch, emailSearchIncludeIntl);
                       setEmailSearchResults(results);
                       setIsSearchingEmails(false);
                     }
@@ -10227,7 +10344,7 @@ export default function EventCreationPage(): React.ReactElement {
                   disabled={emailSearch.length < 2 || isSearchingEmails}
                   onClick={async () => {
                     setIsSearchingEmails(true);
-                    const results = await searchUsers(emailSearch);
+                    const results = await searchUsers(emailSearch, emailSearchIncludeIntl);
                     setEmailSearchResults(results);
                     setIsSearchingEmails(false);
                   }}
@@ -10235,6 +10352,21 @@ export default function EventCreationPage(): React.ReactElement {
                   {isSearchingEmails ? '...' : 'Suchen'}
                 </button>
               </div>
+              <InternationalSearchToggle
+                checked={emailSearchIncludeIntl}
+                onChange={async next => {
+                  setEmailSearchIncludeIntl(next);
+                  if (emailSearch.length >= 2) {
+                    setIsSearchingEmails(true);
+                    try {
+                      const results = await searchUsers(emailSearch, next);
+                      setEmailSearchResults(results);
+                    } catch { /* */ }
+                    setIsSearchingEmails(false);
+                  }
+                }}
+                isDe={isDe}
+              />
             </div>
 
             {emailSearchResults.length > 0 && (

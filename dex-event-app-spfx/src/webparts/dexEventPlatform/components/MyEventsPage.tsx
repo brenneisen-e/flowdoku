@@ -21,6 +21,7 @@ import PdfViewer from './PdfViewer';
 import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
+import InternationalSearchToggle from './InternationalSearchToggle';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -669,7 +670,23 @@ export default function MyEventsPage(): React.ReactElement {
   const [addMemberConsent, setAddMemberConsent] = React.useState(false);
   const [addMemberBusy, setAddMemberBusy] = React.useState(false);
   const [addMemberError, setAddMemberError] = React.useState('');
+  const [addMemberIncludeIntl, setAddMemberIncludeIntl] = React.useState(false);
   const addMemberQueryTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    const q = addMemberQuery.trim();
+    if (q.length >= 2 && !addMemberPick) {
+      (async () => {
+        setAddMemberSearching(true);
+        try {
+          const res = await searchUsers(q, addMemberIncludeIntl);
+          setAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
+        } catch { setAddMemberResults([]); }
+        setAddMemberSearching(false);
+      })().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addMemberIncludeIntl]);
   const closeAddMemberDialog = (): void => {
     setAddMemberDialog(null);
     setAddMemberPick(null);
@@ -2133,7 +2150,7 @@ export default function MyEventsPage(): React.ReactElement {
                         addMemberQueryTimer.current = setTimeout(async () => {
                           setAddMemberSearching(true);
                           try {
-                            const res = await searchUsers(val);
+                            const res = await searchUsers(val, addMemberIncludeIntl);
                             setAddMemberResults(res.map(r => ({ email: r.email, displayName: r.displayName })));
                           } catch { setAddMemberResults([]); }
                           setAddMemberSearching(false);
@@ -2143,6 +2160,9 @@ export default function MyEventsPage(): React.ReactElement {
                       }
                     }}
                   />
+                  <div style={{ marginTop: 2 }}>
+                    <InternationalSearchToggle checked={addMemberIncludeIntl} onChange={setAddMemberIncludeIntl} isDe={isDe} />
+                  </div>
                   {(addMemberResults.length > 0 || addMemberSearching) && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,

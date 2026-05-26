@@ -785,15 +785,21 @@ Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. 
 
 Beim Review eines Feature-Commits wird geprüft: **Handbuch ✓, Rollenmatrix ✓, Flowchart ✓, ggf. Flow-JSONs ✓.** Fehlt einer, blockiert das den Release.
 
-### Demo-Impersonation für Admins (v12.7)
+### Demo-Impersonation für Admins (v12.7, v13.7)
 
-Admins können testweise als beliebiger User mit ausgewähltem Standort
-durch die App navigieren. Eintrag im Header-User-Menü (Foto oben rechts)
-unter "Rollenverwaltung": **„Demo: als User testen"**.
+Admins können testweise als generischer User aus einem gewählten
+Standort durch die App navigieren. Eintrag im Header-User-Menü (Foto
+oben rechts) unter „Rollenverwaltung": **„Demo: als User testen"**.
 
 Mechanik:
-- Modal mit People-Picker (`searchUsers`) für die Zielperson + Standort-
-  Pflichtfeld (steuert den Standortfilter aus Schritt 3 Event-Wizard).
+- **v13.7:** kein People-Picker mehr — nur ein Standort-Dropdown
+  (die feste Standortliste aus dem Event-Wizard, siehe
+  `EventCreationPage.tsx` → `locationOptions`). Der Demo-User ist
+  immer ein synthetischer „Demo User" mit `demo.user@deloitte.de` und
+  dem gewählten Standort. Hintergrund: für UI- und Filter-Tests reicht
+  es, die Standortfilter-Logik durchzuspielen — eine echte Identität
+  („Mails/Outlook als XY") lässt sich darüber ohnehin nicht testen,
+  weil das Mail-/Outlook-Routing serverseitig läuft.
 - Aktivierung speichert das Tripel `{email, firstName, surname, location}`
   in `localStorage` unter dem Key `dex_demo_impersonation`. Die App
   re-loaded danach automatisch.
@@ -905,6 +911,38 @@ z-index, Padding, Backdrop-Opacity. Seit v13.1 lebt in
 können bei Touch auf den Wrapper umgestellt werden — der bestehende
 Inline-Code funktioniert weiterhin, ist aber Migrationskandidat
 beim nächsten gezielten Touch der Datei.
+
+### People-Picker — Member-Firm-Filter (v13.6)
+
+Alle People-Picker in der App filtern Standardmäßig auf die deutsche
+Member-Firm (`@deloitte.de` — entspricht dem internen DEALL-Verteiler).
+Hintergrund: die SP `ClientPeoplePickerSearchUser`-API matched
+tenant-weit und liefert bei Suchen wie „Nils Felten" auch
+False-Positives aus internationalen Member-Firms (z.B. „Agarwalla,
+Nilesh" oder „Das, Niladri" mit @deloitte.com / @deloitte.in).
+
+Mechanik:
+- `SharePointService.searchUsers(query, includeInternational?)` —
+  zweiter Parameter steuert den Filter. Default `false`. Bei `false`:
+  nur `@deloitte.de`. Bei `true`: zusätzlich `@deloitte.com` (alle
+  internationalen Member-Firms wie DEUS/DECH/DECEMEA mappen darauf).
+  Andere Domains (Gast-Accounts, externe Tenants) bleiben in beiden
+  Modi geblockt — die App ist ohnehin nur für DEALL freigegeben.
+- `RoleContext.searchUsers(query, includeInternational?)` reicht den
+  Parameter durch.
+- `components/InternationalSearchToggle.tsx` ist ein kleines
+  Checkbox-Component mit Label „Auch international suchen
+  (@deloitte.com)" — wird in jedem Picker unter dem Such-Input
+  gerendert. Jeder Picker hält seinen eigenen Toggle-State (kein
+  globales Setting), damit z.B. der Admin im Impersonate-Modal
+  international suchen kann, ohne dass der Register-for-Other-Picker
+  auf der Detailseite mit umschaltet.
+- Toggle-State-Wechsel triggert die laufende Query nochmal — siehe
+  `React.useEffect([includeIntl])`-Pattern in `ImpersonateModal.tsx`.
+
+Betroffen sind ausschließlich Name-Picker. `searchUsersByLocation`
+(Graph-basierter Standort-Query für den Mailverteiler-Aufbau) bleibt
+unangetastet, weil es ohnehin standortbasiert vorfiltert.
 
 ### EventCreationPage-Refactor — offene Arbeit
 
