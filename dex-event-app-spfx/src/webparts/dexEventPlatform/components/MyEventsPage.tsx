@@ -2933,6 +2933,23 @@ function MyEventSubEvents(props: {
           try { await props.cancelRegistration(peerId); }
           catch (err) { console.warn('[DEX] peer-cancel failed:', peerId, err); }
         }
+        // v15.26: Im subEventsOnlyMode war das Hauptevent als Schatten-
+        // Registrierung angelegt. Wenn die letzte aktive Sub-Event-
+        // Registrierung jetzt entfernt wurde, soll auch die Schatten-
+        // Parent-Reg wegfallen — sonst behauptet „Meine Events"
+        // weiterhin „Registered" obwohl der User kein einziges Sub-
+        // Event mehr hat.
+        if (props.parentEvent.subEventsOnlyMode) {
+          const remainingActive = props.childEvents
+            .map(ce => ce.id)
+            .filter(id => id !== childEventId && peerIdsToCancel.indexOf(id) < 0)
+            .filter(id => registeredSet.has(id));
+          if (remainingActive.length === 0) {
+            setProcessingMessage(isDe ? 'Hauptevent-Eintrag wird entfernt…' : 'Removing main-event entry…');
+            try { await props.cancelRegistration(props.parentEvent.id); }
+            catch (err) { console.warn('[DEX] shadow-parent cancel failed:', err); }
+          }
+        }
       } else {
         await props.registerForEvent(childEventId, {});
       }
