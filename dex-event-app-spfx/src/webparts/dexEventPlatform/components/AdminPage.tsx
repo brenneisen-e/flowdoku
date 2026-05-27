@@ -668,6 +668,35 @@ export default function AdminPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode]);
+  // v15.14: Wenn ein Sub-Event direkt selektiert wurde, laden wir die
+  // Registrierungen des Parent-Events mit, damit die Pastel-A-Spalten
+  // (Custom-Fields des Hauptevents) pro Teilnehmer-Zeile mit den
+  // tatsächlichen Antworten aus der Parent-Registrierung gefüllt
+  // werden können. Vorher waren diese Zellen leer („-"), weil die
+  // Sub-Event-Registrierung diese Antworten nicht enthält.
+  const [parentRegsByEmail, setParentRegsByEmail] = React.useState<Record<string, SPRegistration>>({});
+  React.useEffect(() => {
+    if (!selectedEvent || !selectedEvent.parentEventId) {
+      setParentRegsByEmail({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const parentRegs = await getAllRegistrations(selectedEvent.parentEventId!);
+        const map: Record<string, SPRegistration> = {};
+        for (const r of parentRegs) {
+          const key = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (key) map[key] = r;
+        }
+        if (!cancelled) setParentRegsByEmail(map);
+      } catch {
+        if (!cancelled) setParentRegsByEmail({});
+      }
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, selectedEvent?.parentEventId]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -3040,7 +3069,7 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Aktuell registriert' : 'Currently registered'}</span>
-                      <span style={valueStyle}>{activeRegs.length}</span>
+                      <span style={valueStyle}>{isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length}</span>
                     </div>
                     {waitlistRegs.length > 0 && (
                       <div style={rowStyle}>
@@ -4088,8 +4117,31 @@ export default function AdminPage(): React.ReactElement {
         const angeFr = isSplitCapacity ? '2fr' : '1fr';
         const tail = `1fr 1fr${hasWaitlistKPI ? ' 1fr' : ''} 1fr`; // QR / Eingecheckt / [Warteliste] / Abgemeldet
         const gridCols = `${angeFr} ${tail}`;
+        // v15.14: Im subEventsOnlyMode (Hauptevent ohne eigene Anmeldungen)
+        // beziehen sich die Stat-Cards auf die konsolidierten Teilnehmer
+        // über alle Sub-Events. Die Hauptevent-Liste selbst hat hier nur
+        // Alt-Daten und würde das echte Bild verfälschen.
+        const consolidatedRegs: SPRegistration[] = isConsolidatedMode
+          ? ([] as SPRegistration[]).concat(...Object.values(subEventRegsByEventId))
+          : [];
+        const consolidatedActiveByEmail = new Set<string>();
+        const consolidatedQRByEmail = new Set<string>();
+        const consolidatedCheckedByEmail = new Set<string>();
+        const consolidatedWaitlistByEmail = new Set<string>();
+        const consolidatedCancelledByEmail = new Set<string>();
+        const consolidatedAnyByEmail = new Set<string>();
+        for (const r of consolidatedRegs) {
+          const key = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (!key) continue;
+          consolidatedAnyByEmail.add(key);
+          if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') consolidatedActiveByEmail.add(key);
+          if (r.Status === 'QR versendet') consolidatedQRByEmail.add(key);
+          if (r.Status === 'Eingecheckt') consolidatedCheckedByEmail.add(key);
+          if (r.Status === 'Warteliste') consolidatedWaitlistByEmail.add(key);
+          if (r.Status === 'Abgemeldet') consolidatedCancelledByEmail.add(key);
+        }
         const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-        const totalActive = active.length;
+        const totalActive = isConsolidatedMode ? consolidatedActiveByEmail.size : active.length;
         const durchActive = active.filter(r => r.StarterType === 'Durchstarter').length;
         const funActive = active.filter(r => r.StarterType === 'Funstarter').length;
         const durchCap = selectedEvent?.durchstarterCapacity || 0;
@@ -4127,27 +4179,27 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
-                {registrations.filter(r => r.Status === 'QR versendet').length}
+                {isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.qrsent')}</div>
             </div>
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-green)' }}>
-                {registrations.filter(r => r.Status === 'Eingecheckt').length}
+                {isConsolidatedMode ? consolidatedCheckedByEmail.size : registrations.filter(r => r.Status === 'Eingecheckt').length}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
             </div>
             {hasWaitlistKPI && (
               <div className="card" style={{ padding: 16, textAlign: 'center' }}>
                 <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-                  {registrations.filter(r => r.Status === 'Warteliste').length}
+                  {isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
               </div>
             )}
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
-                {registrations.filter(r => r.Status === 'Abgemeldet').length}
+                {isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.cancelled')}</div>
             </div>
@@ -4428,11 +4480,14 @@ export default function AdminPage(): React.ReactElement {
         <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Users size={18} /> Teilnehmer ({isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length})
-            {isConsolidatedMode && (
-              <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
-                — {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {isDe ? 'Sub-Events' : 'sub-events'}
-              </span>
-            )}
+            {isConsolidatedMode && (() => {
+              const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
+              return (
+                <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: 'var(--dex-gray-500)' }}>
+                  — {isDe ? 'konsolidiert über' : 'consolidated across'} {consolidatedChildren.length} {term}
+                </span>
+              );
+            })()}
           </h3>
           <input
             type="text"
@@ -4443,6 +4498,29 @@ export default function AdminPage(): React.ReactElement {
             style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
           />
         </div>
+        {/* v15.14: Legende für die Pastel-Hintergründe — sowohl in der
+            Sub-Event-Detail-Ansicht (Parent-CFs + eigene CFs) als auch im
+            konsolidierten Hauptevent-View. Vorher war die Legende NUR im
+            konsolidierten View sichtbar und der Organizer hat im Sub-
+            Event-Tab nicht gewusst, was Pastel A vs Pastel B bedeutet. */}
+        {parentEventForSelected && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+            {((parentEventForSelected.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim()).length > 0) && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: 'rgba(0, 118, 168, 0.16)', border: '1px solid rgba(0, 118, 168, 0.3)' }} />
+                {isDe ? 'Felder des Hauptevents' : 'Main-event fields'}
+              </span>
+            )}
+            {((selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim()).length > 0) && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: 'rgba(255, 191, 0, 0.22)', border: '1px solid rgba(255, 191, 0, 0.4)' }} />
+                {isDe
+                  ? `Felder dieses ${(selectedEvent && (selectedEvent as DeloitteEvent & { childEventTermSingular?: string }).childEventTermSingular) || 'Sub-Events'}`
+                  : `Fields of this ${(selectedEvent && (selectedEvent as DeloitteEvent & { childEventTermSingular?: string }).childEventTermSingular) || 'sub-event'}`}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* v11.70: Inline-Hinweisbox statt Modal — bei einer kürzlich
             erfolgten Abmeldung läuft die automatische Korrektur evtl. noch
@@ -5194,15 +5272,37 @@ export default function AdminPage(): React.ReactElement {
                   const cfId = id.substring(4);
                   const field = (parentEventForSelected?.eventSpecificFields || []).find(f => f.id === cfId);
                   if (!field) return null;
+                  // v15.14: Werte für Parent-Custom-Fields kommen primär aus
+                  // der Parent-Event-Registrierung der Person (lookup per
+                  // ParticipantEmail in parentRegsByEmail) — die Sub-Event-
+                  // Registrierung enthält diese Antworten i.d.R. nicht. Nur
+                  // wenn keine Parent-Reg existiert, fallen wir auf die Sub-
+                  // Event-Daten zurück.
+                  const emailKey = (reg.ParticipantEmail || '').toLowerCase().trim();
+                  const parentReg = emailKey ? parentRegsByEmail[emailKey] : undefined;
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const spName = (field as any).spInternalName || '';
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  let val: any = spName ? (reg as any)[spName] : undefined;
-                  if ((val === undefined || val === null || val === '') && reg.CustomData) {
-                    try {
-                      const cd = JSON.parse(reg.CustomData);
-                      val = cd[field.id];
-                    } catch { /* no-op */ }
+                  let val: any = undefined;
+                  if (parentReg) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    val = spName ? (parentReg as any)[spName] : undefined;
+                    if ((val === undefined || val === null || val === '') && parentReg.CustomData) {
+                      try {
+                        const cd = JSON.parse(parentReg.CustomData);
+                        val = cd[field.id];
+                      } catch { /* no-op */ }
+                    }
+                  }
+                  if (val === undefined || val === null || val === '') {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    val = spName ? (reg as any)[spName] : undefined;
+                    if ((val === undefined || val === null || val === '') && reg.CustomData) {
+                      try {
+                        const cd = JSON.parse(reg.CustomData);
+                        val = cd[field.id];
+                      } catch { /* no-op */ }
+                    }
                   }
                   let display: React.ReactNode = '-';
                   if (val !== undefined && val !== null && val !== '') {
