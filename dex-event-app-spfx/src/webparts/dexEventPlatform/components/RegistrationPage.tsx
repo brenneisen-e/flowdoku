@@ -558,7 +558,7 @@ export default function RegistrationPage(): React.ReactElement {
   // "Hauptevent wird jetzt angemeldet" gilt nur, wenn der Parent-Checkbox an ist
   // UND der User nicht bereits angemeldet ist. Bei bereits angemeldetem Parent
   // wird die Parent-Registrierung nicht nochmal ausgelöst.
-  const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther;
+  const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther && !(event && event.subEventsOnlyMode);
   // Fürs Registrieren für andere bleibt der alte Flow: Parent wird immer registriert,
   // keine Session-Auswahl (siehe Render).
   const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
@@ -2419,13 +2419,31 @@ export default function RegistrationPage(): React.ReactElement {
                 preferredStarterType vom Group-Selection-Block oben. */}
             {childEvents.length > 0 && !registerForOther && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
-                <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{tEvent('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
+                {/* v15.11: im subEventsOnlyMode ist die Hauptevent-Anmeldung
+                    deaktiviert — Überschrift + Hinweis entsprechend
+                    anpassen, sonst lesen sich „Haupt-Event und … können
+                    unabhängig" widersprüchlich. */}
+                <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>
+                  {event.subEventsOnlyMode
+                    ? (childTermPlural
+                        ? (locale === 'de' ? `${childTermPlural} auswählen` : `Select ${childTermPlural}`)
+                        : (locale === 'de' ? 'Sub-Events auswählen' : 'Select sub-events'))
+                    : (tEvent('reg.selection.title') || 'Wofür möchtest du dich anmelden?')}
+                </h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                  {childTermPlural
-                    ? (locale === 'de'
-                        ? `Haupt-Event und ${childTermPlural} können unabhängig voneinander an- oder abgewählt werden.`
-                        : `Main event and ${childTermPlural} can be selected or deselected independently.`)
-                    : (tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.')}
+                  {event.subEventsOnlyMode
+                    ? (childTermPlural
+                        ? (locale === 'de'
+                            ? `Bitte wähle mindestens eine ${childTermSingular || 'Sub-Event'}, für die du dich anmelden möchtest.`
+                            : `Please pick at least one ${childTermSingular || 'sub-event'} you want to register for.`)
+                        : (locale === 'de'
+                            ? 'Bitte wähle mindestens ein Sub-Event, für das du dich anmelden möchtest.'
+                            : 'Please pick at least one sub-event you want to register for.'))
+                    : (childTermPlural
+                        ? (locale === 'de'
+                            ? `Haupt-Event und ${childTermPlural} können unabhängig voneinander an- oder abgewählt werden.`
+                            : `Main event and ${childTermPlural} can be selected or deselected independently.`)
+                        : (tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'))}
                 </p>
 
                 {/* v15.7: Hauptevent-Card auch hier ausblenden bei
@@ -2636,35 +2654,57 @@ export default function RegistrationPage(): React.ReactElement {
       {/* Buttons */}
       <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
         <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
-        <button
-          className="btn btn-primary"
-          onClick={handleSubmit}
-          disabled={isSubmitting || (isTeamMode && !teamValidation.ok)}
-          title={isTeamMode && !teamValidation.ok ? (teamValidation.reason || '') : ''}
-        >
-          <Send size={16} /> {(() => {
-            if (isSubmitting) return t('reg.submitting');
-            // v11.82: Team-Modus — eigener Button-Text mit Personen-Zahl.
-            if (isTeamMode) {
-              const n = 1 + teamMembersParsed.filter(Boolean).length;
-              return locale === 'de'
-                ? `Team anmelden (${n} ${n === 1 ? 'Person' : 'Personen'})`
-                : `Register team (${n} ${n === 1 ? 'person' : 'people'})`;
-            }
-            if (registerForOther) return t('reg.register');
-            // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
-            // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir
-            // detailliert an, was gerade submittet wird.
-            if (childEvents.length === 0) return t('reg.register');
-            const parts: string[] = [];
-            if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
-            if (selectedSessions.size > 0) {
-              parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (childTermSingular || t('reg.selection.sessioncount.one') || 'Session') : (childTermPlural || t('reg.selection.sessioncount.many') || 'Sessions')}`);
-            }
-            if (parts.length === 0) return t('reg.register');
-            return `${t('reg.register')} (${parts.join(' + ')})`;
-          })()}
-        </button>
+        {(() => {
+          // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
+          // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
+          // + Hinweis statt „Registrieren (Haupt-Event)" zeigen.
+          const isSubOnly = !!(event && event.subEventsOnlyMode) && !registerForOther;
+          const nothingPicked = isSubOnly && selectedSessions.size === 0;
+          const isDisabled = isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked;
+          const titleAttr = isTeamMode && !teamValidation.ok
+            ? (teamValidation.reason || '')
+            : (nothingPicked
+                ? (locale === 'de'
+                    ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen.`
+                    : `Please pick at least one ${childTermSingular || 'sub-event'}.`)
+                : '');
+          return (
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={isDisabled}
+              title={titleAttr}
+            >
+              <Send size={16} /> {(() => {
+                if (isSubmitting) return t('reg.submitting');
+                // v11.82: Team-Modus — eigener Button-Text mit Personen-Zahl.
+                if (isTeamMode) {
+                  const n = 1 + teamMembersParsed.filter(Boolean).length;
+                  return locale === 'de'
+                    ? `Team anmelden (${n} ${n === 1 ? 'Person' : 'Personen'})`
+                    : `Register team (${n} ${n === 1 ? 'person' : 'people'})`;
+                }
+                if (nothingPicked) {
+                  return locale === 'de'
+                    ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen`
+                    : `Please pick at least one ${childTermSingular || 'sub-event'}`;
+                }
+                if (registerForOther) return t('reg.register');
+                // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
+                // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir
+                // detailliert an, was gerade submittet wird.
+                if (childEvents.length === 0) return t('reg.register');
+                const parts: string[] = [];
+                if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
+                if (selectedSessions.size > 0) {
+                  parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (childTermSingular || t('reg.selection.sessioncount.one') || 'Session') : (childTermPlural || t('reg.selection.sessioncount.many') || 'Sessions')}`);
+                }
+                if (parts.length === 0) return t('reg.register');
+                return `${t('reg.register')} (${parts.join(' + ')})`;
+              })()}
+            </button>
+          );
+        })()}
       </div>
 
       {/* Datenschutz-Hinweis als Fußnote ganz unten.
