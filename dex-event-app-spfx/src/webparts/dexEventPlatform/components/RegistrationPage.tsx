@@ -906,7 +906,16 @@ export default function RegistrationPage(): React.ReactElement {
           // bei Sub-Event-Anmeldungen, die Teilnehmerliste hatte dann „-" in
           // der Anrede-Spalte. Salutation kommt aus dem Hauptformular und ist
           // pro User identisch fuer alle Sub-Event-Anmeldungen.
-          const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
+          // v15.24: Im subEventsOnlyMode gibt es keine Parent-Registrierung,
+          // in der die Antworten zu den Hauptevent-Custom-Fields landen
+          // koennten. Damit die Antworten trotzdem persistiert werden,
+          // schreiben wir die customData-Werte des Hauptformulars
+          // zusaetzlich in JEDE Sub-Event-Registrierung (Sub-Event-eigene
+          // Antworten ueberschreiben Parent-Antworten bei gleicher Field-ID).
+          const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
+          const seFieldValues = isSubOnlyMode
+            ? { salutation, ...customData, ...(sessionFieldValues[ce.id] || {}) }
+            : { salutation, ...(sessionFieldValues[ce.id] || {}) };
           const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
           if (ok) anySuccess = true;
           subOpsDone++;
