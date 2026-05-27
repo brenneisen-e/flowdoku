@@ -44,11 +44,19 @@ function matchesAudience(
   userLocation: string,
   audienceFilters: string[],
   userGroupEmails: string[] = [],
+  eventResolvedEmails: string[] = [],
 ): boolean {
   if (audienceFilters.length === 0) return true;
   const email = userEmail.toLowerCase();
   const loc = (userLocation || '').toLowerCase();
   const groupSet = new Set((userGroupEmails || []).map(g => (g || '').toLowerCase().trim()).filter(Boolean));
+  const resolvedSet = new Set((eventResolvedEmails || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+
+  // v16.4: Pre-compiled-Pfad — wenn die DLs beim Event-Save aufgeloest und
+  // in event.audienceResolvedEmails gespeichert wurden, reicht ein direkter
+  // E-Mail-Lookup. Funktioniert auch fuer verschachtelte DLs, die
+  // /me/memberOf nicht zurueckliefert.
+  if (resolvedSet.has(email)) return true;
 
   return audienceFilters.some(filter => {
     const f = filter.trim().toLowerCase();
@@ -118,7 +126,7 @@ function isEventVisibleForUser(
   if (!hasLocationFilter && !hasAudienceFilter) return true;
 
   const locMatch = matchesLocation(userLocation, event.locationAudience);
-  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud, userGroupEmails);
+  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud, userGroupEmails, event.audienceResolvedEmails || []);
 
   // Default = AND. Nur wenn explizit OR konfiguriert wird Union genutzt.
   if (event.filterMode === 'OR') {

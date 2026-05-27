@@ -55,6 +55,13 @@ export interface DeloitteEvent {
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];
   audienceFilter: string[];
+  /** v16.4: Vor-aufgeloeste E-Mails der DLs aus audienceFilter (lowercase),
+   *  beim Event-Save via Graph auf transitive Members aufgeloest. matchesAudience
+   *  in EventListPage checkt zusaetzlich gegen diese Liste — damit funktioniert
+   *  die Sichtbarkeit auch fuer verschachtelte DLs, die /me/memberOf nicht
+   *  zurueckliefert. Bei DL-Member-Aenderungen muss der Organizer das Event
+   *  einmal neu speichern, damit der Cache aktualisiert wird. */
+  audienceResolvedEmails?: string[];
   filterMode: 'AND' | 'OR';
   startDate: string;
   endDate: string;
