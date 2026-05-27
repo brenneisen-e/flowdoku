@@ -8075,7 +8075,11 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   };
   return (
     <div style={{
-      position: 'fixed', right: 20, bottom: 20, zIndex: 900,
+      position: 'fixed',
+      // v17.13.1: rechts NEBEN dem Content (max-width 1200) statt ganz am
+      // Viewport-Rand. Auf schmalen Bildschirmen (<1200) fallback auf 20px.
+      right: 'max(20px, calc(50vw - 600px - 8px))',
+      bottom: 20, zIndex: 900,
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
       {hasWaitlist && (
