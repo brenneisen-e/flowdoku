@@ -968,15 +968,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         let finalBody = emailData.body;
         let finalRecipientName = nameToUse;
         if (isExternalRecipient) {
+          // v15.16: Subject klar nennt „Weiterleitung notwendig" — die Mail
+          // ersetzt für externe Empfänger die Anmeldebestätigung und muss vom
+          // Organizer ggf. an den externen Teilnehmer weitergeleitet werden.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           finalRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
           finalRecipientName = 'Organizer';
-          finalSubject = `[Externer Teilnehmer] ${emailData.subject} — bitte ggf. weiterleiten`;
+          finalSubject = `Weiterleitung notwendig: ${emailData.subject} (${nameToUse})`;
           // Datenschutz-Hinweis-Box VOR dem Original-Body einbauen.
           const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
-            + `<strong>Hinweis: externer Teilnehmer.</strong><br>`
-            + `Diese Bestätigungsmail richtet sich eigentlich an <strong>${emailToUse}</strong>, einer externen Person die kein Deloitte-Postfach hat. Standardmäßig versendet die App keine Mails an externe Adressen, deshalb landet diese Mail bei dir als Organizer in der Inbox. `
-            + `Du kannst die Mail bei Bedarf an den Empfänger weiterleiten — bitte beachte dabei die <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter).`
+            + `<strong>Weiterleitung notwendig — externer Teilnehmer.</strong><br>`
+            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>) und ist gleichzeitig die offizielle Bestätigung der Registrierung. Da die Adresse kein Deloitte-Postfach ist, hat die App die Mail an dich als Organizer zugestellt. `
+            + `Bitte leite die Mail an die externe Person weiter — unter Beachtung der <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter). `
+            + `Ein Outlook-Kalendereintrag wird für externe Adressen nicht versendet.`
             + `</div>`;
           // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
           // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
@@ -1082,7 +1086,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
       }
       // Outlook-Termin-Einladung in Queue eintragen
-      if (status !== 'Warteliste' && !event.disableOutlook) {
+      // v15.16: Für externe Empfänger (kein @deloitte.de) keinen
+      // Outlook-Termin queuen — Microsoft blockt das Versenden an externe
+      // Adressen ohne Federation, deshalb ist der Eintrag immer ein
+      // Bounce. Der Organizer bekommt stattdessen die Bestätigungsmail
+      // mit Betreff „Weiterleitung notwendig" (s.o.) und kann darüber
+      // den externen Teilnehmer informieren.
+      const skipOutlookForExternal = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
