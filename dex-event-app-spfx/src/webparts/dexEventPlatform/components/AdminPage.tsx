@@ -6812,7 +6812,7 @@ export default function AdminPage(): React.ReactElement {
           <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachruecker — Liste einfuegen">
             <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachruecker — bestehende Empfaenger-Liste einfuegen</h3>
             <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-              Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, ';'-getrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
+              Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, semikolongetrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
             </p>
             <textarea
               value={massmailPasteRaw}
