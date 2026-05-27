@@ -1384,6 +1384,11 @@ export default function AdminPage(): React.ReactElement {
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
+    // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
+    // Anmeldung aktiv und der TN in einem Team ist).
+    if (selectedEvent?.teamRegistrationEnabled) {
+      cols.push({ id: 'team', label: 'Team' });
+    }
     if (userIds.length > 0) {
       // v11.56: Label aus dem ersten roommate-/user-Feld ableiten, statt hart
       // „Zimmerpartner" zu nennen. Wenn ein roommate-Feld existiert, nimm dessen
@@ -4885,6 +4890,19 @@ export default function AdminPage(): React.ReactElement {
                                     {statusBadge(m.Status)}
                                   </div>
                                   <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
+                                  {/* v16.1: Business Area / Department aus
+                                      der SP-Registrierung mit anzeigen,
+                                      damit der Organizer auf einen Blick
+                                      sieht, aus welcher Practice die
+                                      Mitglieder kommen. */}
+                                  {(() => {
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    const dept = (m as any).Department || '';
+                                    if (!dept) return null;
+                                    return (
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>
+                                    );
+                                  })()}
                                 </div>
                                 {isLead && (
                                   <span style={{
@@ -5119,6 +5137,13 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   );
                 }
+                if (id === 'team') {
+                  return (
+                    <th key={id} style={baseStyle} title="Team-Name des Teilnehmers (falls Team-Anmeldung aktiv).">
+                      Team{hideButton(id)}
+                    </th>
+                  );
+                }
                 if (id === 'roommate') {
                   // v11.56: Label dynamisch aus availableColumns nehmen (entstammt dem
                   // ersten roommate-/user-Feld der Custom-Field-Definition) statt
@@ -5245,6 +5270,21 @@ export default function AdminPage(): React.ReactElement {
                           </span>
                         );
                       })()}
+                    </td>
+                  );
+                }
+                if (id === 'team') {
+                  // v16.1: Team-Name + Lead-Markierung. Wenn der TN in
+                  // keinem Team ist, „—" anzeigen.
+                  const tName = (reg.TeamName || '').trim();
+                  const inTeam = !!reg.TeamId;
+                  if (!inTeam) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>—</td>;
+                  return (
+                    <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.82rem' }}>
+                      {tName ? `„${tName}"` : <span style={{ color: 'var(--dex-gray-500)' }}>ohne Namen</span>}
+                      {reg.TeamLead && (
+                        <span style={{ marginLeft: 6, padding: '1px 7px', background: 'var(--dex-green, #86bc25)', color: '#fff', borderRadius: 8, fontSize: '0.66rem', fontWeight: 700 }}>Lead</span>
+                      )}
                     </td>
                   );
                 }
