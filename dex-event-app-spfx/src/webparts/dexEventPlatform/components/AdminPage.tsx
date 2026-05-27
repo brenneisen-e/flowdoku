@@ -561,7 +561,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -791,6 +791,10 @@ export default function AdminPage(): React.ReactElement {
     teamId: string;
     teamName: string;
     freeSlots: number;
+    /** v17.1: true wenn dieser Dialog im „Neues Team anlegen"-Flow geoeffnet
+     *  wurde — dann zeigen wir ein optionales Team-Name-Eingabefeld
+     *  und uebernehmen den eingegebenen Namen beim Insert. */
+    isNewTeam?: boolean;
   } | null>(null);
   const [adminAddMemberPick, setAdminAddMemberPick] = React.useState<{ email: string; displayName: string } | null>(null);
   const [adminAddMemberQuery, setAdminAddMemberQuery] = React.useState('');
@@ -4852,7 +4856,7 @@ export default function AdminPage(): React.ReactElement {
                         const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
                           ? crypto.randomUUID()
                           : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99 });
+                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
                         setAdminAddMemberPick(null);
                         setAdminAddMemberQuery('');
                         setAdminAddMemberResults([]);
@@ -7275,6 +7279,12 @@ export default function AdminPage(): React.ReactElement {
       )}
 
       {adminAddMemberDialog && selectedEvent && (() => {
+        // v17.2: Quick-Pick aus bereits registrierten Personen ohne Team —
+        // damit der Organizer nicht via Graph-Suche jeden neu picken muss,
+        // wenn die Person ohnehin schon angemeldet ist.
+        const teamlessActiveLocal = registrations.filter(r =>
+          (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
+          && !r.TeamId);
         const closeDlg = (): void => {
           setAdminAddMemberDialog(null);
           setAdminAddMemberPick(null);
@@ -7289,6 +7299,34 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddMemberBusy(true);
           setAdminAddMemberError('');
           try {
+            // v17.2: Pruefen, ob die gepickte Person eine bestehende
+            // teamlose Registrierung ist. Wenn ja: nur TeamId/TeamName
+            // PATCHen statt neue Anmeldung + Mail/Outlook auszuloesen.
+            const pickedEmailLc = adminAddMemberPick.email.toLowerCase();
+            const existingTeamless = teamlessActiveLocal.find(r =>
+              (r.ParticipantEmail || '').toLowerCase() === pickedEmailLc);
+            if (existingTeamless) {
+              const isFirstMember = adminAddMemberDialog.isNewTeam === true;
+              const ok = await assignTeamlessToTeam(
+                selectedEvent.id,
+                adminAddMemberDialog.teamId,
+                adminAddMemberDialog.teamName || undefined,
+                existingTeamless.Id,
+                isFirstMember, // erste Person eines neuen Teams wird Lead
+              );
+              if (!ok) {
+                setAdminAddMemberError('Zuordnen ins Team fehlgeschlagen.');
+                setAdminAddMemberBusy(false);
+                return;
+              }
+              const pickedName = adminAddMemberPick.displayName || adminAddMemberPick.email;
+              setTeamsToast(`${pickedName} wurde dem Team zugeordnet — kein neuer Insert, keine Mail.`);
+              window.setTimeout(() => setTeamsToast(''), 4500);
+              const regs = await getAllRegistrations(selectedEvent.id);
+              setRegistrations(regs);
+              closeDlg();
+              return;
+            }
             const res = await addTeamMember(
               selectedEvent.id,
               adminAddMemberDialog.teamId,
@@ -7326,15 +7364,36 @@ export default function AdminPage(): React.ReactElement {
             ariaLabel="Person zum Team hinzufügen"
           >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {adminAddMemberDialog.teamName
-                  ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
-                  : 'Person zum Team hinzufügen'}
+                {adminAddMemberDialog.isNewTeam
+                  ? 'Neues Team anlegen — erste Person hinzufügen'
+                  : adminAddMemberDialog.teamName
+                    ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
+                    : 'Person zum Team hinzufügen'}
               </h3>
               <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
                 {(selectedEvent.teamSize || 0) > 0
                   ? `Team-Belegung: ${(selectedEvent.teamSize || 0) - adminAddMemberDialog.freeSlots}/${selectedEvent.teamSize}`
                   : 'Belegung wird nach dem Hinzufügen aktualisiert.'}
               </div>
+              {/* v17.1: Team-Name-Eingabe nur im „Neues Team anlegen"-Flow.
+                  Optional — wenn leer, bekommt das Team beim Insert keinen
+                  Namen, der Lead kann ihn aber spaeter nicht mehr setzen,
+                  daher direkt hier abfragen. */}
+              {adminAddMemberDialog.isNewTeam && (
+                <div style={{ marginTop: 4 }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                    Team-Name {selectedEvent.askTeamName ? <span style={{ color: 'var(--dex-red, #c00)' }}>*</span> : <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(optional)</span>}
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="z.B. „Borntowin"
+                    value={adminAddMemberDialog.teamName}
+                    onChange={e => setAdminAddMemberDialog(d => d ? { ...d, teamName: e.target.value } : d)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              )}
               <div style={{
                 padding: '14px 16px',
                 background: 'rgba(237,139,0,0.10)',
@@ -7358,6 +7417,49 @@ export default function AdminPage(): React.ReactElement {
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
                   <span style={{ color: 'var(--dex-red)' }}>*</span> Person auswählen
                 </label>
+                {/* v17.2: Quick-Pick fuer bereits registrierte Personen ohne
+                    Team. Erscheint nur wenn noch keine Person gewaehlt ist
+                    und es teamlose Teilnehmer gibt — sonst direkt der
+                    Graph-Suche-Fallback unten. */}
+                {!adminAddMemberPick && teamlessActiveLocal.length > 0 && (
+                  <div style={{ marginBottom: 12, padding: 10, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, background: 'rgba(237,139,0,0.04)' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600, marginBottom: 6 }}>
+                      Bereits angemeldet ohne Team ({teamlessActiveLocal.length}) — direkt auswählen:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+                      {teamlessActiveLocal.map(p => {
+                        const nm = `${p.Vorname || ''} ${p.Nachname || ''}`.trim() || p.ParticipantName || p.ParticipantEmail;
+                        return (
+                          <button
+                            key={p.Id}
+                            type="button"
+                            onClick={() => setAdminAddMemberPick({ email: p.ParticipantEmail, displayName: nm })}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              width: '100%', padding: '6px 10px',
+                              border: '1px solid var(--dex-gray-200)', borderRadius: 6,
+                              background: '#fff', cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.ParticipantEmail)}&size=S`}
+                              alt={nm}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>{nm}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                      Oder weiter unten via Suche eine neue Person hinzufügen.
+                    </div>
+                  </div>
+                )}
                 {adminAddMemberPick ? (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 10,
@@ -7483,14 +7585,24 @@ export default function AdminPage(): React.ReactElement {
                 >
                   Abbrechen
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => { submit().catch(() => { /* */ }); }}
-                  disabled={!adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy}
-                >
-                  {adminAddMemberBusy ? 'Wird hinzugefügt…' : 'Hinzufügen'}
-                </button>
+                {(() => {
+                  // v17.1: Bei „Neues Team anlegen" + askTeamName=true ist
+                  // der Team-Name Pflicht (analog Self-Registration-Flow).
+                  const needName = !!adminAddMemberDialog.isNewTeam && !!selectedEvent.askTeamName;
+                  const nameOk = !needName || (adminAddMemberDialog.teamName.trim().length > 0);
+                  const disabled = !adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy || !nameOk;
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => { submit().catch(() => { /* */ }); }}
+                      disabled={disabled}
+                      title={!nameOk ? 'Bitte einen Team-Namen eingeben.' : ''}
+                    >
+                      {adminAddMemberBusy ? 'Wird hinzugefügt…' : (adminAddMemberDialog.isNewTeam ? 'Team anlegen + Person hinzufügen' : 'Hinzufügen')}
+                    </button>
+                  );
+                })()}
               </div>
           </Modal>
         );

@@ -383,7 +383,7 @@ async function resolveAudienceMembersToCsv(
 }
 
 export default function EventCreationPage(): React.ReactElement {
-  const { goBack, selectedEventId, currentPage } = useNavigation();
+  const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation, canCreateEvents } = useRoles();
@@ -3820,6 +3820,69 @@ export default function EventCreationPage(): React.ReactElement {
       ? { opacity: 0.55, pointerEvents: 'none', userSelect: 'none' }
       : {}
   );
+
+  // v17.3: Unsaved-Changes-Tracking + Navigation-Guard. Wir snapshotten
+  // beim Mount die wichtigsten Form-Felder und prüfen bei Bedarf, ob sich
+  // etwas geändert hat. Beim Zurück-Klick fragt ein Modal nach.
+  const [unsavedConfirmOpen, setUnsavedConfirmOpen] = React.useState<null | { resolve: (_ok: boolean) => void }>(null);
+  const initialFormSnapshotRef = React.useRef<string>('');
+  const computeFormSnapshot = React.useCallback((): string => {
+    return JSON.stringify({
+      title, description, location,
+      addrStreet, addrHouseNo, addrZip, addrCity,
+      organizer, organizerEmails: organizerEmails.join(';'),
+      startDate, endDate, registrationDeadline, lastDeregisterDate,
+      maxParticipants, waitlistEnabled,
+      audience, locationFilter, filterMode,
+      contactName, contactEmail, contactInfo,
+      eventImageUrl,
+      teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
+      teamOpenSlotsVisible, teamJoinRequiresApproval,
+      askSalutation, requireSubEventSelection,
+      // Custom-Fields nur via Anzahl + Labels — JSON.stringify auf das
+      // gesamte Array waere instabil bei id-Aenderungen.
+      customFieldsHash: (customFields || []).map(f => `${f.id}:${f.label}:${f.type}:${f.required}`).join('|'),
+      agendaLen: (agenda || []).length,
+      docsLen: (documents || []).length,
+      subEventsLen: (subEvents || []).length,
+      outlookBody, outlookHeading, outlookSubheading,
+      disableEmails, disableOutlook,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
+    organizer, organizerEmails, startDate, endDate, registrationDeadline, lastDeregisterDate,
+    maxParticipants, waitlistEnabled, audience, locationFilter, filterMode,
+    contactName, contactEmail, contactInfo, eventImageUrl,
+    teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
+    teamOpenSlotsVisible, teamJoinRequiresApproval, askSalutation, requireSubEventSelection,
+    customFields, agenda, documents, subEvents,
+    outlookBody, outlookHeading, outlookSubheading, disableEmails, disableOutlook,
+    emailTemplateOverrides,
+  ]);
+  React.useEffect(() => {
+    // Initial-Snapshot ein paar Ticks nach dem ersten Render setzen, damit
+    // alle initialen useEffect-Loads (z.B. editEvent → State-Hydration) durch sind.
+    const t = setTimeout(() => { initialFormSnapshotRef.current = computeFormSnapshot(); }, 100);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEvent?.id, isEditMode]);
+  React.useEffect(() => {
+    if (submitted) {
+      setNavigationGuard(null);
+      return;
+    }
+    const guard = async (): Promise<boolean> => {
+      const isDirty = initialFormSnapshotRef.current !== '' && computeFormSnapshot() !== initialFormSnapshotRef.current;
+      if (!isDirty) return true;
+      return new Promise<boolean>(resolve => { setUnsavedConfirmOpen({ resolve }); });
+    };
+    setNavigationGuard(guard);
+    return () => setNavigationGuard(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, computeFormSnapshot]);
 
   if (submitted) {
     return (
@@ -12503,6 +12566,46 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         )}
       </Modal>
+
+      {/* v17.3: Unsaved-Changes-Confirm-Modal. Erscheint, wenn der User
+          auf „Zurueck" klickt und das Formular gegenueber dem Initial-
+          Snapshot Aenderungen hat. */}
+      {unsavedConfirmOpen && (
+        <Modal
+          open={true}
+          onClose={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
+          maxWidth={480}
+          padding={24}
+          ariaLabel={isDe ? 'Ungespeicherte Änderungen' : 'Unsaved changes'}
+        >
+          <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+            {isDe ? 'Ungespeicherte Änderungen' : 'Unsaved changes'}
+          </h3>
+          <p style={{ margin: '0 0 16px', fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--dex-gray-700)' }}>
+            {isDe
+              ? <>Du hast Änderungen am Event vorgenommen, die noch <strong>nicht gespeichert</strong> sind. Wenn du jetzt zurückgehst, gehen sie verloren. Was möchtest du tun?</>
+              : <>You have made changes to this event that are <strong>not saved yet</strong>. Going back now will discard them. What do you want to do?</>}
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => { unsavedConfirmOpen.resolve(false); setUnsavedConfirmOpen(null); }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {isDe ? 'Hier bleiben' : 'Stay here'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => { unsavedConfirmOpen.resolve(true); setUnsavedConfirmOpen(null); }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {isDe ? 'Änderungen verwerfen' : 'Discard changes'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
