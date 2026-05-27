@@ -756,6 +756,10 @@ export default function AdminPage(): React.ReactElement {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
+  // v17.8: Sortierung der Warteliste (analog Teilnehmerliste). Default 'pos'
+  // = Reihenfolge nach TeilnehmerID asc (FIFO-Position der Warteliste).
+  const [waitlistSortColumn, setWaitlistSortColumn] = React.useState<'pos' | 'vorname' | 'nachname' | 'email' | 'jobtitle' | 'location' | 'date'>('pos');
+  const [waitlistSortAsc, setWaitlistSortAsc] = React.useState(true);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isResettingCounter, setIsResettingCounter] = React.useState(false);
@@ -5889,11 +5893,42 @@ export default function AdminPage(): React.ReactElement {
           </div>
         )}
 
+        {/* v17.8: Anker fuer Floating-Jump-Button „Zur Warteliste". */}
+        <div id="admin-waitlist-anchor" style={{ scrollMarginTop: 80 }} />
         {(() => {
           // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
           // PreferredStarterType. Ohne Split: eine einzige Warteliste wie bisher.
           const renderWaitlistTable = (title: string, regs: SPRegistration[], accentColor: string): React.ReactElement | null => {
             if (regs.length === 0) return null;
+            // v17.8: Sortierung pro Spalte. Default 'pos' = TeilnehmerID asc
+            // (FIFO-Position der Warteliste — wie vorher).
+            const sortedRegs = (() => {
+              const arr = regs.slice();
+              const dir = waitlistSortAsc ? 1 : -1;
+              const safe = (s: string | undefined): string => (s || '').toLowerCase();
+              const dateMs = (s: string | undefined): number => s ? new Date(s).getTime() : Number.POSITIVE_INFINITY;
+              arr.sort((a, b) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const anyA = a as any; const anyB = b as any;
+                switch (waitlistSortColumn) {
+                  case 'pos': return ((a.TeilnehmerID || 0) - (b.TeilnehmerID || 0)) * dir;
+                  case 'vorname': return safe(a.Vorname).localeCompare(safe(b.Vorname), 'de') * dir;
+                  case 'nachname': return safe(a.Nachname).localeCompare(safe(b.Nachname), 'de') * dir;
+                  case 'email': return safe(a.ParticipantEmail).localeCompare(safe(b.ParticipantEmail)) * dir;
+                  case 'jobtitle': return safe(anyA.JobTitle).localeCompare(safe(anyB.JobTitle), 'de') * dir;
+                  case 'location': return safe(anyA.Location).localeCompare(safe(anyB.Location), 'de') * dir;
+                  case 'date': return (dateMs(a.RegistrationDate) - dateMs(b.RegistrationDate)) * dir;
+                }
+                return 0;
+              });
+              return arr;
+            })();
+            const arrow = (k: typeof waitlistSortColumn): string => k === waitlistSortColumn ? (waitlistSortAsc ? ' ▲' : ' ▼') : '';
+            const toggleSort = (k: typeof waitlistSortColumn): void => {
+              if (waitlistSortColumn === k) setWaitlistSortAsc(v => !v);
+              else { setWaitlistSortColumn(k); setWaitlistSortAsc(true); }
+            };
+            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' };
             return (
               <React.Fragment key={title}>
                 <h4 style={{ marginTop: 24, color: accentColor }}>{title} ({regs.length})</h4>
@@ -5901,20 +5936,38 @@ export default function AdminPage(): React.ReactElement {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Platz</th>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
+                        <th style={thClickable} onClick={() => toggleSort('pos')}>Platz{arrow('pos')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
                         {isSplitCapacity && <th style={{ textAlign: 'left', padding: 8 }}>Wunsch-Typ</th>}
-                        <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                        <th style={thClickable} onClick={() => toggleSort('date')}>Registriert am{arrow('date')}</th>
                         <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {regs.map((reg, i) => (
+                      {sortedRegs.map((reg, i) => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const anyReg = reg as any;
+                        // v17.8: Position bleibt die FIFO-Position basierend auf der ORIGINAL-
+                        // Reihenfolge (TeilnehmerID asc), unabhaengig von der aktuellen Sortierung.
+                        // Wenn der User nach Nachname sortiert, soll trotzdem klar sein, wer
+                        // Platz 1 / 2 / 3 ist.
+                        const fifoIdx = regs
+                          .slice()
+                          .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0))
+                          .findIndex(r => r.Id === reg.Id);
+                        const pos = fifoIdx >= 0 ? fifoIdx + 1 : i + 1;
+                        return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{i + 1}</td>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
+                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{pos}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.JobTitle || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.Location || '-'}</td>
                           {isSplitCapacity && (
                             <td style={{ padding: 8, color: 'var(--dex-gray-700)' }}>
                               {reg.PreferredStarterType || '—'}
@@ -5961,7 +6014,8 @@ export default function AdminPage(): React.ReactElement {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -7698,6 +7752,70 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         );
       })()}
+      {/* v17.8: Floating Jump-Buttons. Erscheinen sobald der User durch die
+          Teilnehmer-Tabelle scrollt — sparen Zeit bei langen Listen. */}
+      {selectedEvent && activeRegs.length > 10 && (
+        <JumpButtons hasWaitlist={waitlistRegs.length > 0} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * v17.8: Floating Jump-Buttons rechts unten. Erscheinen sobald der User
+ * den Viewport >300 px nach unten gescrollt hat. Bietet:
+ *  - Nach oben springen (window.scrollTo {top:0})
+ *  - Zur Warteliste springen (scrollIntoView auf #admin-waitlist-anchor)
+ *
+ * Nur sichtbar wenn die Teilnehmer-Tabelle >10 Eintraege hat (kurze Listen
+ * brauchen keine Sprung-Hilfe).
+ */
+function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null {
+  const { hasWaitlist } = props;
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const onScroll = (): void => { setShow(window.scrollY > 300); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  if (!show) return null;
+  return (
+    <div style={{
+      position: 'fixed', right: 20, bottom: 20, zIndex: 900,
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      {hasWaitlist && (
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById('admin-waitlist-anchor');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          style={{
+            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+            border: 'none', padding: '10px 16px', borderRadius: 999,
+            cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          ↓ Zur Warteliste
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        style={{
+          background: 'var(--dex-green, #86bc25)', color: '#fff',
+          border: 'none', padding: '10px 16px', borderRadius: 999,
+          cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        ↑ Nach oben
+      </button>
     </div>
   );
 }
