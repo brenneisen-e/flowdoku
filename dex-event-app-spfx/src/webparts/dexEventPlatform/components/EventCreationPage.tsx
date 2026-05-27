@@ -11243,7 +11243,15 @@ export default function EventCreationPage(): React.ReactElement {
             outlookSubheading={isOutlook ? outlookSubheading : undefined}
             onOutlookSubheadingChange={isOutlook ? setOutlookSubheading : undefined}
             previewVars={{
-              EventTitle: title || 'Event Title',
+              // v17.5: Im Sub-Event-Kommunikations-Tab den Titel des
+              // aktiven Sub-Events einsetzen, sonst den Hauptevent-Titel.
+              EventTitle: (() => {
+                if (activeCommTabIdx > 0) {
+                  const sub = subEvents[activeCommTabIdx - 1];
+                  return (sub && sub.title && sub.title.trim()) || title || 'Event Title';
+                }
+                return title || 'Event Title';
+              })(),
               Name: 'Max Mustermann',
               Organizer: organizer || 'Organisator',
               AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
