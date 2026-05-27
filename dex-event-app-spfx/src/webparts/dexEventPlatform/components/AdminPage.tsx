@@ -4765,10 +4765,18 @@ export default function AdminPage(): React.ReactElement {
 
           // groupBy TeamId, abgemeldete Personen NICHT eingehen lassen.
           const teamsByid: Record<string, SPRegistration[]> = {};
+          // v16.2: Teilnehmer ohne Team in eine eigene Liste — werden
+          // unten als „Teilnehmer ohne Team"-Sektion gerendert, damit
+          // der Organizer sie sieht und ggf. einem (neuen) Team zuordnen
+          // kann.
+          const teamlessActive: SPRegistration[] = [];
           for (const r of registrations) {
-            const tid = r.TeamId || '';
-            if (!tid) continue;
             if (r.Status === 'Abgemeldet') continue;
+            const tid = r.TeamId || '';
+            if (!tid) {
+              teamlessActive.push(r);
+              continue;
+            }
             (teamsByid[tid] = teamsByid[tid] || []).push(r);
           }
           // Sortierung: aelteste Lead-RegistrationDate zuerst.
@@ -4829,6 +4837,64 @@ export default function AdminPage(): React.ReactElement {
                   {teamEntries.length === 0 && (
                     <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', fontStyle: 'italic' }}>
                       Keine Team-Anmeldungen bisher.
+                    </div>
+                  )}
+                  {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion. */}
+                  {canManage && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ alignSelf: 'flex-start', fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => {
+                        // Neue lokale TeamID generieren und Add-Member-Dialog
+                        // direkt damit oeffnen. Sobald die erste Person hinzu-
+                        // gefuegt wird, wird die TeamId im SP-Item gespeichert.
+                        const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                          ? crypto.randomUUID()
+                          : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99 });
+                        setAdminAddMemberPick(null);
+                        setAdminAddMemberQuery('');
+                        setAdminAddMemberResults([]);
+                        setAdminAddMemberConsent(false);
+                        setAdminAddMemberError('');
+                      }}
+                    >
+                      <Plus size={14} /> Neues Team anlegen
+                    </button>
+                  )}
+                  {teamlessActive.length > 0 && (
+                    <div style={{ padding: 14, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: 'rgba(237,139,0,0.04)' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                        <strong style={{ fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
+                          Teilnehmer ohne Team ({teamlessActive.length})
+                        </strong>
+                        <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.82rem' }}>
+                          — Einzel-Anmeldungen ohne Team-Zuordnung
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {teamlessActive.map(m => {
+                          const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const dept = (m as any).Department || '';
+                          return (
+                            <div key={m.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+                              <img
+                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
+                                alt={name}
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{name}{statusBadge(m.Status)}</div>
+                                <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
+                                {dept && <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                   {teamEntries.map(({ tid, members, lead }) => {
