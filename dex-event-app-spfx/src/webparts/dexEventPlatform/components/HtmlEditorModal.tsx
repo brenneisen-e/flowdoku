@@ -173,7 +173,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
     if (previewMode === 'email') {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
-      const subheading = `Event ${previewVars.EventTitle || ''}`;
+      const subheading = previewVars.EventTitle || '';
       // Manche System-Templates (z.B. Nachruecken, OutlookDeclineReminder)
       // werden bereits komplett Deloitte-gewrappt gespeichert
       // (wrapTemplateForStorage), weil die Power-Automate-Flows den BodyHtml

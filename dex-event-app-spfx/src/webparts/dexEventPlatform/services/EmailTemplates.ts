@@ -230,12 +230,17 @@ export function replacePlaceholdersPlain(text: string, vars: Record<string, stri
  * Nutzt wrapTemplate fuer das Deloitte-Design.
  */
 export function buildEmailFromTemplate(
-  template: { subject: string; headingColor: string; heading: string; bodyHtml: string },
+  template: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string },
   vars: Record<string, string>
 ): { subject: string; body: string } {
   // Subject + Heading: plain text (kein HTML-Escaping, sonst wird "&" zu "&amp;")
   const subject = replacePlaceholdersPlain(template.subject, vars);
   const heading = replacePlaceholdersPlain(template.heading, vars);
+  // v15.17: Subheading aus dem Template — Default ist {{EventTitle}}
+  // (kein hartes „Event "-Präfix mehr). Wenn das Template keine
+  // Subheading hat, fallen wir auf den reinen EventTitle zurück.
+  const rawSub = (template.subheading && template.subheading.trim()) || '{{EventTitle}}';
+  const subheading = replacePlaceholdersPlain(rawSub, vars);
   // Body: HTML, daher Werte escapen
   const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
   // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachruecken) enthalten
@@ -247,7 +252,7 @@ export function buildEmailFromTemplate(
     subject,
     body: isPreWrapped
       ? bodyHtml
-      : wrapTemplate(template.headingColor, heading, `Event ${vars['EventTitle'] || ''}`, bodyHtml),
+      : wrapTemplate(template.headingColor, heading, subheading, bodyHtml),
   };
 }
 
@@ -319,7 +324,7 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
     body: wrapTemplate(
       GREEN,
       'Registration successful',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
       <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>
@@ -338,7 +343,7 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
     body: wrapTemplate(
       '#ed8b00',
       'Waitlist confirmation',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>you have been placed on the <strong>waitlist</strong> for the event <strong>${eventTitle}</strong>.</p>
       ${posInfo}
@@ -357,7 +362,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
     body: wrapTemplate(
       '#da291c',
       'Cancellation confirmed',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>your registration for the event <strong>${eventTitle}</strong> has been <strong>cancelled</strong>.</p>
       <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
@@ -375,7 +380,7 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
     body: wrapTemplate(
       GREEN,
       'You got a spot!',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>Great news! A spot has become available and you have been <strong>moved from the waitlist to a confirmed participant</strong> for the event <strong>${eventTitle}</strong>.</p>
       <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">link</a> (&bdquo;My Events&ldquo;).</p>
@@ -393,7 +398,7 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
     body: wrapTemplate(
       GREEN,
       'Event Created',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>your event <strong>${eventTitle}</strong> has been successfully created.</p>
       <p>You can find the list of participants here:</p>
@@ -491,7 +496,7 @@ export function qrCodeEmail(
       body: wrapTemplate(
         GREEN,
         'Dein QR-Code',
-        `Event ${eventTitle}`,
+        eventTitle,
         `<p>Hallo ${firstName},</p>
         <p>hier ist dein pers\u00F6nlicher QR-Code f\u00FCr das Event <strong>${eventTitle}</strong>.</p>
         <p>Bitte zeige den QR-Code beim Check-in vor.</p>
@@ -506,7 +511,7 @@ export function qrCodeEmail(
     body: wrapTemplate(
       GREEN,
       'Your QR Code',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${firstName},</p>
       <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
       <p>Please show this QR code at check-in.</p>
@@ -526,7 +531,7 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
     body: wrapTemplate(
       '#333333',
       'Information',
-      `Event ${eventTitle}`,
+      eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>${message}</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
