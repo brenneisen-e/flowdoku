@@ -214,7 +214,16 @@ function AppContent(): React.ReactElement {
         title: detail.title || 'Event',
         type: detail.type === 'update' ? 'update' : 'create',
       });
-      navigate('register');
+      // v17.4: Beim Update kehrt der User in das Organizer-Menue des Events
+      // zurueck (AdminPage mit dem soeben gespeicherten Event vorselektiert)
+      // statt in die Event-Liste — weiterarbeiten ohne Such-Klick.
+      // Beim Create bleibt der bisherige Pfad: Event-Liste, damit der neue
+      // Event direkt in der Uebersicht auftaucht.
+      if (detail.type === 'update' && detail.eventId) {
+        navigate('admin', detail.eventId);
+      } else {
+        navigate('register');
+      }
     };
     window.addEventListener('dex-event-submit-success', onSubmitSuccess);
     return () => window.removeEventListener('dex-event-submit-success', onSubmitSuccess);

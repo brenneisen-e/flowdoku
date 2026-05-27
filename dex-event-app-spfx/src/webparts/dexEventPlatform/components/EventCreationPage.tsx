@@ -3075,6 +3075,13 @@ export default function EventCreationPage(): React.ReactElement {
         // beim Update sofort getriggert (loadEvents in updateEvent hat schon
         // gefeuert) — kein delayed refresh nötig wie beim Create.
         try {
+          // v17.4: Nach erfolgreichem Save den Initial-Snapshot auf den
+          // aktuellen Stand setzen, damit die Navigation-Guard (Unsaved-
+          // Changes-Confirm) anschliessend nicht falsch ausloest. Sonst
+          // sieht der User bei jedem Zurueck-Klick nach Save das Modal,
+          // obwohl alles persistiert ist.
+          initialFormSnapshotRef.current = computeFormSnapshot();
+          setNavigationGuard(null);
           window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
             detail: { title: title, eventId: String(selectedEventId), type: 'update' as const },
           }));
@@ -3464,6 +3471,10 @@ export default function EventCreationPage(): React.ReactElement {
         setProgress(100);
         setProgressLabel('Event erfolgreich erstellt!');
         try {
+          // v17.4: gleicher Reset wie im Update-Pfad, damit der
+          // Navigation-Guard nach erfolgreichem Create nicht stoert.
+          initialFormSnapshotRef.current = computeFormSnapshot();
+          setNavigationGuard(null);
           window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
             detail: { title: title, eventId: String(eventId), type: 'create' as const },
           }));
@@ -11030,7 +11041,16 @@ export default function EventCreationPage(): React.ReactElement {
                 👁 {t('create.registerpreview')}
               </button>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {/* v17.4: Hinweis neben dem Speichern-Button — der User soll
+                    wissen, dass es kein „Zwischenspeichern" pro Step braucht. */}
+                {isEditMode && (
+                  <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', maxWidth: 320, lineHeight: 1.4, textAlign: 'right' }}>
+                    {isDe
+                      ? 'Du musst nicht in jedem Schritt zwischenspeichern — ein Klick auf „Änderungen speichern" sichert alle Eingaben und schließt den Edit-Modus.'
+                      : 'You don\'t need to save in every step — one click on „Save changes" persists all inputs and closes the edit mode.'}
+                  </span>
+                )}
                 {/* Im Edit-Modus immer einen Speichern-Button anzeigen, damit man nicht
                     durch alle Steps klicken muss wenn man nur eine Sache aendert */}
                 {isEditMode && currentStep < steps.length - 1 && (
