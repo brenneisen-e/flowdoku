@@ -2540,6 +2540,12 @@ export class EventService {
       // Fuer bestehende Events siehe upgradeAudienceFieldToNote() — migriert die
       // alte Text-Spalte zu Note ohne Datenverlust.
       { title: 'Audience', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
+      // v16.4: Vor-aufgeloeste E-Mails der Audience-DLs (Multi-Line, ';'-
+      // separiert). Wird beim Event-Save vom EventCreationPage-Flow
+      // gesetzt; matchesAudience im EventListPage checkt zusaetzlich
+      // gegen diese Liste. Damit funktioniert die Sichtbarkeit auch fuer
+      // verschachtelte DLs, die /me/memberOf nicht zurueckliefert.
+      { title: 'AudienceResolvedEmails', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 8 },
       { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
       { title: 'StartDate', type: 4 },
       { title: 'EndDate', type: 4 },
@@ -2967,7 +2973,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3083,6 +3089,8 @@ export class EventService {
     locationAddress?: string; // JSON-String: { street, houseNo, zip, city }
     locationFilter: string;
     audience: string;
+    /** v16.4: Vor-aufgeloeste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
+    audienceResolvedEmails?: string;
     filterMode: string;
     startDate: string;
     endDate: string;
@@ -3265,6 +3273,7 @@ export class EventService {
         'LocationAddress': event.locationAddress || '',
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
+        'AudienceResolvedEmails': event.audienceResolvedEmails || '',
         'FilterMode': event.filterMode || 'OR',
         'StartDate': event.startDate || null,
         'EndDate': event.endDate || null,

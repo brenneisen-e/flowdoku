@@ -344,6 +344,44 @@ function LocationMultiSelect({
   );
 }
 
+/**
+ * v16.4: Audience-Liste (kommasepariert) in eine flache, ';'-separierte
+ * Liste von Member-E-Mails aufloesen. Jede '@'-Eintrag wird via
+ * getGroupMembers (Graph) probiert — wenn die Aufloesung eine
+ * Mitglieder-Liste liefert, werden alle deren E-Mails uebernommen, sonst
+ * wird der Eintrag als direkte User-E-Mail behandelt. Lowercase + dedupliziert.
+ *
+ * Wird beim Event-Save aufgerufen und in die SP-Spalte
+ * `AudienceResolvedEmails` geschrieben. matchesAudience im
+ * EventListPage prueft Sichtbarkeit zur Laufzeit gegen diese Liste.
+ */
+async function resolveAudienceMembersToCsv(
+  audienceCsv: string,
+  getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string }> } | null>,
+): Promise<string> {
+  const items = (audienceCsv || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (items.length === 0) return '';
+  const out = new Set<string>();
+  for (const item of items) {
+    if (item.indexOf('@') < 0) continue; // Gruppen-Patterns (DEKOELN etc.) bleiben Runtime-Match
+    try {
+      const grp = await getGroupMembers(item);
+      if (grp && grp.members && grp.members.length > 0) {
+        for (const m of grp.members) {
+          const e = (m.email || '').toLowerCase().trim();
+          if (e) out.add(e);
+        }
+      } else {
+        // Keine Member zurueckgeliefert → behandle als direkte User-Adresse.
+        out.add(item.toLowerCase());
+      }
+    } catch {
+      out.add(item.toLowerCase());
+    }
+  }
+  return Array.from(out).join(';');
+}
+
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents } = useEvents();
@@ -2604,6 +2642,8 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         'LocationFilter': locationFilter,
         'Audience': audience,
+        // v16.4: Audience-DLs vor-aufgeloest mitschreiben.
+        'AudienceResolvedEmails': await resolveAudienceMembersToCsv(audience, getGroupMembers),
         'FilterMode': filterMode,
         'StartDate': startDate ? berlinLocalToUtcIso(startDate) : null,
         'EndDate': endDate ? berlinLocalToUtcIso(endDate) : null,
@@ -3106,6 +3146,10 @@ export default function EventCreationPage(): React.ReactElement {
       setProgress(10);
       setProgressLabel('Event-Daten werden vorbereitet...');
 
+      // v16.4: Audience-DLs beim Save in Member-E-Mails aufloesen, damit der
+      // Runtime-Sichtbarkeits-Check sie ohne weitere Graph-Calls treffen kann.
+      const audienceResolved = await resolveAudienceMembersToCsv(audience, getGroupMembers);
+
       const sanitizedOrgPairCreate = sanitizeOrganizerPairs();
       const eventId = await createEvent({
         title,
@@ -3118,6 +3162,7 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         locationFilter,
         audience,
+        audienceResolvedEmails: audienceResolved,
         filterMode,
         startDate: startDate ? berlinLocalToUtcIso(startDate) : '',
         endDate: endDate ? berlinLocalToUtcIso(endDate) : '',
@@ -7166,6 +7211,19 @@ export default function EventCreationPage(): React.ReactElement {
                     ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
                     : <>Pick <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. If you also set a location filter, you can decide below whether both conditions (AND) or either of them (OR) is enough.</>}
                 </p>
+                {/* v16.4: Hinweis fuer den Organizer, dass Mitglieder zum
+                    Save-Zeitpunkt eingefroren werden und das Event bei DL-
+                    Mitglieder-Aenderungen einmal neu gespeichert werden muss,
+                    damit die neuen Mitglieder die Sichtbarkeit bekommen. */}
+                <div style={{
+                  fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)',
+                  background: 'rgba(237,139,0,0.08)', border: '1px dashed var(--dex-orange, #ed8b00)',
+                  borderRadius: 6, padding: '8px 12px', marginBottom: 12, lineHeight: 1.5,
+                }}>
+                  {isDe
+                    ? <><strong>Hinweis:</strong> Die Mitglieder der ausgewählten Mailverteiler werden beim Speichern des Events einmal aufgelöst und gespeichert — das ist der schnelle Pfad für den Sichtbarkeits-Check. Wenn sich später Mitglieder eines Verteilers ändern (z.B. neue Person zur DL hinzugefügt), <strong>speichere das Event einmal neu</strong>, damit die App den frischen Stand bekommt.</>
+                    : <><strong>Note:</strong> The members of the selected distribution lists are resolved and cached when the event is saved — this is the fast path for the visibility check. If list members change later (e.g. new person added to a DL), <strong>re-save the event once</strong> to refresh the cache.</>}
+                </div>
                 {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
                     Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
                 {audience.trim().length > 0 && (() => {
@@ -8772,8 +8830,34 @@ export default function EventCreationPage(): React.ReactElement {
                   v15.0 ausgeblendet, weil pro Sub-Event jetzt einen
                   eigenen Tab. */}
               <div style={{ display: activeFieldsTabIdx === 0 ? 'block' : 'none' }}>
-              {renderHauptGreyoutBanner()}
-              <div style={hauptGreyoutWrapperStyle()}>
+              {/* v16.5: In Step 5 (Felder) ist im subEventsOnlyMode KEIN
+                  Greyout — die Felder im ersten Tab sind „uebergreifend"
+                  und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
+                  in dem Modus besonders relevant. Stattdessen ein info-
+                  blauer Hinweis-Banner mit der korrekten Erklaerung. */}
+              {subEventsOnlyMode && (() => {
+                const termPl = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
+                const termSg = (childTermSingular || (isDe ? 'Sub-Event' : 'sub-event')).trim() || (isDe ? 'Sub-Event' : 'sub-event');
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '12px 14px', marginBottom: 16,
+                    background: 'rgba(33,150,243,0.06)',
+                    border: '1px solid var(--dex-info, #2196f3)',
+                    borderRadius: 'var(--dex-radius, 12px)',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                    lineHeight: 1.5,
+                  }}>
+                    <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-info, #2196f3)', flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      {isDe
+                        ? <><strong>Übergreifende Felder</strong> — diese Fragen werden bei der Anmeldung zu jeder einzelnen {termSg} abgefragt. Trag hier ein, was für alle {termPl} gemeinsam gilt; spezifische Felder pro {termSg} pflegst du in den jeweiligen Tabs rechts daneben.</>
+                        : <><strong>Cross-cutting fields</strong> — these questions are asked once per {termSg} registration. Configure here what applies across all {termPl}; per-{termSg} specifics go into the individual tabs on the right.</>}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div>
               {/* Dynamische Felder */}
               <div>
                 {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
@@ -9699,7 +9783,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 5) */}
+              </div>{/* v16.5: close plain wrapper div (Step 5) — kein Greyout mehr */}
               </div>{/* v15.0: close activeFieldsTabIdx===0 wrapper (Top-Level Felder + hidden Bereich 2) */}
 
               </div>{/* close Step 5 (Felder) — v15 index 4 */}

@@ -271,6 +271,8 @@ export interface CreateEventInput {
   locationAddress?: string; // JSON: { street, houseNo, zip, city }
   locationFilter: string;
   audience: string;
+  /** v16.4: Pre-resolved DL members (';'-separated, lowercase). */
+  audienceResolvedEmails?: string;
   filterMode: string;
   startDate: string;
   endDate: string;
@@ -610,6 +612,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       })(),
       locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
       audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
+      // v16.4: vor-aufgeloeste Member-E-Mails der Audience-DLs.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      audienceResolvedEmails: ((e as any).AudienceResolvedEmails || '')
+        .split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
       filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',
       startDate: e.StartDate || '',
       endDate: e.EndDate || '',

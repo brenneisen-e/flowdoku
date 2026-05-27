@@ -106,35 +106,13 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     }).catch(() => { /* Foto nicht verfuegbar */ });
 
     // v15.27: Gruppen-/DL-Mitgliedschaften des Users laden, damit der
-    // Audience-Filter-Check zur Laufzeit nicht nur direkte E-Mails matched,
-    // sondern auch Verteiler-Mitgliedschaften (z.B. DETTDUESSELDORF@deloitte.com).
+    // Audience-Filter-Check zur Laufzeit Verteiler-Mitgliedschaften matched.
+    // Seit v16.4 ist die Pre-Compiled-Liste in event.audienceResolvedEmails
+    // der primaere Pfad — der Runtime-Lookup hier dient nur noch als Fallback,
+    // damit Events, die seit dem Schema-Upgrade noch nicht neu gespeichert
+    // wurden, weiterhin funktionieren.
     loadUserGroupEmails(props.context).then(list => {
       setGroupEmails(list);
-      // v15.28 Quickfix: explizite Targeted-Lookups fuer bekannte DLs, die
-      // ueber /me/memberOf evtl. nicht zurueckkommen (z.B. weil verschachtelt
-      // oder Distribution-only ohne Security). Fuer jede DL holen wir die
-      // Members und pruefen, ob currentUser drin steckt. Liste hier
-      // erweitern, sobald weitere produktive Audience-DLs auftauchen.
-      const targetedDLs = [
-        'DETTDuesseldorf@deloitte.com',
-      ];
-      const userEmail = (props.context.pageContext.user.email || '').toLowerCase();
-      (async () => {
-        const extra: string[] = [];
-        for (const dl of targetedDLs) {
-          try {
-            const inDl = await isUserInGroup(props.context, dl, userEmail);
-            if (inDl) extra.push(dl.toLowerCase());
-          } catch { /* */ }
-        }
-        if (extra.length > 0) {
-          setGroupEmails(prev => {
-            const set = new Set(prev);
-            for (const e of extra) set.add(e);
-            return Array.from(set);
-          });
-        }
-      })().catch(() => { /* */ });
     }).catch(() => { setGroupEmails([]); });
 
     // Cleanup: Object URLs freigeben um Memory Leaks zu vermeiden
@@ -221,48 +199,6 @@ async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
   } catch (err) {
     console.warn('[DEX] loadUserGroupEmails failed:', err);
     return [];
-  }
-}
-
-/**
- * v15.28: Quickfix — pruefe explizit, ob der eingeloggte User Mitglied
- * einer bestimmten DL ist (per Graph). Wird fuer Audience-Filter-DLs
- * genutzt, die /me/memberOf evtl. nicht zurueckliefert (verschachtelt
- * oder Distribution-only ohne Security-Enablement).
- *
- * Schritt 1: Group-ID per `/groups?$filter=mail eq '<dl>'` aufloesen.
- * Schritt 2: Per `/groups/{id}/members?$filter=...` checken, ob die
- *           UserEmail Mitglied ist. (Wir holen $top=999, paginieren
- *           NICHT — fuer typische Standort-DLs reicht das.)
- */
-async function isUserInGroup(context: WebPartContext, groupEmail: string, userEmail: string): Promise<boolean> {
-  if (!groupEmail || !userEmail) return false;
-  try {
-    const client = await context.msGraphClientFactory.getClient('3');
-    const lookup = await client
-      .api(`/groups?$filter=mail eq '${groupEmail.replace(/'/g, "''")}'&$select=id&$top=1`)
-      .get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const groups: any[] = (lookup && lookup.value) || [];
-    if (groups.length === 0) return false;
-    const groupId = groups[0].id;
-    if (!groupId) return false;
-    const userLc = userEmail.toLowerCase();
-    // transitiveMembers loest verschachtelte Gruppen automatisch auf.
-    const members = await client
-      .api(`/groups/${groupId}/transitiveMembers?$select=mail,userPrincipalName&$top=999`)
-      .get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const list: any[] = (members && members.value) || [];
-    for (const m of list) {
-      const mail = (m.mail || '').toLowerCase();
-      const upn = (m.userPrincipalName || '').toLowerCase();
-      if (mail === userLc || upn === userLc) return true;
-    }
-    return false;
-  } catch (err) {
-    console.warn('[DEX] isUserInGroup failed:', groupEmail, err);
-    return false;
   }
 }
 
