@@ -300,38 +300,73 @@ export default function EventListPage(): React.ReactElement {
           </div>
         )}
       </div>
-      {viewMode === 'cards' ? (
-        <div className="event-grid">
-          {filteredEvents.map((event, i) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              index={i}
-              isRegistered={myNumbers.registered.includes(event.eventNumber)}
-              isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
-              isOwnOrganizer={isOwnOrganizer(event)}
+      {/* v15.21: Zwei klar getrennte Sektionen — eigene Events (Organizer)
+          zuerst, danach alle weiteren Events sortiert nach Datum. */}
+      {(() => {
+        const ownEvents = filteredEvents.filter(e => isOwnOrganizer(e));
+        const otherEvents = filteredEvents.filter(e => !isOwnOrganizer(e));
+        const sectionTitle = (text: string): React.ReactElement => (
+          <h3 style={{
+            margin: '24px 0 12px', fontSize: '1rem',
+            color: 'var(--dex-gray-800)', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: 0.6,
+          }}>{text}</h3>
+        );
+        const formatDate = (iso: string): string => {
+          if (!iso) return '';
+          const d = new Date(iso);
+          if (isNaN(d.getTime())) return '';
+          return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+                 d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        };
+        const renderSection = (list: DeloitteEvent[]): React.ReactElement => {
+          if (viewMode === 'cards') {
+            return (
+              <div className="event-grid">
+                {list.map((event, i) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    index={i}
+                    isRegistered={myNumbers.registered.includes(event.eventNumber)}
+                    isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+                    isOwnOrganizer={isOwnOrganizer(event)}
+                  />
+                ))}
+              </div>
+            );
+          }
+          return (
+            <EventListView
+              events={list}
+              myNumbers={myNumbers}
+              currentUserEmailLc={currentEmailLc}
+              formatDate={formatDate}
             />
-          ))}
-        </div>
-      ) : (
-        <EventListView
-          events={filteredEvents}
-          myNumbers={myNumbers}
-          currentUserEmailLc={currentEmailLc}
-          formatDate={(iso) => {
-            if (!iso) return '';
-            const d = new Date(iso);
-            if (isNaN(d.getTime())) return '';
-            return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
-                   d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-          }}
-        />
-      )}
-      {filteredEvents.length === 0 && (
-        <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
-          Keine Events für dich gefunden.
-        </p>
-      )}
+          );
+        };
+        return (
+          <>
+            {ownEvents.length > 0 && (
+              <>
+                {sectionTitle(t('eventlist.ownevents') || 'Meine Events als Organizer')}
+                {renderSection(ownEvents)}
+              </>
+            )}
+            {otherEvents.length > 0 && (
+              <>
+                {ownEvents.length > 0 && sectionTitle(t('eventlist.otherevents') || 'Weitere Events')}
+                {renderSection(otherEvents)}
+              </>
+            )}
+            {filteredEvents.length === 0 && (
+              <p className="text-center mt-24" style={{ color: 'var(--dex-gray-400)' }}>
+                Keine Events für dich gefunden.
+              </p>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

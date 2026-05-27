@@ -2809,6 +2809,10 @@ function MyEventSubEvents(props: {
   const { locale: __uiLocale } = useLanguage();
   const isDe = __uiLocale === 'de';
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
+  // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
+  // peers visuell nicht reagiert, weil busyId nur die EINE id haelt.
+  const [processingMessage, setProcessingMessage] = React.useState<string>('');
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
   // v10.27: pro Sub-Event die geparsten Custom-Field-Antworten aus
@@ -2907,20 +2911,37 @@ function MyEventSubEvents(props: {
       }
     }
     setBusyId(childEventId);
+    // v15.21: Voll-Bild-Progress mit Beschreibung — bei Peer-Cancels
+    // zaehlen wir die Fortschritte fortlaufend mit, damit der User sieht
+    // dass auch die peers verarbeitet werden.
+    const totalSteps = (currentlyRegistered ? 1 + peerIdsToCancel.length : 1);
+    const initialMsg = currentlyRegistered
+      ? (isDe
+          ? `Abmeldung wird verarbeitet… (1/${totalSteps})`
+          : `Cancellation in progress… (1/${totalSteps})`)
+      : (isDe ? 'Anmeldung wird verarbeitet…' : 'Registration in progress…');
+    setProcessingMessage(initialMsg);
     try {
       if (currentlyRegistered) {
         await props.cancelRegistration(childEventId);
+        let done = 1;
         for (const peerId of peerIdsToCancel) {
+          done++;
+          setProcessingMessage(isDe
+            ? `Abmeldung wird verarbeitet… (${done}/${totalSteps})`
+            : `Cancellation in progress… (${done}/${totalSteps})`);
           try { await props.cancelRegistration(peerId); }
           catch (err) { console.warn('[DEX] peer-cancel failed:', peerId, err); }
         }
       } else {
         await props.registerForEvent(childEventId, {});
       }
+      setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
       await refresh();
       await props.onMutated();
     } finally {
       setBusyId(null);
+      setProcessingMessage('');
     }
   };
 
@@ -3152,6 +3173,51 @@ function MyEventSubEvents(props: {
           Default: target ist immer abgemeldet (lock-Checkbox); peers
           unchecked. Klick auf „Abmelden" verarbeitet die Auswahl. */}
       {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={!!props.parentEvent.requireSubEventSelection} />}
+      {/* v15.21: Globaler Progress-Overlay waehrend (Peer-)Cancel +
+          Registrierung — blockiert die ganze Seite, damit der User nicht
+          versehentlich nochmal klickt und sieht, dass die Aktion laeuft. */}
+      {processingMessage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={isDe ? 'Wird verarbeitet' : 'Processing'}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '28px 32px',
+            maxWidth: 420, width: '100%',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+            textAlign: 'center',
+          }}>
+            <div aria-hidden="true" style={{
+              width: '100%', height: 6, borderRadius: 3,
+              background: '#e5e5e5',
+              overflow: 'hidden', position: 'relative',
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, bottom: 0,
+                width: '40%',
+                background: 'var(--dex-green, #86bc25)',
+                borderRadius: 3,
+                animation: 'dexProgressSlide 1.2s ease-in-out infinite',
+              }} />
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
+              {processingMessage}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+              {isDe ? 'Bitte einen Moment Geduld…' : 'Please wait a moment…'}
+            </div>
+          </div>
+          <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+        </div>
+      )}
     </div>
   );
 }
