@@ -6772,7 +6772,7 @@ export default function AdminPage(): React.ReactElement {
             <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>An wen soll die Mail gehen?</h3>
             <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer die ueblichen Info-Mails." />
             <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
-            <Row value="waitOnly" label="Nur Warteliste" desc="Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben"." />
+            <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
             <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
