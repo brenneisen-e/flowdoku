@@ -1729,6 +1729,24 @@ export default function AdminPage(): React.ReactElement {
     }
   }, [adminEvents]);
 
+  // v17.9: Map regId → Beitritts-Position (1-basiert, sortiert nach
+  // RegistrationDate asc). Stabile „wer war zuerst da"-Reihenfolge,
+  // unabhaengig von der TeilnehmerID die der IDReorder-Flow neu vergibt.
+  // Abgemeldete werden mitgezaehlt — die Beitritts-Reihenfolge ist ein
+  // historischer Wert, nicht die aktuelle Position.
+  // v17.11 HOTFIX: nach oben vor den early-return `if (!selectedEvent)`
+  // verschoben — sonst React-Error #310 beim Wechsel Event-Liste ↔ Detail.
+  const joinOrderById = React.useMemo(() => {
+    const map = new Map<number, number>();
+    const sorted = registrations.slice().sort((a, b) => {
+      const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      return ta - tb;
+    });
+    sorted.forEach((r, idx) => { map.set(r.Id, idx + 1); });
+    return map;
+  }, [registrations]);
+
   // Teilnehmerlisten-URL aus regListMap ableiten
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getRegListUrl = (_event: DeloitteEvent): string => {
@@ -2408,22 +2426,6 @@ export default function AdminPage(): React.ReactElement {
   };
 
   const sortIcon = (col: string): string => col === sortColumn ? (sortAsc ? ' \u25B2' : ' \u25BC') : '';
-
-  // v17.9: Map regId \u2192 Beitritts-Position (1-basiert, sortiert nach
-  // RegistrationDate asc). Stabile \u201Ewer war zuerst da"-Reihenfolge,
-  // unabhaengig von der TeilnehmerID die der IDReorder-Flow neu vergibt.
-  // Abgemeldete werden mitgezaehlt \u2014 die Beitritts-Reihenfolge ist ein
-  // historischer Wert, nicht die aktuelle Position.
-  const joinOrderById = React.useMemo(() => {
-    const map = new Map<number, number>();
-    const sorted = registrations.slice().sort((a, b) => {
-      const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
-      const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
-      return ta - tb;
-    });
-    sorted.forEach((r, idx) => { map.set(r.Id, idx + 1); });
-    return map;
-  }, [registrations]);
 
   const activeRegs = registrations
     .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
