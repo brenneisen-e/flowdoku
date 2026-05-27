@@ -1407,6 +1407,13 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
+    // v17.15: Nachrueck-Audit-Spalten — nur sichtbar wenn das Event eine
+    // Warteliste hat (sonst sind die Felder ohnehin alle leer).
+    if (selectedEvent?.waitlistEnabled) {
+      cols.push({ id: 'promotedDate', label: 'Nachgerückt am' });
+      cols.push({ id: 'replaced', label: 'Ersetzt' });
+      cols.push({ id: 'replacedBy', label: 'Ersetzt durch' });
+    }
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
     // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
     // Anmeldung aktiv und der TN in einem Team ist).
@@ -1738,22 +1745,9 @@ export default function AdminPage(): React.ReactElement {
   }, [adminEvents]);
 
   // v17.9: Map regId → Beitritts-Position (1-basiert, sortiert nach
-  // RegistrationDate asc). Stabile „wer war zuerst da"-Reihenfolge,
-  // unabhaengig von der TeilnehmerID die der IDReorder-Flow neu vergibt.
-  // Abgemeldete werden mitgezaehlt — die Beitritts-Reihenfolge ist ein
-  // historischer Wert, nicht die aktuelle Position.
-  // v17.11 HOTFIX: nach oben vor den early-return `if (!selectedEvent)`
-  // verschoben — sonst React-Error #310 beim Wechsel Event-Liste ↔ Detail.
-  const joinOrderById = React.useMemo(() => {
-    const map = new Map<number, number>();
-    const sorted = registrations.slice().sort((a, b) => {
-      const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
-      const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
-      return ta - tb;
-    });
-    sorted.forEach((r, idx) => { map.set(r.Id, idx + 1); });
-    return map;
-  }, [registrations]);
+  // v17.15: joinOrderById useMemo entfernt — wurde mit der Beitritts-#-
+  // Spalte (v17.9) eingefuehrt, die der User in v17.10 wieder rausgeworfen
+  // hat. Damit kein Hook mehr, der bei /joinOrder/ stale referenziert war.
 
   // Teilnehmerlisten-URL aus regListMap ableiten
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5269,6 +5263,27 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   );
                 }
+                if (id === 'promotedDate') {
+                  return (
+                    <th key={id} style={baseStyle} title="Zeitpunkt des Nachrueckens — gesetzt sobald der Teilnehmer von der Warteliste in den Aktiv-Bereich promotet wurde. Leer fuer Personen die sich direkt angemeldet haben.">
+                      Nachgerückt am{hideButton(id)}
+                    </th>
+                  );
+                }
+                if (id === 'replaced') {
+                  return (
+                    <th key={id} style={baseStyle} title="Wessen Abmeldung diesen Promote ausgeloest hat. Nur gesetzt fuer nachgerueckte Personen.">
+                      Ersetzt{hideButton(id)}
+                    </th>
+                  );
+                }
+                if (id === 'replacedBy') {
+                  return (
+                    <th key={id} style={baseStyle} title="Wer nach der Abmeldung dieses Teilnehmers den Platz uebernommen hat. Nur gesetzt fuer abgemeldete Personen, deren Cancel einen Promote ausgeloest hat.">
+                      Ersetzt durch{hideButton(id)}
+                    </th>
+                  );
+                }
                 if (id === 'registeredBy') {
                   return (
                     <th key={id} style={baseStyle} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">
@@ -5393,10 +5408,40 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'date') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
                 }
+                if (id === 'promotedDate') {
+                  // v17.15: „Nachgerueckt am" — gesetzt beim Promote
+                  // von Warteliste → Angemeldet. Leer fuer Personen die
+                  // sich direkt in den Aktiv-Bereich angemeldet haben.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const v = (reg as any).PromotedDate as string | undefined;
+                  return <td key={id} style={{ padding: 8, color: v ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-300)', fontSize: '0.8rem' }}>{v ? formatDate(v) : '—'}</td>;
+                }
+                if (id === 'replaced') {
+                  // v17.15: „Ersetzt" — die Person, deren Cancel diesen
+                  // Promote ausgeloest hat. Wenn die Person in den
+                  // aktuellen registrations gefunden wird, zeigen wir den
+                  // Namen — sonst fallback auf die rohe E-Mail.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const email = ((reg as any).ReplacedParticipantEmail as string | undefined) || '';
+                  if (!email) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-300)' }}>—</td>;
+                  const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
+                  const label = other ? ((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email : email;
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-700)', fontSize: '0.8rem' }} title={email}>{label}</td>;
+                }
+                if (id === 'replacedBy') {
+                  // v17.15: „Ersetzt durch" — die Person die nach Cancel
+                  // dieses Eintrags den Platz uebernommen hat. Spiegelbild
+                  // von „Ersetzt".
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const email = ((reg as any).ReplacedByParticipantEmail as string | undefined) || '';
+                  if (!email) return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-300)' }}>—</td>;
+                  const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
+                  const label = other ? ((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email : email;
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }} title={email}>{label}</td>;
+                }
                 if (id === 'joinOrder') {
-                  // v17.9: kuenstliche Beitritts-Position (stabil ueber Flow-Reorder).
-                  const pos = joinOrderById.get(reg.Id);
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{pos ?? '-'}</td>;
+                  // v17.9 (deprecated): joinOrder-Spalte seit v17.10 entfernt.
+                  return <td key={id} style={{ padding: 8 }}>—</td>;
                 }
                 if (id === 'registeredBy') {
                   return (
@@ -5665,7 +5710,11 @@ export default function AdminPage(): React.ReactElement {
                               selectedEvent.subsiteUrl,
                               cancelledStarterType || undefined,
                               selectedEvent.maxParticipants,
-                              (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined
+                              (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
+                              // v17.15: Audit-Tracking — promotete Person merkt sich,
+                              // wessen Cancel sie ersetzt; cancelnde Person bekommt
+                              // „ReplacedByParticipantEmail" mitgeschrieben.
+                              { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
                             );
                             if (promoted && promoted.success && promoted.email) {
                               // Erfolgs-Toast anzeigen

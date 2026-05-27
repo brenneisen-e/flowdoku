@@ -548,6 +548,15 @@ export interface SPRegistration {
    *  Mitglieder-Identifikation angezeigt. Auf der SP-Liste seit jeher
    *  vorhanden — hier nur als TypeScript-Property nachgezogen. */
   Location?: string;
+  /** v17.15: Nachrueck-Audit. PromotedDate ist die ISO-Zeit des Promote
+   *  (Warteliste → Angemeldet). ReplacedParticipantEmail ist die E-Mail
+   *  der Person, deren Cancel diesen Promote ausgeloest hat („Ersetzt
+   *  wen"). ReplacedByParticipantEmail ist auf der cancelnden Person
+   *  gesetzt und zeigt die E-Mail der nachrueckenden Person („Ersetzt
+   *  durch"). Beide Felder Single-Line-Text. */
+  PromotedDate?: string;
+  ReplacedParticipantEmail?: string;
+  ReplacedByParticipantEmail?: string;
   CustomData: string; // JSON mit Custom Field Werten
 }
 
@@ -3766,6 +3775,15 @@ export class EventService {
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+      // v17.15: Nachrueck-Audit (siehe SPRegistration-Interface):
+      // - PromotedDate: gesetzt beim Promote auf die nachrueckende Person.
+      // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den
+      //   Promote ausgeloest hat („Ersetzt wen") — auf der promoteten Person.
+      // - ReplacedByParticipantEmail: E-Mail der nachrueckenden Person
+      //   („Ersetzt durch") — auf der cancelnden Person.
+      { title: 'PromotedDate', type: 4 },
+      { title: 'ReplacedParticipantEmail', type: 2 },
+      { title: 'ReplacedByParticipantEmail', type: 2 },
       // v11.36: Überbuchungs-Review-Marker. '' = normal, 'Pending' = vom
       // „Überbuchung prüfen"-Lauf als über Kapazität erkannt; der Admin
       // entscheidet pro Person (auf Warteliste / Platz behalten).
@@ -6026,8 +6044,15 @@ export class EventService {
      * hier den freigewordenen Starter-Typ mitgeben — dann wird NUR der erste
      * Warteliste-Teilnehmer mit passendem PreferredStarterType nachgerückt.
      * Wenn leer: Default-Verhalten (beliebiger Warteliste-Teilnehmer). */
-    onlyWithPreferredType?: string
-  ): Promise<{ success: boolean; email?: string; name?: string; skippedOverbooked?: boolean }> {
+    onlyWithPreferredType?: string,
+    /** v17.15: Audit-Tracking — wenn der Promote durch das Cancel einer
+     *  konkreten Person ausgeloest wurde (in der App-Pfad), die E-Mail
+     *  und Item-Id dieser Person mitgeben. Wird auf der nachrueckenden
+     *  Person als ReplacedParticipantEmail + PromotedDate gespeichert,
+     *  und zusaetzlich auf der cancelnden Person als
+     *  ReplacedByParticipantEmail (zweite MERGE-PATCH). */
+    replacedByCancel?: { itemId: number; participantEmail: string },
+  ): Promise<{ success: boolean; email?: string; name?: string; itemId?: number; skippedOverbooked?: boolean }> {
     try {
       // Ueberbuchungs-Schutz: Nur nachruecken, wenn tatsaechlich ein Platz frei ist.
       // Bei unlimited (maxParticipants === 0 oder undefined) immer nachruecken.
@@ -6076,6 +6101,11 @@ export class EventService {
       if (inheritStarterType) {
         mergeBody['StarterType'] = inheritStarterType;
       }
+      // v17.15: Nachrueck-Audit auf der promoteten Person mitschreiben.
+      mergeBody['PromotedDate'] = new Date().toISOString();
+      if (replacedByCancel && replacedByCancel.participantEmail) {
+        mergeBody['ReplacedParticipantEmail'] = replacedByCancel.participantEmail;
+      }
       const mergeResp = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
         mergeBody
@@ -6086,8 +6116,21 @@ export class EventService {
       const nachname = firstWaiting.Nachname || '';
       const name = (vorname && nachname) ? `${vorname} ${nachname}` : (firstWaiting.ParticipantName || '');
       const email = firstWaiting.ParticipantEmail || firstWaiting.Title || '';
+
+      // v17.15: zweite PATCH auf die cancelnde Person — „Ersetzt durch".
+      if (replacedByCancel && replacedByCancel.itemId && email) {
+        try {
+          await this._merge(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${replacedByCancel.itemId})`,
+            { 'ReplacedByParticipantEmail': email }
+          );
+        } catch (err) {
+          console.warn('[DEX] Nachrueck-Audit auf cancelnder Person fehlgeschlagen:', err);
+        }
+      }
+
       console.warn(`[DEX] promoteFirstWaitlistItem: promoted ${name} <${email}> (item ${firstWaiting.Id}) to Angemeldet.`);
-      return { success: true, email, name };
+      return { success: true, email, name, itemId: firstWaiting.Id };
     } catch {
       return { success: false };
     }
