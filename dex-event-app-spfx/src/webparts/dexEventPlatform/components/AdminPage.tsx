@@ -862,6 +862,9 @@ export default function AdminPage(): React.ReactElement {
   const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
   const [inviteSending, setInviteSending] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
+  // v17.12: Zielgruppen-Picker fuer Excel-Export.
+  const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
+  const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly'>('active');
   // Outlook-Decline-Check (Admin only): zeigt Teilnehmer, die in Outlook
   // abgesagt haben, aber in der Teilnehmerliste noch aktiv gelistet sind.
   const [isCheckingDeclines, setIsCheckingDeclines] = React.useState(false);
@@ -1404,11 +1407,6 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
-    // v17.9: Beitritts-Reihenfolge (kuenstliche Original-#). Sortiert die
-    // gesamte Teilnehmerliste nach RegistrationDate asc — wer wirklich
-    // zuerst da war steht auf #1, unabhaengig von der durch den IDReorder-
-    // Flow compacteten TeilnehmerID.
-    cols.push({ id: 'joinOrder', label: 'Beitritts-#' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
     // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
     // Anmeldung aktiv und der TN in einem Team ist).
@@ -1546,10 +1544,20 @@ export default function AdminPage(): React.ReactElement {
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
    * - 'b2run': Format laut B2Run Excel-Template (Nr, Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB, Anonym, Gruppe, Strasse, PLZ, Stadt, Mobilnummer, Infoservice, Altersklasse)
    */
-  const exportCsv = (mode: 'deloitte' | 'b2run'): void => {
+  const exportCsv = (mode: 'deloitte' | 'b2run', audience: 'active' | 'activePlusWait' | 'waitOnly' = 'active'): void => {
     if (!selectedEvent) return;
-    const activeRegsForExport = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
-    if (activeRegsForExport.length === 0) { alert('Keine aktiven Teilnehmer zum Exportieren.'); return; }
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const audienceFilter = (r: SPRegistration): boolean => {
+      if (audience === 'waitOnly') return r.Status === 'Warteliste';
+      if (audience === 'activePlusWait') return ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste';
+      return ACTIVE.indexOf(r.Status) >= 0;
+    };
+    // v17.12: nach TeilnehmerID asc sortieren (vorher random / Status-Reihenfolge).
+    const activeRegsForExport = registrations
+      .filter(audienceFilter)
+      .slice()
+      .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
+    if (activeRegsForExport.length === 0) { alert('Keine Teilnehmer zum Exportieren.'); return; }
 
     // CSV-Wert sicher escapen (Komma, Quotes, Newlines)
     const esc = (v: unknown): string => {
@@ -3314,7 +3322,7 @@ export default function AdminPage(): React.ReactElement {
             {/* 4. Massenmail an alle aktiven Teilnehmer */}
             <ActionTile
               icon={<Mail size={18} />}
-              title={t('admin.emailall') || 'Massenmail senden'}
+              title="E-Mail versenden an Teilnehmergruppen"
               desc="Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete)."
               badge="organizer"
               onClick={() => {
@@ -3398,13 +3406,13 @@ export default function AdminPage(): React.ReactElement {
                   : "Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events."}
                 badge="organizer"
                 onClick={() => {
-                  // Bei B2Run-Events: Dropdown mit Wahl zwischen Deloitte-
-                  // und B2Run-View. Bei normalen Events gibt es nur den
-                  // Deloitte-Export — direkt ausloesen, kein Dropdown noetig.
+                  // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
+                  // Bei B2Run zusaetzlich noch View-Auswahl im Dropdown.
                   if (selectedEvent && selectedEvent.type === 'B2Run') {
                     setShowExportMenu(!showExportMenu);
                   } else {
-                    exportCsv('deloitte');
+                    setExcelAudience('active');
+                    setExcelTargetModal({ mode: 'deloitte' });
                   }
                 }}
               />
@@ -3418,7 +3426,7 @@ export default function AdminPage(): React.ReactElement {
                 }}>
                   <button
                     type="button"
-                    onClick={() => { setShowExportMenu(false); exportCsv('deloitte'); }}
+                    onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'deloitte' }); }}
                     style={{
                       display: 'block', width: '100%', textAlign: 'left',
                       padding: '10px 12px', border: 'none', background: 'transparent',
@@ -3435,7 +3443,7 @@ export default function AdminPage(): React.ReactElement {
                   {selectedEvent && selectedEvent.type === 'B2Run' && (
                     <button
                       type="button"
-                      onClick={() => { setShowExportMenu(false); exportCsv('b2run'); }}
+                      onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'b2run' }); }}
                       style={{
                         display: 'block', width: '100%', textAlign: 'left',
                         padding: '10px 12px', border: 'none', background: 'transparent',
@@ -5262,13 +5270,6 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   );
                 }
-                if (id === 'joinOrder') {
-                  return (
-                    <th key={id} style={baseStyle} title="Position in der Reihenfolge der eigenen Anmeldung (RegistrationDate asc). Anders als die TeilnehmerID, die durch den Nachrueck-Flow umsortiert wird, bleibt diese Position stabil — wer zuerst da war, ist hier #1.">
-                      Beitritts-#{hideButton(id)}
-                    </th>
-                  );
-                }
                 if (id === 'team') {
                   return (
                     <th key={id} style={baseStyle} title="Team-Name des Teilnehmers (falls Team-Anmeldung aktiv).">
@@ -6827,19 +6828,79 @@ export default function AdminPage(): React.ReactElement {
               <strong>{active.length}</strong> aktive Teilnehmer im Event.<br />
               <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>{missing.length}</strong> Teilnehmer NICHT in deiner Liste — die werden angeschrieben.
             </div>
-            {missing.length > 0 && missing.length <= 50 && (
-              <div style={{ marginTop: 8, padding: 10, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.78rem', maxHeight: 200, overflowY: 'auto' }}>
-                {missing.map(r => (
-                  <div key={r.Id} style={{ padding: '2px 0' }}>
-                    {((r.Vorname || '') + ' ' + (r.Nachname || '')).trim() || r.ParticipantName} — <span style={{ color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</span>
-                  </div>
-                ))}
-              </div>
+            {missing.length > 0 && (
+              <details style={{ marginTop: 8, padding: 0, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem' }}>
+                <summary style={{ padding: '8px 12px', cursor: 'pointer', fontWeight: 600, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                  Empfaenger anzeigen ({missing.length})
+                </summary>
+                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(255,255,255,0.6)' }}>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Vorname</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Nachname</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Position</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Email</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missing.map(r => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const anyR = r as any;
+                        return (
+                          <tr key={r.Id} style={{ borderBottom: '1px solid rgba(237,139,0,0.15)' }}>
+                            <td style={{ padding: 6 }}>{r.Vorname || '-'}</td>
+                            <td style={{ padding: 6 }}>{r.Nachname || '-'}</td>
+                            <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{anyR.JobTitle || '-'}</td>
+                            <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurueck</button>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
               <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction} style={{ fontSize: '0.85rem' }}>Weiter zum Mail-Editor</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* v17.12: Excel-Export-Zielgruppen-Picker. */}
+      {excelTargetModal && selectedEvent && (() => {
+        const closeAll = (): void => setExcelTargetModal(null);
+        const proceed = (): void => {
+          const mode = excelTargetModal.mode;
+          setExcelTargetModal(null);
+          exportCsv(mode, excelAudience);
+        };
+        const Row = (props: { value: 'active' | 'activePlusWait' | 'waitOnly'; label: string; desc: string }): React.ReactElement => (
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+            borderRadius: 8, border: `1px solid ${excelAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+            background: excelAudience === props.value ? 'rgba(134,188,37,0.08)' : '#fff',
+            cursor: 'pointer', marginBottom: 8,
+          }}>
+            <input type="radio" name="excel-target" checked={excelAudience === props.value} onChange={() => setExcelAudience(props.value)} style={{ marginTop: 3 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{props.label}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{props.desc}</div>
+            </div>
+          </label>
+        );
+        return (
+          <Modal open={true} onClose={closeAll} maxWidth={520} padding={24} ariaLabel="Excel-Export Zielgruppe">
+            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>Excel-Export — wen sollen wir exportieren?</h3>
+            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer den Check-In / die Vor-Ort-Liste." />
+            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven + Wartelistler in einem Sheet, sortiert nach TeilnehmerID." />
+            <Row value="waitOnly" label="Nur Warteliste" desc="Nur die Wartelistler — z.B. fuer Briefing." />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Excel herunterladen</button>
             </div>
           </Modal>
         );
@@ -7937,7 +7998,11 @@ export default function AdminPage(): React.ReactElement {
       })()}
       {/* v17.8: Floating Jump-Buttons. Erscheinen sobald der User durch die
           Teilnehmer-Tabelle scrollt — sparen Zeit bei langen Listen. */}
-      {selectedEvent && activeRegs.length > 10 && (
+      {/* v17.11.1: JumpButtons immer rendern wenn ein Event selektiert ist —
+          das interne Show-Gating (scrollY > 300) reicht. Frueher Threshold
+          activeRegs>10 war zu hoch, fuer Test-Events mit wenig TN
+          erschienen die Buttons nie. */}
+      {selectedEvent && (
         <JumpButtons hasWaitlist={waitlistRegs.length > 0} />
       )}
     </div>
@@ -7957,7 +8022,17 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null
   const { hasWaitlist } = props;
   const [show, setShow] = React.useState(false);
   React.useEffect(() => {
-    const onScroll = (): void => { setShow(window.scrollY > 300); };
+    const onScroll = (): void => {
+      // v17.11.1: niedrigerer Threshold, damit die Buttons auch in
+      // SPFx-WebPart-Kontexten (eingebettete iframe-Hoehen) sichtbar
+      // werden. Wenn weder window noch documentElement scrollen, fallen
+      // wir auf 0 zurueck und zeigen die Buttons sofort.
+      const winY = window.scrollY || window.pageYOffset || 0;
+      const docY = document.documentElement ? document.documentElement.scrollTop : 0;
+      const bodyY = document.body ? document.body.scrollTop : 0;
+      const y = Math.max(winY, docY, bodyY);
+      setShow(y > 100);
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
