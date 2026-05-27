@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EventService } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -828,6 +829,14 @@ export default function EventCreationPage(): React.ReactElement {
   // Mit Sub-Event + Team). Klick auf eine Karte fuellt das Formular
   // mit der jeweiligen Variante und schliesst das Modal.
   const [showDemoVariantModal, setShowDemoVariantModal] = React.useState<boolean>(false);
+  // v17.21: Modal nach erfolgreichem Speichern — fragt den Organizer, ob er
+  // eine A4-Zusammenfassung des Events herunterladen moechte. Pending-Payload
+  // haelt die Info fuer den `dex-event-submit-success`-Dispatch, der erst
+  // gefeuert wird, wenn der User im Modal eine Auswahl getroffen hat.
+  const [showSummaryModal, setShowSummaryModal] = React.useState<boolean>(false);
+  const [pendingSuccessDispatch, setPendingSuccessDispatch] = React.useState<{
+    title: string; eventId: string; type: 'create' | 'update';
+  } | null>(null);
   const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
@@ -3113,9 +3122,12 @@ export default function EventCreationPage(): React.ReactElement {
           // obwohl alles persistiert ist.
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
-          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
-            detail: { title: title, eventId: String(selectedEventId), type: 'update' as const },
-          }));
+          // v17.21: Statt sofort den Wizard zu verlassen, oeffnet sich erst
+          // das Summary-Export-Modal. Der eigentliche Success-Dispatch laeuft
+          // erst, wenn der User dort eine Auswahl getroffen hat (PDF / Word /
+          // Nein, danke).
+          setPendingSuccessDispatch({ title, eventId: String(selectedEventId), type: 'update' });
+          setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
       } else {
@@ -3519,9 +3531,9 @@ export default function EventCreationPage(): React.ReactElement {
           // Navigation-Guard nach erfolgreichem Create nicht stoert.
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
-          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
-            detail: { title: title, eventId: String(eventId), type: 'create' as const },
-          }));
+          // v17.21: Summary-Export-Modal vor dem Submit-Success-Dispatch.
+          setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
+          setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
         // Delayed Refresh — SP braucht typischerweise 2-5s bis frische Subsite-
@@ -11859,6 +11871,203 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v17.21: A4-Zusammenfassungs-Modal nach erfolgreichem Save — fragt
+          den Organizer, ob er das gesamte Event als PDF oder Word herunter-
+          laden moechte (z.B. zur Durchsicht durch einen Partner). Beim
+          Klick auf eine Option laeuft der Export sofort, danach feuert der
+          eigentliche „Wizard verlassen"-Dispatch (`dex-event-submit-success`).
+          „Nein, danke" springt direkt zum Dispatch. */}
+      {showSummaryModal && pendingSuccessDispatch && (() => {
+        const closeAndDispatch = (): void => {
+          const payload = pendingSuccessDispatch;
+          setShowSummaryModal(false);
+          setPendingSuccessDispatch(null);
+          try {
+            window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
+              detail: payload,
+            }));
+          } catch { /* */ }
+        };
+        const buildData = (): SummaryData => {
+          // Bild als DataURL (falls noch nicht Base64): unten reicht der
+          // bestehende imagePreview, der bei neu hochgeladenen Bildern
+          // bereits eine Data-URL ist und bei bestehenden Events die
+          // SharePoint-URL. Letztere wird im PDF/Doc-Export im Print-View
+          // i.d.R. nicht geladen (CORS) — wir bauen einen Fallback-Text.
+          const subEventsForSummary = subEvents.map(se => ({
+            title: se.title || '',
+            startDate: se.startDate,
+            endDate: se.endDate,
+            location: se.location,
+            description: se.description,
+            maxParticipants: typeof se.maxParticipants === 'number' ? se.maxParticipants : undefined,
+            waitlistEnabled: !!se.waitlistEnabled,
+          }));
+          const customFieldsForSummary = customFields
+            .filter(f => f.label && f.label.trim().length > 0)
+            .map(f => ({
+              id: f.id,
+              label: f.label,
+              type: f.type,
+              required: !!f.required,
+              helpText: f.helpText,
+              confirmLabel: f.confirmLabel,
+              options: f.type === 'select' ? f.options : undefined,
+              multi: !!f.multi,
+              onlyForGroup: f.onlyForGroup,
+              labelEn: f.labelEn,
+              helpTextEn: f.helpTextEn,
+              confirmLabelEn: f.confirmLabelEn,
+              optionsEn: f.optionsEn,
+              showIf: f.showIf,
+            }));
+          // Transferzeiten + Agenda werden in den Summary-Helper als
+          // vereinfachte Spalten gemappt — das Detail-Schema bleibt im
+          // Wizard, der Export nimmt die fuer Reviewer relevanten Spalten.
+          const transfersForSummary = transferTimes.map(t => ({
+            time: [t.date, t.departureTime].filter(Boolean).join(' '),
+            description: [t.location, t.description, t.meetingPoint].filter(Boolean).join(' — '),
+          }));
+          const agendaForSummary = agenda.map(a => ({
+            time: [a.date, a.time, a.endTime ? ` – ${a.endTime}` : ''].filter(Boolean).join(' '),
+            topic: a.title,
+            speaker: a.description,
+          }));
+          const quizForSummary = quiz.map(q => ({
+            question: q.question,
+            options: q.options,
+            correctIndex: (q.correctIndices && q.correctIndices.length > 0) ? q.correctIndices[0] : undefined,
+          }));
+          const documentsForSummary = documents.map(doc => ({
+            name: doc.name,
+            size: doc.size,
+          }));
+          return {
+            title,
+            description,
+            imageDataUrl: imagePreview || eventImageUrl || undefined,
+            startDate,
+            endDate,
+            organizers: organizer.split(';').map(s => s.trim()).filter(Boolean),
+            organizerEmails,
+            contactName,
+            contactEmail,
+            contactInfo,
+            testTeam: testTeamNames,
+            qrScanners: qrScannerNames,
+            isFictive,
+            activeFrom,
+            location,
+            address: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
+            agenda: agendaForSummary,
+            transfers: transfersForSummary,
+            locationFilter: locationFilter ? locationFilter.split(';').map(s => s.trim()).filter(Boolean) : [],
+            audience: audience ? audience.split(';').map(s => s.trim()).filter(Boolean) : [],
+            filterMode,
+            excludedUsers,
+            registrationDeadline,
+            lastDeregisterDate,
+            maxParticipants: Number(maxParticipants) || 0,
+            unlimitedParticipants,
+            waitlistEnabled,
+            durchstarterCapacity: Number(durchstarterCapacity) || 0,
+            funstarterCapacity: Number(funstarterCapacity) || 0,
+            splitLabelA, splitLabelB,
+            splitSharedWaitlist,
+            teamRegistrationEnabled,
+            teamSize,
+            askTeamName,
+            teamPartialAllowed,
+            teamOpenSlotsVisible,
+            teamJoinRequiresApproval,
+            askSalutation,
+            bilingualFields,
+            customFields: customFieldsForSummary,
+            allowAttendeeUpload,
+            attendeeUploadHint,
+            attendeeUploadLabel,
+            emailLanguage,
+            disableEmails,
+            disableOutlook,
+            outlookHeading,
+            outlookSubheading,
+            outlookBody,
+            notifyOrgRegisterMode,
+            notifyOrgRegisterFromDate,
+            notifyOrgCancelMode,
+            documents: documentsForSummary,
+            funZone: quizForSummary,
+            quizClusterSize,
+            subEvents: subEventsForSummary,
+            childTermSingular,
+            childTermPlural,
+            subEventsOnlyMode,
+            requireSubEventSelection,
+            generatedAt: new Date().toISOString(),
+            locale: isDe ? 'de' : 'en',
+          };
+        };
+        const onPdf = (): void => {
+          try { exportSummaryAsPdf(buildData()); } catch (err) {
+            console.warn('[DEX] exportSummaryAsPdf failed:', err);
+          }
+          closeAndDispatch();
+        };
+        const onDoc = (): void => {
+          try { exportSummaryAsDoc(buildData()); } catch (err) {
+            console.warn('[DEX] exportSummaryAsDoc failed:', err);
+          }
+          closeAndDispatch();
+        };
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}
+            onClick={closeAndDispatch}
+          >
+            <div
+              className="card"
+              style={{
+                width: '100%', maxWidth: 560, padding: 24, borderRadius: 16,
+                background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                {isDe ? 'Event-Zusammenfassung herunterladen?' : 'Download event summary?'}
+              </h3>
+              <p style={{ marginTop: 12, color: 'var(--dex-gray-700)', lineHeight: 1.55, fontSize: '0.95rem' }}>
+                {isDe
+                  ? <>Das Event wurde gespeichert. Möchtest du jetzt eine <strong>A4-Zusammenfassung</strong> mit allen Sektionen (Foto, Beschreibung, Sichtbarkeit, Felder, Kommunikation, Dokumente, Sub-Events…) herunterladen? Du kannst sie z.B. einem Partner zur Durchsicht weiterleiten.</>
+                  : <>The event has been saved. Would you like to download a <strong>one-page A4 summary</strong> with every section (photo, description, visibility, fields, communication, documents, sub-events…)? You can forward it to a partner for review.</>}
+              </p>
+              <div style={{
+                marginTop: 18, padding: '10px 14px', background: 'rgba(0,90,156,0.06)',
+                border: '1px solid rgba(0,90,156,0.25)', borderRadius: 8,
+                fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+              }}>
+                {isDe
+                  ? <><strong>Hinweis:</strong> Beim PDF-Export öffnet sich der Browser-Druckdialog. Wähle dort <strong>&bdquo;Als PDF speichern&ldquo;</strong> als Ziel. Word-Export lädt direkt eine .doc-Datei herunter.</>
+                  : <><strong>Note:</strong> The PDF export opens the browser print dialog — pick <strong>&ldquo;Save as PDF&rdquo;</strong> as the destination. Word export downloads a .doc file directly.</>}
+              </div>
+              <div style={{ marginTop: 22, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-outline" onClick={closeAndDispatch}>
+                  {isDe ? 'Nein, danke' : 'No, thanks'}
+                </button>
+                <button className="btn btn-secondary" onClick={onDoc}>
+                  {isDe ? 'Als Word (.doc)' : 'As Word (.doc)'}
+                </button>
+                <button className="btn btn-primary" onClick={onPdf}>
+                  {isDe ? 'Als PDF' : 'As PDF'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* v8.6: Exclude-Users-Modal — zeigt resolved Mitglieder der
           Verteiler/User-Liste plus Suchfeld. Per Checkbox kann der
