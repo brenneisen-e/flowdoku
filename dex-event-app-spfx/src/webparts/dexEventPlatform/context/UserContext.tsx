@@ -182,7 +182,12 @@ async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
     // mit `mail`. $top=500 reicht in der Regel; wenn ein User in mehr als
     // 500 DLs ist, kommt Pagination ins Spiel — fuer DEALL ist das aber
     // praxisfern.
-    const resp = await client.api('/me/memberOf?$select=mail,mailNickname,@odata.type&$top=500').get();
+    // v17.11: `@odata.type` ist in $select nicht erlaubt (Graph wirft 400
+    // „Parsing OData Select and Expand failed"). Wir holen nur mail +
+    // mailNickname — der Type kommt via standard-odata-metadata wenn
+    // benoetigt, aber wir filtern hier nur auf Gruppen mit Mail-Adresse
+    // ohnehin.
+    const resp = await client.api('/me/memberOf?$select=mail,mailNickname&$top=500').get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const values: any[] = (resp && resp.value) || [];
     const out = new Set<string>();
