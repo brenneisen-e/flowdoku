@@ -2587,7 +2587,12 @@ export default function AdminPage(): React.ReactElement {
               return (
                 <React.Fragment key={row.emailKey}>
                   <tr style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{row.teilnehmerId ?? (idx + 1)}</td>
+                    {/* v15.20: Im konsolidierten View einfach fortlaufend
+                        durchnummerieren (idx+1). Die Sub-Event-TeilnehmerID
+                        macht hier keinen Sinn, weil jede Person eine eigene
+                        TID pro Sub-Event hat — sortbar bleibt es ueber
+                        Vorname/Nachname/Email-Spalten. */}
+                    <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
                     <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
                     <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
                     <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>

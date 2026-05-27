@@ -993,10 +993,35 @@ export default function RegistrationPage(): React.ReactElement {
               : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)));
     return (
       <div className="page-container text-center">
-        <div className="card" style={{ padding: '64px 32px' }}>
-          <h2>{successHeadline}</h2>
+        <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
+          {/* v15.20: Event-Foto + Organizer-Info auch auf der
+              Erfolgs-Seite anzeigen — analog zur Event-Karte. */}
+          {event.imageUrl && (
+            <div style={{
+              width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
+              borderRadius: 'var(--dex-radius-lg)',
+              background: `url(${event.imageUrl}) center/cover no-repeat`,
+            }} />
+          )}
+          <h2 style={{ marginTop: 0 }}>{successHeadline}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
-          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center' }}>
+          {(() => {
+            // Organizer als Chips mit Foto (gleicher Stil wie auf der
+            // Anmelde-Seite). „Nachname, Vorname" → „Vorname Nachname".
+            const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+              const trimmed = o.trim();
+              const parts = trimmed.split(',').map(s => s.trim());
+              return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+            }).filter(Boolean);
+            if (orgs.length === 0) return null;
+            return (
+              <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
+                <OrganizerList names={orgs} emails={event.organizerEmails} size="md" />
+              </div>
+            );
+          })()}
+          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => navigate('my-events')}>
               {t('myevents.title')}
             </button>
