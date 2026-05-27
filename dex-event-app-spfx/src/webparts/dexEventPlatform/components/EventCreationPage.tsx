@@ -11042,27 +11042,41 @@ export default function EventCreationPage(): React.ReactElement {
               </button>
 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {/* v17.4: Hinweis neben dem Speichern-Button — der User soll
-                    wissen, dass es kein „Zwischenspeichern" pro Step braucht. */}
-                {isEditMode && (
-                  <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', maxWidth: 320, lineHeight: 1.4, textAlign: 'right' }}>
-                    {isDe
-                      ? 'Du musst nicht in jedem Schritt zwischenspeichern — ein Klick auf „Änderungen speichern" sichert alle Eingaben und schließt den Edit-Modus.'
-                      : 'You don\'t need to save in every step — one click on „Save changes" persists all inputs and closes the edit mode.'}
-                  </span>
-                )}
-                {/* Im Edit-Modus immer einen Speichern-Button anzeigen, damit man nicht
-                    durch alle Steps klicken muss wenn man nur eine Sache aendert */}
+                {/* v17.5: Im Edit-Modus immer einen Speichern-Button anzeigen,
+                    damit man nicht durch alle Steps klicken muss wenn man
+                    nur eine Sache aendert. Button-Label ist klarer:
+                    „Aenderungen speichern und zurueck zum Event" plus
+                    Info-Tooltip mit Erklaerung. */}
                 {isEditMode && currentStep < steps.length - 1 && (
-                  <button
-                    className="btn btn-primary"
-                    disabled={!title}
-                    onClick={attemptSubmit}
-                    style={{ opacity: !title ? 0.5 : 1 }}
-                    title="Aenderungen sofort speichern, ohne weitere Schritte"
-                  >
-                    <Send size={16} /> {t('create.save')}
-                  </button>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      className="btn btn-primary"
+                      disabled={!title}
+                      onClick={attemptSubmit}
+                      style={{ opacity: !title ? 0.5 : 1 }}
+                    >
+                      <Send size={16} /> {isDe ? 'Änderungen speichern und zurück zum Event' : 'Save changes and return to event'}
+                    </button>
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was passiert beim Klick?</strong>
+                        <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: 1.5 }}>
+                          <li>Alle Eingaben aus allen Wizard-Schritten werden in einem Rutsch gespeichert — kein &bdquo;Zwischenspeichern&ldquo; pro Step nötig.</li>
+                          <li>Der Edit-Modus wird geschlossen.</li>
+                          <li>Du landest direkt im Organizer-Menü dieses Events (Teilnehmer-Übersicht, Aktionen).</li>
+                        </ul>
+                      </>
+                    ) : (
+                      <>
+                        <strong>What happens on click?</strong>
+                        <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: 1.5 }}>
+                          <li>All inputs across the wizard steps are persisted in one go — no per-step interim save needed.</li>
+                          <li>Edit mode is closed.</li>
+                          <li>You return directly to the organizer menu of this event (participant overview, actions).</li>
+                        </ul>
+                      </>
+                    )} />
+                  </div>
                 )}
 
                 {currentStep < steps.length - 1 ? (
@@ -11243,7 +11257,15 @@ export default function EventCreationPage(): React.ReactElement {
             outlookSubheading={isOutlook ? outlookSubheading : undefined}
             onOutlookSubheadingChange={isOutlook ? setOutlookSubheading : undefined}
             previewVars={{
-              EventTitle: title || 'Event Title',
+              // v17.5: Im Sub-Event-Kommunikations-Tab den Titel des
+              // aktiven Sub-Events einsetzen, sonst den Hauptevent-Titel.
+              EventTitle: (() => {
+                if (activeCommTabIdx > 0) {
+                  const sub = subEvents[activeCommTabIdx - 1];
+                  return (sub && sub.title && sub.title.trim()) || title || 'Event Title';
+                }
+                return title || 'Event Title';
+              })(),
               Name: 'Max Mustermann',
               Organizer: organizer || 'Organisator',
               AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
@@ -12622,6 +12644,23 @@ export default function EventCreationPage(): React.ReactElement {
               style={{ fontSize: '0.85rem' }}
             >
               {isDe ? 'Änderungen verwerfen' : 'Discard changes'}
+            </button>
+            {/* v17.7: Dritter Button — Speichern und zurueck zum Event.
+                Wir blockieren die laufende Back-Nav (resolve(false)) und
+                triggern attemptSubmit; nach erfolgreichem Save dispatched
+                EventCreationPage selbst „dex-event-submit-success" und
+                DexEventPlatform navigiert zum Organizer-Menue. */}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                unsavedConfirmOpen.resolve(false);
+                setUnsavedConfirmOpen(null);
+                window.setTimeout(() => { attemptSubmit(); }, 0);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              <Send size={14} /> {isDe ? 'Speichern und zurück zum Event' : 'Save and return to event'}
             </button>
           </div>
         </Modal>
