@@ -357,6 +357,23 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
  * Abmeldebestätigung
  */
 export function cancellationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
+  // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begruessung
+  // \u2014 Event-Titel ausgegraut + durchgestrichen, damit auf den ersten Blick
+  // erkennbar ist, dass die Anmeldung storniert wurde (vorher: Stornierung
+  // ging nur ueber den Subject-Zusatz hervor).
+  const cancelBanner = `
+    <div style="margin: 16px 0 20px; padding: 14px 18px; border: 2px solid #da291c;
+                background: rgba(218, 41, 28, 0.06); border-radius: 8px;
+                text-align: center;">
+      <div style="font-size: 0.78rem; font-weight: 700; color: #da291c;
+                  text-transform: uppercase; letter-spacing: 1.5px;">
+        Stornierung &middot; Cancellation
+      </div>
+      <div style="margin-top: 6px; font-size: 1.15rem; font-weight: 700;
+                  color: #888; text-decoration: line-through;">
+        ${eventTitle}
+      </div>
+    </div>`;
   return {
     subject: `Abmeldebest\u00E4tigung: ${eventTitle}`,
     body: wrapTemplate(
@@ -364,7 +381,8 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       'Cancellation confirmed',
       eventTitle,
       `<p>Dear ${recipientName},</p>
-      <p>your registration for the event <strong>${eventTitle}</strong> has been <strong>cancelled</strong>.</p>
+      ${cancelBanner}
+      <p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p>
       <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),

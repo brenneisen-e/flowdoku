@@ -2776,3 +2776,46 @@ direkt — keine Konvertierung nötig.
 ```
 
 **Unterschied zur Standard-Action:** zusätzliches `PreferredStarterType` im `$select` und im `$filter`. Sortierung in allen drei Branches identisch: `$orderby=TeilnehmerID asc`.
+
+## UI-Anleitung 2026-05-27 (v17.20) — Cancellation-Body in Outlook-Kalender ausgrauen (Nice-to-have)
+
+**Hintergrund:** Beim Sub-Event-Cancel (Action `Ausladen` in `DEX_Outlook`)
+wird im Flow `DEX_Outlook_Einladungen` der Teilnehmer per Graph aus der
+Attendees-Liste des Outlook-Termins entfernt. Outlook schickt dem
+abgemeldeten Teilnehmer dann automatisch eine „Meeting Cancelled"-Notification.
+Die enthält den **aktuellen Body** des Termins — also weiterhin die ganze
+Agenda etc. Der Hinweis im Subject („Cancelled: …") geht in der Vorschau
+unter, der Body wirkt unverändert wie ein gültiger Termin.
+
+**Ziel:** Der Body soll im Cancel-Pfad **nur für den abgemeldeten
+Teilnehmer** als „storniert" erkennbar sein — z.B. ausgegrauter Text mit
+einem auffälligen roten Banner oben.
+
+**Konzept (App-seitig vorbereitet, Flow-seitig zu ergänzen):**
+
+Die App ruft beim Sub-Event-Cancel `queueOutlookEvent(attendee, eventId,
+title, 'Ausladen')` auf. Damit der Flow den Body nur für den
+abgemeldeten Empfänger ausgrauen kann, ohne den Termin für die übrigen
+Teilnehmer zu verändern, gibt es zwei saubere Pfade — entscheide dich
+für **einen**:
+
+**Variante A (empfohlen, einfach):** Schicke per `DEX_SEND_MAIL` eine
+zusätzliche Mail mit Inline-iCal-Attachment vom Typ
+`METHOD:CANCEL` an den abgemeldeten Teilnehmer. Outlook erkennt das
+und markiert die Kalendereintragung visuell als storniert. Das ist seit
+v17.20 bereits durch den verbesserten Cancellation-Mail-Body
+(grosses rotes „Stornierung"-Banner) teilweise abgedeckt — die echte
+iCal-Cancel-Methode wäre ein optionales Upgrade.
+
+**Variante B (komplexer):** Im Flow vor dem Attendee-Remove einen
+Graph-PATCH auf `/users/{mailbox}/events/{eventId}` mit einem grau
+gefärbten Body schicken, der das Original umschließt, dann Attendee
+entfernen, dann den Body wieder zurückpatchen. Risiko: zwischen den
+zwei PATCH-Calls bekommen alle übrigen Teilnehmer eine „Event Updated"-
+Benachrichtigung. Macht den User-Flow unsauber.
+
+**Status:** Variante A ist app-seitig durch den visuell verbesserten
+Cancellation-Mail-Body (rotes Banner + durchgestrichener Event-Titel)
+seit v17.20 live. Bei Bedarf kann der Tenant-Admin Variante B im
+`DEX_Outlook_Einladungen`-Flow nachziehen — bis dahin reicht der
+verbesserte Mail-Body als visuelle Bestätigung der Cancelation.

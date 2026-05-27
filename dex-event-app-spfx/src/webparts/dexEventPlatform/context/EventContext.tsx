@@ -332,6 +332,8 @@ export interface CreateEventInput {
   teamOpenSlotsVisible?: boolean;
   /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
   teamJoinRequiresApproval?: boolean;
+  /** v17.20: Custom-Fields zweisprachig (DE + EN) anbieten. */
+  bilingualFields?: boolean;
   customFields: CustomField[];
   /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
    *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
@@ -720,6 +722,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamPartialAllowed: !!e.TeamPartialAllowed,
       teamOpenSlotsVisible: !!e.TeamOpenSlotsVisible,
       teamJoinRequiresApproval: !!e.TeamJoinRequiresApproval,
+      // v17.20: Bilingual-Toggle fuer Custom-Fields (DE + EN).
+      bilingualFields: !!e.BilingualFields,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
@@ -802,6 +806,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // zurueck, weil das Field-Mapping confirmLabel droppte.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         confirmLabel: (cf as any).confirmLabel,
+        // v17.20: Englische Varianten durchreichen — nur dann wirksam, wenn
+        // auf Event-Ebene `bilingualFields=true` ist; die RegistrationPage
+        // entscheidet zur Laufzeit, ob sie die EN-Spalte zieht.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        labelEn: (cf as any).labelEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        helpTextEn: (cf as any).helpTextEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        confirmLabelEn: (cf as any).confirmLabelEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        optionsEn: (cf as any).optionsEn,
       })),
     };
   }

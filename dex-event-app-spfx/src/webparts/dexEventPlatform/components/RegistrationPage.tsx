@@ -77,10 +77,38 @@ export default function RegistrationPage(): React.ReactElement {
   // emailLanguage='EN' steht, sehen alle Teilnehmer englische Form-Labels —
   // auch wenn der eingeloggte User die App auf Deutsch nutzt. App-Chrome
   // (Header, Navigation, Buttons ausserhalb des Formulars) bleibt bei t().
-  const eventLocale: Locale = (event?.emailLanguage === 'EN') ? 'en' : 'de';
+  // v17.20: Wenn auf dem Event `bilingualFields=true` aktiv ist, folgt das
+  // Form-Chrome stattdessen der **App-Spracheinstellung des Teilnehmers**
+  // (`locale`). Damit sehen englischsprachige Kolleg:innen das komplette
+  // Anmelde-Formular auf Englisch, auch wenn der Organizer die Mail-Sprache
+  // auf DE belassen hat. `pickLocalized` weiter unten zieht zusätzlich für
+  // jedes Custom-Field die EN-Variante, falls vorhanden.
+  const eventLocale: Locale = event?.bilingualFields
+    ? locale
+    : ((event?.emailLanguage === 'EN') ? 'en' : 'de');
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);
+  // v17.20: Lookup-Helfer fuer die EN-Varianten eines Custom-Fields. Greift
+  // nur, wenn der Bilingual-Toggle des Events an ist UND die App-Locale des
+  // Teilnehmers `en` ist. Sonst still Fallback auf den DE-Wert. Index-Mapping
+  // der Optionen ist positional — DE-Option i ↔ EN-Option i.
+  const useEnVariants = !!event?.bilingualFields && locale === 'en';
+  const pickFieldLabel = React.useCallback((f: EventSpecificField): string =>
+    (useEnVariants && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label,
+  [useEnVariants]);
+  const pickFieldHelp = React.useCallback((f: EventSpecificField): string | undefined =>
+    (useEnVariants && f.helpTextEn && f.helpTextEn.trim()) ? f.helpTextEn : f.helpText,
+  [useEnVariants]);
+  const pickFieldConfirmLabel = React.useCallback((f: EventSpecificField): string | undefined =>
+    (useEnVariants && f.confirmLabelEn && f.confirmLabelEn.trim()) ? f.confirmLabelEn : f.confirmLabel,
+  [useEnVariants]);
+  const pickOptionLabel = React.useCallback((f: EventSpecificField, optIdx: number, fallback: string): string => {
+    if (useEnVariants && f.optionsEn && f.optionsEn[optIdx] && f.optionsEn[optIdx].trim()) {
+      return f.optionsEn[optIdx];
+    }
+    return fallback;
+  }, [useEnVariants]);
 
   // Per-Event-Organizer-Check: ist der eingeloggte User in event.organizerEmails?
   // Nur dann darf er a) nach Deadline registrieren und b) "Register for another
@@ -1081,16 +1109,20 @@ export default function RegistrationPage(): React.ReactElement {
     if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
       field = { ...field, required: true };
     }
+    // v17.20: vor jedem Render die EN-Variante einziehen, sofern verfuegbar.
+    const displayLabel = pickFieldLabel(field);
+    const displayHelp = pickFieldHelp(field);
+    const displayConfirmLabel = pickFieldConfirmLabel(field);
     return (
   <div className="form-group" key={field.id}>
     {field.type !== 'checkbox' && (
       <label className="form-label">
         {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
-        {field.label}
+        {displayLabel}
         {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
             gibt schoenes Hover-Popover mit der vom Organizer
             beim Event-Anlegen hinterlegten Beschreibung. */}
-        {field.helpText && <InfoTooltip text={field.helpText} />}
+        {displayHelp && <InfoTooltip text={displayHelp} />}
       </label>
     )}
     {field.type === 'select' && field.multi ? (
@@ -1103,9 +1135,18 @@ export default function RegistrationPage(): React.ReactElement {
         const raw = (eventSpecific[field.id] || '').trim();
         const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
         const isErr = !!(showErrors && field.required && selected.length === 0);
+        // v17.20: Anzeige-Labels fuer den EN-Modus mappen. Der gespeicherte
+        // Wert bleibt weiterhin der DE-Wert (positional gemappt), damit alle
+        // anderen Stellen (Mails, Excel-Export, Admin-Center) konsistent
+        // bleiben — wir tauschen ausschliesslich das Display-Label.
+        const displayOptions = (field.options || []).map((o, i) => ({
+          value: o,
+          label: pickOptionLabel(field, i, o),
+        }));
         return (
           <MultiSelectDropdown
             options={field.options || []}
+            optionLabels={useEnVariants ? displayOptions.map(d => d.label) : undefined}
             value={selected}
             onChange={next => setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) })}
             placeholder={tEvent('reg.pleaseselect')}
@@ -1116,7 +1157,7 @@ export default function RegistrationPage(): React.ReactElement {
     ) : field.type === 'select' ? (
       <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
         <option value="">{tEvent('reg.pleaseselect')}</option>
-        {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        {field.options && field.options.map((opt, i) => <option key={opt} value={opt}>{pickOptionLabel(field, i, opt)}</option>)}
       </select>
     ) : field.type === 'user' || field.type === 'roommate' ? (
       // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
@@ -1143,8 +1184,8 @@ export default function RegistrationPage(): React.ReactElement {
       <>
         <label className="form-label">
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
-          {field.label}
-          {field.helpText && <InfoTooltip text={field.helpText} />}
+          {displayLabel}
+          {displayHelp && <InfoTooltip text={displayHelp} />}
         </label>
         <label
           style={{
@@ -1170,8 +1211,10 @@ export default function RegistrationPage(): React.ReactElement {
           />
           <span style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
             {/* v11.94: Organizer kann den Text neben der Checkbox im Wizard
-                pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen". */}
-            {(field.confirmLabel && field.confirmLabel.trim())
+                pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen".
+                v17.20: pickFieldConfirmLabel zieht im EN-Modus den
+                confirmLabelEn-Wert; faellt sonst auf den DE-Wert. */}
+            {(displayConfirmLabel && displayConfirmLabel.trim())
               || (locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
           </span>
         </label>
@@ -1195,7 +1238,7 @@ export default function RegistrationPage(): React.ReactElement {
         )}
       </>
     ) : (
-      <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={field.label} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
+      <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={displayLabel} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
     )}
   </div>
     );

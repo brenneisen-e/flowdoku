@@ -12,6 +12,11 @@ export interface MultiSelectDropdownProps {
   placeholder?: string;
   error?: boolean;
   disabled?: boolean;
+  /** v17.20: Optionale positional gemappte Anzeige-Labels (z.B. fuer den
+   *  bilingualen Modus, in dem das englische Label angezeigt wird, der
+   *  gespeicherte Wert aber weiterhin das deutsche Original ist). Wenn
+   *  gesetzt, MUSS `optionLabels.length === options.length`. */
+  optionLabels?: string[];
 }
 
 export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
@@ -21,6 +26,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   placeholder = 'Please select',
   error = false,
   disabled = false,
+  optionLabels,
 }) => {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -51,7 +57,15 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     }
   };
 
-  const label = value.length === 0 ? placeholder : value.join(', ');
+  // v17.20: wenn optionLabels gesetzt sind, im Header die Anzeige-Labels
+  // statt der Werte zusammensetzen (DE-Wert -> EN-Anzeige).
+  const labelFor = (v: string): string => {
+    if (!optionLabels) return v;
+    const idx = options.indexOf(v);
+    if (idx >= 0 && optionLabels[idx] && optionLabels[idx].trim()) return optionLabels[idx];
+    return v;
+  };
+  const label = value.length === 0 ? placeholder : value.map(labelFor).join(', ');
   const isEmpty = value.length === 0;
 
   return (
@@ -115,8 +129,9 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               —
             </div>
           ) : (
-            options.map(opt => {
+            options.map((opt, optIdx) => {
               const selected = value.indexOf(opt) >= 0;
+              const shown = (optionLabels && optionLabels[optIdx] && optionLabels[optIdx].trim()) ? optionLabels[optIdx] : opt;
               return (
                 <label
                   key={opt}
@@ -139,7 +154,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                     onChange={() => toggle(opt)}
                     style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
                   />
-                  <span>{opt}</span>
+                  <span>{shown}</span>
                 </label>
               );
             })

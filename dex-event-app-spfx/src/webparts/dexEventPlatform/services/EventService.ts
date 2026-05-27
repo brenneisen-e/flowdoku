@@ -473,6 +473,7 @@ export interface SPEvent {
   TeamPartialAllowed?: boolean;       // v11.81: Auch Teil-Teams erlauben (statt nur komplette)
   TeamOpenSlotsVisible?: boolean;     // v11.81: Offene Slots öffentlich sichtbar für Beitritt
   TeamJoinRequiresApproval?: boolean; // v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän
+  BilingualFields?: boolean; // v17.20: Custom-Fields zweisprachig (DE + EN) anbieten
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
   Agenda: string; // JSON-Array mit Agenda-Eintraegen
   Transfers: string; // JSON-Array mit Transferzeiten
@@ -2607,6 +2608,7 @@ export class EventService {
       { title: 'TeamPartialAllowed', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Auch Teil-Teams erlauben
       { title: 'TeamOpenSlotsVisible', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - offene Slots öffentlich sichtbar
       { title: 'TeamJoinRequiresApproval', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Lead muss Beitritt bestätigen
+      { title: 'BilingualFields', type: 8, metaType: 'SP.Field' }, // v17.20: Boolean - Custom-Fields zweisprachig (DE + EN) anbieten
       { title: 'CustomFields', type: 3 },
       { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
@@ -2982,7 +2984,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3154,6 +3156,8 @@ export class EventService {
     teamOpenSlotsVisible?: boolean;
     /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
     teamJoinRequiresApproval?: boolean;
+    /** v17.20: Custom-Fields zweisprachig anbieten (DE+EN). */
+    bilingualFields?: boolean;
     customFields: CustomField[];
     /** v11.69: Wenn `existingSubsiteUrl` UND `existingRegistrationListName`
      *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
@@ -3341,6 +3345,7 @@ export class EventService {
         'TeamPartialAllowed': !!event.teamPartialAllowed,
         'TeamOpenSlotsVisible': !!event.teamOpenSlotsVisible,
         'TeamJoinRequiresApproval': !!event.teamJoinRequiresApproval,
+        'BilingualFields': !!event.bilingualFields,
         'CustomFields': JSON.stringify(enrichedCustomFields),
         'Agenda': event.agenda || '[]',
         'Transfers': event.transfers || '[]',

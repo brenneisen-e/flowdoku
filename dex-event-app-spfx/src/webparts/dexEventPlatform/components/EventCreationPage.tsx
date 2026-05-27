@@ -170,6 +170,13 @@ interface CustomFieldInput {
   /** v11.94: Nur fuer type='checkbox' — Text neben der Checkbox im
    *  Registrierungsformular (Default „Ja, bestätigen" / „Yes, confirm"). */
   confirmLabel?: string;
+  /** v17.20: Englische Varianten — nur relevant wenn der Organizer im
+   *  selben Schritt 5 den Toggle „Deutsch und Englisch ermöglichen"
+   *  gesetzt hat. */
+  labelEn?: string;
+  helpTextEn?: string;
+  confirmLabelEn?: string;
+  optionsEn?: string[];
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -720,6 +727,11 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
       // v11.94: confirmLabel beim Edit-Mount mit-übernehmen.
       ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+      // v17.20: EN-Varianten beim Edit-Mount mit-übernehmen.
+      ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+      ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+      ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+      ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
     })) : []
   );
@@ -1333,6 +1345,14 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [teamJoinRequiresApproval, setTeamJoinRequiresApproval] = React.useState<boolean>(
     !!editEvent?.teamJoinRequiresApproval
+  );
+  // v17.20: Bilingual-Toggle — wenn an, kann der Organizer pro Custom-Field
+  // (Label, Help-Text, Checkbox-Confirm-Text, Dropdown-Optionen) eine
+  // englische Variante hinterlegen. Wird im Wizard-Schritt 5 ganz oben als
+  // separater Toggle eingestellt; die EN-Inputs blenden pro Card auf, wenn
+  // der Toggle aktiv ist.
+  const [bilingualFields, setBilingualFields] = React.useState<boolean>(
+    !!editEvent?.bilingualFields
   );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
@@ -2670,6 +2690,15 @@ export default function EventCreationPage(): React.ReactElement {
             ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
               ? { confirmLabel: f.confirmLabel.trim() }
               : {}),
+            // v17.20: Englische Varianten — siehe Create-Pfad oben.
+            ...(bilingualFields && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
+            ...(bilingualFields && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
+            ...(bilingualFields && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
+              ? { confirmLabelEn: f.confirmLabelEn.trim() }
+              : {}),
+            ...(bilingualFields && f.type === 'select' && f.optionsEn && f.optionsEn.some(o => o && o.trim())
+              ? { optionsEn: f.optionsEn.map(o => (o || '').trim()) }
+              : {}),
             // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
             // mit-persistieren — vorher haben alle drei Persist-Pfade
             // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
@@ -2841,6 +2870,8 @@ export default function EventCreationPage(): React.ReactElement {
       updates['TeamPartialAllowed'] = !!(teamRegistrationEnabled && teamPartialAllowed);
       updates['TeamOpenSlotsVisible'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible);
       updates['TeamJoinRequiresApproval'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval);
+      // v17.20: Bilingual-Toggle persistieren.
+      updates['BilingualFields'] = !!bilingualFields;
 
       // v11.22: feinere Progress-Stufen waehrend Edit-Save. Vorher
       // sprang es bei 50% sehr lange auf der Stelle, weil zwischen
@@ -3305,6 +3336,8 @@ export default function EventCreationPage(): React.ReactElement {
         teamPartialAllowed: !!(teamRegistrationEnabled && teamPartialAllowed),
         teamOpenSlotsVisible: !!(teamRegistrationEnabled && teamOpenSlotsVisible),
         teamJoinRequiresApproval: !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval),
+        // v17.20: Bilingual-Toggle durchreichen.
+        bilingualFields: !!bilingualFields,
         customFields: customFields
           .filter(f => f.label && f.label.trim().length > 0)
           .map(f => ({
@@ -3318,6 +3351,17 @@ export default function EventCreationPage(): React.ReactElement {
             // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Create-Pfad).
             ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
               ? { confirmLabel: f.confirmLabel.trim() }
+              : {}),
+            // v17.20: Englische Varianten — nur dann, wenn der Bilingual-
+            // Toggle des Events an ist UND der Organizer Text eingegeben hat.
+            // Sonst leerer Spread = keine *En-Keys im JSON.
+            ...(bilingualFields && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
+            ...(bilingualFields && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
+            ...(bilingualFields && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
+              ? { confirmLabelEn: f.confirmLabelEn.trim() }
+              : {}),
+            ...(bilingualFields && f.type === 'select' && f.optionsEn && f.optionsEn.some(o => o && o.trim())
+              ? { optionsEn: f.optionsEn.map(o => (o || '').trim()) }
               : {}),
             // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
             // mit-persistieren — vorher haben alle drei Persist-Pfade
@@ -8529,6 +8573,46 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
+              {/* v17.20: Bilingual-Toggle — Organizer kann pro Custom-Field
+                  eine EN-Variante hinterlegen. Wirkt sich auch auf das
+                  Form-Chrome (Placeholder, Hinweise, Sub-Event-Sektion) aus:
+                  Sobald an, folgt das Form-Chrome der App-Spracheinstellung
+                  des Teilnehmers statt der Event-Mail-Sprache. */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={bilingualFields}
+                    onChange={e => setBilingualFields(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Deutsch und Englisch ermöglichen' : 'Offer German and English'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob du pro Custom-Field, das du unten anlegst, <strong>eine englische Variante</strong> der Texte hinterlegen kannst — also Feld-Name, Beschreibung (i-Tooltip), Checkbox-Bestätigungs-Text und Dropdown-Optionen jeweils auf Deutsch UND auf Englisch. Default: <strong>aus</strong>.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, blendet jede Feld-Karte einen zweiten Eingabe-Block für die EN-Variante ein. Teilnehmer mit App-Sprache <strong>Englisch</strong> bekommen automatisch die EN-Texte zu sehen. Wer als App-Sprache Deutsch eingestellt hat, sieht weiterhin die DE-Texte. Zusätzlich folgt das Standard-Anmelde-Formular (Platzhalter, Hinweis-Boxen, Sub-Event-Sektion) ab dann der <strong>App-Spracheinstellung des Teilnehmers</strong> statt der Mail-Sprache des Events.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> internationale Kolleg:innen, die kein Deutsch sprechen, sehen das komplette Anmelde-Formular sauber auf Englisch. Wer als Organizer keine EN-Variante einträgt, fällt im EN-Modus still auf den DE-Wert zurück — die App bricht also nichts kaputt, falls du nur einige Felder übersetzt.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether, for each custom field you create below, you can store <strong>an English variant</strong> of the texts — i.e. field name, description (i-tooltip), checkbox confirmation text and dropdown options in both German AND English. Default: <strong>off</strong>.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, each field card shows a second input row for the EN variant. Attendees with app language set to <strong>English</strong> automatically see the EN texts. Attendees with German keep seeing the DE texts. In addition, the standard registration form chrome (placeholders, hint boxes, sub-event section) follows the <strong>attendee&apos;s app language</strong> instead of the event&apos;s email language.<br /><br />
+                          <strong>For attendees:</strong> international colleagues who do not speak German see the whole registration form cleanly in English. If an organizer leaves the EN variant empty for some field, the app silently falls back to the DE value — nothing breaks if you only translate a subset of fields.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: aus — wenn aktiviert, kannst du pro Feld eine englische Variante hinterlegen.'
+                        : 'Default: off — when enabled, each field gets a second input row for the English variant.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
                   pickt B2Run-Felder einzeln per Suggested-Felder-Modal
                   (eingeklappte Sektion "B2Run-spezifische Felder"). Damit
@@ -9132,6 +9216,34 @@ export default function EventCreationPage(): React.ReactElement {
                       </button>
                     </div>
 
+                    {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
+                        Toggle oben aktiviert wurde. Sitzt direkt unter dem
+                        DE-Feld-Namen, damit der Organizer beide Sprachen in
+                        einer Linie liest. Flagge + Placeholder machen klar,
+                        welche Sprache gemeint ist. */}
+                    {bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginBottom: 6,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.7rem',
+                          padding: '2px 8px', borderRadius: 8,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.labelEn || ''}
+                          placeholder={isDe
+                            ? 'Englischer Feld-Name (optional — leer = fällt auf den deutschen Text zurück)'
+                            : 'English field name (optional — empty = falls back to the German text)'}
+                          onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.88rem', padding: '6px 10px' }}
+                        />
+                      </div>
+                    )}
+
                     {/* v10.24: Pro-Gruppe-Sichtbarkeit — nur sichtbar wenn die
                         Split-Capacity in Schritt 3 aktiv ist. Der Organizer
                         kann ein Feld auf Gruppe A oder Gruppe B beschränken
@@ -9217,6 +9329,29 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
                     </div>
+                    {/* v17.20: EN-Variante der Beschreibung. */}
+                    {bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginTop: 4,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.65rem',
+                          padding: '1px 6px', borderRadius: 6,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.helpTextEn || ''}
+                          placeholder={isDe
+                            ? 'Englische Beschreibung (optional)'
+                            : 'English description (optional)'}
+                          onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                        />
+                      </div>
+                    )}
 
                     {/* v11.94: Bei Checkbox-Feldern kann der Organizer den
                         Text neben der Checkbox individuell setzen — Default
@@ -9231,6 +9366,29 @@ export default function EventCreationPage(): React.ReactElement {
                           value={field.confirmLabel || ''}
                           onChange={e => updateCustomField(field.id, { confirmLabel: e.target.value })}
                           style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
+                        />
+                      </div>
+                    )}
+                    {/* v17.20: EN-Variante des Checkbox-Bestätigungstexts. */}
+                    {field.type === 'checkbox' && bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginTop: 4,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.65rem',
+                          padding: '1px 6px', borderRadius: 6,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.confirmLabelEn || ''}
+                          placeholder={isDe
+                            ? 'Englischer Text neben Checkbox (optional, Default: „Yes, confirm")'
+                            : 'English text next to checkbox (optional, default: „Yes, confirm")'}
+                          onChange={e => updateCustomField(field.id, { confirmLabelEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
                         />
                       </div>
                     )}
@@ -9280,37 +9438,66 @@ export default function EventCreationPage(): React.ReactElement {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(field.options || []).map((opt, optIdx) => (
-                            <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 600, width: 24, textAlign: 'right' }}>
-                                {optIdx + 1}.
-                              </span>
-                              <input
-                                className="form-input"
-                                value={opt}
-                                placeholder={isDe ? `Option ${optIdx + 1}` : `Option ${optIdx + 1}`}
-                                onChange={e => {
-                                  const opts = [...(field.options || [])];
-                                  opts[optIdx] = e.target.value;
-                                  updateCustomField(field.id, { options: opts });
-                                }}
-                                style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const opts = [...(field.options || [])];
-                                  opts.splice(optIdx, 1);
-                                  updateCustomField(field.id, { options: opts });
-                                }}
-                                title={isDe ? 'Option entfernen' : 'Remove option'}
-                                style={{
-                                  flexShrink: 0, width: 28, height: 28, borderRadius: 6,
-                                  background: '#fff', border: '1px solid var(--dex-gray-300)',
-                                  color: 'var(--dex-red, #c00)', cursor: 'pointer',
-                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '1rem', lineHeight: 1, fontWeight: 700,
-                                }}
-                              >−</button>
+                            <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 600, width: 24, textAlign: 'right' }}>
+                                  {optIdx + 1}.
+                                </span>
+                                <input
+                                  className="form-input"
+                                  value={opt}
+                                  placeholder={isDe ? `Option ${optIdx + 1}` : `Option ${optIdx + 1}`}
+                                  onChange={e => {
+                                    const opts = [...(field.options || [])];
+                                    opts[optIdx] = e.target.value;
+                                    updateCustomField(field.id, { options: opts });
+                                  }}
+                                  style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const opts = [...(field.options || [])];
+                                    opts.splice(optIdx, 1);
+                                    // v17.20: EN-Optionsliste positional mit-zuruecksetzen,
+                                    // damit Index-Mapping konsistent bleibt.
+                                    const optsEn = [...(field.optionsEn || [])];
+                                    if (optsEn.length > optIdx) optsEn.splice(optIdx, 1);
+                                    updateCustomField(field.id, { options: opts, optionsEn: optsEn });
+                                  }}
+                                  title={isDe ? 'Option entfernen' : 'Remove option'}
+                                  style={{
+                                    flexShrink: 0, width: 28, height: 28, borderRadius: 6,
+                                    background: '#fff', border: '1px solid var(--dex-gray-300)',
+                                    color: 'var(--dex-red, #c00)', cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '1rem', lineHeight: 1, fontWeight: 700,
+                                  }}
+                                >−</button>
+                              </div>
+                              {/* v17.20: Positional gemappte EN-Option. */}
+                              {bilingualFields && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 32 }}>
+                                  <span style={{
+                                    flexShrink: 0, fontSize: '0.65rem',
+                                    padding: '1px 6px', borderRadius: 6,
+                                    background: 'rgba(0,90,156,0.10)',
+                                    color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                                  }}>EN</span>
+                                  <input
+                                    className="form-input"
+                                    value={(field.optionsEn || [])[optIdx] || ''}
+                                    placeholder={isDe ? 'Englische Variante (optional)' : 'English variant (optional)'}
+                                    onChange={e => {
+                                      const optsEn = [...(field.optionsEn || [])];
+                                      while (optsEn.length <= optIdx) optsEn.push('');
+                                      optsEn[optIdx] = e.target.value;
+                                      updateCustomField(field.id, { optionsEn: optsEn });
+                                    }}
+                                    style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           ))}
                           <button
@@ -11356,6 +11543,14 @@ export default function EventCreationPage(): React.ReactElement {
             helpText: f.helpText,
             multi: f.multi,
             showIf: f.showIf,
+            // v17.20: EN-Varianten an die Preview weiterreichen — sonst sieht
+            // der Organizer in der Vorschau nicht, was englische Teilnehmer
+            // bekommen wuerden.
+            confirmLabel: f.confirmLabel,
+            labelEn: f.labelEn,
+            helpTextEn: f.helpTextEn,
+            confirmLabelEn: f.confirmLabelEn,
+            optionsEn: f.optionsEn,
           })),
           isFictive,
           // v14.10: Sub-Events + Sub-Only-Mode + Bezeichnungs-Term an die

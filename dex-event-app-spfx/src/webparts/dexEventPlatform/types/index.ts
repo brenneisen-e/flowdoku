@@ -96,6 +96,14 @@ export interface DeloitteEvent {
    *  „Aktualisierter Termin"-Benachrichtigung bekommen. */
   outlookDirty?: boolean;
   emailLanguage: string; // 'DE' | 'EN'
+  /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
+   *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
+   *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt
+   *  in der Event-Mail-Sprache. Zusätzlich wechselt das Form-Chrome
+   *  (Placeholder, Hinweise, Sub-Event-Sektion-Labels) ebenfalls auf die
+   *  Teilnehmer-Locale. Default false = altes Verhalten (Form-Chrome folgt
+   *  `emailLanguage`, Custom-Field-Labels einsprachig). */
+  bilingualFields?: boolean;
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
@@ -315,6 +323,17 @@ export interface EventSpecificField {
    *  als klickbarer Bestätigungs-Hinweis angezeigt wird. Default-Fallback:
    *  „Ja, bestätigen" (DE) bzw. „Yes, confirm" (EN). Wird leer = Default. */
   confirmLabel?: string;
+  /** v17.20: Englische Übersetzungen — werden nur dann verwendet, wenn auf
+   *  Event-Ebene `bilingualFields=true` UND die Locale des Teilnehmers
+   *  englisch ist. Pro Feld vier separate Texte: Label, Help-Text (Tooltip),
+   *  Confirm-Label (Checkbox-Text) und die Optionen eines Dropdowns. Die
+   *  Options-EN-Liste wird positional gemappt — Index i in `options` ist
+   *  der DE-Text, derselbe Index in `optionsEn` ist der EN-Text. Fehlt ein
+   *  EN-Eintrag, fällt die App still auf den DE-Wert zurück. */
+  labelEn?: string;
+  helpTextEn?: string;
+  confirmLabelEn?: string;
+  optionsEn?: string[];
 }
 
 export interface Registration {
