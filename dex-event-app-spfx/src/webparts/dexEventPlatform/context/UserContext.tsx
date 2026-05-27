@@ -17,6 +17,13 @@ interface UserContextType {
   currentUser: User;
   isLoading: boolean;
   photoUrl: string;
+  /** v15.27: lowercase E-Mail-Adressen aller Mailverteiler/Gruppen,
+   *  in denen der eingeloggte User Mitglied ist. Wird beim Boot via
+   *  Microsoft Graph (/me/memberOf) geladen und in matchesAudience
+   *  fuer Sichtbarkeits-Checks gegen Audience-Filter-DL-Adressen
+   *  benutzt — vorher war ein literaler E-Mail-Vergleich, der nur
+   *  bei direkter Adresse, nie bei DL-Mitgliedschaft matchte. */
+  groupEmails: string[];
 }
 
 export const UserContext = React.createContext<UserContextType | undefined>(undefined);
@@ -33,6 +40,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
   });
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [photoUrl, setPhotoUrl] = React.useState<string>('');
+  const [groupEmails, setGroupEmails] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     // User-Daten aus dem SPFx-Context laden
@@ -97,6 +105,13 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
       if (url) setPhotoUrl(url);
     }).catch(() => { /* Foto nicht verfuegbar */ });
 
+    // v15.27: Gruppen-/DL-Mitgliedschaften des Users laden, damit der
+    // Audience-Filter-Check zur Laufzeit nicht nur direkte E-Mails matched,
+    // sondern auch Verteiler-Mitgliedschaften (z.B. DETTDUESSELDORF@deloitte.com).
+    loadUserGroupEmails(props.context).then(list => {
+      setGroupEmails(list);
+    }).catch(() => { setGroupEmails([]); });
+
     // Cleanup: Object URLs freigeben um Memory Leaks zu vermeiden
     return () => {
       setPhotoUrl(prev => {
@@ -108,7 +123,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
 
   return React.createElement(
     UserContext.Provider,
-    { value: { currentUser, isLoading, photoUrl } },
+    { value: { currentUser, isLoading, photoUrl, groupEmails } },
     props.children
   );
 }
@@ -145,6 +160,43 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
     }
   } catch { /* Profil nicht verfuegbar */ }
   return { location: '', jobTitle: '', department: '', mobilePhone: '' };
+}
+
+/**
+ * v15.27: Gruppen-Mitgliedschaften (Mailverteiler + Security-Groups) des
+ * eingeloggten Users via Microsoft Graph laden. Wird in matchesAudience
+ * benutzt, um zu pruefen ob der User in einer Audience-DL Mitglied ist.
+ *
+ * Wir nehmen sowohl `mail` als auch `mailNickname@deloitte.com` /
+ * `mailNickname@deloitte.de` auf — die Audience-Filter koennen entweder
+ * die volle DL-Adresse (z.B. DETTDUESSELDORF@deloitte.com) oder den
+ * Nicknames (selten) enthalten.
+ */
+async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
+  try {
+    const client = await context.msGraphClientFactory.getClient('3');
+    // /me/memberOf liefert alle Gruppen + Roles. Wir filtern auf groups
+    // mit `mail`. $top=500 reicht in der Regel; wenn ein User in mehr als
+    // 500 DLs ist, kommt Pagination ins Spiel — fuer DEALL ist das aber
+    // praxisfern.
+    const resp = await client.api('/me/memberOf?$select=mail,mailNickname,@odata.type&$top=500').get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const values: any[] = (resp && resp.value) || [];
+    const out = new Set<string>();
+    for (const g of values) {
+      if (g.mail) out.add(String(g.mail).toLowerCase().trim());
+      if (g.mailNickname) {
+        const nick = String(g.mailNickname).toLowerCase().trim();
+        // Plausible DL-Address-Schreibweisen mit den beiden Deloitte-Domains.
+        out.add(`${nick}@deloitte.com`);
+        out.add(`${nick}@deloitte.de`);
+      }
+    }
+    return Array.from(out);
+  } catch (err) {
+    console.warn('[DEX] loadUserGroupEmails failed:', err);
+    return [];
+  }
 }
 
 /**

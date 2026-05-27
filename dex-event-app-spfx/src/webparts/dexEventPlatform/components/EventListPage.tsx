@@ -39,18 +39,28 @@ function matchesLocation(userLocation: string, locationFilters: string[]): boole
  * Einzelmails: exakter Match auf User-Email.
  * Gruppen: werden gegen User-Email-Prefix gematcht (z.B. DEALL matcht alle @deloitte.de).
  */
-function matchesAudience(userEmail: string, userLocation: string, audienceFilters: string[]): boolean {
+function matchesAudience(
+  userEmail: string,
+  userLocation: string,
+  audienceFilters: string[],
+  userGroupEmails: string[] = [],
+): boolean {
   if (audienceFilters.length === 0) return true;
   const email = userEmail.toLowerCase();
   const loc = (userLocation || '').toLowerCase();
+  const groupSet = new Set((userGroupEmails || []).map(g => (g || '').toLowerCase().trim()).filter(Boolean));
 
   return audienceFilters.some(filter => {
     const f = filter.trim().toLowerCase();
     if (!f) return false;
 
-    // Einzelne E-Mail-Adresse
+    // E-Mail-Adresse: entweder direkte User-Adresse, ODER der User ist
+    // Mitglied in dieser Mailverteiler-/Gruppen-Adresse (v15.27 — Fix
+    // fuer Check-Visibility vs Runtime-Mismatch).
     if (f.indexOf('@') >= 0) {
-      return email === f;
+      if (email === f) return true;
+      if (groupSet.has(f)) return true;
+      return false;
     }
 
     // Gruppen-Patterns
@@ -88,7 +98,8 @@ function normalizeAudience(audience: string[]): string[] {
 function isEventVisibleForUser(
   event: DeloitteEvent,
   userEmail: string,
-  userLocation: string
+  userLocation: string,
+  userGroupEmails: string[] = [],
 ): boolean {
   // v8.6: Exclude-Liste hat Vorrang. Wer hier drin ist, sieht das Event NIE
   // — egal ob er ueber Standortfilter oder Verteiler-Mitgliedschaft sonst
@@ -107,7 +118,7 @@ function isEventVisibleForUser(
   if (!hasLocationFilter && !hasAudienceFilter) return true;
 
   const locMatch = matchesLocation(userLocation, event.locationAudience);
-  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud);
+  const audMatch = matchesAudience(userEmail, userLocation, normalizedAud, userGroupEmails);
 
   // Default = AND. Nur wenn explizit OR konfiguriert wird Union genutzt.
   if (event.filterMode === 'OR') {
@@ -125,7 +136,7 @@ export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
   const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf } = useEvents();
-  const { currentUser } = useCurrentUser();
+  const { currentUser, groupEmails } = useCurrentUser();
   const { isAdmin, canCreateEvents } = useRoles();
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
@@ -201,7 +212,7 @@ export default function EventListPage(): React.ReactElement {
   const filteredEvents = (isAdmin
     ? fictiveFiltered
     : fictiveFiltered.filter((e: DeloitteEvent) =>
-        isEventVisibleForUser(e, currentUser.email, currentUser.location)
+        isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails)
         || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
       )
   ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
