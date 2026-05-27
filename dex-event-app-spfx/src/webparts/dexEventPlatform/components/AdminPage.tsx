@@ -801,6 +801,10 @@ export default function AdminPage(): React.ReactElement {
   const [adminAddMemberResults, setAdminAddMemberResults] = React.useState<Array<{ email: string; displayName: string }>>([]);
   const [adminAddMemberSearching, setAdminAddMemberSearching] = React.useState(false);
   const [adminAddMemberConsent, setAdminAddMemberConsent] = React.useState(false);
+  // v17.4: Multi-Select aus teamlosen Personen + Lead-Auswahl + Mail-Opt-in.
+  const [adminAddTeamlessPicks, setAdminAddTeamlessPicks] = React.useState<Set<number>>(new Set());
+  const [adminAddLeadRegId, setAdminAddLeadRegId] = React.useState<number | null>(null);
+  const [adminAddSendMail, setAdminAddSendMail] = React.useState<boolean>(false);
   const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
   const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
   const [adminAddMemberIncludeIntl, setAdminAddMemberIncludeIntl] = React.useState(false);
@@ -4862,6 +4866,9 @@ export default function AdminPage(): React.ReactElement {
                         setAdminAddMemberResults([]);
                         setAdminAddMemberConsent(false);
                         setAdminAddMemberError('');
+                        setAdminAddTeamlessPicks(new Set());
+                        setAdminAddLeadRegId(null);
+                        setAdminAddSendMail(false);
                       }}
                     >
                       <Plus size={14} /> Neues Team anlegen
@@ -4999,6 +5006,9 @@ export default function AdminPage(): React.ReactElement {
                                   setAdminAddMemberResults([]);
                                   setAdminAddMemberConsent(false);
                                   setAdminAddMemberError('');
+                                  setAdminAddTeamlessPicks(new Set());
+                                  setAdminAddLeadRegId(null);
+                                  setAdminAddSendMail(false);
                                 }}
                               >
                                 <Plus size={14} /> Person hinzufügen
@@ -7293,59 +7303,61 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddMemberConsent(false);
           setAdminAddMemberError('');
           setAdminAddMemberBusy(false);
+          setAdminAddTeamlessPicks(new Set());
+          setAdminAddLeadRegId(null);
+          setAdminAddSendMail(false);
         };
+        // v17.4: Logik zur Auswertung der Multi-Pick + (optionalem) Graph-Pick.
+        const hasMultiPicks = adminAddTeamlessPicks.size > 0;
+        const hasGraphPick = !!adminAddMemberPick;
+        // Wenn ausschliesslich teamlose Picks: keine Consent-Box (Person hat
+        // bei der eigenen Anmeldung bereits zugestimmt). Sobald aber eine
+        // NEUE Person via Graph-Suche dabei ist, bleibt die Consent-Pflicht.
+        const onlyTeamlessPicks = hasMultiPicks && !hasGraphPick;
+        const consentRequired = !onlyTeamlessPicks && hasGraphPick;
         const submit = async (): Promise<void> => {
-          if (!adminAddMemberDialog || !adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy) return;
+          if (!adminAddMemberDialog || adminAddMemberBusy) return;
+          if (!hasMultiPicks && !hasGraphPick) return;
+          if (consentRequired && !adminAddMemberConsent) return;
           setAdminAddMemberBusy(true);
           setAdminAddMemberError('');
           try {
-            // v17.2: Pruefen, ob die gepickte Person eine bestehende
-            // teamlose Registrierung ist. Wenn ja: nur TeamId/TeamName
-            // PATCHen statt neue Anmeldung + Mail/Outlook auszuloesen.
-            const pickedEmailLc = adminAddMemberPick.email.toLowerCase();
-            const existingTeamless = teamlessActiveLocal.find(r =>
-              (r.ParticipantEmail || '').toLowerCase() === pickedEmailLc);
-            if (existingTeamless) {
-              const isFirstMember = adminAddMemberDialog.isNewTeam === true;
-              const ok = await assignTeamlessToTeam(
-                selectedEvent.id,
-                adminAddMemberDialog.teamId,
-                adminAddMemberDialog.teamName || undefined,
-                existingTeamless.Id,
-                isFirstMember, // erste Person eines neuen Teams wird Lead
-              );
-              if (!ok) {
-                setAdminAddMemberError('Zuordnen ins Team fehlgeschlagen.');
+            const tid = adminAddMemberDialog.teamId;
+            const tName = adminAddMemberDialog.teamName || undefined;
+            let assignedCount = 0;
+            // 1) Teamlose Picks zuordnen (PATCH only).
+            for (const regId of Array.from(adminAddTeamlessPicks)) {
+              const isLead = adminAddLeadRegId === regId;
+              try {
+                const ok = await assignTeamlessToTeam(selectedEvent.id, tid, tName, regId, isLead);
+                if (ok) assignedCount++;
+              } catch (err) { console.warn('[DEX] assignTeamlessToTeam failed for', regId, err); }
+            }
+            // 2) Falls noch ein Graph-Pick dabei: addTeamMember (neuer Insert).
+            if (hasGraphPick && adminAddMemberPick) {
+              const res = await addTeamMember(selectedEvent.id, tid, tName, adminAddMemberPick);
+              if (!res.ok) {
+                if (res.reason && res.reason.startsWith('already-registered')) {
+                  setAdminAddMemberError('Person bereits beim Event angemeldet — Picker aus „Bereits angemeldet"-Liste benutzen.');
+                } else if (res.reason === 'team-full') {
+                  setAdminAddMemberError('Das Team ist bereits voll.');
+                } else {
+                  setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
+                }
                 setAdminAddMemberBusy(false);
                 return;
               }
-              const pickedName = adminAddMemberPick.displayName || adminAddMemberPick.email;
-              setTeamsToast(`${pickedName} wurde dem Team zugeordnet — kein neuer Insert, keine Mail.`);
-              window.setTimeout(() => setTeamsToast(''), 4500);
-              const regs = await getAllRegistrations(selectedEvent.id);
-              setRegistrations(regs);
-              closeDlg();
-              return;
+              assignedCount++;
             }
-            const res = await addTeamMember(
-              selectedEvent.id,
-              adminAddMemberDialog.teamId,
-              adminAddMemberDialog.teamName || undefined,
-              adminAddMemberPick
-            );
-            if (!res.ok) {
-              if (res.reason && res.reason.startsWith('already-registered')) {
-                setAdminAddMemberError('Diese Person ist bereits beim Event angemeldet — bitte abmelden lassen, bevor du sie zum Team hinzufügst.');
-              } else if (res.reason === 'team-full') {
-                setAdminAddMemberError('Das Team ist bereits voll.');
-              } else {
-                setAdminAddMemberError('Hinzufügen fehlgeschlagen.');
-              }
-              setAdminAddMemberBusy(false);
-              return;
-            }
-            const pickedName = adminAddMemberPick.displayName || adminAddMemberPick.email;
-            setTeamsToast(`${pickedName} wurde zum Team hinzugefügt — Mail + Outlook werden versendet.`);
+            const teamLabel = tName ? `„${tName}"` : 'das Team';
+            const toastMsg = adminAddSendMail
+              ? `${assignedCount} ${assignedCount === 1 ? 'Person' : 'Personen'} ${teamLabel} zugeordnet — Info-Mail wird versendet.`
+              : `${assignedCount} ${assignedCount === 1 ? 'Person' : 'Personen'} ${teamLabel} zugeordnet (ohne Mail-Versand).`;
+            setTeamsToast(toastMsg);
+            // TODO v17.5: Wenn adminAddSendMail=true UND assignTeamlessToTeam-
+            // Pfad genutzt wurde, hier explizit eine „Du bist jetzt im Team
+            // <Name>"-Mail queuen. Aktuell laeuft die Mail nur ueber den
+            // addTeamMember-Pfad (Graph-Pick) automatisch.
             window.setTimeout(() => setTeamsToast(''), 4500);
             const regs = await getAllRegistrations(selectedEvent.id);
             setRegistrations(regs);
@@ -7394,53 +7406,87 @@ export default function AdminPage(): React.ReactElement {
                   />
                 </div>
               )}
-              <div style={{
-                padding: '14px 16px',
-                background: 'rgba(237,139,0,0.10)',
-                border: '2px solid var(--dex-orange, #ed8b00)',
-                borderRadius: 8,
-                color: '#7a4a00',
-                fontSize: '0.88rem',
-                lineHeight: 1.5,
-              }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                  Vorab die Zustimmung des Mitglieds einholen
+              {/* v17.4: Consent-Box nur, wenn eine wirklich NEUE Person
+                  via Graph hinzugefuegt wird. Bei reiner Team-Zuordnung
+                  schon-angemeldeter Personen brauchen wir keine zusaetzliche
+                  Zustimmung — die haben sie bei der eigenen Anmeldung
+                  bereits gegeben. */}
+              {consentRequired ? (
+                <div style={{
+                  padding: '14px 16px',
+                  background: 'rgba(237,139,0,0.10)',
+                  border: '2px solid var(--dex-orange, #ed8b00)',
+                  borderRadius: 8,
+                  color: '#7a4a00',
+                  fontSize: '0.88rem',
+                  lineHeight: 1.5,
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    Vorab die Zustimmung des Mitglieds einholen
+                  </div>
+                  <div>
+                    {'Mit dem Hinzufügen meldest du diese Person an. Sie erhält automatisch '}
+                    {'eine Anmeldebestätigung per Mail, einen Outlook-Termin und sieht das '}
+                    {'Event in „Meine Events". Bitte stelle sicher, dass die Person ihrer '}
+                    {'Anmeldung '}<strong>vorher zugestimmt</strong>{' hat.'}
+                  </div>
                 </div>
-                <div>
-                  {'Mit dem Hinzufügen meldest du diese Person an. Sie erhält automatisch '}
-                  {'eine Anmeldebestätigung per Mail, einen Outlook-Termin und sieht das '}
-                  {'Event in „Meine Events". Bitte stelle sicher, dass die Person ihrer '}
-                  {'Anmeldung '}<strong>vorher zugestimmt</strong>{' hat.'}
+              ) : (onlyTeamlessPicks && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: 'rgba(33,150,243,0.06)',
+                  border: '1px solid var(--dex-info, #2196f3)',
+                  borderRadius: 8,
+                  color: 'var(--dex-gray-700)',
+                  fontSize: '0.82rem',
+                  lineHeight: 1.5,
+                }}>
+                  Du ordnest bereits-angemeldete Teilnehmer einem Team zu — keine neue Anmeldung, keine Bestätigungsmail an die Personen (es sei denn du hakst „Info-Mail an die zugeordneten…" unten an).
                 </div>
-              </div>
+              ))}
               <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
                   <span style={{ color: 'var(--dex-red)' }}>*</span> Person auswählen
                 </label>
-                {/* v17.2: Quick-Pick fuer bereits registrierte Personen ohne
-                    Team. Erscheint nur wenn noch keine Person gewaehlt ist
-                    und es teamlose Teilnehmer gibt — sonst direkt der
-                    Graph-Suche-Fallback unten. */}
-                {!adminAddMemberPick && teamlessActiveLocal.length > 0 && (
+                {/* v17.4: Multi-Select aus bereits registrierten Personen
+                    ohne Team. Checkbox-Liste; bei Mehrfach-Auswahl
+                    erscheint zusaetzlich die Lead-Radio-Auswahl. */}
+                {teamlessActiveLocal.length > 0 && (
                   <div style={{ marginBottom: 12, padding: 10, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, background: 'rgba(237,139,0,0.04)' }}>
                     <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600, marginBottom: 6 }}>
-                      Bereits angemeldet ohne Team ({teamlessActiveLocal.length}) — direkt auswählen:
+                      Bereits angemeldet ohne Team ({teamlessActiveLocal.length}) — mehrere auswählbar:
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
                       {teamlessActiveLocal.map(p => {
                         const nm = `${p.Vorname || ''} ${p.Nachname || ''}`.trim() || p.ParticipantName || p.ParticipantEmail;
+                        const isPicked = adminAddTeamlessPicks.has(p.Id);
+                        const isLead = adminAddLeadRegId === p.Id;
                         return (
-                          <button
+                          <div
                             key={p.Id}
-                            type="button"
-                            onClick={() => setAdminAddMemberPick({ email: p.ParticipantEmail, displayName: nm })}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 8,
-                              width: '100%', padding: '6px 10px',
-                              border: '1px solid var(--dex-gray-200)', borderRadius: 6,
-                              background: '#fff', cursor: 'pointer', textAlign: 'left',
+                              padding: '6px 10px',
+                              border: `1px solid ${isPicked ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}`,
+                              borderRadius: 6,
+                              background: isPicked ? 'rgba(237,139,0,0.08)' : '#fff',
                             }}
                           >
+                            <input
+                              type="checkbox"
+                              checked={isPicked}
+                              onChange={e => {
+                                setAdminAddTeamlessPicks(prev => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(p.Id);
+                                  else next.delete(p.Id);
+                                  return next;
+                                });
+                                // Wenn Lead deselektiert wurde: Lead zurücksetzen.
+                                if (!e.target.checked && adminAddLeadRegId === p.Id) setAdminAddLeadRegId(null);
+                              }}
+                              style={{ flexShrink: 0 }}
+                            />
                             <img
                               src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.ParticipantEmail)}&size=S`}
                               alt={nm}
@@ -7451,14 +7497,56 @@ export default function AdminPage(): React.ReactElement {
                               <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>{nm}</div>
                               <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</div>
                             </div>
-                          </button>
+                            {isPicked && (
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lead-pick"
+                                  checked={isLead}
+                                  onChange={() => setAdminAddLeadRegId(p.Id)}
+                                  style={{ margin: 0 }}
+                                />
+                                Lead
+                              </label>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
+                    {adminAddTeamlessPicks.size > 0 && (
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+                        <strong>{adminAddTeamlessPicks.size}</strong> ausgewählt
+                        {!adminAddLeadRegId && adminAddTeamlessPicks.size > 0 && (
+                          <span style={{ color: 'var(--dex-gray-500)' }}>
+                            — bitte einen Lead markieren (oder leer = kein Lead).
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-                      Oder weiter unten via Suche eine neue Person hinzufügen.
+                      Oder weiter unten via Suche eine zusätzliche neue Person hinzufügen.
                     </div>
                   </div>
+                )}
+                {/* v17.4: Mail-Opt-in fuer die Team-Zuordnung. Nur sinnvoll
+                    wenn mind. eine teamlose Person zugeordnet wird — beim
+                    Graph-Pick laeuft die Bestaetigungsmail ohnehin via
+                    addTeamMember. */}
+                {adminAddTeamlessPicks.size > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={adminAddSendMail}
+                      onChange={e => setAdminAddSendMail(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      Info-Mail an die zugeordneten Team-Mitglieder versenden
+                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        Default aus — die Person ist ja bereits beim Event angemeldet.
+                      </span>
+                    </span>
+                  </label>
                 )}
                 {adminAddMemberPick ? (
                   <div style={{
@@ -7559,18 +7647,21 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 )}
               </div>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
-                <input
-                  type="checkbox"
-                  checked={adminAddMemberConsent}
-                  onChange={e => setAdminAddMemberConsent(e.target.checked)}
-                  style={{ marginTop: 3 }}
-                />
-                <span>
-                  <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
-                  Ich bestätige, dass die Person ihrer Anmeldung zugestimmt hat.
-                </span>
-              </label>
+              {/* v17.4: Consent-Checkbox nur bei wirklich neuer Person via Graph. */}
+              {consentRequired && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                  <input
+                    type="checkbox"
+                    checked={adminAddMemberConsent}
+                    onChange={e => setAdminAddMemberConsent(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                    Ich bestätige, dass die Person ihrer Anmeldung zugestimmt hat.
+                  </span>
+                </label>
+              )}
               {adminAddMemberError && (
                 <div style={{ padding: 10, borderRadius: 6, background: 'rgba(220,38,38,0.10)', color: '#b91c1c', fontSize: '0.85rem' }}>
                   {adminAddMemberError}
