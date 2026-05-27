@@ -883,8 +883,8 @@ export default function RegistrationPage(): React.ReactElement {
         const isSel = selectedSessions.has(ce.id);
         if (isSel && !wasReg) {
           setSubmitProgressLabel(locale === 'de'
-            ? `Sub-Event „${ce.title || '?'}" wird angemeldet…`
-            : `Registering for sub-event „${ce.title || '?'}"…`);
+            ? `${childTermSingular || 'Sub-Event'} „${ce.title || '?'}" wird angemeldet…`
+            : `Registering for ${childTermSingular || 'sub-event'} „${ce.title || '?'}"…`);
           const sType = isSplitGroup ? (inheritedStarterType || undefined) : undefined;
           // Pro-Sub-Event Custom-Field-Werte aus dem Modal-Flow (sessionFieldValues
           // wird beim Bestätigen des Sub-Event-Modals befüllt). Default: {}.
@@ -899,8 +899,8 @@ export default function RegistrationPage(): React.ReactElement {
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         } else if (!isSel && wasReg && !registerForOther) {
           setSubmitProgressLabel(locale === 'de'
-            ? `Sub-Event „${ce.title || '?'}" wird abgemeldet…`
-            : `Cancelling sub-event „${ce.title || '?'}"…`);
+            ? `${childTermSingular || 'Sub-Event'} „${ce.title || '?'}" wird abgemeldet…`
+            : `Cancelling ${childTermSingular || 'sub-event'} „${ce.title || '?'}"…`);
           // Cancel-Pfad bleibt aufs Selbst-Anmelden begrenzt: ein Stellvertreter
           // soll nicht aus Versehen einen Sub-Event-Slot des Anderen freigeben
           // weil er den Haken nicht gesetzt hat. Wer einen TN abmelden will,
@@ -957,11 +957,19 @@ export default function RegistrationPage(): React.ReactElement {
           : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
       : (isFull ? t('reg.waitlisttitle') : t('reg.success'));
     const successBody = sessionsOnlyHint
-      ? (childTermPlural && childTermSingular
-          ? (locale === 'de'
-              ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
-              : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
-          : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title))
+      ? (event.subEventsOnlyMode
+          ? (childTermSingular
+              ? (locale === 'de'
+                  ? `Du hast dich für die ausgewählten ${childTermPlural || `${childTermSingular}s`} im Rahmen von „${event.title}" angemeldet. Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
+                  : `You registered for the selected items within "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
+              : (locale === 'de'
+                  ? `Du hast dich für die ausgewählten Sub-Events im Rahmen von „${event.title}" angemeldet. Du bekommst pro Sub-Event eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
+                  : `You registered for the selected sub-events within "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per sub-event.`))
+          : (childTermPlural && childTermSingular
+              ? (locale === 'de'
+                  ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
+                  : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
+              : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title)))
       : (isFull
           ? (registerForOther
               ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
@@ -1208,26 +1216,10 @@ export default function RegistrationPage(): React.ReactElement {
             boxShadow: '0 16px 48px rgba(0,0,0,0.35)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
           }}>
-            {/* v11.79: Border-Ring-Spinner (v11.70) durch indeterminierte
-                Progress-Bar ersetzt — siehe MyEventsPage. Der eigentliche
-                Submit-Progress (0-100%) bleibt darunter sichtbar; diese
-                Top-Bar liefert den endlosen "läuft gerade etwas"-Pulse. */}
-            <div
-              aria-hidden="true"
-              style={{
-                width: '100%', height: 6, borderRadius: 3,
-                background: '#e5e5e5',
-                overflow: 'hidden', position: 'relative',
-              }}
-            >
-              <div style={{
-                position: 'absolute', top: 0, bottom: 0,
-                width: '40%',
-                background: '#86bc25',
-                borderRadius: 3,
-                animation: 'dexProgressSlide 1.2s ease-in-out infinite',
-              }} />
-            </div>
+            {/* v15.13: Doppel-Ladebalken entfernt — die deterministische
+                Progress-Bar weiter unten (0-100% mit Label) reicht aus.
+                Die zusätzliche indeterministische „Pulse"-Bar war für den
+                User verwirrend. */}
             <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)' }}>
               {locale === 'de' ? 'Anmeldung läuft …' : 'Submitting registration …'}
             </div>

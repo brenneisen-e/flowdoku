@@ -1336,18 +1336,32 @@ export default function MyEventsPage(): React.ReactElement {
                     {/* Header: Titel + Status Badge */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
-                      {sessionsOnly ? (
-                        <span
-                          className="badge"
-                          title={t('myevents.sessionsonly.hint')}
-                          style={{
-                            flexShrink: 0, marginLeft: 12,
-                            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
-                          }}
-                        >
-                          {t('myevents.sessionsonly.badge') || 'Nur Sessions'}
-                        </span>
-                      ) : (
+                      {sessionsOnly ? (() => {
+                        // v15.13: Badge-Text per Event mit der konfigurierten
+                        // Bezeichnung (event.childEventTermPlural) — sonst
+                        // bleibt der globale Translation-Fallback.
+                        const term = event.childEventTermPlural || '';
+                        const badgeText = term
+                          ? (isDe ? `Nur ${term}` : `${term} only`)
+                          : (t('myevents.sessionsonly.badge') || 'Nur Sub-Events');
+                        const hintTitle = event.subEventsOnlyMode
+                          ? (isDe
+                              ? `Bei diesem Event meldest du dich ausschließlich für ${term || 'Sub-Events'} an — es gibt keine Anmeldung für das Hauptevent selbst.`
+                              : `For this event you register exclusively for ${term || 'sub-events'} — there is no registration for the main event itself.`)
+                          : t('myevents.sessionsonly.hint');
+                        return (
+                          <span
+                            className="badge"
+                            title={hintTitle}
+                            style={{
+                              flexShrink: 0, marginLeft: 12,
+                              background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+                            }}
+                          >
+                            {badgeText}
+                          </span>
+                        );
+                      })() : (
                         <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0, marginLeft: 12 }}>
                           {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
                             ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
@@ -1355,20 +1369,33 @@ export default function MyEventsPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
+                    {/* v15.13: Bei subEventsOnlyMode gibt es überhaupt kein
+                        Hauptevent zum Anmelden — der Hinweistext „… aber
+                        NICHT für das Haupt-Event selbst" wäre dort falsch.
+                        Stattdessen Text auf die konfigurierte Bezeichnung
+                        umstellen ODER weglassen, wenn keine eigenen Titel
+                        anzuzeigen sind. */}
                     {sessionsOnly && (() => {
-                      // v11.31: aktive Sub-Events des Users in Klammern
-                      // hinter dem Hinweis-Text auflisten. Daten kommen
-                      // aus loadMyRegistrations (subEventTitles).
+                      const term = event.childEventTermPlural || '';
                       const subList = (subEventTitles && subEventTitles.length > 0)
                         ? ` (${subEventTitles.join(', ')})`
                         : '';
+                      const hintText = event.subEventsOnlyMode
+                        ? (isDe
+                            ? `Du bist für ${term || 'Sub-Events'} dieses Events angemeldet`
+                            : `You are registered for ${term || 'sub-events'} of this event`)
+                        : (term
+                            ? (isDe
+                                ? `Du bist für ${term} dieses Events angemeldet, aber NICHT für das Haupt-Event selbst`
+                                : `You are registered for ${term} of this event but NOT for the main event itself`)
+                            : t('myevents.sessionsonly.hint'));
                       return (
                         <div style={{
                           marginTop: 6, padding: '6px 10px', borderRadius: 6,
                           background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
                           color: 'var(--dex-orange)', fontSize: '0.78rem',
                         }}>
-                          {t('myevents.sessionsonly.hint')}{subList}.
+                          {hintText}{subList}.
                         </div>
                       );
                     })()}
@@ -2785,7 +2812,11 @@ function MyEventSubEvents(props: {
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   onMutated: () => Promise<void>;
 }): React.ReactElement | null {
-  const isDe = (props.parentEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
+  // v15.13: isDe MUSS aus dem UI-Locale kommen, nicht aus event.emailLanguage —
+  // letzteres ist die Sprache der Bestätigungsmails (organizer-konfiguriert)
+  // und sagt nichts darüber aus, in welcher Sprache der User die App sieht.
+  const { locale: __uiLocale } = useLanguage();
+  const isDe = __uiLocale === 'de';
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
@@ -2904,24 +2935,25 @@ function MyEventSubEvents(props: {
 
   if (props.childEvents.length === 0) return null;
 
-  // v14.7: Bei sectioned Events („Event-Sections"-Format) nennen wir die
-  // Kinder „Sections" statt „Sub-Events" — entkoppelt sprachlich vom
-  // „Hauptevent + Sub-Event"-Konzept, das hier eh nicht mehr passt.
-  const isSectionedEvent = !!props.parentEvent.requireSubEventSelection;
+  // v15.13: Bezeichnung kommt jetzt direkt aus event.childEventTermPlural /
+  // childEventTermSingular (Wizard-Setting). Fallback: „Sub-Events"-Begriff.
+  const termPlural = props.parentEvent.childEventTermPlural || '';
+  const termSingular = props.parentEvent.childEventTermSingular || '';
+  const headerLabel = termPlural || (isDe ? 'Sub-Events' : 'Sub-events');
+  const hintLabel = termSingular
+    ? (isDe
+        ? `Eine ${termSingular} kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.`
+        : `You can register or cancel a ${termSingular} at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.`)
+    : (isDe
+        ? 'Sub-Events kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.'
+        : 'You can register or cancel sub-events at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.');
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-        {isSectionedEvent
-          ? (isDe ? 'Event-Sections' : 'Event sections')
-          : (isDe ? 'Sub-Events' : 'Sub-events')}
+        {headerLabel}
       </div>
-      {/* v10.22: kurzer Hinweis dass Sessions jederzeit nachträglich
-          an/abgemeldet werden können — Mail + Kalendereintrag laufen
-          automatisch. */}
       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 10, lineHeight: 1.45 }}>
-        {isDe
-          ? 'Sessions kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.'
-          : 'You can register or cancel sessions at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.'}
+        {hintLabel}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {props.childEvents.map(ce => {
@@ -3128,7 +3160,7 @@ function MyEventSubEvents(props: {
           an, welche zusätzlichen Sub-Events er mitabmelden will.
           Default: target ist immer abgemeldet (lock-Checkbox); peers
           unchecked. Klick auf „Abmelden" verarbeitet die Auswahl. */}
-      {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={isSectionedEvent} />}
+      {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={!!props.parentEvent.requireSubEventSelection} />}
     </div>
   );
 }
