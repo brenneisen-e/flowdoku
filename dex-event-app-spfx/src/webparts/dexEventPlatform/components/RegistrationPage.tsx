@@ -194,6 +194,11 @@ export default function RegistrationPage(): React.ReactElement {
   // einzelne Sub-Events anmelden möchte. Bei B2Run-Parents zusätzlich pro Session
   // eine Durchstarter/Funstarter-Auswahl.
   const childEvents = React.useMemo(() => event ? childEventsOf(event.id) : [], [event?.id]);
+  // v15.10: vom Organizer konfigurierbare Bezeichnung (z.B. „Event-Sections",
+  // „Workshops"). Wenn gesetzt überschreibt das die Default-Übersetzung
+  // („Sessions" / „Sub-Events") überall im RegistrationPage-UI.
+  const childTermSingular = (event && event.childEventTermSingular) || '';
+  const childTermPlural = (event && event.childEventTermPlural) || '';
   const [registerForParent, setRegisterForParent] = React.useState(true);
   const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
   const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
@@ -583,8 +588,8 @@ export default function RegistrationPage(): React.ReactElement {
     // weil die Hauptevent-Mails/Outlook deaktiviert sind.
     if (event && event.requireSubEventSelection && childEvents.length > 0 && selectedSessions.size === 0) {
       setError(t('reg.require.subevent') || (locale === 'de'
-        ? 'Für dieses Event musst du mindestens ein Sub-Event auswählen — sonst kannst du dich nicht anmelden.'
-        : 'For this event you must pick at least one sub-event — otherwise you cannot register.'));
+        ? `Für dieses Event musst du mindestens ein ${childTermSingular || 'Sub-Event'} auswählen — sonst kannst du dich nicht anmelden.`
+        : `For this event you must pick at least one ${childTermSingular || 'sub-event'} — otherwise you cannot register.`));
       return;
     }
 
@@ -947,10 +952,16 @@ export default function RegistrationPage(): React.ReactElement {
   if (submitted) {
     const sessionsOnlyHint = sessionsOnlySubmitted;
     const successHeadline = sessionsOnlyHint
-      ? (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet')
+      ? (childTermPlural
+          ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
+          : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
       : (isFull ? t('reg.waitlisttitle') : t('reg.success'));
     const successBody = sessionsOnlyHint
-      ? (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title)
+      ? (childTermPlural && childTermSingular
+          ? (locale === 'de'
+              ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
+              : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
+          : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title))
       : (isFull
           ? (registerForOther
               ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
@@ -1510,7 +1521,7 @@ export default function RegistrationPage(): React.ReactElement {
               {/* Sessions */}
               {childEvents.length > 0 && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{t('reg.selection.sessions') || 'Sessions'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || t('reg.selection.sessions') || 'Sessions'}</div>
                   {/* v14.5: Pflicht-Hinweis wenn Organizer requireSubEventSelection aktiv hat. */}
                   {event && event.requireSubEventSelection && (
                     <div style={{
@@ -1520,8 +1531,8 @@ export default function RegistrationPage(): React.ReactElement {
                       fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600,
                     }}>
                       {locale === 'de'
-                        ? 'Pflicht: bitte mindestens ein Sub-Event auswählen.'
-                        : 'Required: please pick at least one sub-event.'}
+                        ? `Pflicht: bitte mindestens ein ${childTermSingular || 'Sub-Event'} auswählen.`
+                        : `Required: please pick at least one ${childTermSingular || 'sub-event'}.`}
                     </div>
                   )}
                   {childEvents.map(ce => {
@@ -1679,7 +1690,11 @@ export default function RegistrationPage(): React.ReactElement {
                   background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
                   color: 'var(--dex-orange)', fontSize: '0.78rem',
                 }}>
-                  {t('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
+                  {childTermPlural
+                    ? (locale === 'de'
+                        ? `Du meldest dich ausschließlich für ${childTermPlural} an — NICHT für das Haupt-Event.`
+                        : `You are registering exclusively for ${childTermPlural} — NOT for the main event.`)
+                    : (t('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.')}
                 </div>
               )}
             </div>
@@ -2406,7 +2421,11 @@ export default function RegistrationPage(): React.ReactElement {
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{tEvent('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
-                  {tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.'}
+                  {childTermPlural
+                    ? (locale === 'de'
+                        ? `Haupt-Event und ${childTermPlural} können unabhängig voneinander an- oder abgewählt werden.`
+                        : `Main event and ${childTermPlural} can be selected or deselected independently.`)
+                    : (tEvent('reg.selection.hint') || 'Haupt-Event und Sessions können unabhängig voneinander an- oder abgewählt werden.')}
                 </p>
 
                 {/* v15.7: Hauptevent-Card auch hier ausblenden bei
@@ -2441,7 +2460,7 @@ export default function RegistrationPage(): React.ReactElement {
 
                 {/* Sessions */}
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{tEvent('reg.selection.sessions') || 'Sessions'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
                     const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
                     const isSel = selectedSessions.has(ce.id);
@@ -2555,7 +2574,11 @@ export default function RegistrationPage(): React.ReactElement {
                     background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
                     color: 'var(--dex-orange)', fontSize: '0.78rem',
                   }}>
-                    {tEvent('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.'}
+                    {childTermPlural
+                      ? (locale === 'de'
+                          ? `Du meldest dich ausschließlich für ${childTermPlural} an — NICHT für das Haupt-Event.`
+                          : `You are registering exclusively for ${childTermPlural} — NOT for the main event.`)
+                      : (tEvent('reg.selection.sessionsonlyhint') || 'Du meldest dich ausschließlich für Sessions an — NICHT für das Haupt-Event.')}
                   </div>
                 )}
               </div>
@@ -2636,7 +2659,7 @@ export default function RegistrationPage(): React.ReactElement {
             const parts: string[] = [];
             if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
             if (selectedSessions.size > 0) {
-              parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (t('reg.selection.sessioncount.one') || 'Session') : (t('reg.selection.sessioncount.many') || 'Sessions')}`);
+              parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (childTermSingular || t('reg.selection.sessioncount.one') || 'Session') : (childTermPlural || t('reg.selection.sessioncount.many') || 'Sessions')}`);
             }
             if (parts.length === 0) return t('reg.register');
             return `${t('reg.register')} (${parts.join(' + ')})`;
@@ -2803,15 +2826,15 @@ export default function RegistrationPage(): React.ReactElement {
             onClose={onCancel}
             maxWidth={520}
             padding={24}
-            ariaLabel={ce.title || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
+            ariaLabel={ce.title || childTermSingular || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
           >
               <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>
-                {ce.title || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
+                {ce.title || childTermSingular || (locale === 'de' ? 'Sub-Event' : 'Sub-event')}
               </h3>
               <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
                 {locale === 'de'
-                  ? 'Bitte beantworte die Fragen für dieses Sub-Event:'
-                  : 'Please answer the questions for this sub-event:'}
+                  ? `Bitte beantworte die Fragen für dieses ${childTermSingular || 'Sub-Event'}:`
+                  : `Please answer the questions for this ${childTermSingular || 'sub-event'}:`}
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
