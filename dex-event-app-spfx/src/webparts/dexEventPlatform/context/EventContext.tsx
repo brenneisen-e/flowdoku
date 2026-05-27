@@ -174,6 +174,10 @@ interface EventContextType {
    *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
    *  Bestaetigungs-Mail + Outlook-Termin queuen. */
   addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
+   *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
+   *  Registrierung, KEINE Bestaetigungsmail, KEIN Outlook. */
+  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean) => Promise<boolean>;
   /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
    *  Organizer "Beitritt erfordert Bestaetigung" NICHT aktiviert hat).
    *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
@@ -1434,6 +1438,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    *   5) Optional: Info-Mail an die anderen Mitglieder „X ist eurem Team
    *      beigetreten" (best-effort).
    */
+  async function assignTeamlessToTeam(
+    eventId: string,
+    teamId: string,
+    teamName: string | undefined,
+    existingRegId: number,
+    isLead: boolean = false,
+  ): Promise<boolean> {
+    const event = subsiteMap.current[eventId] ? events.find(e => e.id === eventId) : events.find(e => e.id === eventId);
+    if (!event || !event.subsiteUrl) return false;
+    return eventService.assignRegistrationToTeam(event.subsiteUrl, existingRegId, teamId, teamName, isLead);
+  }
+
   async function addTeamMember(
     eventId: string,
     teamId: string,
@@ -2699,6 +2715,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return eventService.getTeamMembers(subsiteUrl, teamId);
         },
         addTeamMember,
+        assignTeamlessToTeam,
         joinTeam,
         transferTeamLead,
         createTeamJoinRequest,

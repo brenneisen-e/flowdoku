@@ -561,7 +561,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -7279,6 +7279,12 @@ export default function AdminPage(): React.ReactElement {
       )}
 
       {adminAddMemberDialog && selectedEvent && (() => {
+        // v17.2: Quick-Pick aus bereits registrierten Personen ohne Team —
+        // damit der Organizer nicht via Graph-Suche jeden neu picken muss,
+        // wenn die Person ohnehin schon angemeldet ist.
+        const teamlessActiveLocal = registrations.filter(r =>
+          (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
+          && !r.TeamId);
         const closeDlg = (): void => {
           setAdminAddMemberDialog(null);
           setAdminAddMemberPick(null);
@@ -7293,6 +7299,34 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddMemberBusy(true);
           setAdminAddMemberError('');
           try {
+            // v17.2: Pruefen, ob die gepickte Person eine bestehende
+            // teamlose Registrierung ist. Wenn ja: nur TeamId/TeamName
+            // PATCHen statt neue Anmeldung + Mail/Outlook auszuloesen.
+            const pickedEmailLc = adminAddMemberPick.email.toLowerCase();
+            const existingTeamless = teamlessActiveLocal.find(r =>
+              (r.ParticipantEmail || '').toLowerCase() === pickedEmailLc);
+            if (existingTeamless) {
+              const isFirstMember = adminAddMemberDialog.isNewTeam === true;
+              const ok = await assignTeamlessToTeam(
+                selectedEvent.id,
+                adminAddMemberDialog.teamId,
+                adminAddMemberDialog.teamName || undefined,
+                existingTeamless.Id,
+                isFirstMember, // erste Person eines neuen Teams wird Lead
+              );
+              if (!ok) {
+                setAdminAddMemberError('Zuordnen ins Team fehlgeschlagen.');
+                setAdminAddMemberBusy(false);
+                return;
+              }
+              const pickedName = adminAddMemberPick.displayName || adminAddMemberPick.email;
+              setTeamsToast(`${pickedName} wurde dem Team zugeordnet — kein neuer Insert, keine Mail.`);
+              window.setTimeout(() => setTeamsToast(''), 4500);
+              const regs = await getAllRegistrations(selectedEvent.id);
+              setRegistrations(regs);
+              closeDlg();
+              return;
+            }
             const res = await addTeamMember(
               selectedEvent.id,
               adminAddMemberDialog.teamId,
@@ -7383,6 +7417,49 @@ export default function AdminPage(): React.ReactElement {
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
                   <span style={{ color: 'var(--dex-red)' }}>*</span> Person auswählen
                 </label>
+                {/* v17.2: Quick-Pick fuer bereits registrierte Personen ohne
+                    Team. Erscheint nur wenn noch keine Person gewaehlt ist
+                    und es teamlose Teilnehmer gibt — sonst direkt der
+                    Graph-Suche-Fallback unten. */}
+                {!adminAddMemberPick && teamlessActiveLocal.length > 0 && (
+                  <div style={{ marginBottom: 12, padding: 10, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, background: 'rgba(237,139,0,0.04)' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600, marginBottom: 6 }}>
+                      Bereits angemeldet ohne Team ({teamlessActiveLocal.length}) — direkt auswählen:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+                      {teamlessActiveLocal.map(p => {
+                        const nm = `${p.Vorname || ''} ${p.Nachname || ''}`.trim() || p.ParticipantName || p.ParticipantEmail;
+                        return (
+                          <button
+                            key={p.Id}
+                            type="button"
+                            onClick={() => setAdminAddMemberPick({ email: p.ParticipantEmail, displayName: nm })}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              width: '100%', padding: '6px 10px',
+                              border: '1px solid var(--dex-gray-200)', borderRadius: 6,
+                              background: '#fff', cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.ParticipantEmail)}&size=S`}
+                              alt={nm}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>{nm}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                      Oder weiter unten via Suche eine neue Person hinzufügen.
+                    </div>
+                  </div>
+                )}
                 {adminAddMemberPick ? (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 10,

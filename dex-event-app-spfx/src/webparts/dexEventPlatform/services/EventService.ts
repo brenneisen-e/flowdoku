@@ -4845,6 +4845,37 @@ export class EventService {
   /**
    * Custom Data einer Registrierung aktualisieren (Teilnehmer aendert eigene Angaben).
    */
+  /**
+   * v17.2: Bestehende Teilnehmer-Registrierung einem Team zuordnen
+   * (PATCH der TeamId/TeamName/TeamLead-Felder auf einem schon existierenden
+   * Item). Wird vom Admin-Center-Team-Management genutzt, wenn der
+   * Organizer einen schon Angemeldeten ohne Team einem (neuen) Team
+   * zuweist — vermeidet doppelte Anmeldung + Mail/Outlook-Spam.
+   */
+  public async assignRegistrationToTeam(
+    subsiteUrl: string,
+    itemId: number,
+    teamId: string,
+    teamName: string | undefined,
+    isLead: boolean,
+  ): Promise<boolean> {
+    try {
+      const body: Record<string, unknown> = {
+        TeamId: teamId,
+        TeamName: teamName || '',
+        TeamLead: !!isLead,
+      };
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        body
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] assignRegistrationToTeam failed:', err);
+      return false;
+    }
+  }
+
   public async updateRegistrationData(
     subsiteUrl: string,
     itemId: number,
