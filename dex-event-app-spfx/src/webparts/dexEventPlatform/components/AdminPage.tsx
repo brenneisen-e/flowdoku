@@ -600,7 +600,11 @@ export default function AdminPage(): React.ReactElement {
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
-  const [consolidatedSort, setConsolidatedSort] = React.useState<string>('nachname');
+  // v15.23: Default-Sort im konsolidierten View jetzt chronologisch
+  // nach erster Anmeldung (frueheste zuerst), nicht mehr alphabetisch
+  // nach Nachname. Damit ist die # in der Liste die Reihenfolge der
+  // Anmeldung, nicht die Alphabet-Position.
+  const [consolidatedSort, setConsolidatedSort] = React.useState<string>('id');
   const [consolidatedSortAsc, setConsolidatedSortAsc] = React.useState<boolean>(true);
   // v11.0: Bei Events mit Teilnehmer-Upload alle Attachment-Listen
   // einmalig laden, sobald sich registrations oder das ausgewählte
@@ -2409,6 +2413,10 @@ export default function AdminPage(): React.ReactElement {
     jobTitle: string;
     location: string;
     teilnehmerId: number | null;
+    /** v15.23: Frueheste RegistrationDate ueber alle Sub-Event-
+     *  Registrierungen der Person — Default-Sortierschluessel im
+     *  konsolidierten View (chronologisch nach erster Anmeldung). */
+    earliestRegistrationTs: number;
     perChild: Record<string, SPRegistration | undefined>;
     activeCount: number;
   };
@@ -2445,6 +2453,7 @@ export default function AdminPage(): React.ReactElement {
             jobTitle: anyR.JobTitle || '',
             location: anyR.Location || '',
             teilnehmerId: r.TeilnehmerID || null,
+            earliestRegistrationTs: r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY,
             perChild: {},
             activeCount: 0,
           };
@@ -2456,6 +2465,9 @@ export default function AdminPage(): React.ReactElement {
           if (!row.location && anyR.Location) row.location = anyR.Location;
           if (!row.vorname && r.Vorname) row.vorname = r.Vorname;
           if (!row.nachname && r.Nachname) row.nachname = r.Nachname;
+          // Frueheste RegistrationDate uebernehmen (min).
+          const ts = r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+          if (ts < row.earliestRegistrationTs) row.earliestRegistrationTs = ts;
         }
         row.perChild[ch.id] = r;
         row.activeCount += 1;
@@ -2477,7 +2489,10 @@ export default function AdminPage(): React.ReactElement {
     const cs = consolidatedSort;
     const dir = consolidatedSortAsc ? 1 : -1;
     const cmp = (a: ConsolidatedRow, b: ConsolidatedRow): number => {
-      if (cs === 'id') return ((a.teilnehmerId || 0) - (b.teilnehmerId || 0)) * dir;
+      // v15.23: #-Spalte sortiert nach Reihenfolge der ersten Anmeldung
+      // (RegistrationDate min), nicht mehr nach TeilnehmerID — die TID ist
+      // pro Sub-Event und bei konsolidierten Personen mehrdeutig.
+      if (cs === 'id') return (a.earliestRegistrationTs - b.earliestRegistrationTs) * dir;
       if (cs === 'vorname') return a.vorname.localeCompare(b.vorname, 'de') * dir;
       if (cs === 'nachname') return a.nachname.localeCompare(b.nachname, 'de') * dir;
       if (cs === 'email') return a.email.localeCompare(b.email) * dir;
