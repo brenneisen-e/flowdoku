@@ -854,7 +854,20 @@ export default function RegistrationPage(): React.ReactElement {
       }).length;
 
       // 1) Haupt-Event anmelden (nur wenn Checkbox an und noch nicht angemeldet).
-      if (willRegisterParent || registerForOther) {
+      // v15.25: Im subEventsOnlyMode wird die Parent-Anmeldung trotzdem
+      // durchgefuehrt — als „Schatten-Registrierung" rein zur Daten-
+      // Vollstaendigkeit. Damit hat jeder Teilnehmer auch im Parent-
+      // Teilnehmer-Schema eine Zeile mit den Antworten auf die Hauptevent-
+      // Custom-Fields (Food Preferences, Hotel, Travel etc.). Mails +
+      // Outlook werden fuer diese Schatten-Anmeldung in EventContext
+      // unterdrueckt — der User soll keine Bestaetigung fuers Hauptevent
+      // bekommen, da er da gar nicht „teilnimmt", sondern nur fuer Sub-
+      // Events.
+      const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
+      const sessionsBeingAdded = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
+      const parentAlreadyHasRow = !!myParentReg;
+      const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow && !registerForOther;
+      if (willRegisterParent || registerForOther || shouldShadowRegisterParent) {
         setSubmitProgress(30);
         setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
         parentOk = await registerForEvent(
@@ -906,16 +919,10 @@ export default function RegistrationPage(): React.ReactElement {
           // bei Sub-Event-Anmeldungen, die Teilnehmerliste hatte dann „-" in
           // der Anrede-Spalte. Salutation kommt aus dem Hauptformular und ist
           // pro User identisch fuer alle Sub-Event-Anmeldungen.
-          // v15.24: Im subEventsOnlyMode gibt es keine Parent-Registrierung,
-          // in der die Antworten zu den Hauptevent-Custom-Fields landen
-          // koennten. Damit die Antworten trotzdem persistiert werden,
-          // schreiben wir die customData-Werte des Hauptformulars
-          // zusaetzlich in JEDE Sub-Event-Registrierung (Sub-Event-eigene
-          // Antworten ueberschreiben Parent-Antworten bei gleicher Field-ID).
-          const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
-          const seFieldValues = isSubOnlyMode
-            ? { salutation, ...customData, ...(sessionFieldValues[ce.id] || {}) }
-            : { salutation, ...(sessionFieldValues[ce.id] || {}) };
+          // v15.25: Im subEventsOnlyMode landen die Hauptevent-CF-Antworten
+          // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
+          // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
+          const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
           const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
           if (ok) anySuccess = true;
           subOpsDone++;

@@ -978,7 +978,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           ? waitlistEmail(firstNameToUse, event.title, waitlistPosition)
           : registrationEmail(firstNameToUse, event.title);
       }
-      if (!event.disableEmails) {
+      // v15.25: Im subEventsOnlyMode wird das Hauptevent nur als
+      // „Schatten-Registrierung" angelegt (Daten-Zeile fuer Parent-CFs).
+      // Der User nimmt nicht am Hauptevent teil und soll dafuer KEINE
+      // Bestaetigungs-Mail und KEINEN Outlook-Termin bekommen — die
+      // tatsaechlichen Teilnahme-Mails kommen pro Sub-Event.
+      const suppressParentNotifications = !!event.subEventsOnlyMode;
+      if (!event.disableEmails && !suppressParentNotifications) {
         // v8.5: Organizer-BCC-Modus auswerten. Bei 'always' immer BCC,
         // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
         // ist, bei 'never'/undefined keinen BCC.
@@ -1124,7 +1130,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // mit Betreff „Weiterleitung notwendig" (s.o.) und kann darüber
       // den externen Teilnehmer informieren.
       const skipOutlookForExternal = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
-      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal) {
+      // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
+      // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
+      // nicht am Parent).
+      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentNotifications) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
