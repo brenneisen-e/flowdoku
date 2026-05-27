@@ -36,23 +36,54 @@ import { APP_VERSION } from '../version';
  *   zurueck und der Caller faellt auf das Code-Default zurueck.
  */
 export function applyEventTemplateOverride(
-  spTemplate: { subject: string; headingColor: string; heading: string; bodyHtml: string } | null,
+  spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
   templateType: string
-): { subject: string; headingColor: string; heading: string; bodyHtml: string } | null {
-  if (!overridesJson) return spTemplate;
+): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string } | null {
+  // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
+  // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
+  // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
+  if (!overridesJson) {
+    if (!spTemplate) return null;
+    return {
+      subject: spTemplate.subject,
+      headingColor: spTemplate.headingColor || '#86bc25',
+      heading: spTemplate.heading,
+      subheading: spTemplate.subheading || '',
+      bodyHtml: spTemplate.bodyHtml,
+    };
+  }
   try {
-    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; bodyHtml?: string }>;
+    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string }>;
     const o = all[templateType];
-    if (!o || (!o.subject && !o.heading && !o.bodyHtml)) return spTemplate;
+    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml)) {
+      if (!spTemplate) return null;
+      return {
+        subject: spTemplate.subject,
+        headingColor: spTemplate.headingColor || '#86bc25',
+        heading: spTemplate.heading,
+        subheading: spTemplate.subheading || '',
+        bodyHtml: spTemplate.bodyHtml,
+      };
+    }
     return {
       subject: o.subject || spTemplate?.subject || '',
       heading: o.heading || spTemplate?.heading || '',
+      // Override.subheading ist „intentional set" — auch leerer String
+      // soll respektiert werden, damit man die zweite Zeile abschalten kann.
+      subheading: o.subheading !== undefined ? o.subheading : (spTemplate?.subheading || ''),
       bodyHtml: o.bodyHtml || spTemplate?.bodyHtml || '',
       headingColor: spTemplate?.headingColor || '#86bc25',
     };
   } catch {
-    return spTemplate;
+    if (!spTemplate) return null;
+    return {
+      subject: spTemplate.subject,
+      headingColor: spTemplate.headingColor || '#86bc25',
+      heading: spTemplate.heading,
+      subheading: spTemplate.subheading || '',
+      bodyHtml: spTemplate.bodyHtml,
+    };
   }
 }
 

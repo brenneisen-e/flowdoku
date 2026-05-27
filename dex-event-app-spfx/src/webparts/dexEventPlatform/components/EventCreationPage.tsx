@@ -802,7 +802,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [triggerOutlookUpdate, setTriggerOutlookUpdate] = React.useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
-  const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; bodyHtml: string }>>(
+  const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>>(
     editEvent?.emailTemplateOverrides ? (() => {
       try {
         const parsed = JSON.parse(editEvent.emailTemplateOverrides);
@@ -828,7 +828,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags;
-        return rest as Record<string, { subject: string; heading: string; bodyHtml: string }>;
+        return rest as Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
       } catch { return {}; }
     })() : {}
   );
@@ -912,7 +912,7 @@ export default function EventCreationPage(): React.ReactElement {
      *  jeweils eigene An-/Abmelde-Mails versenden können). Vorher landeten
      *  Änderungen auf einem Sub-Tab fälschlicherweise im Top-Level-Override
      *  → die Sub-Events feuerten die Haupt-Event-Texte ab. */
-    emailTemplateOverrides?: Record<string, { subject: string; heading: string; bodyHtml: string }>;
+    emailTemplateOverrides?: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
     /** v11.57: Snapshot der initialen Outlook-relevanten Felder, um beim Save
      *  zu erkennen, ob die Teilnehmer einen Update-Termin bekommen sollen. */
     initialOutlookEventId?: string;
@@ -962,7 +962,7 @@ export default function EventCreationPage(): React.ReactElement {
       // versehentlich beim Haupt-Event.
       let emailLogo = '';
       let outlookLogo = '';
-      let subOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
+      let subOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }> = {};
       // v15.0: Inheritance-Flags aus dem Piggyback-JSON lesen. Wenn der
       // Flag nicht persistiert wurde (alte Events) faellt die App auf
       // datenbasierte Heuristik zurueck (siehe weiter unten).
@@ -974,7 +974,7 @@ export default function EventCreationPage(): React.ReactElement {
         inheritFlagsRaw = (ov?._inheritFlags as { capacity?: boolean; fields?: boolean; location?: boolean } | undefined);
         // Piggyback-Keys (mit Unterstrich-Prefix) rausstrippen, der Rest sind
         // die echten Mail-Template-Overrides pro TemplateType.
-        const filtered: Record<string, { subject: string; heading: string; bodyHtml: string }> = {};
+        const filtered: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }> = {};
         for (const key of Object.keys(ov)) {
           if (key.startsWith('_')) continue;
           const val = ov[key] as { subject?: string; heading?: string; bodyHtml?: string } | undefined;
@@ -2414,7 +2414,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
-    emailTemplateOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }>;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
   } | null>(null);
   // v11.57: Bevor wir submitten, muessen die Werte des aktuell sichtbaren
   // Tabs ins zugehoerige Slot zurueckgeschrieben werden — sonst gehen die
@@ -2464,7 +2464,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
-    emailTemplateOverrides: Record<string, { subject: string; heading: string; bodyHtml: string }>;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
   } => {
     if (activeCommTabIdx === 0) {
       return {
@@ -11028,6 +11028,9 @@ export default function EventCreationPage(): React.ReactElement {
         const override = (!isOutlook && !isDescription) ? emailTemplateOverrides[tType] : undefined;
         const currentSubject = override?.subject || defaultTpl?.subject || '';
         const currentHeading = override?.heading || defaultTpl?.heading || '';
+        // v15.19: Subheading-Override pro Event. Falls override.subheading
+        // explizit gesetzt ist (auch leerer String), nutze diesen Wert.
+        const currentSubheading = override?.subheading !== undefined ? override.subheading : '';
         const currentBody = isOutlook
           ? outlookBody
           : isDescription
@@ -11047,7 +11050,7 @@ export default function EventCreationPage(): React.ReactElement {
               } else {
                 setEmailTemplateOverrides({
                   ...emailTemplateOverrides,
-                  [tType]: { subject: currentSubject, heading: currentHeading, bodyHtml: html },
+                  [tType]: { subject: currentSubject, heading: currentHeading, subheading: currentSubheading, bodyHtml: html },
                 });
               }
             }}
@@ -11055,12 +11058,17 @@ export default function EventCreationPage(): React.ReactElement {
             emailSubject={(!isOutlook && !isDescription) ? currentSubject : undefined}
             onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
-              [tType]: { subject: s, heading: currentHeading, bodyHtml: currentBody },
+              [tType]: { subject: s, heading: currentHeading, subheading: currentSubheading, bodyHtml: currentBody },
             }) : undefined}
             emailHeading={(!isOutlook && !isDescription) ? currentHeading : undefined}
             onEmailHeadingChange={(!isOutlook && !isDescription) ? (h) => setEmailTemplateOverrides({
               ...emailTemplateOverrides,
-              [tType]: { subject: currentSubject, heading: h, bodyHtml: currentBody },
+              [tType]: { subject: currentSubject, heading: h, subheading: currentSubheading, bodyHtml: currentBody },
+            }) : undefined}
+            emailSubheading={(!isOutlook && !isDescription) ? currentSubheading : undefined}
+            onEmailSubheadingChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
+              ...emailTemplateOverrides,
+              [tType]: { subject: currentSubject, heading: currentHeading, subheading: s, bodyHtml: currentBody },
             }) : undefined}
             emailHeadingColor={(!isOutlook && !isDescription) ? (defaultTpl?.headingColor || '#86bc25') : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}

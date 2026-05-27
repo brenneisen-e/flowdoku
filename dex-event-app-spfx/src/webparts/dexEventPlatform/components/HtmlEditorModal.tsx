@@ -30,6 +30,9 @@ export interface HtmlEditorModalProps {
   onEmailSubjectChange?: (s: string) => void;
   emailHeading?: string;
   onEmailHeadingChange?: (s: string) => void;
+  /** v15.19: 2. Headline-Zeile (unter der Heading). Default {{EventTitle}}. */
+  emailSubheading?: string;
+  onEmailSubheadingChange?: (s: string) => void;
   emailHeadingColor?: string;
   /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
   outlookHeading?: string;
@@ -71,6 +74,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     previewMode,
     emailSubject, onEmailSubjectChange,
     emailHeading, onEmailHeadingChange, emailHeadingColor = '#86bc25',
+    emailSubheading, onEmailSubheadingChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
     previewVars = {}, insertableVars = [],
@@ -173,7 +177,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
     if (previewMode === 'email') {
       const heading = replacePlaceholdersPlain(emailHeading || '', previewVars);
-      const subheading = previewVars.EventTitle || '';
+      // v15.19: Subheading aus dem Override; Fallback {{EventTitle}}.
+      const rawSub = (emailSubheading && emailSubheading.trim()) || '{{EventTitle}}';
+      const subheading = replacePlaceholdersPlain(rawSub, previewVars);
       // Manche System-Templates (z.B. Nachruecken, OutlookDeclineReminder)
       // werden bereits komplett Deloitte-gewrappt gespeichert
       // (wrapTemplateForStorage), weil die Power-Automate-Flows den BodyHtml
@@ -266,6 +272,18 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       className="form-input"
                       value={emailHeading || ''}
                       onChange={e => onEmailHeadingChange && onEmailHeadingChange(e.target.value)}
+                      style={{ fontSize: '0.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
+                      Unter-Überschrift <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(leer = nur Event-Titel)</span>
+                    </label>
+                    <input
+                      className="form-input"
+                      value={emailSubheading || ''}
+                      placeholder={previewVars.EventTitle || '{{EventTitle}}'}
+                      onChange={e => onEmailSubheadingChange && onEmailSubheadingChange(e.target.value)}
                       style={{ fontSize: '0.85rem' }}
                     />
                   </div>
