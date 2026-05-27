@@ -1407,9 +1407,11 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
-    // v17.15: Nachrueck-Audit-Spalten — nur sichtbar wenn das Event eine
-    // Warteliste hat (sonst sind die Felder ohnehin alle leer).
-    if (selectedEvent?.waitlistEnabled) {
+    // v17.15/v17.17.1: Nachrueck-Audit-Spalten — nur sichtbar wenn das
+    // Event ueberhaupt eine Warteliste haben KANN (waitlistEnabled UND
+    // maxParticipants > 0). Bei „Unbegrenzt"-Events kommt nie jemand auf
+    // die Warteliste, deshalb sind die drei Audit-Spalten ohne Inhalt.
+    if (selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) {
       cols.push({ id: 'promotedDate', label: 'Nachgerückt am' });
       cols.push({ id: 'replaced', label: 'Ersetzt' });
       cols.push({ id: 'replacedBy', label: 'Ersetzt durch' });
