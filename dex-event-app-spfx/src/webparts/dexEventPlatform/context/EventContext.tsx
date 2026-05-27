@@ -796,6 +796,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // weil die Filter-Chain auf undefined gefallen ist.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onlyForGroup: (cf as any).onlyForGroup,
+        // v17.19: confirmLabel (Text neben Checkbox) im Mapping nachgezogen
+        // — vorher hier vergessen, Folge: Wizard speicherte den Text korrekt,
+        // RegistrationPage fiel aber immer auf den Default „Ja, bestätigen"
+        // zurueck, weil das Field-Mapping confirmLabel droppte.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        confirmLabel: (cf as any).confirmLabel,
       })),
     };
   }
@@ -2006,7 +2012,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
         // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        if (!event.disableEmails) {
+        // v17.19: Im subEventsOnlyMode keine Abmelde-Mail fuer das (Schatten-)
+        // Parent — der Nutzer hat sich gar nicht aktiv beim Parent angemeldet,
+        // sondern nur bei Sub-Events. Die Sub-Event-Abmeldungen senden bereits
+        // pro Stueck eine Mail, eine zusaetzliche Parent-Abmelde-Mail waere
+        // verwirrend.
+        const suppressParentNotificationsCancel = !!event.subEventsOnlyMode;
+        if (!event.disableEmails && !suppressParentNotificationsCancel) {
           try {
             const lang = event.emailLanguage || 'EN';
             // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
@@ -2036,7 +2048,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
         }
         // Outlook-Termin-Einladung zurückziehen
-        if (!event.disableOutlook) {
+        if (!event.disableOutlook && !suppressParentNotificationsCancel) {
           try {
             await eventService.queueOutlookEvent(
               currentUserEmail, eventId, event.title, 'Ausladen'
