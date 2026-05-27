@@ -19,6 +19,53 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
 
+### UI-Anleitung 2026-09-XX (v17.15) — Nachrueck-Audit (PromotedDate / ReplacedParticipantEmail / ReplacedByParticipantEmail)
+
+**Hintergrund:** seit App-Version v17.15 gibt es drei neue Spalten in jeder Subsite-Teilnehmerliste, mit denen wir nachvollziehen wann ein Wartelistler nachgerueckt ist und wessen Abmeldung den Promote ausgeloest hat. Die App-Logik in `EventService.promoteFirstWaitlistItem` setzt diese Felder bereits — fuer den **User-Self-Cancel-Pfad**, der durch den Power-Automate-Flow promotet, muessen die gleichen Felder hier zusaetzlich gesetzt werden. Sonst sind die App-Spalten nur halb gefuellt (nur Admin-Cancels haben das Audit).
+
+**Was sich aendert (auf Hoch-Level):**
+
+1. Im Flow gibt es bereits eine Variable mit der Item-Id des cancelnden Eintrags (`triggerOutputs()` → DEX_IDReorder enthaelt `ParticipantEmail`, oder via `Get_Item` der Teilnehmerliste). Falls nicht: einen `Get_item`-Step ergaenzen, der die cancelnde Person aus der Subsite-Teilnehmerliste laed (Filter `Status eq 'Abgemeldet' and modified desc top 1` — am bequemsten anhand der `Cancel_ItemId` aus der DEX_IDReorder-Trigger-Zeile).
+2. In den drei `Promote_*`-Update-Actions (Promote_Waitlist, Promote_Durchstarter, Promote_Funstarter) zwei neue Felder mitschreiben:
+   - `PromotedDate = utcNow()` (Expression: `utcNow()`)
+   - `ReplacedParticipantEmail = <ParticipantEmail der cancelnden Person>`
+3. Eine neue Update-Action **nach** dem Promote: PATCH auf das cancelnde Item mit `ReplacedByParticipantEmail = <ParticipantEmail der promoteten Person>`. Die promotete Person ist die, die in Schritt 2 ge-MERGEt wurde — ihre E-Mail kommt aus `body('Get_Waitlist_First')?['ParticipantEmail']` (bzw. `Get_Waitlist_First_Durchstarter` / `_Funstarter`).
+
+**UI-Schritte (Power Automate Maker, Cloud-Flow-Editor):**
+
+1. Oeffne den Flow `DEX_IDReorder_TeilnehmerIDs`. Scrolle zur Scope-Action `Process_Batch_Scope`.
+2. **Vorbereitung — Cancelling-Item E-Mail abrufen.** Direkt nach `Get_EventDetails` einen neuen `Get items`-Step einfuegen mit Settings:
+   - Site Address: dynamisch aus `outputs('Settings')?['siteUrl']`
+   - List Name: dynamisch aus `outputs('Settings')?['listName']`
+   - Filter Query: `Id eq @{triggerOutputs()?['body/Cancel_ItemId']}` (oder analog, je nach Trigger-Spaltennamen)
+   - Top Count: 1
+   Diesen Step **`Get_Cancelled_Item`** nennen.
+3. **Promote-Update erweitern.** In den drei Update-Actions
+   - `Promote_Waitlist` (NEIN-Zweig — normales Event)
+   - `Promote_Durchstarter` (B2Run-Split-Zweig)
+   - `Promote_Funstarter` (B2Run-Split-Zweig)
+   im Action-Body unter „Advanced parameters" zwei neue Felder hinzufuegen:
+   - `PromotedDate` → Expression `utcNow()`
+   - `ReplacedParticipantEmail` → Expression `first(outputs('Get_Cancelled_Item')?['body/value'])?['ParticipantEmail']`
+4. **Zweiter PATCH auf die cancelnde Person.** Direkt **nach** dem Promote-Step (im jeweiligen Zweig) eine neue `Update item`-Action einfuegen:
+   - Item Id: `first(outputs('Get_Cancelled_Item')?['body/value'])?['Id']`
+   - Felder:
+     - `ReplacedByParticipantEmail` → Expression `body('Get_Waitlist_First')?['ParticipantEmail']` (bzw. `Get_Waitlist_First_Durchstarter` im B2Run-Split-Zweig)
+   - Die Action **`Mark_Cancelled_Replaced`** nennen.
+5. Run-after von `Mark_Cancelled_Replaced` auf `Succeeded` des jeweiligen `Promote_*`-Steps setzen (nicht parallel — sonst Race-Condition wenn der Promote fehlschlaegt).
+6. Speichern. Teste mit einem Event das eine Warteliste hat: melde dich als Wartelistler an, lasse einen Aktiven sich abmelden. In der App-Teilnehmer-Tabelle muessen jetzt die Spalten `Nachgerueckt am` und `Ersetzt` gesetzt sein, in der Abgemeldet-Liste die Spalte `Ersetzt durch`.
+
+**Verifikation:**
+- Event mit 2 Plaetzen Cap, 2 Aktiven, 1 Wartelistler.
+- Wartelistler ist Person A. Beide Aktiven sind Person B (Id=2) und C (Id=3).
+- B meldet sich SELBST in der App ab. Der Flow promotet A.
+- In der App-Teilnehmer-Tabelle: A hat `PromotedDate` = jetzt, `Ersetzt` = B.
+- In der Abgemeldet-Section: B hat `Ersetzt durch` = A.
+
+**Caveat:** wenn der Flow nicht angepasst wird, funktioniert das Audit nur beim Admin-Cancel-Pfad (Organizer/Admin meldet jemanden im Admin-Center ab — diese App-Code-Logik ist seit v17.15 fertig). Beim User-Self-Cancel laeuft der PA-Flow, der ohne diese Anpassung die drei Audit-Felder leer laesst.
+
+Sobald die Aenderung im Tenant gespeichert ist: bitte den exportierten Flow-JSON (Maker → drei Punkte rechts oben am Flow → **Export → Code view** oder per `Get-AdminFlow` PowerShell) zurueckspielen, dann aktualisieren wir den Promote-Block weiter unten in dieser Datei.
+
 ### UI-Anleitung 2026-05-06 (v10.20) — Shared-Waitlist-Modus respektieren
 
 **Hintergrund:** seit App-Version v10.20 kann der Organizer pro Event entscheiden, ob bei aktiver Split-Capacity (DurchstarterCapacity > 0 AND FunstarterCapacity > 0) **eine gemeinsame Warteliste** (FIFO über beide Gruppen) oder **zwei getrennte Wartelisten** (typ-bewusst, alter B2Run-Stil) gelten sollen. Die Information steckt im neuen Boolean-Feld `SplitSharedWaitlist` in `DEX_Events`. Aktuell ignoriert der Flow das Feld — er promotet immer typ-bewusst, sobald beide Kapazitäten > 0 sind. Damit der Shared-Modus auch beim User-Self-Cancel greift, muss der Flow um eine zusätzliche Bedingungs-Zeile erweitert werden.

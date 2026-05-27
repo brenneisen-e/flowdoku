@@ -11229,28 +11229,53 @@ export default function EventCreationPage(): React.ReactElement {
               } else if (isDescription) {
                 setDescription(html);
               } else {
-                setEmailTemplateOverrides({
-                  ...emailTemplateOverrides,
-                  [tType]: { subject: currentSubject, heading: currentHeading, subheading: currentSubheading, bodyHtml: html },
-                });
+                // v17.16: Funktionales setState — vorher konnten rapid-fire
+                // Aenderungen an Subject/Heading/Subheading/Body sich
+                // gegenseitig ueberschreiben, weil jeder Setter aus der
+                // gleichen Closure die ALTEN Werte gelesen hat. Mit prev
+                // sehen wir immer den frischen Stand.
+                setEmailTemplateOverrides(prev => ({
+                  ...prev,
+                  [tType]: {
+                    subject: prev[tType]?.subject ?? currentSubject,
+                    heading: prev[tType]?.heading ?? currentHeading,
+                    subheading: prev[tType]?.subheading !== undefined ? prev[tType]!.subheading : currentSubheading,
+                    bodyHtml: html,
+                  },
+                }));
               }
             }}
             previewMode={(isOutlook || isDescription) ? 'outlook' : 'email'}
             emailSubject={(!isOutlook && !isDescription) ? currentSubject : undefined}
-            onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
-              ...emailTemplateOverrides,
-              [tType]: { subject: s, heading: currentHeading, subheading: currentSubheading, bodyHtml: currentBody },
-            }) : undefined}
+            onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides(prev => ({
+              ...prev,
+              [tType]: {
+                subject: s,
+                heading: prev[tType]?.heading ?? currentHeading,
+                subheading: prev[tType]?.subheading !== undefined ? prev[tType]!.subheading : currentSubheading,
+                bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
+              },
+            })) : undefined}
             emailHeading={(!isOutlook && !isDescription) ? currentHeading : undefined}
-            onEmailHeadingChange={(!isOutlook && !isDescription) ? (h) => setEmailTemplateOverrides({
-              ...emailTemplateOverrides,
-              [tType]: { subject: currentSubject, heading: h, subheading: currentSubheading, bodyHtml: currentBody },
-            }) : undefined}
+            onEmailHeadingChange={(!isOutlook && !isDescription) ? (h) => setEmailTemplateOverrides(prev => ({
+              ...prev,
+              [tType]: {
+                subject: prev[tType]?.subject ?? currentSubject,
+                heading: h,
+                subheading: prev[tType]?.subheading !== undefined ? prev[tType]!.subheading : currentSubheading,
+                bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
+              },
+            })) : undefined}
             emailSubheading={(!isOutlook && !isDescription) ? currentSubheading : undefined}
-            onEmailSubheadingChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides({
-              ...emailTemplateOverrides,
-              [tType]: { subject: currentSubject, heading: currentHeading, subheading: s, bodyHtml: currentBody },
-            }) : undefined}
+            onEmailSubheadingChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides(prev => ({
+              ...prev,
+              [tType]: {
+                subject: prev[tType]?.subject ?? currentSubject,
+                heading: prev[tType]?.heading ?? currentHeading,
+                subheading: s,
+                bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
+              },
+            })) : undefined}
             emailHeadingColor={(!isOutlook && !isDescription) ? (defaultTpl?.headingColor || '#86bc25') : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
@@ -11277,7 +11302,11 @@ export default function EventCreationPage(): React.ReactElement {
               EventDate: startDate ? new Date(startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             }}
             insertableVars={isOutlook ? [
-              { key: '{{Name}}', label: 'Name' },
+              // v17.16: {{Name}} hier ENTFERNT — der Outlook-Termin geht
+              // an alle Teilnehmer gleichzeitig, eine pro-Person-Anrede
+              // ist nicht moeglich. Vorher konnte der Organizer {{Name}}
+              // einfuegen, was bei allen Empfaengern als unaufgeloester
+              // Platzhalter „{{Name}}" stehen blieb.
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
               { key: '{{Location}}', label: 'Ort' },
