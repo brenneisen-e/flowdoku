@@ -7441,7 +7441,7 @@ export default function AdminPage(): React.ReactElement {
                   fontSize: '0.82rem',
                   lineHeight: 1.5,
                 }}>
-                  Du ordnest bereits-angemeldete Teilnehmer einem Team zu — keine neue Anmeldung, keine Bestätigungsmail an die Personen (es sei denn du hakst „Info-Mail an die zugeordneten…" unten an).
+                  Du ordnest bereits-angemeldete Teilnehmer einem Team zu — keine neue Anmeldung, keine Bestätigungsmail an die Personen (es sei denn du hakst &bdquo;Info-Mail an die zugeordneten&hellip;&ldquo; unten an).
                 </div>
               ))}
               <div>
