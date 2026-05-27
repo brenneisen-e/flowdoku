@@ -791,6 +791,10 @@ export default function AdminPage(): React.ReactElement {
     teamId: string;
     teamName: string;
     freeSlots: number;
+    /** v17.1: true wenn dieser Dialog im „Neues Team anlegen"-Flow geoeffnet
+     *  wurde — dann zeigen wir ein optionales Team-Name-Eingabefeld
+     *  und uebernehmen den eingegebenen Namen beim Insert. */
+    isNewTeam?: boolean;
   } | null>(null);
   const [adminAddMemberPick, setAdminAddMemberPick] = React.useState<{ email: string; displayName: string } | null>(null);
   const [adminAddMemberQuery, setAdminAddMemberQuery] = React.useState('');
@@ -4852,7 +4856,7 @@ export default function AdminPage(): React.ReactElement {
                         const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
                           ? crypto.randomUUID()
                           : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99 });
+                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
                         setAdminAddMemberPick(null);
                         setAdminAddMemberQuery('');
                         setAdminAddMemberResults([]);
@@ -7326,15 +7330,36 @@ export default function AdminPage(): React.ReactElement {
             ariaLabel="Person zum Team hinzufügen"
           >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-                {adminAddMemberDialog.teamName
-                  ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
-                  : 'Person zum Team hinzufügen'}
+                {adminAddMemberDialog.isNewTeam
+                  ? 'Neues Team anlegen — erste Person hinzufügen'
+                  : adminAddMemberDialog.teamName
+                    ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
+                    : 'Person zum Team hinzufügen'}
               </h3>
               <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
                 {(selectedEvent.teamSize || 0) > 0
                   ? `Team-Belegung: ${(selectedEvent.teamSize || 0) - adminAddMemberDialog.freeSlots}/${selectedEvent.teamSize}`
                   : 'Belegung wird nach dem Hinzufügen aktualisiert.'}
               </div>
+              {/* v17.1: Team-Name-Eingabe nur im „Neues Team anlegen"-Flow.
+                  Optional — wenn leer, bekommt das Team beim Insert keinen
+                  Namen, der Lead kann ihn aber spaeter nicht mehr setzen,
+                  daher direkt hier abfragen. */}
+              {adminAddMemberDialog.isNewTeam && (
+                <div style={{ marginTop: 4 }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                    Team-Name {selectedEvent.askTeamName ? <span style={{ color: 'var(--dex-red, #c00)' }}>*</span> : <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(optional)</span>}
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="z.B. „Borntowin"
+                    value={adminAddMemberDialog.teamName}
+                    onChange={e => setAdminAddMemberDialog(d => d ? { ...d, teamName: e.target.value } : d)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              )}
               <div style={{
                 padding: '14px 16px',
                 background: 'rgba(237,139,0,0.10)',
@@ -7483,14 +7508,24 @@ export default function AdminPage(): React.ReactElement {
                 >
                   Abbrechen
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => { submit().catch(() => { /* */ }); }}
-                  disabled={!adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy}
-                >
-                  {adminAddMemberBusy ? 'Wird hinzugefügt…' : 'Hinzufügen'}
-                </button>
+                {(() => {
+                  // v17.1: Bei „Neues Team anlegen" + askTeamName=true ist
+                  // der Team-Name Pflicht (analog Self-Registration-Flow).
+                  const needName = !!adminAddMemberDialog.isNewTeam && !!selectedEvent.askTeamName;
+                  const nameOk = !needName || (adminAddMemberDialog.teamName.trim().length > 0);
+                  const disabled = !adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy || !nameOk;
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => { submit().catch(() => { /* */ }); }}
+                      disabled={disabled}
+                      title={!nameOk ? 'Bitte einen Team-Namen eingeben.' : ''}
+                    >
+                      {adminAddMemberBusy ? 'Wird hinzugefügt…' : (adminAddMemberDialog.isNewTeam ? 'Team anlegen + Person hinzufügen' : 'Hinzufügen')}
+                    </button>
+                  );
+                })()}
               </div>
           </Modal>
         );
