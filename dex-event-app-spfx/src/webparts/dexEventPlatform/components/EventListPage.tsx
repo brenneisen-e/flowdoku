@@ -124,7 +124,7 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf } = useEvents();
   const { currentUser } = useCurrentUser();
   const { isAdmin, canCreateEvents } = useRoles();
   const { t } = useLanguage();
@@ -319,6 +319,28 @@ export default function EventListPage(): React.ReactElement {
           return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
                  d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         };
+        // v15.22: Bei subEventsOnlyMode-Events gibt es keine Parent-
+        // Registrierung — die EventNumber des Hauptevents taucht in
+        // myNumbers.registered nicht auf. Stattdessen muessen wir
+        // die Sub-Events durchgehen: ist mindestens eines davon
+        // angemeldet/wartelistig, soll auch die Parent-Karte den
+        // „Registered"-Overlay zeigen.
+        const isRegisteredFor = (event: DeloitteEvent): boolean => {
+          if (myNumbers.registered.includes(event.eventNumber)) return true;
+          if (event.subEventsOnlyMode) {
+            const kids = childEventsOf(event.id);
+            return kids.some(k => myNumbers.registered.includes(k.eventNumber));
+          }
+          return false;
+        };
+        const isWaitlistedFor = (event: DeloitteEvent): boolean => {
+          if (myNumbers.waitlisted.includes(event.eventNumber)) return true;
+          if (event.subEventsOnlyMode) {
+            const kids = childEventsOf(event.id);
+            return kids.some(k => myNumbers.waitlisted.includes(k.eventNumber));
+          }
+          return false;
+        };
         const renderSection = (list: DeloitteEvent[]): React.ReactElement => {
           if (viewMode === 'cards') {
             return (
@@ -328,18 +350,28 @@ export default function EventListPage(): React.ReactElement {
                     key={event.id}
                     event={event}
                     index={i}
-                    isRegistered={myNumbers.registered.includes(event.eventNumber)}
-                    isWaitlisted={myNumbers.waitlisted.includes(event.eventNumber)}
+                    isRegistered={isRegisteredFor(event)}
+                    isWaitlisted={isWaitlistedFor(event)}
                     isOwnOrganizer={isOwnOrganizer(event)}
                   />
                 ))}
               </div>
             );
           }
+          // v15.22: Fuer den Listen-View die Parent-EventNumbers von
+          // subEventsOnlyMode-Parents augmentieren, wenn ein Sub-Event
+          // angemeldet ist — damit der Listen-View ebenfalls
+          // „angemeldet" markiert.
+          const augReg: number[] = myNumbers.registered.slice();
+          const augWait: number[] = myNumbers.waitlisted.slice();
+          for (const ev of list) {
+            if (isRegisteredFor(ev) && !augReg.includes(ev.eventNumber)) augReg.push(ev.eventNumber);
+            if (isWaitlistedFor(ev) && !augWait.includes(ev.eventNumber)) augWait.push(ev.eventNumber);
+          }
           return (
             <EventListView
               events={list}
-              myNumbers={myNumbers}
+              myNumbers={{ registered: augReg, waitlisted: augWait }}
               currentUserEmailLc={currentEmailLc}
               formatDate={formatDate}
             />

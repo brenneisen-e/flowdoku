@@ -600,7 +600,7 @@ export default function RegistrationPage(): React.ReactElement {
     // v15.16: Pflicht-Bestätigung bei „Für andere registrieren" —
     // analog zur Team-Anmeldung muss die Zustimmung der Person
     // explizit bestätigt werden.
-    if (registerForOther && email.trim() && !otherConsentConfirmed) {
+    if (registerForOther && !otherConsentConfirmed) {
       setError(locale === 'de'
         ? 'Bitte bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
         : 'Please confirm that the person has consented to this registration.');
@@ -2047,8 +2047,13 @@ export default function RegistrationPage(): React.ReactElement {
                     enthält zusätzlich einen Spezial-Hinweis für externe
                     Adressen (kein Outlook-Termin, Mail zur Weiterleitung
                     an die Organizer). */}
-                {registerForOther && email.trim() && (() => {
-                  const isExternal = !!email && !/@(.*\.)?deloitte\.de$/i.test(email.trim());
+                {registerForOther && (() => {
+                  // v15.22: Hinweis-Box bereits anzeigen, sobald „Für andere
+                  // registrieren" aktiv ist — nicht erst wenn die E-Mail
+                  // gefüllt ist. Der User soll sofort sehen, dass eine
+                  // Zustimmung nötig ist.
+                  const isExternal = !!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim());
+                  const pickedName = `${firstName} ${surname}`.trim();
                   return (
                     <div style={{
                       marginBottom: 16,
@@ -2067,8 +2072,8 @@ export default function RegistrationPage(): React.ReactElement {
                       </div>
                       <div style={{ marginBottom: 8 }}>
                         {locale === 'de'
-                          ? <>Mit dem Absenden meldest du <strong>{firstName} {surname}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
-                          : <>By submitting you register <strong>{firstName} {surname}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die ausgewählte Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the selected person</>} on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
                       </div>
                       {isExternal && (
                         <div style={{
@@ -2171,11 +2176,16 @@ export default function RegistrationPage(): React.ReactElement {
                 geladen hat). */}
             {(() => {
               const profile = registerForOther ? pickedUserProfile : currentUser;
-              if (!profile) return null;
-              const jt = (profile as { jobTitle?: string }).jobTitle || '';
-              const dept = (profile as { department?: string }).department || '';
-              const loc = (profile as { location?: string }).location || '';
-              const mob = (profile as { mobilePhone?: string }).mobilePhone || '';
+              // v15.22: Bei „Für andere registrieren" die Felder auch
+              // anzeigen, wenn noch kein Profil gewählt wurde — sonst
+              // wundert sich der Stellvertreter, warum nur Name + Mail
+              // sichtbar sind. Die Felder bleiben dann leer mit
+              // Placeholder „aus SP-Profil — nicht hinterlegt".
+              if (!profile && !registerForOther) return null;
+              const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
+              const dept = profile ? ((profile as { department?: string }).department || '') : '';
+              const loc = profile ? ((profile as { location?: string }).location || '') : '';
+              const mob = profile ? ((profile as { mobilePhone?: string }).mobilePhone || '') : '';
               if (!registerForOther && !jt && !dept && !loc && !mob) return null;
               const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
               const renderField = (label: string, value: string): React.ReactElement => (
