@@ -1459,6 +1459,11 @@ export default function RegistrationPage(): React.ReactElement {
                 // waiting list"-Block unter der Beschreibung übernimmt das
                 // bereits, sonst doppelte Meldung.
                 if (isFullAll) return null;
+                // v16.2: Bei Team-Event Anzahl freier Teams zusaetzlich
+                // ausgeben (Plaetze / TeamSize), damit die Quoten-Anzeige
+                // bei z.B. „80 / 80" auch klar macht „= 20 Teams frei".
+                const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
+                const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
                 return (
                   <div style={{
                     fontSize: '0.78rem',
@@ -1467,6 +1472,11 @@ export default function RegistrationPage(): React.ReactElement {
                     fontWeight: 600,
                   }}>
                     {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
+                    {isTeamEvent && (
+                      <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
+                        ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
+                      </span>
+                    )}
                   </div>
                 );
               })()}

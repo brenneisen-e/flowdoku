@@ -1354,7 +1354,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           ? waitlistEmail(r.firstName, event.title, 0)
           : registrationEmail(r.firstName, event.title);
       }
-      // v11.87: Team-Info-Block + Consent-Hinweis nach <body> injecten.
+      // v11.87: Team-Info-Block + Consent-Hinweis injecten.
+      // v16.3: Vorher wurde der Block direkt nach <body> eingefuegt — damit
+      // landete er VOR dem Deloitte-Template-Header (Logo, gruener Balken,
+      // Headline). Stattdessen jetzt INNERHALB des Content-<td> einsetzen,
+      // also direkt vor dem eigentlichen Mail-Body. Wir matchen das Content-
+      // Padding (`padding:0 30px 30px 30px`) als Marker — dieser Style ist
+      // im wrapTemplate eindeutig fuer das Body-Td.
       const teamInfoHtml = teamInfoBlockHtml({
         teamName,
         members: teamMembersForBlock,
@@ -1363,7 +1369,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         registeredByName: currentUserName,
         consentRequired: true,
       });
-      const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
+      const contentTdPattern = /(<td style="padding:0 30px 30px 30px;[^"]*">)/i;
+      const bodyWithHint = contentTdPattern.test(emailData.body)
+        ? emailData.body.replace(contentTdPattern, `$1${teamInfoHtml}`)
+        // Fallback (Pre-wrapped Storage-Templates ohne erwartetes Padding):
+        // dann doch nach <body> injecten — besser als gar nicht.
+        : emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
       if (!event.disableEmails) {
         const fullName = `${r.firstName} ${r.lastName}`.trim();
         eventService.queueEmail(
