@@ -20,6 +20,11 @@ interface NavigationContextType {
   navigate: (page: Page, eventId?: string, intent?: NavIntent) => void;
   goBack: () => void;
   clearIntent: () => void;
+  /** v17.3: Page registriert einen Confirm-Hook fuer ungespeicherte
+   *  Aenderungen. Wird VOR jeder Navigation aufgerufen — wenn er false
+   *  zurueckliefert, blockiert das Navigation. Null = keine Aenderungen,
+   *  durchnavigieren. */
+  setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
 }
 
 // Exportiert, damit Preview-Wrapper im Handbuch den Context mit Demo-Daten
@@ -37,21 +42,44 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [navIntent, setNavIntent] = React.useState<NavIntent>(undefined);
   const [history, setHistory] = React.useState<HistoryEntry[]>([]);
+  const guardRef = React.useRef<(() => Promise<boolean>) | null>(null);
+
+  const setNavigationGuard = (guard: (() => Promise<boolean>) | null): void => {
+    guardRef.current = guard;
+  };
 
   const navigate = (page: Page, eventId?: string, intent?: NavIntent): void => {
-    setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
-    setCurrentPage(page);
-    setSelectedEventId(eventId || null);
-    setNavIntent(intent);
+    // v17.3: Wenn eine Page einen Guard registriert hat (z.B.
+    // EventCreationPage bei unsaved-changes), erst dort bestaetigen lassen.
+    const proceed = (): void => {
+      setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
+      setCurrentPage(page);
+      setSelectedEventId(eventId || null);
+      setNavIntent(intent);
+      guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren raeumen.
+    };
+    if (guardRef.current) {
+      guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
+    } else {
+      proceed();
+    }
   };
 
   const goBack = (): void => {
-    if (history.length > 0) {
-      const prev = history[history.length - 1];
-      setHistory(h => h.slice(0, -1));
-      setCurrentPage(prev.page);
-      setSelectedEventId(prev.eventId);
-      setNavIntent(prev.intent);
+    const proceed = (): void => {
+      if (history.length > 0) {
+        const prev = history[history.length - 1];
+        setHistory(h => h.slice(0, -1));
+        setCurrentPage(prev.page);
+        setSelectedEventId(prev.eventId);
+        setNavIntent(prev.intent);
+        guardRef.current = null;
+      }
+    };
+    if (guardRef.current) {
+      guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
+    } else {
+      proceed();
     }
   };
 
@@ -59,7 +87,7 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
 
   return React.createElement(
     NavigationContext.Provider,
-    { value: { currentPage, selectedEventId, navIntent, navigate, goBack, clearIntent } },
+    { value: { currentPage, selectedEventId, navIntent, navigate, goBack, clearIntent, setNavigationGuard } },
     props.children
   );
 }
