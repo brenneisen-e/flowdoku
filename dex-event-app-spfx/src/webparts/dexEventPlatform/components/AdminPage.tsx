@@ -756,6 +756,10 @@ export default function AdminPage(): React.ReactElement {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
+  // v17.8: Sortierung der Warteliste (analog Teilnehmerliste). Default 'pos'
+  // = Reihenfolge nach TeilnehmerID asc (FIFO-Position der Warteliste).
+  const [waitlistSortColumn, setWaitlistSortColumn] = React.useState<'pos' | 'vorname' | 'nachname' | 'email' | 'jobtitle' | 'location' | 'date'>('pos');
+  const [waitlistSortAsc, setWaitlistSortAsc] = React.useState(true);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isResettingCounter, setIsResettingCounter] = React.useState(false);
@@ -836,6 +840,15 @@ export default function AdminPage(): React.ReactElement {
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
+  // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
+  // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
+  const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
+  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker';
+  const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
+  // Fuer 'nachruecker': der eingefuegte Rohtext + die nach Extraktion
+  // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
+  // eingefuegten Liste stehen).
+  const [massmailPasteRaw, setMassmailPasteRaw] = React.useState<string>('');
   const [emailSubject, setEmailSubject] = React.useState('');
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
@@ -1391,6 +1404,11 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
+    // v17.9: Beitritts-Reihenfolge (kuenstliche Original-#). Sortiert die
+    // gesamte Teilnehmerliste nach RegistrationDate asc — wer wirklich
+    // zuerst da war steht auf #1, unabhaengig von der durch den IDReorder-
+    // Flow compacteten TeilnehmerID.
+    cols.push({ id: 'joinOrder', label: 'Beitritts-#' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
     // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
     // Anmeldung aktiv und der TN in einem Team ist).
@@ -2391,6 +2409,22 @@ export default function AdminPage(): React.ReactElement {
 
   const sortIcon = (col: string): string => col === sortColumn ? (sortAsc ? ' \u25B2' : ' \u25BC') : '';
 
+  // v17.9: Map regId \u2192 Beitritts-Position (1-basiert, sortiert nach
+  // RegistrationDate asc). Stabile \u201Ewer war zuerst da"-Reihenfolge,
+  // unabhaengig von der TeilnehmerID die der IDReorder-Flow neu vergibt.
+  // Abgemeldete werden mitgezaehlt \u2014 die Beitritts-Reihenfolge ist ein
+  // historischer Wert, nicht die aktuelle Position.
+  const joinOrderById = React.useMemo(() => {
+    const map = new Map<number, number>();
+    const sorted = registrations.slice().sort((a, b) => {
+      const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      return ta - tb;
+    });
+    sorted.forEach((r, idx) => { map.set(r.Id, idx + 1); });
+    return map;
+  }, [registrations]);
+
   const activeRegs = registrations
     .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
     .filter(matchesSearch)
@@ -3285,7 +3319,9 @@ export default function AdminPage(): React.ReactElement {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
-                setShowEmailModal(true);
+                setMassmailAudience('active');
+                setMassmailPasteRaw('');
+                setMassmailMode('pick');
               }}
             />
 
@@ -5186,6 +5222,13 @@ export default function AdminPage(): React.ReactElement {
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
+                  // v17.10: Sticky-Header — beim Scrollen bleiben die
+                  // Spaltenueberschriften der Teilnehmer-Tabelle sichtbar.
+                  position: 'sticky',
+                  top: 0,
+                  background: '#fff',
+                  zIndex: 5,
+                  borderBottom: '2px solid var(--dex-gray-200)',
                 };
                 const sortable = sortableCols[id];
                 if (sortable) {
@@ -5214,6 +5257,13 @@ export default function AdminPage(): React.ReactElement {
                   return (
                     <th key={id} style={baseStyle} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">
                       Registriert von{hideButton(id)}
+                    </th>
+                  );
+                }
+                if (id === 'joinOrder') {
+                  return (
+                    <th key={id} style={baseStyle} title="Position in der Reihenfolge der eigenen Anmeldung (RegistrationDate asc). Anders als die TeilnehmerID, die durch den Nachrueck-Flow umsortiert wird, bleibt diese Position stabil — wer zuerst da war, ist hier #1.">
+                      Beitritts-#{hideButton(id)}
                     </th>
                   );
                 }
@@ -5333,6 +5383,11 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'date') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
+                }
+                if (id === 'joinOrder') {
+                  // v17.9: kuenstliche Beitritts-Position (stabil ueber Flow-Reorder).
+                  const pos = joinOrderById.get(reg.Id);
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{pos ?? '-'}</td>;
                 }
                 if (id === 'registeredBy') {
                   return (
@@ -5889,11 +5944,42 @@ export default function AdminPage(): React.ReactElement {
           </div>
         )}
 
+        {/* v17.8: Anker fuer Floating-Jump-Button „Zur Warteliste". */}
+        <div id="admin-waitlist-anchor" style={{ scrollMarginTop: 80 }} />
         {(() => {
           // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
           // PreferredStarterType. Ohne Split: eine einzige Warteliste wie bisher.
           const renderWaitlistTable = (title: string, regs: SPRegistration[], accentColor: string): React.ReactElement | null => {
             if (regs.length === 0) return null;
+            // v17.8: Sortierung pro Spalte. Default 'pos' = TeilnehmerID asc
+            // (FIFO-Position der Warteliste — wie vorher).
+            const sortedRegs = (() => {
+              const arr = regs.slice();
+              const dir = waitlistSortAsc ? 1 : -1;
+              const safe = (s: string | undefined): string => (s || '').toLowerCase();
+              const dateMs = (s: string | undefined): number => s ? new Date(s).getTime() : Number.POSITIVE_INFINITY;
+              arr.sort((a, b) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const anyA = a as any; const anyB = b as any;
+                switch (waitlistSortColumn) {
+                  case 'pos': return ((a.TeilnehmerID || 0) - (b.TeilnehmerID || 0)) * dir;
+                  case 'vorname': return safe(a.Vorname).localeCompare(safe(b.Vorname), 'de') * dir;
+                  case 'nachname': return safe(a.Nachname).localeCompare(safe(b.Nachname), 'de') * dir;
+                  case 'email': return safe(a.ParticipantEmail).localeCompare(safe(b.ParticipantEmail)) * dir;
+                  case 'jobtitle': return safe(anyA.JobTitle).localeCompare(safe(anyB.JobTitle), 'de') * dir;
+                  case 'location': return safe(anyA.Location).localeCompare(safe(anyB.Location), 'de') * dir;
+                  case 'date': return (dateMs(a.RegistrationDate) - dateMs(b.RegistrationDate)) * dir;
+                }
+                return 0;
+              });
+              return arr;
+            })();
+            const arrow = (k: typeof waitlistSortColumn): string => k === waitlistSortColumn ? (waitlistSortAsc ? ' ▲' : ' ▼') : '';
+            const toggleSort = (k: typeof waitlistSortColumn): void => {
+              if (waitlistSortColumn === k) setWaitlistSortAsc(v => !v);
+              else { setWaitlistSortColumn(k); setWaitlistSortAsc(true); }
+            };
+            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
             return (
               <React.Fragment key={title}>
                 <h4 style={{ marginTop: 24, color: accentColor }}>{title} ({regs.length})</h4>
@@ -5901,20 +5987,38 @@ export default function AdminPage(): React.ReactElement {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Platz</th>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                        <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
+                        <th style={thClickable} onClick={() => toggleSort('pos')}>Platz{arrow('pos')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
                         {isSplitCapacity && <th style={{ textAlign: 'left', padding: 8 }}>Wunsch-Typ</th>}
-                        <th style={{ textAlign: 'left', padding: 8 }}>Registriert am</th>
+                        <th style={thClickable} onClick={() => toggleSort('date')}>Registriert am{arrow('date')}</th>
                         <th style={{ textAlign: 'left', padding: 8 }}>Aktion</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {regs.map((reg, i) => (
+                      {sortedRegs.map((reg, i) => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const anyReg = reg as any;
+                        // v17.8: Position bleibt die FIFO-Position basierend auf der ORIGINAL-
+                        // Reihenfolge (TeilnehmerID asc), unabhaengig von der aktuellen Sortierung.
+                        // Wenn der User nach Nachname sortiert, soll trotzdem klar sein, wer
+                        // Platz 1 / 2 / 3 ist.
+                        const fifoIdx = regs
+                          .slice()
+                          .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0))
+                          .findIndex(r => r.Id === reg.Id);
+                        const pos = fifoIdx >= 0 ? fifoIdx + 1 : i + 1;
+                        return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{i + 1}</td>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
+                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{pos}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.JobTitle || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.Location || '-'}</td>
                           {isSplitCapacity && (
                             <td style={{ padding: 8, color: 'var(--dex-gray-700)' }}>
                               {reg.PreferredStarterType || '—'}
@@ -5961,7 +6065,8 @@ export default function AdminPage(): React.ReactElement {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -6634,9 +6739,129 @@ export default function AdminPage(): React.ReactElement {
         </Modal>
       )}
 
+      {/* v17.10: Step 1 — Zielgruppen-Picker fuer Massenmail. Erscheint vor
+          dem RichText-Editor. */}
+      {massmailMode === 'pick' && selectedEvent && (() => {
+        const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
+        const proceed = (): void => {
+          if (massmailAudience === 'nachruecker') setMassmailMode('paste');
+          else { setShowEmailModal(true); setMassmailMode('editor'); }
+        };
+        const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => (
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+            borderRadius: 8, border: `1px solid ${massmailAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+            background: massmailAudience === props.value ? 'rgba(134,188,37,0.08)' : '#fff',
+            cursor: 'pointer', marginBottom: 8,
+          }}>
+            <input
+              type="radio"
+              name="massmail-target"
+              checked={massmailAudience === props.value}
+              onChange={() => setMassmailAudience(props.value)}
+              style={{ marginTop: 3 }}
+            />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{props.label}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{props.desc}</div>
+            </div>
+          </label>
+        );
+        return (
+          <Modal open={true} onClose={closeAll} maxWidth={560} padding={24} ariaLabel="Empfaenger waehlen">
+            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>An wen soll die Mail gehen?</h3>
+            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer die ueblichen Info-Mails." />
+            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
+            <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
+            <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Weiter</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* v17.10: Step 2 (nur fuer 'nachruecker') — Paste-Eingabe + Extraktion */}
+      {massmailMode === 'paste' && selectedEvent && (() => {
+        const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
+        const back = (): void => { setMassmailMode('pick'); };
+        // E-Mail-Adressen aus dem Rohtext extrahieren — robust gegen Vorname
+        // Nachname <mail@…> / mail@…; sep / Outlook-Verteiler-Dumps.
+        const extractEmails = (raw: string): string[] => {
+          if (!raw) return [];
+          const matches = raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const m of matches) {
+            const e = m.toLowerCase();
+            if (!seen.has(e)) { seen.add(e); out.push(e); }
+          }
+          return out;
+        };
+        const pasted = extractEmails(massmailPasteRaw);
+        const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const pastedSet = new Set(pasted);
+        const missing = active.filter(r => !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
+        const continueAction = (): void => {
+          if (missing.length === 0) { alert('Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben uebrig.'); return; }
+          setShowEmailModal(true);
+          setMassmailMode('editor');
+        };
+        return (
+          <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachruecker — Liste einfuegen">
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachruecker — bestehende Empfaenger-Liste einfuegen</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, ';'-getrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
+            </p>
+            <textarea
+              value={massmailPasteRaw}
+              onChange={e => setMassmailPasteRaw(e.target.value)}
+              placeholder={'Max Mustermann <mmustermann@deloitte.de>; anna.schmidt@deloitte.de; ...'}
+              style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.82rem', padding: 8, border: '1px solid var(--dex-gray-300)', borderRadius: 6, resize: 'vertical' }}
+            />
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--dex-gray-50, #fafafa)', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+              <strong>{pasted.length}</strong> Adressen aus dem Text extrahiert.<br />
+              <strong>{active.length}</strong> aktive Teilnehmer im Event.<br />
+              <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>{missing.length}</strong> Teilnehmer NICHT in deiner Liste — die werden angeschrieben.
+            </div>
+            {missing.length > 0 && missing.length <= 50 && (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.78rem', maxHeight: 200, overflowY: 'auto' }}>
+                {missing.map(r => (
+                  <div key={r.Id} style={{ padding: '2px 0' }}>
+                    {((r.Vorname || '') + ' ' + (r.Nachname || '')).trim() || r.ParticipantName} — <span style={{ color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurueck</button>
+              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
+              <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction} style={{ fontSize: '0.85rem' }}>Weiter zum Mail-Editor</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
       {showEmailModal && selectedEvent && (() => {
-        const recipients = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        // v17.10: Empfaenger-Filter abhaengig vom gewaehlten massmailAudience.
+        const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+        const recipients = (() => {
+          if (massmailAudience === 'waitOnly') {
+            return registrations.filter(r => r.Status === 'Warteliste');
+          }
+          if (massmailAudience === 'activePlusWait') {
+            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste');
+          }
+          if (massmailAudience === 'nachruecker') {
+            // Aktive minus die in der eingefuegten Liste enthaltenen E-Mails.
+            const matches = (massmailPasteRaw || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+            const pastedSet = new Set(matches.map(m => m.toLowerCase()));
+            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
+          }
+          return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
+        })();
         const orgNames = (selectedEvent.organizers || []).join(', ');
         const previewVars: Record<string, string> = {
           EventTitle: selectedEvent.title,
@@ -6659,14 +6884,24 @@ export default function AdminPage(): React.ReactElement {
           const resolvedBody = replacePlaceholders(emailBody, previewVars);
           const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
+          // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
+          // unter den Empfaengern). Dedup per lowercase, semicolon-join.
+          const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
+          const ccList = orgEmails.filter(e => e && !recipientSet.has(e.toLowerCase()));
+          const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
             await eventServiceRef.queueEmail(
               resolvedSubject, allEmails, 'Alle Teilnehmer', fullBody,
-              'Massenmail', selectedEvent.title, selectedEvent.id
+              'Massenmail', selectedEvent.title, selectedEvent.id,
+              ccString,
             );
             setEmailSending(false);
-            alert(`E-Mail an ${recipients.length} Teilnehmer in die Warteschlange eingetragen.`);
+            const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfaengerliste)';
+            alert(`E-Mail an ${recipients.length} Empfaenger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
+            setMassmailMode('closed');
+            setMassmailPasteRaw('');
           } catch {
             setEmailSending(false);
             alert('Fehler beim Eintragen der E-Mail.');
@@ -7698,6 +7933,70 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
         );
       })()}
+      {/* v17.8: Floating Jump-Buttons. Erscheinen sobald der User durch die
+          Teilnehmer-Tabelle scrollt — sparen Zeit bei langen Listen. */}
+      {selectedEvent && activeRegs.length > 10 && (
+        <JumpButtons hasWaitlist={waitlistRegs.length > 0} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * v17.8: Floating Jump-Buttons rechts unten. Erscheinen sobald der User
+ * den Viewport >300 px nach unten gescrollt hat. Bietet:
+ *  - Nach oben springen (window.scrollTo {top:0})
+ *  - Zur Warteliste springen (scrollIntoView auf #admin-waitlist-anchor)
+ *
+ * Nur sichtbar wenn die Teilnehmer-Tabelle >10 Eintraege hat (kurze Listen
+ * brauchen keine Sprung-Hilfe).
+ */
+function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null {
+  const { hasWaitlist } = props;
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const onScroll = (): void => { setShow(window.scrollY > 300); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  if (!show) return null;
+  return (
+    <div style={{
+      position: 'fixed', right: 20, bottom: 20, zIndex: 900,
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      {hasWaitlist && (
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById('admin-waitlist-anchor');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          style={{
+            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+            border: 'none', padding: '10px 16px', borderRadius: 999,
+            cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          ↓ Zur Warteliste
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        style={{
+          background: 'var(--dex-green, #86bc25)', color: '#fff',
+          border: 'none', padding: '10px 16px', borderRadius: 999,
+          cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        ↑ Nach oben
+      </button>
     </div>
   );
 }
