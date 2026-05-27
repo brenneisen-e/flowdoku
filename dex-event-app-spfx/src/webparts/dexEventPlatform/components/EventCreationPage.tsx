@@ -11061,7 +11061,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <>
                         <strong>Was passiert beim Klick?</strong>
                         <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: 1.5 }}>
-                          <li>Alle Eingaben aus allen Wizard-Schritten werden in einem Rutsch gespeichert — kein „Zwischenspeichern" pro Step nötig.</li>
+                          <li>Alle Eingaben aus allen Wizard-Schritten werden in einem Rutsch gespeichert — kein &bdquo;Zwischenspeichern&ldquo; pro Step nötig.</li>
                           <li>Der Edit-Modus wird geschlossen.</li>
                           <li>Du landest direkt im Organizer-Menü dieses Events (Teilnehmer-Übersicht, Aktionen).</li>
                         </ul>
