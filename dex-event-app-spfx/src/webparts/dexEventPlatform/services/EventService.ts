@@ -1422,6 +1422,9 @@ export class EventService {
       { title: 'Subject', type: 2 },
       { title: 'HeadingColor', type: 2 },
       { title: 'Heading', type: 2 },
+      // v15.17: Subheading editierbar (vorher hart als „Event {{EventTitle}}").
+      // Leer/nicht-gesetzt → Fallback im Code auf {{EventTitle}} ohne Präfix.
+      { title: 'Subheading', type: 2 },
       { title: 'BodyHtml', type: 3 },
       { title: 'LogoBase64', type: 3 },           // Base64 Deloitte Logo (Deloitte_Logo.png)
       { title: 'DefaultImageBase64', type: 3 },    // Base64 Default-Bild (dex-orb.png)
@@ -1812,6 +1815,10 @@ export class EventService {
         // im Hintergrund zurueck. Eventual consistency, fuer KPI-Anzeige ok.
         { title: 'TotalParticipantsCount', type: 9 }, // Number
         { title: 'TotalEventsCount', type: 9 }, // Number — analog fuer 'Events'
+        // v15.17: Subheading-Spalte für die untere Headline-Zeile pro
+        // Template (vorher hart als „Event {{EventTitle}}" im Code).
+        // Leerwert = Fallback im Code auf {{EventTitle}} ohne Präfix.
+        { title: 'Subheading', type: 2 }, // Single line text
       ];
       for (const f of logoFields) {
         try {
@@ -2171,10 +2178,10 @@ export class EventService {
     } catch { return false; }
   }
 
-  public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; bodyHtml: string } | null> {
+  public async getEmailTemplate(templateType: string, language: string = 'EN'): Promise<{ subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string } | null> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,BodyHtml&$top=1`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '${templateType.replace(/'/g, "''")}' and Language eq '${language.replace(/'/g, "''")}'&$select=Subject,HeadingColor,Heading,Subheading,BodyHtml&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
@@ -2185,6 +2192,10 @@ export class EventService {
             subject: items[0].Subject || '',
             headingColor: items[0].HeadingColor || '#86bc25',
             heading: items[0].Heading || '',
+            // v15.17: Subheading (untere Headline-Zeile, vorher hart als
+            // „Event {{EventTitle}}" geschrieben) jetzt aus dem Template.
+            // Leer = Fallback auf reinen EventTitle ohne „Event "-Präfix.
+            subheading: items[0].Subheading || '',
             bodyHtml: items[0].BodyHtml || '',
           };
         }
@@ -2196,10 +2207,10 @@ export class EventService {
   /**
    * Alle Email-Templates laden (fuer Event-Erstellung / Admin).
    */
-  public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; bodyHtml: string }>> {
+  public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,BodyHtml&$orderby=TemplateType,Language&$top=50`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,Subheading,BodyHtml&$orderby=TemplateType,Language&$top=50`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
@@ -2212,6 +2223,7 @@ export class EventService {
           subject: item.Subject || '',
           headingColor: item.HeadingColor || '#86bc25',
           heading: item.Heading || '',
+          subheading: item.Subheading || '',
           bodyHtml: item.BodyHtml || '',
         }));
       }

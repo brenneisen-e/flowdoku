@@ -1337,22 +1337,19 @@ export default function MyEventsPage(): React.ReactElement {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
                       {sessionsOnly ? (() => {
-                        // v15.13: Badge-Text per Event mit der konfigurierten
-                        // Bezeichnung (event.childEventTermPlural) — sonst
-                        // bleibt der globale Translation-Fallback.
+                        // v15.15: Im subEventsOnlyMode komplett ausblenden —
+                        // Badge UND Hinweisbox sind dort redundant, weil
+                        // „nur Sub-Events"-Anmeldung der einzig mögliche
+                        // Zustand ist (kein Hauptevent zum Anmelden).
+                        if (event.subEventsOnlyMode) return null;
                         const term = event.childEventTermPlural || '';
                         const badgeText = term
                           ? (isDe ? `Nur ${term}` : `${term} only`)
                           : (t('myevents.sessionsonly.badge') || 'Nur Sub-Events');
-                        const hintTitle = event.subEventsOnlyMode
-                          ? (isDe
-                              ? `Bei diesem Event meldest du dich ausschließlich für ${term || 'Sub-Events'} an — es gibt keine Anmeldung für das Hauptevent selbst.`
-                              : `For this event you register exclusively for ${term || 'sub-events'} — there is no registration for the main event itself.`)
-                          : t('myevents.sessionsonly.hint');
                         return (
                           <span
                             className="badge"
-                            title={hintTitle}
+                            title={t('myevents.sessionsonly.hint')}
                             style={{
                               flexShrink: 0, marginLeft: 12,
                               background: 'var(--dex-orange, #ed8b00)', color: '#fff',
@@ -1369,26 +1366,20 @@ export default function MyEventsPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
-                    {/* v15.13: Bei subEventsOnlyMode gibt es überhaupt kein
-                        Hauptevent zum Anmelden — der Hinweistext „… aber
-                        NICHT für das Haupt-Event selbst" wäre dort falsch.
-                        Stattdessen Text auf die konfigurierte Bezeichnung
-                        umstellen ODER weglassen, wenn keine eigenen Titel
-                        anzuzeigen sind. */}
-                    {sessionsOnly && (() => {
+                    {/* v15.15: Hinweisbox „nur für Sub-Events angemeldet"
+                        nur außerhalb des subEventsOnlyMode anzeigen — dort
+                        ist sie redundant, weil es gar keine andere Option
+                        gibt. */}
+                    {sessionsOnly && !event.subEventsOnlyMode && (() => {
                       const term = event.childEventTermPlural || '';
                       const subList = (subEventTitles && subEventTitles.length > 0)
                         ? ` (${subEventTitles.join(', ')})`
                         : '';
-                      const hintText = event.subEventsOnlyMode
+                      const hintText = term
                         ? (isDe
-                            ? `Du bist für ${term || 'Sub-Events'} dieses Events angemeldet`
-                            : `You are registered for ${term || 'sub-events'} of this event`)
-                        : (term
-                            ? (isDe
-                                ? `Du bist für ${term} dieses Events angemeldet, aber NICHT für das Haupt-Event selbst`
-                                : `You are registered for ${term} of this event but NOT for the main event itself`)
-                            : t('myevents.sessionsonly.hint'));
+                            ? `Du bist für ${term} dieses Events angemeldet, aber NICHT für das Haupt-Event selbst`
+                            : `You are registered for ${term} of this event but NOT for the main event itself`)
+                        : t('myevents.sessionsonly.hint');
                       return (
                         <div style={{
                           marginTop: 6, padding: '6px 10px', borderRadius: 6,

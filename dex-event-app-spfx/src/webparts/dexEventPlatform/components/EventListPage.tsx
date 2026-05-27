@@ -126,7 +126,7 @@ export default function EventListPage(): React.ReactElement {
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
   const { topLevelEvents: events, isEventsLoading, getMyEventNumbers } = useEvents();
   const { currentUser } = useCurrentUser();
-  const { isAdmin } = useRoles();
+  const { isAdmin, canCreateEvents } = useRoles();
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   // View-Mode (Cards | List) - persistiert in localStorage
@@ -282,17 +282,23 @@ export default function EventListPage(): React.ReactElement {
             <Icon iconName="GroupedList" style={{ fontSize: 14 }} /> List
           </button>
         </div>
-        <div className="toggle-wrapper">
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={onlyActive}
-              onChange={(e) => setOnlyActive(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-          <span>{t('eventlist.onlyactive')}</span>
-        </div>
+        {/* v15.19: „Nur aktive Events"-Toggle nur fuer Admin/Organizer.
+            Reine User sehen ohnehin nur Events ihres Standorts und brauchen
+            den Switch nicht — sie sollen vergangene Events nicht
+            ausversehen einblenden koennen. */}
+        {(isAdmin || canCreateEvents) && (
+          <div className="toggle-wrapper">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={onlyActive}
+                onChange={(e) => setOnlyActive(e.target.checked)}
+              />
+              <span className="toggle-slider" />
+            </label>
+            <span>{t('eventlist.onlyactive')}</span>
+          </div>
+        )}
       </div>
       {viewMode === 'cards' ? (
         <div className="event-grid">

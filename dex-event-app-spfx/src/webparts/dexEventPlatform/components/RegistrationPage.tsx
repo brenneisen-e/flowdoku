@@ -239,6 +239,10 @@ export default function RegistrationPage(): React.ReactElement {
   const [teamName, setTeamName] = React.useState('');
   const [teamMembers, setTeamMembers] = React.useState<string[]>([]);
   const [teamConsentConfirmed, setTeamConsentConfirmed] = React.useState(false);
+  // v15.16: Bei „Für andere registrieren" (registerForOther) braucht es
+  // ebenfalls eine explizite Bestätigung, dass die Person der Anmeldung
+  // zugestimmt hat — analog zur Team-Anmelde-Pflicht.
+  const [otherConsentConfirmed, setOtherConsentConfirmed] = React.useState(false);
   // v11.83: Offene Teams (Slots-frei) + Beitritts-Flow.
   const [openTeams, setOpenTeams] = React.useState<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>([]);
   const [openTeamsLoaded, setOpenTeamsLoaded] = React.useState(false);
@@ -590,6 +594,16 @@ export default function RegistrationPage(): React.ReactElement {
       setError(t('reg.require.subevent') || (locale === 'de'
         ? `Für dieses Event musst du mindestens ein ${childTermSingular || 'Sub-Event'} auswählen — sonst kannst du dich nicht anmelden.`
         : `For this event you must pick at least one ${childTermSingular || 'sub-event'} — otherwise you cannot register.`));
+      return;
+    }
+
+    // v15.16: Pflicht-Bestätigung bei „Für andere registrieren" —
+    // analog zur Team-Anmeldung muss die Zustimmung der Person
+    // explizit bestätigt werden.
+    if (registerForOther && email.trim() && !otherConsentConfirmed) {
+      setError(locale === 'de'
+        ? 'Bitte bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
+        : 'Please confirm that the person has consented to this registration.');
       return;
     }
 
@@ -1798,6 +1812,7 @@ export default function RegistrationPage(): React.ReactElement {
                   setRegisterForOther(!registerForOther);
                   setThirdPartyCheck(null);
                   setPickedUserProfile(null);
+                  setOtherConsentConfirmed(false);
                   if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                 }}
@@ -2001,6 +2016,68 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </div>
                 )}
+                {/* v15.16: Pflicht-Bestätigungs-Box bei „Für andere
+                    registrieren" — analog zur Team-Anmeldung. Erscheint
+                    sobald eine Person ausgewählt ist (E-Mail gefüllt) und
+                    enthält zusätzlich einen Spezial-Hinweis für externe
+                    Adressen (kein Outlook-Termin, Mail zur Weiterleitung
+                    an die Organizer). */}
+                {registerForOther && email.trim() && (() => {
+                  const isExternal = !!email && !/@(.*\.)?deloitte\.de$/i.test(email.trim());
+                  return (
+                    <div style={{
+                      marginBottom: 16,
+                      padding: '14px 16px',
+                      background: 'rgba(237,139,0,0.10)',
+                      border: '2px solid var(--dex-orange, #ed8b00)',
+                      borderRadius: 'var(--dex-radius-md)',
+                      color: '#7a4a00',
+                      fontSize: '0.88rem',
+                      lineHeight: 1.55,
+                    }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '0.95rem' }}>
+                        {locale === 'de'
+                          ? 'Vorab die Zustimmung der Person einholen'
+                          : 'Get the person\'s consent up front'}
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        {locale === 'de'
+                          ? <>Mit dem Absenden meldest du <strong>{firstName} {surname}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                          : <>By submitting you register <strong>{firstName} {surname}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                      </div>
+                      {isExternal && (
+                        <div style={{
+                          marginTop: 10, padding: '10px 12px',
+                          background: '#fff', border: '1px dashed var(--dex-orange, #ed8b00)',
+                          borderRadius: 6,
+                        }}>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                            {locale === 'de'
+                              ? 'Externe E-Mail-Adresse erkannt'
+                              : 'External email address detected'}
+                          </div>
+                          {locale === 'de'
+                            ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. Diese Person bekommt deshalb <strong>keinen Outlook-Termin</strong>. Stattdessen wird eine Bestätigungs-Mail mit dem Betreff <strong>&bdquo;Weiterleitung notwendig&ldquo;</strong> an die Event-Organizer geschickt — diese Mail dient als Anmeldebestätigung und kann unter Beachtung der Datenschutzrichtlinien an die externe Person weitergeleitet werden.</>
+                            : <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. This person will therefore <strong>not receive an Outlook calendar invite</strong>. Instead, a confirmation email with the subject <strong>&bdquo;Forwarding required&ldquo;</strong> is sent to the event organizers — this mail serves as registration confirmation and can be forwarded to the external person, observing privacy guidelines.</>}
+                        </div>
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={otherConsentConfirmed}
+                          onChange={e => setOtherConsentConfirmed(e.target.checked)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span style={{ flex: 1, color: 'var(--dex-gray-800)' }}>
+                          <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                          {locale === 'de'
+                            ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
+                            : 'I confirm that the person has consented to this registration on their behalf.'}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })()}
                 {registerForOther && thirdPartyCheck && (thirdPartyCheck.alreadyRegistered || thirdPartyCheck.notInAudience) && (
                   <div style={{
                     padding: '10px 14px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
@@ -2652,14 +2729,20 @@ export default function RegistrationPage(): React.ReactElement {
           // + Hinweis statt „Registrieren (Haupt-Event)" zeigen.
           const isSubOnly = !!(event && event.subEventsOnlyMode) && !registerForOther;
           const nothingPicked = isSubOnly && selectedSessions.size === 0;
-          const isDisabled = isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked;
+          // v15.16: Consent-Pflicht bei „Für andere registrieren".
+          const needsOtherConsent = registerForOther && !!email.trim() && !otherConsentConfirmed;
+          const isDisabled = isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent;
           const titleAttr = isTeamMode && !teamValidation.ok
             ? (teamValidation.reason || '')
             : (nothingPicked
                 ? (locale === 'de'
                     ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen.`
                     : `Please pick at least one ${childTermSingular || 'sub-event'}.`)
-                : '');
+                : (needsOtherConsent
+                    ? (locale === 'de'
+                        ? 'Bitte bestätige die Zustimmung der Person.'
+                        : 'Please confirm the person\'s consent.')
+                    : ''));
           return (
             <button
               className="btn btn-primary"
