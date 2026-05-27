@@ -12645,6 +12645,23 @@ export default function EventCreationPage(): React.ReactElement {
             >
               {isDe ? 'Änderungen verwerfen' : 'Discard changes'}
             </button>
+            {/* v17.7: Dritter Button — Speichern und zurueck zum Event.
+                Wir blockieren die laufende Back-Nav (resolve(false)) und
+                triggern attemptSubmit; nach erfolgreichem Save dispatched
+                EventCreationPage selbst „dex-event-submit-success" und
+                DexEventPlatform navigiert zum Organizer-Menue. */}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                unsavedConfirmOpen.resolve(false);
+                setUnsavedConfirmOpen(null);
+                window.setTimeout(() => { attemptSubmit(); }, 0);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              <Send size={14} /> {isDe ? 'Speichern und zurück zum Event' : 'Save and return to event'}
+            </button>
           </div>
         </Modal>
       )}
