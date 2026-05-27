@@ -840,6 +840,15 @@ export default function AdminPage(): React.ReactElement {
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
+  // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
+  // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
+  const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
+  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker';
+  const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
+  // Fuer 'nachruecker': der eingefuegte Rohtext + die nach Extraktion
+  // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
+  // eingefuegten Liste stehen).
+  const [massmailPasteRaw, setMassmailPasteRaw] = React.useState<string>('');
   const [emailSubject, setEmailSubject] = React.useState('');
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
@@ -3310,7 +3319,9 @@ export default function AdminPage(): React.ReactElement {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
                 setEmailHeading(selectedEvent ? selectedEvent.title : '');
                 setEmailBody('');
-                setShowEmailModal(true);
+                setMassmailAudience('active');
+                setMassmailPasteRaw('');
+                setMassmailMode('pick');
               }}
             />
 
@@ -5211,6 +5222,13 @@ export default function AdminPage(): React.ReactElement {
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
+                  // v17.10: Sticky-Header — beim Scrollen bleiben die
+                  // Spaltenueberschriften der Teilnehmer-Tabelle sichtbar.
+                  position: 'sticky',
+                  top: 0,
+                  background: '#fff',
+                  zIndex: 5,
+                  borderBottom: '2px solid var(--dex-gray-200)',
                 };
                 const sortable = sortableCols[id];
                 if (sortable) {
@@ -5961,7 +5979,7 @@ export default function AdminPage(): React.ReactElement {
               if (waitlistSortColumn === k) setWaitlistSortAsc(v => !v);
               else { setWaitlistSortColumn(k); setWaitlistSortAsc(true); }
             };
-            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' };
+            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
             return (
               <React.Fragment key={title}>
                 <h4 style={{ marginTop: 24, color: accentColor }}>{title} ({regs.length})</h4>
@@ -6721,9 +6739,129 @@ export default function AdminPage(): React.ReactElement {
         </Modal>
       )}
 
+      {/* v17.10: Step 1 — Zielgruppen-Picker fuer Massenmail. Erscheint vor
+          dem RichText-Editor. */}
+      {massmailMode === 'pick' && selectedEvent && (() => {
+        const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
+        const proceed = (): void => {
+          if (massmailAudience === 'nachruecker') setMassmailMode('paste');
+          else { setShowEmailModal(true); setMassmailMode('editor'); }
+        };
+        const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => (
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
+            borderRadius: 8, border: `1px solid ${massmailAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+            background: massmailAudience === props.value ? 'rgba(134,188,37,0.08)' : '#fff',
+            cursor: 'pointer', marginBottom: 8,
+          }}>
+            <input
+              type="radio"
+              name="massmail-target"
+              checked={massmailAudience === props.value}
+              onChange={() => setMassmailAudience(props.value)}
+              style={{ marginTop: 3 }}
+            />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{props.label}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{props.desc}</div>
+            </div>
+          </label>
+        );
+        return (
+          <Modal open={true} onClose={closeAll} maxWidth={560} padding={24} ariaLabel="Empfaenger waehlen">
+            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>An wen soll die Mail gehen?</h3>
+            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer die ueblichen Info-Mails." />
+            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
+            <Row value="waitOnly" label="Nur Warteliste" desc="Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben"." />
+            <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Weiter</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* v17.10: Step 2 (nur fuer 'nachruecker') — Paste-Eingabe + Extraktion */}
+      {massmailMode === 'paste' && selectedEvent && (() => {
+        const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
+        const back = (): void => { setMassmailMode('pick'); };
+        // E-Mail-Adressen aus dem Rohtext extrahieren — robust gegen Vorname
+        // Nachname <mail@…> / mail@…; sep / Outlook-Verteiler-Dumps.
+        const extractEmails = (raw: string): string[] => {
+          if (!raw) return [];
+          const matches = raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const m of matches) {
+            const e = m.toLowerCase();
+            if (!seen.has(e)) { seen.add(e); out.push(e); }
+          }
+          return out;
+        };
+        const pasted = extractEmails(massmailPasteRaw);
+        const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        const pastedSet = new Set(pasted);
+        const missing = active.filter(r => !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
+        const continueAction = (): void => {
+          if (missing.length === 0) { alert('Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben uebrig.'); return; }
+          setShowEmailModal(true);
+          setMassmailMode('editor');
+        };
+        return (
+          <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachruecker — Liste einfuegen">
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachruecker — bestehende Empfaenger-Liste einfuegen</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, ';'-getrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
+            </p>
+            <textarea
+              value={massmailPasteRaw}
+              onChange={e => setMassmailPasteRaw(e.target.value)}
+              placeholder={'Max Mustermann <mmustermann@deloitte.de>; anna.schmidt@deloitte.de; ...'}
+              style={{ width: '100%', minHeight: 160, fontFamily: 'monospace', fontSize: '0.82rem', padding: 8, border: '1px solid var(--dex-gray-300)', borderRadius: 6, resize: 'vertical' }}
+            />
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--dex-gray-50, #fafafa)', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+              <strong>{pasted.length}</strong> Adressen aus dem Text extrahiert.<br />
+              <strong>{active.length}</strong> aktive Teilnehmer im Event.<br />
+              <strong style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>{missing.length}</strong> Teilnehmer NICHT in deiner Liste — die werden angeschrieben.
+            </div>
+            {missing.length > 0 && missing.length <= 50 && (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.78rem', maxHeight: 200, overflowY: 'auto' }}>
+                {missing.map(r => (
+                  <div key={r.Id} style={{ padding: '2px 0' }}>
+                    {((r.Vorname || '') + ' ' + (r.Nachname || '')).trim() || r.ParticipantName} — <span style={{ color: 'var(--dex-gray-600)' }}>{r.ParticipantEmail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurueck</button>
+              <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
+              <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction} style={{ fontSize: '0.85rem' }}>Weiter zum Mail-Editor</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
       {showEmailModal && selectedEvent && (() => {
-        const recipients = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        // v17.10: Empfaenger-Filter abhaengig vom gewaehlten massmailAudience.
+        const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+        const recipients = (() => {
+          if (massmailAudience === 'waitOnly') {
+            return registrations.filter(r => r.Status === 'Warteliste');
+          }
+          if (massmailAudience === 'activePlusWait') {
+            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste');
+          }
+          if (massmailAudience === 'nachruecker') {
+            // Aktive minus die in der eingefuegten Liste enthaltenen E-Mails.
+            const matches = (massmailPasteRaw || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+            const pastedSet = new Set(matches.map(m => m.toLowerCase()));
+            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
+          }
+          return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
+        })();
         const orgNames = (selectedEvent.organizers || []).join(', ');
         const previewVars: Record<string, string> = {
           EventTitle: selectedEvent.title,
@@ -6746,14 +6884,24 @@ export default function AdminPage(): React.ReactElement {
           const resolvedBody = replacePlaceholders(emailBody, previewVars);
           const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
+          // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
+          // unter den Empfaengern). Dedup per lowercase, semicolon-join.
+          const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+          const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
+          const ccList = orgEmails.filter(e => e && !recipientSet.has(e.toLowerCase()));
+          const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
           try {
             await eventServiceRef.queueEmail(
               resolvedSubject, allEmails, 'Alle Teilnehmer', fullBody,
-              'Massenmail', selectedEvent.title, selectedEvent.id
+              'Massenmail', selectedEvent.title, selectedEvent.id,
+              ccString,
             );
             setEmailSending(false);
-            alert(`E-Mail an ${recipients.length} Teilnehmer in die Warteschlange eingetragen.`);
+            const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfaengerliste)';
+            alert(`E-Mail an ${recipients.length} Empfaenger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
+            setMassmailMode('closed');
+            setMassmailPasteRaw('');
           } catch {
             setEmailSending(false);
             alert('Fehler beim Eintragen der E-Mail.');
