@@ -5179,7 +5179,13 @@ export default function AdminPage(): React.ReactElement {
         ) : activeRegs.length === 0 ? (
           <p style={{ color: 'var(--dex-gray-400)' }}>Noch keine Teilnehmer registriert.</p>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
+             hat die sticky-thead-Berechnung gebrochen (sticky relative zum
+             Scroll-Container statt zum Window). Tabelle laesst die Karte
+             jetzt horizontal ueberlaufen, was bei vielen Spalten zu einer
+             Scrollbar AM AUSSEREN Container (SP-Page) fuehrt — Sticky-
+             thead funktioniert dort einwandfrei. */
+          <div style={{ overflowX: 'visible' }}>
             {(() => {
               // v6.17: Spaltenkonfiguration — Header und Body-Zellen werden dynamisch
               // anhand `columnOrder` (+ `hiddenColumns`) gerendert. So kann der User
@@ -8018,26 +8024,55 @@ export default function AdminPage(): React.ReactElement {
  * Nur sichtbar wenn die Teilnehmer-Tabelle >10 Eintraege hat (kurze Listen
  * brauchen keine Sprung-Hilfe).
  */
-function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null {
+/**
+ * v17.13: Floating Jump-Buttons. Im SPFx-Webpart-Kontext scrollt nicht
+ * window, sondern ein SP-interner Container — deshalb sind die Buttons
+ * jetzt IMMER sichtbar (kein scrollY-Gating), und der Click sucht den
+ * tatsaechlich scrollenden Vorfahren des Targets statt window.scrollTo.
+ */
+function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   const { hasWaitlist } = props;
-  const [show, setShow] = React.useState(false);
-  React.useEffect(() => {
-    const onScroll = (): void => {
-      // v17.11.1: niedrigerer Threshold, damit die Buttons auch in
-      // SPFx-WebPart-Kontexten (eingebettete iframe-Hoehen) sichtbar
-      // werden. Wenn weder window noch documentElement scrollen, fallen
-      // wir auf 0 zurueck und zeigen die Buttons sofort.
-      const winY = window.scrollY || window.pageYOffset || 0;
-      const docY = document.documentElement ? document.documentElement.scrollTop : 0;
-      const bodyY = document.body ? document.body.scrollTop : 0;
-      const y = Math.max(winY, docY, bodyY);
-      setShow(y > 100);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-  if (!show) return null;
+  /** Sucht den ersten scroll-baren Vorfahren — typischerweise der
+   *  SP-Page-Body. Fallback auf document.scrollingElement / window. */
+  const findScrollParent = (el: HTMLElement | null): HTMLElement | Window => {
+    let cur: HTMLElement | null = el ? el.parentElement : null;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      const cs = window.getComputedStyle(cur);
+      const overflowY = cs.overflowY;
+      const isScrollable = (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay');
+      if (isScrollable && cur.scrollHeight > cur.clientHeight) return cur;
+      cur = cur.parentElement;
+    }
+    return (document.scrollingElement as HTMLElement) || document.documentElement || window;
+  };
+  const scrollToTop = (): void => {
+    // Versuche window, documentElement, body und alle scrollbaren Vorfahren.
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* */ }
+    try { if (document.scrollingElement) (document.scrollingElement as HTMLElement).scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* */ }
+    try { if (document.documentElement) document.documentElement.scrollTop = 0; } catch { /* */ }
+    try { if (document.body) document.body.scrollTop = 0; } catch { /* */ }
+    // SP-Page-Container — typischer Klassenname in modernen SP-Pages.
+    const candidates = ['.SPPageChromeAppDiv', '#spPageCanvasContent', '[data-automation-id="contentScrollRegion"]', '.spAppAriaRegion', 'main'];
+    for (const sel of candidates) {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (el && el.scrollHeight > el.clientHeight) {
+        try { el.scrollTo({ top: 0, behavior: 'smooth' }); } catch { el.scrollTop = 0; }
+      }
+    }
+  };
+  const scrollToWaitlist = (): void => {
+    const el = document.getElementById('admin-waitlist-anchor');
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { el.scrollIntoView(); }
+    // Zusaetzlich: scroll-Parent suchen und manuell scrollen (Fallback
+    // wenn scrollIntoView durch den SP-Container gefangen wird).
+    const parent = findScrollParent(el);
+    if (parent !== window && parent instanceof HTMLElement) {
+      const rect = el.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      try { parent.scrollTo({ top: parent.scrollTop + (rect.top - parentRect.top) - 20, behavior: 'smooth' }); } catch { /* */ }
+    }
+  };
   return (
     <div style={{
       position: 'fixed', right: 20, bottom: 20, zIndex: 900,
@@ -8046,10 +8081,7 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null
       {hasWaitlist && (
         <button
           type="button"
-          onClick={() => {
-            const el = document.getElementById('admin-waitlist-anchor');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }}
+          onClick={scrollToWaitlist}
           style={{
             background: 'var(--dex-orange, #ed8b00)', color: '#fff',
             border: 'none', padding: '10px 16px', borderRadius: 999,
@@ -8063,7 +8095,7 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement | null
       )}
       <button
         type="button"
-        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        onClick={scrollToTop}
         style={{
           background: 'var(--dex-green, #86bc25)', color: '#fff',
           border: 'none', padding: '10px 16px', borderRadius: 999,
