@@ -35,6 +35,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'eventlist.title': 'Deine Events',
     'eventlist.hint': 'Hier siehst du die Events, die für dich zur Registrierung verfügbar sind. Manche Events sind möglicherweise nur für bestimmte Standorte oder Unternehmensbereiche sichtbar.',
     'eventlist.onlyactive': 'Nur aktive Events',
+    'eventlist.ownevents': 'Meine Events als Organizer',
+    'eventlist.otherevents': 'Weitere Events',
 
     // Start Page
     'start.title': 'Event Experience Platform',
@@ -470,6 +472,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'eventlist.title': 'Your events',
     'eventlist.hint': 'Here are the events available for your registration. Some events might only be visible for certain locations or business areas.',
     'eventlist.onlyactive': 'Only active events',
+    'eventlist.ownevents': 'My events as organizer',
+    'eventlist.otherevents': 'Other events',
 
     // Start Page
     'start.title': 'Event Experience Platform',
