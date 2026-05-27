@@ -1684,7 +1684,7 @@ export default function RegistrationPage(): React.ReactElement {
                 </div>
               )}
 
-              {isSessionsOnlyMode && selectedSessions.size > 0 && (
+              {isSessionsOnlyMode && selectedSessions.size > 0 && !event.subEventsOnlyMode && (
                 <div style={{
                   marginTop: 12, padding: '8px 10px', borderRadius: 6,
                   background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
@@ -2586,7 +2586,7 @@ export default function RegistrationPage(): React.ReactElement {
                   })}
                 </div>
 
-                {isSessionsOnlyMode && selectedSessions.size > 0 && (
+                {isSessionsOnlyMode && selectedSessions.size > 0 && !event.subEventsOnlyMode && (
                   <div style={{
                     marginTop: 12, padding: '8px 10px', borderRadius: 6,
                     background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange)',
