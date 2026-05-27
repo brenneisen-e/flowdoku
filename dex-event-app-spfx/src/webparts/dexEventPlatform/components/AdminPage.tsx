@@ -1395,6 +1395,11 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
+    // v17.9: Beitritts-Reihenfolge (kuenstliche Original-#). Sortiert die
+    // gesamte Teilnehmerliste nach RegistrationDate asc — wer wirklich
+    // zuerst da war steht auf #1, unabhaengig von der durch den IDReorder-
+    // Flow compacteten TeilnehmerID.
+    cols.push({ id: 'joinOrder', label: 'Beitritts-#' });
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
     // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
     // Anmeldung aktiv und der TN in einem Team ist).
@@ -2394,6 +2399,22 @@ export default function AdminPage(): React.ReactElement {
   };
 
   const sortIcon = (col: string): string => col === sortColumn ? (sortAsc ? ' \u25B2' : ' \u25BC') : '';
+
+  // v17.9: Map regId \u2192 Beitritts-Position (1-basiert, sortiert nach
+  // RegistrationDate asc). Stabile \u201Ewer war zuerst da"-Reihenfolge,
+  // unabhaengig von der TeilnehmerID die der IDReorder-Flow neu vergibt.
+  // Abgemeldete werden mitgezaehlt \u2014 die Beitritts-Reihenfolge ist ein
+  // historischer Wert, nicht die aktuelle Position.
+  const joinOrderById = React.useMemo(() => {
+    const map = new Map<number, number>();
+    const sorted = registrations.slice().sort((a, b) => {
+      const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+      return ta - tb;
+    });
+    sorted.forEach((r, idx) => { map.set(r.Id, idx + 1); });
+    return map;
+  }, [registrations]);
 
   const activeRegs = registrations
     .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
@@ -5221,6 +5242,13 @@ export default function AdminPage(): React.ReactElement {
                     </th>
                   );
                 }
+                if (id === 'joinOrder') {
+                  return (
+                    <th key={id} style={baseStyle} title="Position in der Reihenfolge der eigenen Anmeldung (RegistrationDate asc). Anders als die TeilnehmerID, die durch den Nachrueck-Flow umsortiert wird, bleibt diese Position stabil — wer zuerst da war, ist hier #1.">
+                      Beitritts-#{hideButton(id)}
+                    </th>
+                  );
+                }
                 if (id === 'team') {
                   return (
                     <th key={id} style={baseStyle} title="Team-Name des Teilnehmers (falls Team-Anmeldung aktiv).">
@@ -5337,6 +5365,11 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'date') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
+                }
+                if (id === 'joinOrder') {
+                  // v17.9: kuenstliche Beitritts-Position (stabil ueber Flow-Reorder).
+                  const pos = joinOrderById.get(reg.Id);
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>{pos ?? '-'}</td>;
                 }
                 if (id === 'registeredBy') {
                   return (
