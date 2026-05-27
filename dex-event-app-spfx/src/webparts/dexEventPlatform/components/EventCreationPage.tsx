@@ -8830,8 +8830,34 @@ export default function EventCreationPage(): React.ReactElement {
                   v15.0 ausgeblendet, weil pro Sub-Event jetzt einen
                   eigenen Tab. */}
               <div style={{ display: activeFieldsTabIdx === 0 ? 'block' : 'none' }}>
-              {renderHauptGreyoutBanner()}
-              <div style={hauptGreyoutWrapperStyle()}>
+              {/* v16.5: In Step 5 (Felder) ist im subEventsOnlyMode KEIN
+                  Greyout — die Felder im ersten Tab sind „uebergreifend"
+                  und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
+                  in dem Modus besonders relevant. Stattdessen ein info-
+                  blauer Hinweis-Banner mit der korrekten Erklaerung. */}
+              {subEventsOnlyMode && (() => {
+                const termPl = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
+                const termSg = (childTermSingular || (isDe ? 'Sub-Event' : 'sub-event')).trim() || (isDe ? 'Sub-Event' : 'sub-event');
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '12px 14px', marginBottom: 16,
+                    background: 'rgba(33,150,243,0.06)',
+                    border: '1px solid var(--dex-info, #2196f3)',
+                    borderRadius: 'var(--dex-radius, 12px)',
+                    fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                    lineHeight: 1.5,
+                  }}>
+                    <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-info, #2196f3)', flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      {isDe
+                        ? <><strong>Übergreifende Felder</strong> — diese Fragen werden bei der Anmeldung zu jeder einzelnen {termSg} abgefragt. Trag hier ein, was für alle {termPl} gemeinsam gilt; spezifische Felder pro {termSg} pflegst du in den jeweiligen Tabs rechts daneben.</>
+                        : <><strong>Cross-cutting fields</strong> — these questions are asked once per {termSg} registration. Configure here what applies across all {termPl}; per-{termSg} specifics go into the individual tabs on the right.</>}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div>
               {/* Dynamische Felder */}
               <div>
                 {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
@@ -9757,7 +9783,7 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 5) */}
+              </div>{/* v16.5: close plain wrapper div (Step 5) — kein Greyout mehr */}
               </div>{/* v15.0: close activeFieldsTabIdx===0 wrapper (Top-Level Felder + hidden Bereich 2) */}
 
               </div>{/* close Step 5 (Felder) — v15 index 4 */}
