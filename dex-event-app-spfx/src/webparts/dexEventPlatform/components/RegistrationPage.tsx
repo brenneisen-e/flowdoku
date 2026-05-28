@@ -3261,8 +3261,32 @@ function UserFieldPicker(props: {
     props.onChange('');
     setResults([]);
   };
+  // v18.5: Ergebnis-Dropdown als position:fixed rendern, anker an die
+  // Wrapper-Bounding-Box. Vorher (position:absolute) wurde es vom
+  // `overflow:hidden` der `.registration-specific`/`.registration-form`-Karte
+  // abgeschnitten (im Demo-Event: letztes Feld → Name nur halb sichtbar).
+  // fixed entkommt allen overflow-Vorfahren; scroll/resize halten es synchron.
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const [menuPos, setMenuPos] = React.useState<{ left: number; top: number; width: number } | null>(null);
+  const recalcMenuPos = React.useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuPos({ left: r.left, top: r.bottom + 2, width: r.width });
+  }, []);
+  const menuOpen = !hasSelection && results.length > 0;
+  React.useEffect(() => {
+    if (!menuOpen) return undefined;
+    recalcMenuPos();
+    window.addEventListener('scroll', recalcMenuPos, true);
+    window.addEventListener('resize', recalcMenuPos);
+    return () => {
+      window.removeEventListener('scroll', recalcMenuPos, true);
+      window.removeEventListener('resize', recalcMenuPos);
+    };
+  }, [menuOpen, recalcMenuPos]);
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={rootRef} style={{ position: 'relative' }}>
       {hasSelection && selected ? (
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 10,
@@ -3369,12 +3393,14 @@ function UserFieldPicker(props: {
           {props.hint}
         </p>
       )}
-      {!hasSelection && results.length > 0 && (
+      {menuOpen && (
         <div style={{
-          position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+          position: 'fixed',
+          left: menuPos?.left ?? 0, top: menuPos?.top ?? 0, width: menuPos?.width ?? 'auto',
+          zIndex: 3000,
           background: '#fff', border: '1px solid var(--dex-gray-200)',
           borderRadius: 'var(--dex-radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          maxHeight: 280, overflowY: 'auto', marginTop: 2,
+          maxHeight: 280, overflowY: 'auto', marginTop: 0,
         }}>
           {results.map(u => (
             <div

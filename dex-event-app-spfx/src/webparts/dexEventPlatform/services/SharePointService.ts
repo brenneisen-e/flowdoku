@@ -73,11 +73,29 @@ export class SharePointService {
             },
             body: JSON.stringify({
               '__metadata': { 'type': 'SP.FieldChoice' },
-              'Choices': { 'results': ['Admin', 'Power User', 'Organizer', 'User'] },
+              'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
             }),
           }
         );
       } catch { /* Choice-Update optional */ }
+
+      // v18.5: IsPowerUser-Spalte auf bestehenden Listen nachziehen (best-effort;
+      // schlaegt fehl falls die Spalte schon existiert — dann ignorieren).
+      try {
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+          {
+            '__metadata': { 'type': 'SP.Field' },
+            'Title': 'IsPowerUser',
+            'FieldTypeKind': 8, // Boolean
+            'Required': false,
+          }
+        );
+        await this._post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/views/getbytitle('All Items')/viewfields/addviewfield('IsPowerUser')`,
+          {}
+        );
+      } catch { /* Spalte existiert bereits — ok */ }
 
       return { isNewlyCreated: false };
     }
@@ -109,7 +127,7 @@ export class SharePointService {
         'Title': 'Role',
         'FieldTypeKind': 6, // Choice
         'Required': true,
-        'Choices': { 'results': ['Admin', 'Power User', 'Organizer', 'User'] },
+        'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
       },
       {
         '__metadata': { 'type': 'SP.Field' },
@@ -129,6 +147,13 @@ export class SharePointService {
         'FieldTypeKind': 4, // DateTime
         'Required': false,
       },
+      {
+        // v18.5: Power-User-Flag (Zusatz auf einem Organizer, keine eigene Rolle).
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': 'IsPowerUser',
+        'FieldTypeKind': 8, // Boolean (Yes/No)
+        'Required': false,
+      },
     ];
 
     for (const col of columns) {
@@ -140,7 +165,7 @@ export class SharePointService {
 
     // Default View aktualisieren: alle Spalten anzeigen
     try {
-      const viewFields = ['Title', 'UserName', 'Role', 'UserLocation', 'AssignedBy', 'AssignedDate'];
+      const viewFields = ['Title', 'UserName', 'Role', 'UserLocation', 'AssignedBy', 'AssignedDate', 'IsPowerUser'];
       for (const field of viewFields) {
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/views/getbytitle('All Items')/viewfields/addviewfield('${field}')`,
@@ -512,19 +537,55 @@ export class SharePointService {
     UserLocation: string;
     AssignedBy: string;
     AssignedDate: string;
+    IsPowerUser?: boolean;
   }> | null> {
+    // v18.5: IsPowerUser mitlesen. Falls die Spalte auf einem alten Tenant
+    // noch fehlt (ensureRolesList noch nicht durchgelaufen), wuerde der
+    // $select mit IsPowerUser einen HTTP 400 werfen — daher Fallback auf den
+    // Select OHNE IsPowerUser.
+    const baseSelect = 'Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate';
     try {
-      const response = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate&$orderby=Role,UserName`,
+      let response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect},IsPowerUser&$orderby=Role,UserName`,
         SPHttpClient.configurations.v1
       );
-
-      if (!response.ok) return null;
-
+      if (!response.ok) {
+        // Retry ohne IsPowerUser (Spalte existiert evtl. noch nicht).
+        response = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$select=${baseSelect}&$orderby=Role,UserName`,
+          SPHttpClient.configurations.v1
+        );
+        if (!response.ok) return null;
+      }
       const data = await response.json();
       return data.value || [];
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * v18.5: Power-User-Flag eines Rollen-Eintrags setzen/entfernen.
+   */
+  public async setPowerUser(itemId: number, isPowerUser: boolean): Promise<boolean> {
+    try {
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'odata-version': '',
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({ IsPowerUser: isPowerUser }),
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
     }
   }
 

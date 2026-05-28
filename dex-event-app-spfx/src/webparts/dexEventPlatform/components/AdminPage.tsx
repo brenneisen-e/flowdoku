@@ -2381,7 +2381,7 @@ export default function AdminPage(): React.ReactElement {
                       className="form-select"
                       value={eventSortMode}
                       onChange={e => setEventSortMode(e.target.value as 'alpha' | 'date')}
-                      style={{ fontSize: '0.85rem', padding: '4px 10px', width: 'auto' }}
+                      style={{ fontSize: '0.85rem', padding: '4px 34px 4px 10px', minWidth: 210, width: 'auto' }}
                     >
                       <option value="alpha">{isDe ? 'Alphabetisch (A–Z)' : 'Alphabetical (A–Z)'}</option>
                       <option value="date">{isDe ? 'Datum aufsteigend' : 'Date ascending'}</option>

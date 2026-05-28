@@ -19,7 +19,7 @@ export default function SettingsPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isAdmin, canCreateEvents, originalIsAdmin,
-    addRole, updateRole, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
+    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -462,7 +462,6 @@ export default function SettingsPage(): React.ReactElement {
                     style={{ fontSize: '0.85rem', maxWidth: 200 }}
                   >
                     <option value="Organizer">Organizer</option>
-                    <option value="Power User">Power User</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
@@ -552,20 +551,49 @@ export default function SettingsPage(): React.ReactElement {
                         </td>
                         <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
                         <td style={{ padding: 10 }}>
-                          <select
-                            value={r.role}
-                            onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
-                            style={{
-                              padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)',
-                              fontSize: '0.8rem', background: '#fff',
-                            }}
-                            disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
-                          >
-                            <option value="Admin">Admin</option>
-                            <option value="Power User">Power User</option>
-                            <option value="Organizer">Organizer</option>
-                            <option value="User">User</option>
-                          </select>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <select
+                              value={r.role}
+                              onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
+                              style={{
+                                padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)',
+                                fontSize: '0.8rem', background: '#fff',
+                              }}
+                              disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
+                            >
+                              <option value="Admin">Admin</option>
+                              <option value="Organizer">Organizer</option>
+                              <option value="User">User</option>
+                            </select>
+                            {/* v18.5: 1-Klick-Power-User-Flag direkt in der Zeile.
+                                „Power User" ist KEINE eigene Rolle, sondern ein
+                                Zusatz auf einem Organizer/Admin — die Person
+                                bleibt also Organizer und ist zusätzlich Power
+                                User. Nur fuer Organizer/Admin-Rollen sinnvoll. */}
+                            {(r.role === 'Organizer' || r.role === 'Admin') && (
+                              <button
+                                type="button"
+                                disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
+                                onClick={() => setPowerUser(r.id, !r.isPowerUser)}
+                                title={r.isPowerUser
+                                  ? (isDe ? 'Power-User-Status entfernen' : 'Remove power-user status')
+                                  : (isDe ? 'Als Power User markieren (Experten-Ansprechpartner auf der Event-Erstellungs-Seite)' : 'Mark as power user (help contact on the event creation page)')}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                                  fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                  border: `1px solid ${r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)'}`,
+                                  background: r.isPowerUser ? '#fff4e5' : '#fff',
+                                  color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-600)',
+                                }}
+                              >
+                                <span aria-hidden="true">{r.isPowerUser ? '★' : '☆'}</span>
+                                {r.isPowerUser
+                                  ? 'Power User'
+                                  : (isDe ? 'Power User?' : 'Power user?')}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: 10 }}>
                           <input

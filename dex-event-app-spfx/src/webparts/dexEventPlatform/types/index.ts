@@ -357,10 +357,7 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
-// v18.4: „Power User" = Organizer mit Experten-Status. Permissions wie ein
-// Organizer; zusaetzlich werden Power User auf der Event-Erstellungs-Seite
-// als Hilfe-Ansprechpartner angezeigt.
-export type UserRole = 'Admin' | 'Power User' | 'Organizer' | 'User';
+export type UserRole = 'Admin' | 'Organizer' | 'User';
 
 export interface User {
   id: string;
@@ -385,4 +382,10 @@ export interface RoleAssignment {
   location: string;
   assignedBy: string;
   assignedDate: string;
+  /** v18.5: „Power User" ist KEINE eigene Rolle, sondern ein Zusatz-Flag auf
+   *  einem Organizer (oder Admin). Power User kennen sich besonders gut aus
+   *  und werden auf der Event-Erstellungs-Seite als Hilfe-Ansprechpartner mit
+   *  Name + Foto angezeigt. Eine Person hat also genau EINEN DEX_Roles-Eintrag
+   *  und kann gleichzeitig Organizer UND Power User sein. */
+  isPowerUser?: boolean;
 }

@@ -347,8 +347,8 @@ export default function RoleMatrixPage(): React.ReactElement {
           <p style={{ margin: '6px 0 0', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
             Übersicht aller Berechtigungen nach Rolle
           </p>
-          {/* v18.4: Power-User-Rolle. Permission-seitig identisch zum
-              Organizer — daher keine eigene Matrix-Spalte. */}
+          {/* v18.5: Power User ist KEINE eigene Rolle, sondern ein Zusatz-Flag
+              auf einem Organizer/Admin — daher keine eigene Matrix-Spalte. */}
           <div style={{
             marginTop: 12, padding: '10px 14px', borderRadius: 8,
             background: '#fff4e5', border: '1px solid #f0b67a',
@@ -357,12 +357,13 @@ export default function RoleMatrixPage(): React.ReactElement {
             <span style={{
               display: 'inline-block', padding: '2px 10px', borderRadius: 12,
               background: '#fff', color: '#b35a00', fontWeight: 700, fontSize: '0.78rem', marginRight: 6,
-            }}>Power User</span>
-            hat <strong>dieselben Rechte wie ein Organizer</strong> (eigene Spalte entfällt deshalb)
-            und ist zusätzlich als <strong>Experten-Ansprechpartner</strong> markiert: Power User
-            erscheinen mit Name und Foto im Hilfe-Hinweis auf der Event-Erstellungs-Seite, damit
-            sich Organizer bei Fragen an sie wenden können. Pflege der Power User über die
-            Rollenverwaltung (DEX_Roles).
+            }}>★ Power User</span>
+            ist <strong>keine eigene Rolle</strong>, sondern ein <strong>Zusatz-Status auf einem
+            Organizer</strong> (oder Admin): dieselbe Person, ein Eintrag — gleichzeitig Organizer
+            UND Power User. Power User kennen sich besonders gut aus und werden auf der
+            Event-Erstellungs-Seite mit Name und Foto als <strong>Hilfe-Ansprechpartner</strong>
+            angezeigt. Setzen/Entfernen per Stern-Button in der Rollenverwaltung — die
+            Berechtigungen bleiben die eines Organizers.
           </div>
         </div>
 
