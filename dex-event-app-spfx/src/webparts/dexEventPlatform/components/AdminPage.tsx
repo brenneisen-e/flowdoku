@@ -578,7 +578,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
@@ -1347,6 +1347,10 @@ export default function AdminPage(): React.ReactElement {
   // isOrganizerFor returned true sowohl fuer event.organizerEmails als auch
   // fuer event.coOrganizerEmails (per-Event-Rolle).
   const isOrganizerFor = (ev: DeloitteEvent): boolean => {
+    // v18.3: Im Demo-Modus ist der (User-)Demo-Account „Organizer" des
+    // synthetischen Demo-Events — so sieht er die Teilnehmer-Verwaltung
+    // (read-only) im Admin-Center. Greift nur fuer das Demo-Event.
+    if (isImpersonating && ev.isDemoShowcase) return true;
     if (!currentEmailLc) return false;
     if (ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc)) return true;
     if (ev.coOrganizerEmails && ev.coOrganizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
@@ -2343,18 +2347,21 @@ export default function AdminPage(): React.ReactElement {
                         {isDe ? 'B2Run migrieren' : 'Migrate B2Run'}
                       </button>
                     )}
-                    <button
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-red, #c00)' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteEvent(event);
-                        setConfirmDeleteText('');
-                      }}
-                      disabled={isDeleting}
-                    >
-                      <Trash2 size={14} /> {isDeleting && deletingId === event.id ? 'Wird gelöscht...' : 'Löschen'}
-                    </button>
+                    {/* v18.3: Demo-Event hat keinen Löschen-Button (kein Backend). */}
+                    {!event.isDemoShowcase && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-red, #c00)' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteEvent(event);
+                          setConfirmDeleteText('');
+                        }}
+                        disabled={isDeleting}
+                      >
+                        <Trash2 size={14} /> {isDeleting && deletingId === event.id ? (isDe ? 'Wird gelöscht...' : 'Deleting...') : (isDe ? 'Löschen' : 'Delete')}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3009,28 +3016,44 @@ export default function AdminPage(): React.ReactElement {
                 Aktionen aus dem Aktionen-Dropdown nach oben gezogen,
                 damit Organizer am Eventtag nicht erst scrollen müssen. */}
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
-              {(isAdmin || isOrganizerFor(selectedEvent)) && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => navigate('edit-event', selectedEvent.id)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
-                  title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
-                >
-                  <Pencil size={14} />
-                  {isDe ? 'Event bearbeiten' : 'Edit event'}
-                </button>
+              {/* v18.3: Im Demo-Modus ist das Demo-Event read-only — Edit /
+                  Check-In / Aktionen sind ausgeblendet (kein SharePoint-
+                  Backend), stattdessen ein Demo-Hinweis. */}
+              {selectedEvent.isDemoShowcase ? (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-blue, #0076a8)',
+                  background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
+                  borderRadius: 999, padding: '4px 12px',
+                }}>
+                  {isDe ? 'Demo — nur Ansicht (keine Aktionen)' : 'Demo — view only (no actions)'}
+                </span>
+              ) : (
+                <>
+                  {(isAdmin || isOrganizerFor(selectedEvent)) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => navigate('edit-event', selectedEvent.id)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                      title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
+                    >
+                      <Pencil size={14} />
+                      {isDe ? 'Event bearbeiten' : 'Edit event'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => navigate('check-in', selectedEvent.id)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                    title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
+                  >
+                    <Hash size={14} />
+                    {isDe ? 'Check-In starten' : 'Start check-in'}
+                  </button>
+                </>
               )}
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => navigate('check-in', selectedEvent.id)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
-                title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
-              >
-                <Hash size={14} />
-                {isDe ? 'Check-In starten' : 'Start check-in'}
-              </button>
             </div>
           </div>
           {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
@@ -3234,7 +3257,7 @@ export default function AdminPage(): React.ReactElement {
             seit v7.6 hier integriert — der Organizer/Admin findet alle Event-
             relevanten Aktionen an einem Ort. QR-Scanner sehen den ganzen Block
             nicht. */}
-        {!isQRScannerOnlyForSelected && (
+        {!isQRScannerOnlyForSelected && !selectedEvent.isDemoShowcase && (
         <ActionsCollapsibleCard isDe={isDe}>
           <div className="admin-actions-grid" style={{
             display: 'grid',

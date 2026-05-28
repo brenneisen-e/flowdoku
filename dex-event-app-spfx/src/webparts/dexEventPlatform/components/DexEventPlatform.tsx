@@ -40,7 +40,7 @@ export interface IDexEventPlatformProps {
 // v12.7: Banner ganz oben — sichtbar wenn Admin Demo-Impersonation
 // gestartet hat. Klick auf X beendet die Impersonation (löscht
 // localStorage + reload).
-function ImpersonationBanner(): React.ReactElement | null {
+function ImpersonationBanner(props: { currentPage?: string }): React.ReactElement | null {
   const [active, setActive] = React.useState<{ firstName?: string; surname?: string; email?: string; location?: string } | null>(null);
   React.useEffect(() => {
     try {
@@ -50,6 +50,9 @@ function ImpersonationBanner(): React.ReactElement | null {
   }, []);
   if (!active) return null;
   const name = `${active.firstName || ''} ${active.surname || ''}`.trim() || active.email || '—';
+  // v18.3: Im Admin-/Wizard-Kontext agiert der Demo-Account als Organizer
+  // (read-only Demo-Event) — das wird im Banner sichtbar gemacht.
+  const asOrganizer = props.currentPage === 'admin' || props.currentPage === 'edit-event' || props.currentPage === 'create-event';
   const exitImpersonation = (): void => {
     try { window.localStorage.removeItem('dex_demo_impersonation'); }
     catch { /* */ }
@@ -66,6 +69,7 @@ function ImpersonationBanner(): React.ReactElement | null {
     }}>
       <span>
         DEMO-MODUS · agierst als <strong>{name}</strong>
+        {' · Rolle '}<strong>{asOrganizer ? 'Organizer' : 'User'}</strong>
         {active.location ? <> · Standort <strong>{active.location}</strong></> : null}
       </span>
       <button
@@ -544,7 +548,7 @@ function AppContent(): React.ReactElement {
   return (
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
-      <ImpersonationBanner />
+      <ImpersonationBanner currentPage={currentPage} />
 
       {successBanner && (
         <div

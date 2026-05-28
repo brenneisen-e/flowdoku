@@ -2414,6 +2414,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
+    // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
+    // die UI blendet den Löschen-Button fuer das Demo-Event ohnehin aus.
+    if (isDemoShowcaseId(eventId)) return false;
     // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
     // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.
