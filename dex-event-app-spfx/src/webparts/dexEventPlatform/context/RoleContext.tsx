@@ -45,7 +45,7 @@ interface RoleContextType {
 function migrateRole(spRole: string): UserRole {
   if (spRole === 'SuperAdmin') return 'Admin';
   if (spRole === 'EventAdmin') return 'Organizer';
-  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
+  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User' || spRole === 'Power User') return spRole as UserRole;
   return 'User';
 }
 
@@ -168,7 +168,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
           await spService.grantOrganizerPermissions(userEmail); // Site-Rechte fuer Subsite-Erstellung
-        } else if (role === 'Organizer') {
+        } else if (role === 'Organizer' || role === 'Power User') {
+          // v18.4: Power User bekommt dieselben SP-Rechte wie ein Organizer.
           await spService.grantReadOnRolesList(userEmail);
           await spService.grantOrganizerPermissions(userEmail);
         }
@@ -187,7 +188,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
-        } else if (newRole === 'Organizer') {
+        } else if (newRole === 'Organizer' || newRole === 'Power User') {
           await spService.grantReadOnRolesList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'User') {
@@ -247,7 +248,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const isImpersonating = typeof window !== 'undefined' && !!window.localStorage?.getItem('dex_demo_impersonation');
   const effectiveRole: UserRole = isImpersonating ? 'User' : currentUserRole;
   const isAdmin = effectiveRole === 'Admin';
-  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin';
+  // v18.4: „Power User" zaehlt permission-seitig als Organizer.
+  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin' || effectiveRole === 'Power User';
   const canCreateEvents = isOrganizer;
   const originalIsAdmin = currentUserRole === 'Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;

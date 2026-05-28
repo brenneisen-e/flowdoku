@@ -226,6 +226,7 @@ export default function SettingsPage(): React.ReactElement {
   const roleBadge = (role: string): React.ReactElement => {
     const colors: Record<string, { bg: string; color: string }> = {
       'Admin': { bg: '#e8f5e9', color: '#2e7d32' },
+      'Power User': { bg: '#fff4e5', color: '#b35a00' },
       'Organizer': { bg: '#e3f2fd', color: '#1565c0' },
       'User': { bg: '#f5f5f5', color: '#666' },
     };
@@ -461,6 +462,7 @@ export default function SettingsPage(): React.ReactElement {
                     style={{ fontSize: '0.85rem', maxWidth: 200 }}
                   >
                     <option value="Organizer">Organizer</option>
+                    <option value="Power User">Power User</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
@@ -560,6 +562,7 @@ export default function SettingsPage(): React.ReactElement {
                             disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
                           >
                             <option value="Admin">Admin</option>
+                            <option value="Power User">Power User</option>
                             <option value="Organizer">Organizer</option>
                             <option value="User">User</option>
                           </select>

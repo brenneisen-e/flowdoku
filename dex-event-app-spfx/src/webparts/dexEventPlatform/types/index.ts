@@ -357,7 +357,10 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
-export type UserRole = 'Admin' | 'Organizer' | 'User';
+// v18.4: „Power User" = Organizer mit Experten-Status. Permissions wie ein
+// Organizer; zusaetzlich werden Power User auf der Event-Erstellungs-Seite
+// als Hilfe-Ansprechpartner angezeigt.
+export type UserRole = 'Admin' | 'Power User' | 'Organizer' | 'User';
 
 export interface User {
   id: string;
