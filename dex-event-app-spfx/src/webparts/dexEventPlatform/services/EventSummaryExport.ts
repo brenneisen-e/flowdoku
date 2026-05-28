@@ -139,6 +139,35 @@ const escapeHtml = (s: string | undefined | null): string => {
     .replace(/'/g, '&#039;');
 };
 
+// v17.22: Lightweight Rich-HTML-Sanitizer. Die Felder `description`,
+// `outlookBody` und `se.description` kommen aus dem RichText-Editor und
+// enthalten legitimes Formatierungs-HTML (<p>, <strong>, <ul>, <a> …) —
+// die duerfen NICHT escaped werden, sonst sieht der Reviewer rohe Tags.
+// Aber: ein Organizer (oder eine kompromittierte Quelle) koennte
+// <script>, Event-Handler (onload=…), javascript:-URLs oder
+// <iframe>/<object>/<embed> einschleusen, die im Export-Fenster
+// (gleiche SharePoint-Origin) ausgefuehrt wuerden. Dieser Sanitizer
+// entfernt genau diese gefaehrlichen Konstrukte und laesst harmloses
+// Layout-HTML durch. Kein vollwertiger DOMPurify, aber deckt die
+// relevanten Vektoren fuer den reinen Druck-/Word-Export ab.
+const sanitizeRichHtml = (html: string | undefined | null): string => {
+  if (!html) return '';
+  let out = String(html);
+  // 1. Komplette gefaehrliche Element-Bloecke (inkl. Inhalt) entfernen.
+  out = out.replace(/<\s*(script|style|iframe|object|embed|link|meta|base|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
+  // 2. Selbstschliessende / unvollstaendige Varianten derselben Tags.
+  out = out.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*\/?>/gi, '');
+  // 3. Inline-Event-Handler (onload=, onclick=, onerror=, …) entfernen —
+  //    sowohl mit doppelten/einfachen Quotes als auch ohne Quotes.
+  out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '');
+  out = out.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '');
+  out = out.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '');
+  // 4. javascript:- und data:text/html-URLs in href/src neutralisieren.
+  out = out.replace(/(href|src)\s*=\s*"(?:\s*javascript:|\s*data:text\/html)[^"]*"/gi, '$1="#"');
+  out = out.replace(/(href|src)\s*=\s*'(?:\s*javascript:|\s*data:text\/html)[^']*'/gi, "$1='#'");
+  return out;
+};
+
 const formatDate = (iso: string | undefined, locale: 'de' | 'en'): string => {
   if (!iso) return '—';
   try {
@@ -210,7 +239,7 @@ export function buildSummaryHtml(d: SummaryData): string {
     : '';
 
   const grundlagenDescription = d.description
-    ? `<div class="dex-rich"><strong>${T('Beschreibung', 'Description')}:</strong><br/>${d.description}</div>`
+    ? `<div class="dex-rich"><strong>${T('Beschreibung', 'Description')}:</strong><br/>${sanitizeRichHtml(d.description)}</div>`
     : '';
 
   const grundlagenOrganizers = (d.organizers && d.organizers.length > 0)
@@ -439,7 +468,7 @@ export function buildSummaryHtml(d: SummaryData): string {
         <strong>${T('Outlook-Termin-Body', 'Outlook calendar body')}:</strong>
         ${d.outlookHeading ? `<div style="font-weight:700;font-size:1.1em;margin-top:6px">${escapeHtml(d.outlookHeading)}</div>` : ''}
         ${d.outlookSubheading ? `<div style="color:#666;margin-bottom:6px">${escapeHtml(d.outlookSubheading)}</div>` : ''}
-        ${d.outlookBody ? `<div class="dex-rich">${d.outlookBody}</div>` : ''}
+        ${d.outlookBody ? `<div class="dex-rich">${sanitizeRichHtml(d.outlookBody)}</div>` : ''}
        </div>`
     : '';
 
@@ -487,7 +516,7 @@ export function buildSummaryHtml(d: SummaryData): string {
           ${kv(T('Plaetze', 'Capacity'), se.maxParticipants ?? '—', lc)}
           ${kv(T('Warteliste', 'Waitlist'), !!se.waitlistEnabled, lc)}
         </div>
-        ${se.description ? `<div class="dex-rich">${se.description}</div>` : ''}
+        ${se.description ? `<div class="dex-rich">${sanitizeRichHtml(se.description)}</div>` : ''}
       </div>`).join('');
     const subMeta = [
       kv(T('Nur Sub-Events-Modus', 'Sub-events-only mode'), !!d.subEventsOnlyMode, lc),
@@ -597,20 +626,46 @@ export function exportSummaryAsPdf(data: SummaryData): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${(data.title || 'event-summary').replace(/[^a-z0-9-_]+/gi, '_')}.html`;
+    a.download = `${(data.title || 'event-summary').replace(/[^a-z0-9äöüßÄÖÜ_-]+/gi, '_')}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return;
   }
+  // v17.22: opener-Referenz kappen — das neue Fenster teilt die SharePoint-
+  // Origin; ohne diese Zeile koennte darin laufendes Script (falls der
+  // Sanitizer je umgangen wuerde) ueber window.opener auf die Host-Seite
+  // zugreifen (Reverse-Tabnabbing / SP-REST im User-Kontext).
+  try { w.opener = null; } catch { /* */ }
   w.document.open();
   w.document.write(html);
   w.document.close();
-  // Druckdialog mit kleinem Delay, damit Bilder geladen sind.
-  setTimeout(() => {
+  // v17.22: Statt eines fixen 500ms-Timeouts (Race: Remote-SharePoint-Bild
+  // beim Edit-Flow oft noch nicht geladen → leeres/kaputtes Bild im PDF)
+  // warten wir, bis alle <img> fertig sind (complete ODER onload/onerror),
+  // mit 4s-Sicherheitsdeadline. Erst dann der Druckdialog.
+  const triggerPrint = (): void => {
     try { w.focus(); w.print(); } catch { /* */ }
-  }, 500);
+  };
+  const waitForImages = (): void => {
+    let imgs: HTMLImageElement[] = [];
+    try { imgs = Array.prototype.slice.call(w.document.images || []); } catch { /* */ }
+    const pending = imgs.filter(img => !img.complete);
+    if (pending.length === 0) { triggerPrint(); return; }
+    let done = 0;
+    let fired = false;
+    const finish = (): void => { if (!fired) { fired = true; triggerPrint(); } };
+    pending.forEach(img => {
+      const onSettled = (): void => { done++; if (done >= pending.length) finish(); };
+      img.addEventListener('load', onSettled);
+      img.addEventListener('error', onSettled);
+    });
+    // Sicherheits-Deadline: spaetestens nach 4s drucken, egal ob Bilder fertig.
+    setTimeout(finish, 4000);
+  };
+  // Kleiner Initial-Delay, damit document.images nach write/close gefuellt ist.
+  setTimeout(waitForImages, 150);
 }
 
 /**
@@ -629,16 +684,24 @@ export function exportSummaryAsPdf(data: SummaryData): void {
  */
 export function exportSummaryAsDoc(data: SummaryData): void {
   const html = buildSummaryHtml(data);
-  // Word-Header mit MIME-Hint, damit Word die HTML als Doc erkennt.
-  const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
-xmlns:w="urn:schemas-microsoft-com:office:word"
-xmlns="http://www.w3.org/TR/REC-html40">
-${html.substring(html.indexOf('<head>'))}`;
+  // v17.22: Robust statt String-Slice. Vorher wurde bei `<head>` geschnitten
+  // (`substring(indexOf('<head>'))`) — faellt indexOf auf -1 (z.B. nach
+  // einem Refactor ohne <head>), liefert substring(-1) den ganzen String
+  // inkl. doppeltem <html>. Jetzt ersetzen wir das oeffnende <html …>-Tag
+  // gezielt durch das Word-Prelude; fehlt es, wird das Prelude vorangestellt.
+  const wordPrelude = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">`;
+  let wordHtml: string;
+  const htmlTagMatch = html.match(/<html[^>]*>/i);
+  if (htmlTagMatch) {
+    wordHtml = html.replace(/<!doctype[^>]*>/i, '').replace(/<html[^>]*>/i, wordPrelude);
+  } else {
+    wordHtml = `${wordPrelude}${html}`;
+  }
   const blob = new Blob([wordHtml], { type: 'application/msword' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${(data.title || 'event-summary').replace(/[^a-z0-9-_]+/gi, '_')}.doc`;
+  a.download = `${(data.title || 'event-summary').replace(/[^a-z0-9äöüßÄÖÜ_-]+/gi, '_')}.doc`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

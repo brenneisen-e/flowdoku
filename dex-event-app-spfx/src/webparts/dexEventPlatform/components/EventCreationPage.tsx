@@ -11,7 +11,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { EventService } from '../services/EventService';
+import { EventService, CustomField } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
@@ -178,6 +178,64 @@ interface CustomFieldInput {
   helpTextEn?: string;
   confirmLabelEn?: string;
   optionsEn?: string[];
+}
+
+// v17.22: Einziger Serializer fuer Custom-Fields → CustomFields-JSON.
+// Vorher dreimal copy-paste (Create-Save, Edit-Save, Sub-Event-Save), was
+// dazu fuehrte, dass der Sub-Event-Pfad die v17.20-EN-Varianten nicht
+// mitnahm. Zentral hier, damit alle drei Pfade identisch persistieren.
+//
+// Wichtig (v17.22-Fix): DE-Optionen UND EN-Optionen werden POSITIONAL
+// gepaart gefiltert — vorher wurde `options` per `.filter(Boolean)` von
+// Leereintraegen befreit, `optionsEn` aber nicht, wodurch das Index-Mapping
+// zwischen DE und EN bei leeren Slots verrutschte (leere/falsche EN-Labels
+// auf der Anmeldeseite).
+function serializeCustomFields(
+  fields: CustomFieldInput[],
+  bilingual: boolean
+): CustomField[] {
+  return fields
+    .filter(f => f.label && f.label.trim().length > 0)
+    .map(f => {
+      let optionsOut: string[] | undefined;
+      let optionsEnOut: string[] | undefined;
+      if (f.type === 'select') {
+        const pairs = (f.options || [])
+          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim() }))
+          .filter(p => p.de.length > 0);
+        optionsOut = pairs.map(p => p.de);
+        if (bilingual && pairs.some(p => p.en.length > 0)) {
+          optionsEnOut = pairs.map(p => p.en);
+        }
+      }
+      return {
+        id: f.id,
+        label: f.label.trim(),
+        type: f.type,
+        required: !!f.required,
+        visible: f.visible !== false,
+        ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+        ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
+          ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
+          : {}),
+        ...(optionsOut ? { options: optionsOut, ...(f.multi ? { multi: true } : {}) } : {}),
+        ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+          ? { confirmLabel: f.confirmLabel.trim() }
+          : {}),
+        // v17.20: Englische Varianten — nur wenn der Bilingual-Toggle an ist
+        // UND der Organizer Text eingegeben hat.
+        ...(bilingual && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
+        ...(bilingual && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
+        ...(bilingual && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
+          ? { confirmLabelEn: f.confirmLabelEn.trim() }
+          : {}),
+        ...(optionsEnOut ? { optionsEn: optionsEnOut } : {}),
+        ...(f.externalLinks && f.externalLinks.length > 0
+          ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+          : {}),
+      } as CustomField;
+    });
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -837,6 +895,25 @@ export default function EventCreationPage(): React.ReactElement {
   const [pendingSuccessDispatch, setPendingSuccessDispatch] = React.useState<{
     title: string; eventId: string; type: 'create' | 'update';
   } | null>(null);
+  // v17.22: Unmount-Safety. Der Success-Dispatch (dex-event-submit-success,
+  // treibt Erfolgs-Banner + Auto-Navigation in DexEventPlatform) laeuft erst,
+  // wenn der User im Summary-Modal eine Auswahl trifft. Verlaesst er den
+  // Wizard vorher (Header-Navigation, Browser-Back, Tab-Eviction), wuerde der
+  // Dispatch sonst verloren gehen — Folge: kein Banner, kein Redirect, User
+  // denkt der Save sei fehlgeschlagen. Dieser Ref + Cleanup-Effect feuert den
+  // Dispatch beim Unmount nach, falls er noch aussteht.
+  const pendingSuccessDispatchRef = React.useRef<{ title: string; eventId: string; type: 'create' | 'update' } | null>(null);
+  React.useEffect(() => {
+    return () => {
+      const pending = pendingSuccessDispatchRef.current;
+      if (pending) {
+        pendingSuccessDispatchRef.current = null;
+        try {
+          window.dispatchEvent(new CustomEvent('dex-event-submit-success', { detail: pending }));
+        } catch { /* */ }
+      }
+    };
+  }, []);
   const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
@@ -2325,33 +2402,11 @@ export default function EventCreationPage(): React.ReactElement {
         }
         keptDbIds.add(draft.dbId);
         // Update bestehender Sub-Event: nur geänderte Felder patchen. CustomFields
-        // werden als JSON-String serialisiert (gleiche Form wie bei regulären
-        // Events; siehe handleSubmit-Edit-Pfad).
-        const cfJson = JSON.stringify((draft.customFields || [])
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id,
-            label: f.label.trim(),
-            type: f.type,
-            required: f.required,
-            visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren.
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          })));
+        // werden als JSON-String serialisiert — v17.22: zentraler
+        // serializeCustomFields-Helper, damit der Sub-Event-Pfad dieselben
+        // EN-Varianten + Options-Pairing erhaelt wie Top-Level (vorher droppte
+        // dieser Pfad labelEn/helpTextEn/confirmLabelEn/optionsEn still).
+        const cfJson = JSON.stringify(serializeCustomFields(draft.customFields || [], bilingualFields));
         // v11.57: Sub-Event-Kommunikations-Felder mit-persistieren — bisher
         // wurden Mail-Sprache, Outlook-Body, Logos pro Sub-Event nur am
         // Top-Level gespeichert. Mit den Tabs in Step 5 kann jeder Sub-Event
@@ -2685,36 +2740,9 @@ export default function EventCreationPage(): React.ReactElement {
         'ContactName': contactName.trim(),
         'ContactEmail': contactEmail.trim(),
         'ContactInfo': contactInfo.trim(),
-        'CustomFields': JSON.stringify(customFields
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Sub-Event-Pfad).
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v17.20: Englische Varianten — siehe Create-Pfad oben.
-            ...(bilingualFields && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
-            ...(bilingualFields && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
-            ...(bilingualFields && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
-              ? { confirmLabelEn: f.confirmLabelEn.trim() }
-              : {}),
-            ...(bilingualFields && f.type === 'select' && f.optionsEn && f.optionsEn.some(o => o && o.trim())
-              ? { optionsEn: f.optionsEn.map(o => (o || '').trim()) }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          }))),
+        // v17.22: zentraler serializeCustomFields-Helper (Options-Pairing +
+        // EN-Varianten konsistent zu allen Pfaden).
+        'CustomFields': JSON.stringify(serializeCustomFields(customFields, bilingualFields)),
       };
 
       // Optionale Felder - immer senden damit Loeschungen wirken
@@ -3126,6 +3154,7 @@ export default function EventCreationPage(): React.ReactElement {
           // das Summary-Export-Modal. Der eigentliche Success-Dispatch laeuft
           // erst, wenn der User dort eine Auswahl getroffen hat (PDF / Word /
           // Nein, danke).
+          pendingSuccessDispatchRef.current = { title, eventId: String(selectedEventId), type: 'update' };
           setPendingSuccessDispatch({ title, eventId: String(selectedEventId), type: 'update' });
           setShowSummaryModal(true);
         } catch { /* */ }
@@ -3350,38 +3379,8 @@ export default function EventCreationPage(): React.ReactElement {
         teamJoinRequiresApproval: !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval),
         // v17.20: Bilingual-Toggle durchreichen.
         bilingualFields: !!bilingualFields,
-        customFields: customFields
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Create-Pfad).
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v17.20: Englische Varianten — nur dann, wenn der Bilingual-
-            // Toggle des Events an ist UND der Organizer Text eingegeben hat.
-            // Sonst leerer Spread = keine *En-Keys im JSON.
-            ...(bilingualFields && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
-            ...(bilingualFields && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
-            ...(bilingualFields && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
-              ? { confirmLabelEn: f.confirmLabelEn.trim() }
-              : {}),
-            ...(bilingualFields && f.type === 'select' && f.optionsEn && f.optionsEn.some(o => o && o.trim())
-              ? { optionsEn: f.optionsEn.map(o => (o || '').trim()) }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          })),
+        // v17.22: zentraler serializeCustomFields-Helper.
+        customFields: serializeCustomFields(customFields, bilingualFields),
         onProgress: reportCreateStage,
       });
 
@@ -3532,6 +3531,7 @@ export default function EventCreationPage(): React.ReactElement {
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
           // v17.21: Summary-Export-Modal vor dem Submit-Success-Dispatch.
+          pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create' };
           setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
           setShowSummaryModal(true);
         } catch { /* */ }
@@ -11592,6 +11592,9 @@ export default function EventCreationPage(): React.ReactElement {
           requireSubEventSelection: requireSubEventSelection || subEventsOnlyMode,
           childEventTermSingular: childTermSingular,
           childEventTermPlural: childTermPlural,
+          // v17.22: Bilingual-Flag an die Vorschau — sonst rendert die
+          // Preview die EN-Varianten nie (useEnVariants prueft event.bilingualFields).
+          bilingualFields,
         }}
       />
 
@@ -11880,7 +11883,10 @@ export default function EventCreationPage(): React.ReactElement {
           „Nein, danke" springt direkt zum Dispatch. */}
       {showSummaryModal && pendingSuccessDispatch && (() => {
         const closeAndDispatch = (): void => {
-          const payload = pendingSuccessDispatch;
+          // v17.22: Ref VOR dem Dispatch leeren, damit der Unmount-Cleanup
+          // nicht ein zweites Mal feuert (Doppel-Navigation/-Banner).
+          const payload = pendingSuccessDispatchRef.current || pendingSuccessDispatch;
+          pendingSuccessDispatchRef.current = null;
           setShowSummaryModal(false);
           setPendingSuccessDispatch(null);
           try {

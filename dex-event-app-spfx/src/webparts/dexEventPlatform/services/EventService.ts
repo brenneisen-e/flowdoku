@@ -508,6 +508,15 @@ export interface CustomField {
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl. Wert wird in der
    *  Teilnehmerliste " | "-getrennt gespeichert. */
   multi?: boolean;
+  /** v11.94: Nur fuer type='checkbox' — Text neben der Checkbox (Default
+   *  „Ja, bestätigen" / „Yes, confirm"). */
+  confirmLabel?: string;
+  /** v17.20: Englische Varianten — nur relevant wenn auf Event-Ebene
+   *  `bilingualFields=true`. optionsEn ist positional zu options gemappt. */
+  labelEn?: string;
+  helpTextEn?: string;
+  confirmLabelEn?: string;
+  optionsEn?: string[];
 }
 
 export interface SPRegistration {

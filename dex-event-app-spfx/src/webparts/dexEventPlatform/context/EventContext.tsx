@@ -203,7 +203,7 @@ interface EventContextType {
    *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
    *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
-  cancelRegistration: (eventId: string) => Promise<boolean>;
+  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
    *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
    *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
@@ -1978,7 +1978,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return open;
   }
 
-  async function cancelRegistration(eventId: string): Promise<boolean> {
+  async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean }): Promise<boolean> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
@@ -2027,12 +2027,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
         // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        // v17.19: Im subEventsOnlyMode keine Abmelde-Mail fuer das (Schatten-)
-        // Parent — der Nutzer hat sich gar nicht aktiv beim Parent angemeldet,
-        // sondern nur bei Sub-Events. Die Sub-Event-Abmeldungen senden bereits
-        // pro Stueck eine Mail, eine zusaetzliche Parent-Abmelde-Mail waere
-        // verwirrend.
-        const suppressParentNotificationsCancel = !!event.subEventsOnlyMode;
+        // v17.19/v17.22: Notifications werden NUR unterdrueckt, wenn der Aufrufer
+        // das explizit anfordert (`opts.suppressNotifications`). Das passiert
+        // ausschliesslich beim automatischen Schatten-Parent-Cancel im
+        // subEventsOnlyMode (MyEventsPage: letzte Sub-Event-Abmeldung raeumt
+        // den Schatten-Parent ab — die Sub-Event-Abmeldung hat ihre eigene
+        // Mail schon verschickt). v17.22-Fix: vorher wurde pauschal auf
+        // `event.subEventsOnlyMode` geprueft, wodurch Alt-Anmeldungen (User
+        // hat sich noch im Normal-Modus direkt beim Parent angemeldet, bevor
+        // der Organizer das Event auf subEventsOnlyMode umstellte) beim
+        // direkten Abmelden weder Bestaetigungs-Mail noch Outlook-Ausladen
+        // bekamen.
+        const suppressParentNotificationsCancel = !!opts?.suppressNotifications;
         if (!event.disableEmails && !suppressParentNotificationsCancel) {
           try {
             const lang = event.emailLanguage || 'EN';

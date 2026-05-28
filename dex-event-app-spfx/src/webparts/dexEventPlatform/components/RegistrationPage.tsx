@@ -93,6 +93,15 @@ export default function RegistrationPage(): React.ReactElement {
   // nur, wenn der Bilingual-Toggle des Events an ist UND die App-Locale des
   // Teilnehmers `en` ist. Sonst still Fallback auf den DE-Wert. Index-Mapping
   // der Optionen ist positional — DE-Option i ↔ EN-Option i.
+  // v17.22: `useEnVariants` steuert NUR die Anzeige-Labels. Die gespeicherten
+  // Werte bleiben in JEDEM Fall die kanonischen DE-Originale: Single-Select
+  // rendert `<option value={DE-Wert}>{EN-Anzeige}</option>`, Multi-Select gibt
+  // `options={field.options}` (DE) als Wert weiter und nutzt `optionLabels`
+  // nur fuer die Darstellung. Deshalb ist auch der „Register-for-Other"-Pfad
+  // unkritisch: meldet ein EN-Organizer eine DE-Person an, sieht der Organizer
+  // die EN-Labels (er fuellt das Formular), gespeichert wird aber der
+  // DE-Wert — die Zielperson und die Bestaetigungs-Mail (event.emailLanguage)
+  // bekommen also keine sprachlich falschen Daten.
   const useEnVariants = !!event?.bilingualFields && locale === 'en';
   const pickFieldLabel = React.useCallback((f: EventSpecificField): string =>
     (useEnVariants && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label,
@@ -1215,7 +1224,7 @@ export default function RegistrationPage(): React.ReactElement {
                 v17.20: pickFieldConfirmLabel zieht im EN-Modus den
                 confirmLabelEn-Wert; faellt sonst auf den DE-Wert. */}
             {(displayConfirmLabel && displayConfirmLabel.trim())
-              || (locale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
+              || (eventLocale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
           </span>
         </label>
         {field.externalLinks && field.externalLinks.length > 0 && (
@@ -2917,15 +2926,20 @@ export default function RegistrationPage(): React.ReactElement {
               const altLabel = fallbackDialog.alt === 'Durchstarter' ? splitLabelA : splitLabelB;
               return (
                 <>
+                  {/* v17.22: Attendee-facing → bilingual. Vorher war dieser
+                      Fallback-Dialog (Wunsch-Gruppe voll) rein deutsch. */}
                   <h3 style={{ margin: 0, marginBottom: 10 }}>
-                    {wunschLabel}-Plätze sind voll
+                    {locale === 'de' ? `${wunschLabel}-Plätze sind voll` : `${wunschLabel} is full`}
                   </h3>
                   <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 8 }}>
-                    Für <strong>{wunschLabel}</strong> gibt es aktuell keine freien Plätze mehr.
+                    {locale === 'de'
+                      ? <>Für <strong>{wunschLabel}</strong> gibt es aktuell keine freien Plätze mehr.</>
+                      : <>There are currently no free spots left for <strong>{wunschLabel}</strong>.</>}
                   </p>
                   <p style={{ color: 'var(--dex-gray-700)', lineHeight: 1.5, marginBottom: 20 }}>
-                    Es sind allerdings noch <strong>{fallbackDialog.altFree}</strong> Plätze als <strong>{altLabel}</strong> frei.
-                    Möchtest du stattdessen als <strong>{altLabel}</strong> starten?
+                    {locale === 'de'
+                      ? <>Es sind allerdings noch <strong>{fallbackDialog.altFree}</strong> Plätze als <strong>{altLabel}</strong> frei. Möchtest du stattdessen als <strong>{altLabel}</strong> starten?</>
+                      : <>However, there are still <strong>{fallbackDialog.altFree}</strong> spots available as <strong>{altLabel}</strong>. Would you like to join as <strong>{altLabel}</strong> instead?</>}
                   </p>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <button
@@ -2938,7 +2952,7 @@ export default function RegistrationPage(): React.ReactElement {
                         await performRegistration(wunsch);
                       }}
                     >
-                      Auf {wunschLabel}-Warteliste
+                      {locale === 'de' ? `Auf ${wunschLabel}-Warteliste` : `Join ${wunschLabel} waitlist`}
                     </button>
                     <button
                       className="btn btn-primary"
@@ -2952,7 +2966,7 @@ export default function RegistrationPage(): React.ReactElement {
                         await performRegistration(alt);
                       }}
                     >
-                      Als {altLabel} starten
+                      {locale === 'de' ? `Als ${altLabel} starten` : `Join as ${altLabel}`}
                     </button>
                   </div>
                 </>
@@ -2968,22 +2982,21 @@ export default function RegistrationPage(): React.ReactElement {
           onClose={() => setExternalEmailWarning(false)}
           maxWidth={540}
           padding={24}
-          ariaLabel="Externe E-Mail-Adresse"
+          ariaLabel={locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
         >
+            {/* v17.22: bilingual nachgezogen. */}
             <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-              Externe E-Mail-Adresse
+              {locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
             </h3>
             <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
-              Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant (@deloitte.de).
-              Standardmäßig sind Anmeldungen für externe Personen nicht vorgesehen — die Plattform
-              ist nur für DEALL-Mitarbeiter freigeschaltet.
+              {locale === 'de'
+                ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant (@deloitte.de). Standardmäßig sind Anmeldungen für externe Personen nicht vorgesehen — die Plattform ist nur für DEALL-Mitarbeiter freigeschaltet.</>
+                : <>The address <strong>{email}</strong> does not belong to the Deloitte Germany tenant (@deloitte.de). Registrations for external people are not supported by default — the platform is only enabled for DEALL employees.</>}
             </p>
             <p style={{ margin: '0 0 12px', fontSize: '0.85rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
-              Wenn du diese Person trotzdem als Teilnehmer erfassen möchtest (z.B. neue Mitarbeiter
-              die noch nicht angestellt sind, externe Berater die am Event teilnehmen), kannst du fortfahren.
-              Die Bestätigungsmail wird dann <strong>nicht an die externe Adresse</strong> versendet,
-              sondern landet bei dir als Organizer in der Inbox — du kannst sie unter Beachtung
-              der <strong>Deloitte-Datenschutzrichtlinien</strong> ggf. weiterleiten.
+              {locale === 'de'
+                ? <>Wenn du diese Person trotzdem als Teilnehmer erfassen möchtest (z.B. neue Mitarbeiter die noch nicht angestellt sind, externe Berater die am Event teilnehmen), kannst du fortfahren. Die Bestätigungsmail wird dann <strong>nicht an die externe Adresse</strong> versendet, sondern landet bei dir als Organizer in der Inbox — du kannst sie unter Beachtung der <strong>Deloitte-Datenschutzrichtlinien</strong> ggf. weiterleiten.</>
+                : <>If you still want to register this person as an attendee (e.g. new joiners not yet employed, external consultants attending the event), you can proceed. The confirmation email will then <strong>not be sent to the external address</strong> — it lands in your organizer inbox instead, and you may forward it in line with the <strong>Deloitte privacy guidelines</strong>.</>}
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
@@ -2991,7 +3004,7 @@ export default function RegistrationPage(): React.ReactElement {
                 onClick={() => setExternalEmailWarning(false)}
                 style={{ fontSize: '0.85rem' }}
               >
-                Abbrechen
+                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
               </button>
               <button
                 className="btn btn-primary"
@@ -3003,7 +3016,7 @@ export default function RegistrationPage(): React.ReactElement {
                 }}
                 style={{ fontSize: '0.85rem' }}
               >
-                Trotzdem anmelden
+                {locale === 'de' ? 'Trotzdem anmelden' : 'Register anyway'}
               </button>
             </div>
         </Modal>
@@ -3025,7 +3038,16 @@ export default function RegistrationPage(): React.ReactElement {
         const updateFieldValue = (fieldId: string, value: string): void => {
           setDraft({ ...draft, [fieldId]: value });
         };
-        const requiredMissing = fields.filter(f => f.required && !((draft[f.id] || '').trim())).map(f => f.label);
+        // v17.22: EN-Varianten auch im Sub-Event-Modal respektieren — geknüpft
+        // an die Bilingual-Einstellung DES Sub-Events (ce), nicht des Parents.
+        const useEnHere = locale === 'en' && !!ce.bilingualFields;
+        const fLabel = (f: EventSpecificField): string =>
+          (useEnHere && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label;
+        const fHelp = (f: EventSpecificField): string | undefined =>
+          (useEnHere && f.helpTextEn && f.helpTextEn.trim()) ? f.helpTextEn : f.helpText;
+        const fOpt = (f: EventSpecificField, opt: string, idx: number): string =>
+          (useEnHere && f.optionsEn && f.optionsEn[idx] && f.optionsEn[idx].trim()) ? f.optionsEn[idx] : opt;
+        const requiredMissing = fields.filter(f => f.required && !((draft[f.id] || '').trim())).map(f => fLabel(f));
         const canSubmit = requiredMissing.length === 0;
         const onConfirm = (): void => {
           if (!canSubmit) return;
@@ -3062,16 +3084,16 @@ export default function RegistrationPage(): React.ReactElement {
                   return (
                     <div key={f.id}>
                       <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
-                        {f.label}
+                        {fLabel(f)}
                         {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
                         {/* v11.16: konsistenter InfoTooltip statt grauer
                             Inline-Beschreibung — gleicher Look wie auf
                             der Haupt-Register-Page. */}
-                        {f.helpText && <InfoTooltip text={f.helpText} />}
+                        {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
                       </label>
                       {f.type === 'select' && f.multi ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {(f.options || []).map(opt => {
+                          {(f.options || []).map((opt, optIdx) => {
                             const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
                             const checked = current.indexOf(opt) >= 0;
                             return (
@@ -3086,7 +3108,7 @@ export default function RegistrationPage(): React.ReactElement {
                                     updateFieldValue(f.id, next.join(' | '));
                                   }}
                                 />
-                                {opt}
+                                {fOpt(f, opt, optIdx)}
                               </label>
                             );
                           })}
@@ -3099,7 +3121,7 @@ export default function RegistrationPage(): React.ReactElement {
                           style={{ width: '100%', fontSize: '0.9rem' }}
                         >
                           <option value="">{locale === 'de' ? '— bitte wählen —' : '— please select —'}</option>
-                          {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          {(f.options || []).map((opt, optIdx) => <option key={opt} value={opt}>{fOpt(f, opt, optIdx)}</option>)}
                         </select>
                       ) : f.type === 'checkbox' ? (
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>

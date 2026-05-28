@@ -1268,10 +1268,28 @@ export default function MyEventsPage(): React.ReactElement {
               if (registration.CustomData) customData = JSON.parse(registration.CustomData);
             } catch { /* */ }
 
-            // Feld-ID zu Label-Map aus den Event-Feldern erstellen
+            // Feld-ID zu Label-Map aus den Event-Feldern erstellen.
+            // v17.22: im Bilingual-Modus + EN-Locale die EN-Variante des
+            // Labels nehmen — vorher rein DE, obwohl der Teilnehmer sich
+            // bei der Anmeldung die EN-Labels angesehen hatte.
+            const useEnDisplay = locale === 'en' && !!event.bilingualFields;
             const fieldLabelMap: Record<string, string> = {};
+            // v17.22: Wert-Uebersetzung fuer Select-Optionen (DE-Wert →
+            // EN-Anzeige) pro Feld, damit auch die Antwort selbst zweisprachig
+            // erscheint. Map: fieldId → (DE-Option → EN-Option).
+            const fieldOptionEnMap: Record<string, Record<string, string>> = {};
             for (const field of event.eventSpecificFields) {
-              fieldLabelMap[field.id] = field.label;
+              fieldLabelMap[field.id] = (useEnDisplay && field.labelEn && field.labelEn.trim())
+                ? field.labelEn
+                : field.label;
+              if (useEnDisplay && field.options && field.optionsEn) {
+                const m: Record<string, string> = {};
+                field.options.forEach((opt, i) => {
+                  const en = (field.optionsEn || [])[i];
+                  if (en && en.trim()) m[opt] = en;
+                });
+                fieldOptionEnMap[field.id] = m;
+              }
             }
             // Fallback-Labels für ad-hoc Keys, die NICHT als EventSpecificField
             // registriert sind (z.B. Leistungsnachweis, der direkt aus der Starter-
@@ -1292,6 +1310,14 @@ export default function MyEventsPage(): React.ReactElement {
                 let value: string = raw;
                 if (raw === 'true') value = yesLabel;
                 else if (raw === 'false') value = noLabel;
+                else if (fieldOptionEnMap[key]) {
+                  // v17.22: Select-Antworten im EN-Modus uebersetzen. Multi-
+                  // Select-Werte sind " | "-getrennt — jeden Teil einzeln mappen.
+                  value = raw.split(' | ').map(part => {
+                    const trimmed = part.trim();
+                    return fieldOptionEnMap[key][trimmed] || trimmed;
+                  }).join(' | ');
+                }
                 return {
                   label: fieldLabelMap[key] || adHocLabels[key] || key,
                   value,
@@ -1691,6 +1717,30 @@ export default function MyEventsPage(): React.ReactElement {
                   </div>
                 </div>
 
+                {/* v17.22: Event-Beschreibung auch unter „Meine Events"
+                    anzeigen (vorher nur auf der Anmeldeseite). RichText-HTML
+                    aus dem eigenen Tenant — gleiche Render-Logik wie auf der
+                    RegistrationPage (HTML erlaubt, sonst \n→<br>). */}
+                {event.description && (!editingId || editingId !== event.id) && (
+                  <div
+                    style={{
+                      marginTop: 10, padding: '10px 14px', fontSize: '0.82rem',
+                      color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
+                      borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
+                      lineHeight: 1.55, wordBreak: 'break-word',
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: (() => {
+                        const raw = event.description || '';
+                        const isHtml = /<[a-z][\s\S]*>/i.test(raw);
+                        return isHtml
+                          ? raw
+                          : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                      })(),
+                    }}
+                  />
+                )}
+
                 {/* v10.26: Custom-Field-Antworten als rechteckige
                     pastellgrüne Tags — visuell eindeutig von den
                     abgerundeten grauen Organizer-Chips getrennt, damit der
@@ -1731,22 +1781,32 @@ export default function MyEventsPage(): React.ReactElement {
                   )
                 ) : (
                   <div style={{ marginTop: 12 }}>
-                    {event.eventSpecificFields.map((field: EventSpecificField) => (
-                      <div className="form-group" key={field.id} style={{ marginBottom: 10 }}>
-                        <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 2 }}>
-                          {field.required && <span className="required">*</span>}
-                          {field.label}
-                        </label>
-                        {field.type === 'select' ? (
-                          <select className="form-select" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}>
-                            <option value="">—</option>
-                            {field.options && field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        ) : (
-                          <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
-                        )}
-                      </div>
-                    ))}
+                    {/* v17.22: EN-Varianten auch im „Meine Events"-Edit-Formular
+                        beruecksichtigen — vorher rein DE, obwohl der Teilnehmer
+                        sich auf der Anmeldeseite die EN-Labels angesehen hatte. */}
+                    {(() => {
+                      const useEnEdit = locale === 'en' && !!event.bilingualFields;
+                      const eLabel = (f: EventSpecificField): string =>
+                        (useEnEdit && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label;
+                      const eOpt = (f: EventSpecificField, opt: string, idx: number): string =>
+                        (useEnEdit && f.optionsEn && f.optionsEn[idx] && f.optionsEn[idx].trim()) ? f.optionsEn[idx] : opt;
+                      return event.eventSpecificFields.map((field: EventSpecificField) => (
+                        <div className="form-group" key={field.id} style={{ marginBottom: 10 }}>
+                          <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 2 }}>
+                            {field.required && <span className="required">*</span>}
+                            {eLabel(field)}
+                          </label>
+                          {field.type === 'select' ? (
+                            <select className="form-select" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}>
+                              <option value="">—</option>
+                              {field.options && field.options.map((opt, optIdx) => <option key={opt} value={opt}>{eOpt(field, opt, optIdx)}</option>)}
+                            </select>
+                          ) : (
+                            <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={eLabel(field)} type={field.type === 'number' ? 'number' : 'text'} />
+                          )}
+                        </div>
+                      ));
+                    })()}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="btn btn-primary" style={{ fontSize: '0.82rem' }} disabled={isSaving} onClick={async () => { setIsSaving(true); await updateMyRegistration(event.id, editData); await loadMyRegistrations(); setEditingId(null); setIsSaving(false); }}>
                         {isSaving ? t('myevents.saving') : t('myevents.save')}
@@ -2797,7 +2857,7 @@ function MyEventSubEvents(props: {
   parentEvent: DeloitteEvent;
   childEvents: DeloitteEvent[];
   registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
-  cancelRegistration: (eventId: string) => Promise<boolean>;
+  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
@@ -2946,7 +3006,9 @@ function MyEventSubEvents(props: {
             .filter(id => registeredSet.has(id));
           if (remainingActive.length === 0) {
             setProcessingMessage(isDe ? 'Hauptevent-Eintrag wird entfernt…' : 'Removing main-event entry…');
-            try { await props.cancelRegistration(props.parentEvent.id); }
+            // v17.22: Schatten-Parent-Cancel → Notifications unterdruecken
+            // (die Sub-Event-Abmeldung hat ihre eigene Mail schon geschickt).
+            try { await props.cancelRegistration(props.parentEvent.id, { suppressNotifications: true }); }
             catch (err) { console.warn('[DEX] shadow-parent cancel failed:', err); }
           }
         }

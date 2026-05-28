@@ -71,6 +71,10 @@ export interface RegisterPreviewData {
   requireSubEventSelection?: boolean;
   childEventTermSingular?: string;
   childEventTermPlural?: string;
+  /** v17.22: Bilingual-Toggle an die Vorschau weiterreichen, damit
+   *  RegistrationPage die EN-Varianten der Felder rendert (useEnVariants
+   *  greift nur, wenn event.bilingualFields gesetzt ist). */
+  bilingualFields?: boolean;
 }
 
 export interface RegisterPreviewModalProps {
@@ -117,6 +121,7 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     imageUrl: data.imagePreview || '',
     outlookBody: '',
     emailLanguage: 'DE',
+    bilingualFields: !!data.bilingualFields,
     isFictive: !!data.isFictive,
     subEventsOnlyMode: !!data.subEventsOnlyMode,
     requireSubEventSelection: !!data.requireSubEventSelection,
@@ -128,16 +133,23 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     quiz: [],
     eventSpecificFields: (data.customFields || [])
       .filter(f => f.visible !== false && f.label && f.label.trim().length > 0)
-      .map(f => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((f: any) => ({
         id: f.id,
         label: f.label,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        type: (f.type as any) || 'text',
+        type: (f.type as 'text') || 'text',
         required: !!f.required,
         options: f.options,
         helpText: f.helpText || '',
         ...(f.multi ? { multi: true } : {}),
         ...(f.showIf ? { showIf: f.showIf } : {}),
+        // v17.22: EN-Varianten + confirmLabel an den Synth-Event durchreichen,
+        // damit die Vorschau im EN-Modus die englischen Texte rendert.
+        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+        ...(f.optionsEn ? { optionsEn: f.optionsEn } : {}),
       })),
   };
 }
@@ -173,6 +185,7 @@ function buildSynthChildEvents(data: RegisterPreviewData): DeloitteEvent[] {
       imageUrl: '',
       outlookBody: '',
       emailLanguage: 'DE',
+      bilingualFields: !!data.bilingualFields,
       isFictive: !!data.isFictive,
       agenda: [],
       transferTimes: [],
