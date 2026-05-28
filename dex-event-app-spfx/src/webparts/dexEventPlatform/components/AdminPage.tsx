@@ -1241,18 +1241,20 @@ export default function AdminPage(): React.ReactElement {
     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
     setIsReorderingIDs(true);
     setReorderResult(null);
-    setReorderProgressLabel('IDs werden neu vergeben…');
+    setReorderProgressLabel(isDe ? 'IDs werden neu vergeben…' : 'Reassigning IDs…');
     setReorderProgress(0);
     try {
       const result = await eventServiceRef.reorderParticipantIDs(
         selectedEvent.subsiteUrl,
         pct => setReorderProgress(pct)
       );
-      setReorderResult(`${result.success} aktualisiert, ${result.errors} Fehler`);
+      setReorderResult(isDe
+        ? `${result.success} aktualisiert, ${result.errors} Fehler`
+        : `${result.success} updated, ${result.errors} errors`);
       const regs = await getAllRegistrations(selectedEvent.id);
       setRegistrations(regs);
     } catch {
-      setReorderResult('Fehler beim Neuvergeben der IDs');
+      setReorderResult(isDe ? 'Fehler beim Neuvergeben der IDs' : 'Error reassigning IDs');
     }
     setReorderProgress(null);
     setIsReorderingIDs(false);
@@ -1365,9 +1367,31 @@ export default function AdminPage(): React.ReactElement {
   const now = Date.now();
   const isPastEvent = (e: DeloitteEvent): boolean =>
     !!e.endDate && new Date(e.endDate).getTime() < now;
-  const currentEvents = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
-  const pastEvents = isAdmin ? adminEvents.filter(isPastEvent) : [];
+  const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
+  const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
+  // v18.2: Entwurf-Filter + Sortierung der Admin/Organizer-Event-Liste.
+  // Default-Sortierung alphabetisch nach Titel; alternativ nach Startdatum
+  // aufsteigend. „Entwürfe ausblenden" filtert isFictive-Events raus.
+  const [hideDrafts, setHideDrafts] = React.useState(false);
+  const [eventSortMode, setEventSortMode] = React.useState<'alpha' | 'date'>('alpha');
+  const draftCount = adminEvents.filter(e => e.isFictive).length;
+  const sortAndFilterEvents = React.useCallback((list: DeloitteEvent[]): DeloitteEvent[] => {
+    let arr = list.slice();
+    if (hideDrafts) arr = arr.filter(e => !e.isFictive);
+    arr.sort((a, b) => {
+      if (eventSortMode === 'date') {
+        const am = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
+        const bm = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
+        if (am !== bm) return am - bm;
+        return (a.title || '').localeCompare(b.title || '', isDe ? 'de' : 'en');
+      }
+      return (a.title || '').localeCompare(b.title || '', isDe ? 'de' : 'en');
+    });
+    return arr;
+  }, [hideDrafts, eventSortMode, isDe]);
+  const currentEvents = sortAndFilterEvents(currentEventsRaw);
+  const pastEvents = sortAndFilterEvents(pastEventsRaw);
 
   // v6.17: Verfügbare Spalten der Teilnehmer-Tabelle aufbauen. MUSS vor dem
   // early return `if (!selectedEvent) return ...` stehen — sonst verletzen
@@ -2337,6 +2361,37 @@ export default function AdminPage(): React.ReactElement {
             );
             return (
               <>
+                {/* v18.2: Sortier- + Entwurf-Filter-Leiste ueber der Event-Liste. */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                  marginBottom: 16, padding: '10px 14px',
+                  background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius, 12px)',
+                  border: '1px solid var(--dex-gray-200)',
+                }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                    <span style={{ fontWeight: 600 }}>{isDe ? 'Sortierung:' : 'Sort:'}</span>
+                    <select
+                      className="form-select"
+                      value={eventSortMode}
+                      onChange={e => setEventSortMode(e.target.value as 'alpha' | 'date')}
+                      style={{ fontSize: '0.85rem', padding: '4px 10px', width: 'auto' }}
+                    >
+                      <option value="alpha">{isDe ? 'Alphabetisch (A–Z)' : 'Alphabetical (A–Z)'}</option>
+                      <option value="date">{isDe ? 'Datum aufsteigend' : 'Date ascending'}</option>
+                    </select>
+                  </label>
+                  {draftCount > 0 && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={hideDrafts}
+                        onChange={e => setHideDrafts(e.target.checked)}
+                        style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+                      />
+                      {isDe ? `Entwürfe ausblenden (${draftCount})` : `Hide drafts (${draftCount})`}
+                    </label>
+                  )}
+                </div>
                 <div className="my-events-list">
                   {currentEvents.map(ev => renderEventCard(ev))}
                 </div>
@@ -3192,7 +3247,9 @@ export default function AdminPage(): React.ReactElement {
             <ActionTile
               icon={<Hash size={18} />}
               title={t('admin.checkin')}
-              desc="Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug."
+              desc={isDe
+                ? 'Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug.'
+                : 'Opens the check-in tool: scan QR codes, check in/out manually, see live KPIs (how many registered / checked in / pending). The most important tool on event day.'}
               badge="organizer"
               onClick={() => navigate('check-in', selectedEvent.id)}
             />
@@ -3200,8 +3257,10 @@ export default function AdminPage(): React.ReactElement {
             {/* v9.20: QR-Codes versenden als ActionTile (Modal-Trigger). */}
             <ActionTile
               icon={<Send size={18} />}
-              title={isSendingQR ? `QR-Codes werden versendet... (${qrSentCount})` : `QR-Codes versenden`}
-              desc="Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code)."
+              title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
+              desc={isDe
+                ? 'Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code).'
+                : 'Opens a modal with three options: test (only to you), full run to all registered participants, or enable auto-send (every new registration automatically gets its QR code).'}
               badge="organizer"
               busy={isSendingQR}
               onClick={() => {
@@ -3225,11 +3284,15 @@ export default function AdminPage(): React.ReactElement {
                   // der Admin/Organizer auf einen Blick weiß, in welchem
                   // Zustand das Event gerade ist — und was der Klick bewirkt.
                   title={isDraft
-                    ? 'Aktuell: Entwurf — Event live schalten'
-                    : 'Aktuell: Live — Auf Entwurf setzen'}
+                    ? (isDe ? 'Aktuell: Entwurf — Event live schalten' : 'Currently: draft — publish event')
+                    : (isDe ? 'Aktuell: Live — Auf Entwurf setzen' : 'Currently: live — set to draft')}
                   desc={isDraft
-                    ? 'Schaltet das Event live — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'
-                    : 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder live schalten.'}
+                    ? (isDe
+                      ? 'Schaltet das Event live — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'
+                      : 'Publishes the event — from now on all eligible users see the event in the list and can register. Emails and Outlook invites run as configured.')
+                    : (isDe
+                      ? 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder live schalten.'
+                      : 'Resets the event to "draft" — regular users can no longer register and no longer see the event in the event list. Existing registrations are kept. You can publish again at any time.')}
                   badge="organizer"
                   accent={isDraft ? 'green' : undefined}
                   onClick={async () => {
@@ -3254,7 +3317,9 @@ export default function AdminPage(): React.ReactElement {
             <ActionTile
               icon={<Pencil size={18} />}
               title={t('admin.editbutton') || 'Event bearbeiten'}
-              desc="Öffnet das Event im 7-Schritte-Wizard. Titel, Datum, Ort, Kapazität, Custom-Fields, E-Mail-Templates und Quiz nachträglich anpassen."
+              desc={isDe
+                ? 'Öffnet das Event im Schritt-für-Schritt-Wizard. Titel, Datum, Ort, Kapazität, Custom-Fields, E-Mail-Templates und Quiz nachträglich anpassen.'
+                : 'Opens the event in the step-by-step wizard. Adjust title, date, location, capacity, custom fields, email templates and quiz afterwards.'}
               badge="organizer"
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
@@ -3263,7 +3328,9 @@ export default function AdminPage(): React.ReactElement {
             <ActionTile
               icon={<ExternalLink size={18} />}
               title={t('admin.opensp') || 'In SharePoint öffnen'}
-              desc="Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View)."
+              desc={isDe
+                ? 'Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View).'
+                : 'Opens the SharePoint participant list of the subsite in a new tab — for deeper editing beyond this app (e.g. bulk edit via spreadsheet view).'}
               badge="organizer"
               href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
             />
@@ -3276,8 +3343,10 @@ export default function AdminPage(): React.ReactElement {
                 Detail-Ansicht statt in der Event-Auswahl-Liste. */}
             <ActionTile
               icon={<Link2 size={18} />}
-              title={copiedDeepLink ? (t('admin.copied') || 'Kopiert') : 'Deep-Link kopieren'}
-              desc="Legt den direkten Link auf dieses Event-Admin in die Zwischenablage. Per Mail / Teams an Co-Organizer schicken — sie landen nach Login direkt hier, ohne sich erst durch die Event-Liste klicken zu müssen."
+              title={copiedDeepLink ? (t('admin.copied') || 'Kopiert') : (isDe ? 'Deep-Link kopieren' : 'Copy deep link')}
+              desc={isDe
+                ? 'Legt den direkten Link auf dieses Event-Admin in die Zwischenablage. Per Mail / Teams an Co-Organizer schicken — sie landen nach Login direkt hier, ohne sich erst durch die Event-Liste klicken zu müssen.'
+                : 'Copies the direct link to this event admin to the clipboard. Send it via email / Teams to co-organizers — after login they land directly here without clicking through the event list first.'}
               badge="organizer"
               onClick={() => {
                 const base = (typeof window !== 'undefined' && window.location)
@@ -3299,7 +3368,9 @@ export default function AdminPage(): React.ReactElement {
             <ActionTile
               icon={<Copy size={18} />}
               title={copiedEmails ? (t('admin.copied') || 'Kopiert') : (t('admin.copyemails') || 'E-Mails kopieren')}
-              desc="Legt alle aktiven Teilnehmer-Mails (Semikolon-getrennt) in die Zwischenablage. Direkt in Outlook-Empfänger oder externe Tools einfügbar."
+              desc={isDe
+                ? 'Legt alle aktiven Teilnehmer-Mails (Semikolon-getrennt) in die Zwischenablage. Direkt in Outlook-Empfänger oder externe Tools einfügbar.'
+                : 'Copies all active participant emails (semicolon-separated) to the clipboard. Can be pasted directly into Outlook recipients or external tools.'}
               badge="organizer"
               onClick={() => {
                 const emails = registrations
@@ -3318,8 +3389,10 @@ export default function AdminPage(): React.ReactElement {
             {/* 4. Massenmail an alle aktiven Teilnehmer */}
             <ActionTile
               icon={<Mail size={18} />}
-              title="E-Mail versenden an Teilnehmergruppen"
-              desc="Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete)."
+              title={isDe ? 'E-Mail versenden an Teilnehmergruppen' : 'Send email to participant groups'}
+              desc={isDe
+                ? 'Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete).'
+                : 'Opens a rich-text editor with the Deloitte mail template. Goes to all active participants (not waitlisted / cancelled).'}
               badge="organizer"
               onClick={() => {
                 setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
@@ -3396,10 +3469,14 @@ export default function AdminPage(): React.ReactElement {
             <div style={{ position: 'relative', display: 'flex' }}>
               <ActionTile
                 icon={<Download size={18} />}
-                title="Excel-Export"
+                title={isDe ? 'Excel-Export' : 'Excel export'}
                 desc={selectedEvent && selectedEvent.type === 'B2Run'
-                  ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
-                  : "Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events."}
+                  ? (isDe
+                    ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
+                    : "Downloads the participant list as Excel. Choose between 'Deloitte fields' (all internal columns + custom fields) or 'B2Run view' (importable into b2run.com).")
+                  : (isDe
+                    ? 'Lädt die Teilnehmerliste als Excel mit allen internen Spalten + Custom-Fields des Events.'
+                    : 'Downloads the participant list as Excel with all internal columns + custom fields of the event.')}
                 badge="organizer"
                 onClick={() => {
                   // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
@@ -3431,9 +3508,11 @@ export default function AdminPage(): React.ReactElement {
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--dex-gray-50)'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>Deloitte Felder</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>{isDe ? 'Deloitte Felder' : 'Deloitte fields'}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginTop: 2 }}>
-                      Alle internen Felder: Name, E-Mail, Department, Standort, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.
+                      {isDe
+                        ? 'Alle internen Felder: Name, E-Mail, Department, Standort, Position, Status, Registrierungsdatum + alle Custom-Fields des Events.'
+                        : 'All internal fields: name, email, department, location, position, status, registration date + all custom fields of the event.'}
                     </div>
                   </button>
                   {selectedEvent && selectedEvent.type === 'B2Run' && (
@@ -3463,8 +3542,10 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<AlertCircle size={18} />}
-                title={isCheckingDeclines ? 'Outlook wird geprüft…' : 'Outlook-Absagen prüfen'}
-                desc="Liest die Outlook-Absagen aus dem no_reply.events-Postfach und matched sie gegen aktive Teilnehmer. Zeigt, wer den Termin abgelehnt hat, aber noch in der Liste steht."
+                title={isCheckingDeclines ? (isDe ? 'Outlook wird geprüft…' : 'Checking Outlook…') : (isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines')}
+                desc={isDe
+                  ? 'Liest die Outlook-Absagen aus dem no_reply.events-Postfach und matched sie gegen aktive Teilnehmer. Zeigt, wer den Termin abgelehnt hat, aber noch in der Liste steht.'
+                  : 'Reads the Outlook declines from the no_reply.events mailbox and matches them against active participants. Shows who declined the appointment but is still on the list.'}
                 badge="admin"
                 busy={isCheckingDeclines}
                 onClick={async () => {
@@ -3523,16 +3604,20 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Hash size={18} />}
-                title={isReorderingIDs ? 'IDs werden vergeben…' : 'IDs neu vergeben'}
-                desc="Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist."
+                title={isReorderingIDs ? (isDe ? 'IDs werden vergeben…' : 'Assigning IDs…') : (isDe ? 'IDs neu vergeben' : 'Reassign IDs')}
+                desc={isDe
+                  ? 'Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist.'
+                  : 'Assigns the participant IDs sequentially (1, 2, 3, …) by creation order. Closes gaps after cancellations and sorts the list cleanly. Note: do not run while many registrations are coming in — wait until the registration wave is over.'}
                 badge="organizer"
                 busy={isReorderingIDs}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={reorderResult}
-                resultIsError={!!reorderResult && reorderResult.indexOf('Fehler') >= 0}
+                resultIsError={!!reorderResult && (reorderResult.indexOf('Fehler') >= 0 || reorderResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.')) return;
+                  if (!confirm(isDe
+                    ? 'TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.'
+                    : 'Reassign participant IDs (1, 2, 3, …)? Sorted by creation order.\n\nDo NOT run while many registrations are coming in — please wait until the registration wave is over.')) return;
                   await runIdReorder();
                 }}
               />
@@ -3551,23 +3636,27 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Hash size={18} />}
-                title={isResettingCounter ? 'Counter wird zurückgesetzt…' : 'Counter zurücksetzen'}
-                desc="Setzt den TeilnehmerID-Counter exakt auf den aktuellen Max-TID der Teilnehmerliste. Hilft, wenn neue Anmeldungen mit zu hohen IDs starten (Lücken durch frühere Abmeldungen) oder wenn sie versehentlich bei zu niedrigen IDs (z.B. wieder bei 1) starten würden. Bidirektional — egal ob der Counter zu hoch oder zu niedrig steht."
+                title={isResettingCounter ? (isDe ? 'Counter wird zurückgesetzt…' : 'Resetting counter…') : (isDe ? 'Counter zurücksetzen' : 'Reset counter')}
+                desc={isDe
+                  ? 'Setzt den TeilnehmerID-Counter exakt auf den aktuellen Max-TID der Teilnehmerliste. Hilft, wenn neue Anmeldungen mit zu hohen IDs starten (Lücken durch frühere Abmeldungen) oder wenn sie versehentlich bei zu niedrigen IDs (z.B. wieder bei 1) starten würden. Bidirektional — egal ob der Counter zu hoch oder zu niedrig steht.'
+                  : 'Sets the participant ID counter exactly to the current max ID of the participant list. Helps when new registrations start with IDs that are too high (gaps from earlier cancellations) or when they would accidentally start at IDs that are too low (e.g. back at 1). Bidirectional — regardless of whether the counter is too high or too low.'}
                 badge="admin"
                 busy={isResettingCounter}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={resetCounterResult}
-                resultIsError={!!resetCounterResult && resetCounterResult.indexOf('Fehler') >= 0}
+                resultIsError={!!resetCounterResult && (resetCounterResult.indexOf('Fehler') >= 0 || resetCounterResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('Counter auf aktuellen Max-Wert zurücksetzen?')) return;
+                  if (!confirm(isDe ? 'Counter auf aktuellen Max-Wert zurücksetzen?' : 'Reset counter to the current max value?')) return;
                   setIsResettingCounter(true);
                   setResetCounterResult(null);
                   try {
                     const result = await eventServiceRef.resetCounterToMax(selectedEvent.subsiteUrl);
-                    setResetCounterResult(`Counter steht jetzt auf ${result.counter} (Max-TID: ${result.max})`);
+                    setResetCounterResult(isDe
+                      ? `Counter steht jetzt auf ${result.counter} (Max-TID: ${result.max})`
+                      : `Counter is now at ${result.counter} (max ID: ${result.max})`);
                   } catch {
-                    setResetCounterResult('Fehler beim Zurücksetzen des Counters');
+                    setResetCounterResult(isDe ? 'Fehler beim Zurücksetzen des Counters' : 'Error resetting the counter');
                   }
                   setIsResettingCounter(false);
                 }}
@@ -3584,16 +3673,18 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Users size={18} />}
-                title={isDetectingOverbook ? 'Wird geprüft…' : 'Überbuchung prüfen'}
-                desc="Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Buttons oben in der Teilnehmerliste."
+                title={isDetectingOverbook ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Überbuchung prüfen' : 'Check overbooking')}
+                desc={isDe
+                  ? 'Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Buttons oben in der Teilnehmerliste.'
+                  : 'Finds, per group (Durchstarter/Funstarter, or overall), the most recently registered people OVER capacity and marks them for review. Nothing is changed automatically — afterwards you decide per person (move to waitlist / keep seat) via the buttons at the top of the participant list.'}
                 badge="organizer"
                 busy={isDetectingOverbook}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={detectOverbookResult}
-                resultIsError={!!detectOverbookResult && detectOverbookResult.indexOf('Fehler') >= 0}
+                resultIsError={!!detectOverbookResult && (detectOverbookResult.indexOf('Fehler') >= 0 || detectOverbookResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm('Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)')) return;
+                  if (!confirm(isDe ? 'Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)' : 'Check overbooking and mark affected people? (does not change any status)')) return;
                   setIsDetectingOverbook(true);
                   setDetectOverbookResult(null);
                   try {
@@ -3606,15 +3697,17 @@ export default function AdminPage(): React.ReactElement {
                     // Counter mit echtem Bestand abgleichen (best-effort).
                     try { await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit: isSplitCapacity }); } catch { /* */ }
                     const parts = res.groups
-                      .map(g => `${g.group}: ${g.activeBefore}/${g.cap || '∞'} → ${g.marked} markiert`)
+                      .map(g => `${g.group}: ${g.activeBefore}/${g.cap || '∞'} → ${g.marked} ${isDe ? 'markiert' : 'marked'}`)
                       .join(' · ');
                     setDetectOverbookResult(res.total > 0
-                      ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
-                      : `Keine Überbuchung gefunden (${parts})`);
+                      ? (isDe
+                        ? `${res.total} markiert (${parts})${res.errors ? ` — ${res.errors} Fehler` : ''}`
+                        : `${res.total} marked (${parts})${res.errors ? ` — ${res.errors} errors` : ''}`)
+                      : (isDe ? `Keine Überbuchung gefunden (${parts})` : `No overbooking found (${parts})`));
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                   } catch {
-                    setDetectOverbookResult('Fehler beim Prüfen der Überbuchung');
+                    setDetectOverbookResult(isDe ? 'Fehler beim Prüfen der Überbuchung' : 'Error checking overbooking');
                   }
                   setIsDetectingOverbook(false);
                 }}
@@ -3625,13 +3718,15 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Columns size={18} />}
-                title={isFixingColumns ? 'Spalten werden gefixt…' : 'Spalten fixen'}
-                desc="Legt fehlende SP-Spalten in der Teilnehmerliste an, entfernt überflüssige (z.B. StarterType bei Nicht-B2Run-Events) und korrigiert die Default-View-Reihenfolge."
+                title={isFixingColumns ? (isDe ? 'Spalten werden gefixt…' : 'Fixing columns…') : (isDe ? 'Spalten fixen' : 'Fix columns')}
+                desc={isDe
+                  ? 'Legt fehlende SP-Spalten in der Teilnehmerliste an, entfernt überflüssige (z.B. StarterType bei Nicht-B2Run-Events) und korrigiert die Default-View-Reihenfolge.'
+                  : 'Creates missing columns in the participant list, removes superfluous ones (e.g. StarterType for non-B2Run events) and fixes the default view order.'}
                 badge="admin"
                 busy={isFixingColumns}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={fixColumnsResult}
-                resultIsError={!!fixColumnsResult && fixColumnsResult.indexOf('Fehler') >= 0}
+                resultIsError={!!fixColumnsResult && (fixColumnsResult.indexOf('Fehler') >= 0 || fixColumnsResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                   setIsFixingColumns(true);
@@ -3664,16 +3759,16 @@ export default function AdminPage(): React.ReactElement {
                       }
                     );
                     const msgs: string[] = [];
-                    if (result.added.length > 0) msgs.push(`Spalten hinzugefügt: ${result.added.join(', ')}`);
-                    if (result.removed.length > 0) msgs.push(`Spalten entfernt: ${result.removed.join(', ')}`);
+                    if (result.added.length > 0) msgs.push(isDe ? `Spalten hinzugefügt: ${result.added.join(', ')}` : `Columns added: ${result.added.join(', ')}`);
+                    if (result.removed.length > 0) msgs.push(isDe ? `Spalten entfernt: ${result.removed.join(', ')}` : `Columns removed: ${result.removed.join(', ')}`);
                     if (result.duplicatesRemoved && result.duplicatesRemoved.length > 0) {
-                      msgs.push(`${result.duplicatesRemoved.length} leere Duplikate gelöscht`);
+                      msgs.push(isDe ? `${result.duplicatesRemoved.length} leere Duplikate gelöscht` : `${result.duplicatesRemoved.length} empty duplicates deleted`);
                     }
                     if (result.duplicatesWithData && result.duplicatesWithData.length > 0) {
                       const list = result.duplicatesWithData.map(t => `„${t}"`).join(', ');
-                      msgs.push(`${result.duplicatesWithData.length} Duplikate mit Daten — bitte manuell prüfen: ${list}`);
+                      msgs.push(isDe ? `${result.duplicatesWithData.length} Duplikate mit Daten — bitte manuell prüfen: ${list}` : `${result.duplicatesWithData.length} duplicates with data — please review manually: ${list}`);
                     }
-                    if (result.viewFixed) msgs.push('View-Reihenfolge korrigiert');
+                    if (result.viewFixed) msgs.push(isDe ? 'View-Reihenfolge korrigiert' : 'View order fixed');
                     if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const updatedCf = (customFields as any[]).map(f => {
@@ -3682,14 +3777,14 @@ export default function AdminPage(): React.ReactElement {
                       });
                       try {
                         await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(updatedCf) });
-                        msgs.push(`Custom-Field-Zuordnung aktualisiert (${Object.keys(result.customFieldMap).length})`);
+                        msgs.push(isDe ? `Custom-Field-Zuordnung aktualisiert (${Object.keys(result.customFieldMap).length})` : `Custom field mapping updated (${Object.keys(result.customFieldMap).length})`);
                       } catch {
-                        msgs.push('WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden');
+                        msgs.push(isDe ? 'WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden' : 'WARN: custom field mapping could not be saved on the event');
                       }
                     }
-                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : 'Alles OK, keine Änderungen nötig');
+                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : (isDe ? 'Alles OK, keine Änderungen nötig' : 'All OK, no changes needed'));
                   } catch {
-                    setFixColumnsResult('Fehler beim Fixen der Spalten');
+                    setFixColumnsResult(isDe ? 'Fehler beim Fixen der Spalten' : 'Error fixing columns');
                   }
                   setIsFixingColumns(false);
                 }}
@@ -3707,15 +3802,19 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
-                title={isRepairingOrganizers ? 'Reparatur läuft…' : 'Organizer-Mails reparieren (alle Events)'}
-                desc="Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen."
+                title={isRepairingOrganizers ? (isDe ? 'Reparatur läuft…' : 'Repair running…') : (isDe ? 'Organizer-Mails reparieren (alle Events)' : 'Repair organizer emails (all events)')}
+                desc={isDe
+                  ? 'Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen.'
+                  : 'Scans all events for mismatches between organizer names and organizer emails (legacy corruption from earlier app versions). Looks up missing emails via tenant search by last name and persists the fixed pairs. People that cannot be resolved automatically keep an empty email slot — the user must add them in the wizard.'}
                 badge="admin"
                 busy={isRepairingOrganizers}
                 result={repairOrganizersResult}
-                resultIsError={!!repairOrganizersResult && repairOrganizersResult.indexOf('Fehler') >= 0}
+                resultIsError={!!repairOrganizersResult && (repairOrganizersResult.indexOf('Fehler') >= 0 || repairOrganizersResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef) return;
-                  if (!confirm(`Organizer-Mails über ALLE ${adminEvents.length} Events reparieren? Dauert je nach Anzahl ca. 1–2 Minuten und schreibt direkt in DEX_Events zurück.`)) return;
+                  if (!confirm(isDe
+                    ? `Organizer-Mails über ALLE ${adminEvents.length} Events reparieren? Dauert je nach Anzahl ca. 1–2 Minuten und schreibt direkt in DEX_Events zurück.`
+                    : `Repair organizer emails across ALL ${adminEvents.length} events? Depending on the count this takes about 1–2 minutes and writes directly back to DEX_Events.`)) return;
                   setIsRepairingOrganizers(true);
                   setRepairOrganizersResult(null);
                   let scanned = 0;
@@ -3799,13 +3898,17 @@ export default function AdminPage(): React.ReactElement {
                         // skip dieses Event.
                       }
                     }
-                    const lines = [`Gescannt: ${scanned}`, `Mit Mismatch: ${mismatched}`, `Aktualisiert: ${eventsUpdated}`, `Emails wiederhergestellt: ${orgsRecovered}`];
+                    const lines = isDe
+                      ? [`Gescannt: ${scanned}`, `Mit Mismatch: ${mismatched}`, `Aktualisiert: ${eventsUpdated}`, `Emails wiederhergestellt: ${orgsRecovered}`]
+                      : [`Scanned: ${scanned}`, `With mismatch: ${mismatched}`, `Updated: ${eventsUpdated}`, `Emails recovered: ${orgsRecovered}`];
                     if (orgsUnresolved > 0) {
-                      lines.push(`Manuell nachziehen (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`);
+                      lines.push(isDe
+                        ? `Manuell nachziehen (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`
+                        : `Add manually (${orgsUnresolved}): ${unresolvedNames.slice(0, 5).join(', ')}${unresolvedNames.length > 5 ? '…' : ''}`);
                     }
                     setRepairOrganizersResult(lines.join(' · '));
                   } catch (err) {
-                    setRepairOrganizersResult(`Fehler: ${err instanceof Error ? err.message : String(err)}`);
+                    setRepairOrganizersResult(isDe ? `Fehler: ${err instanceof Error ? err.message : String(err)}` : `Error: ${err instanceof Error ? err.message : String(err)}`);
                   }
                   setIsRepairingOrganizers(false);
                 }}
@@ -3821,8 +3924,10 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (selectedEvent.type === 'B2Run' || (selectedEvent.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
-                title="Legacy-B2Run migrieren"
-                desc="Entfernt den B2Run-Type und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe etc.) BLEIBEN als generische Custom-Fields erhalten. Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
+                title={isDe ? 'Legacy-B2Run migrieren' : 'Migrate legacy B2Run'}
+                desc={isDe
+                  ? "Entfernt den B2Run-Type und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe etc.) BLEIBEN als generische Custom-Fields erhalten. Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
+                  : "Removes the B2Run type and persists 'Durchstarter' / 'Funstarter' as regular group labels (you can rename them freely in the wizard afterwards). b2run_* custom fields (age group, t-shirt size etc.) are KEPT as generic custom fields. Registrations, waitlists and sub-events remain unchanged."}
                 badge="admin"
                 onClick={async () => {
                   if (!eventServiceRef) return;
@@ -3950,8 +4055,10 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
-                title="Custom-Fields aus Versionsverlauf zurückholen"
-                desc="Liest den SharePoint-Versionsverlauf des Events und holt verloren gegangene b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer etc.) zurück. Nützlich nach der v11.9-Migration, die diese Felder versehentlich gelöscht hat. Bestehende Felder werden NICHT überschrieben — es werden nur fehlende Felder ergänzt."
+                title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
+                desc={isDe
+                  ? 'Liest den SharePoint-Versionsverlauf des Events und holt verloren gegangene b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer etc.) zurück. Nützlich nach der v11.9-Migration, die diese Felder versehentlich gelöscht hat. Bestehende Felder werden NICHT überschrieben — es werden nur fehlende Felder ergänzt.'
+                  : 'Reads the SharePoint version history of the event and restores lost b2run_* custom fields (age group, t-shirt size, start block, mobile number etc.). Useful after the v11.9 migration which deleted these fields by accident. Existing fields are NOT overwritten — only missing fields are added.'}
                 badge="admin"
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent) return;
@@ -4040,13 +4147,15 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
-                title={isFixingFields ? 'Felder werden repariert…' : 'Felder reparieren'}
-                desc="Normalisiert Custom-Fields: AGB/Datenschutz → Checkbox, T-Shirt → 'Kein T-Shirt'-Option, B2Run-Spezialfelder ergänzen, redundante '(Pflicht)'-Suffixe entfernen."
+                title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
+                desc={isDe
+                  ? "Normalisiert Custom-Fields: AGB/Datenschutz → Checkbox, T-Shirt → 'Kein T-Shirt'-Option, B2Run-Spezialfelder ergänzen, redundante '(Pflicht)'-Suffixe entfernen."
+                  : "Normalizes custom fields: terms/privacy → checkbox, t-shirt → 'no t-shirt' option, add B2Run special fields, remove redundant '(required)' suffixes."}
                 badge="admin"
                 busy={isFixingFields}
                 disabled={!selectedEvent}
                 result={fixFieldsResult}
-                resultIsError={!!fixFieldsResult && (fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl'))}
+                resultIsError={!!fixFieldsResult && (fixFieldsResult.startsWith('Fehler') || fixFieldsResult.startsWith('Update fehl') || fixFieldsResult.startsWith('Error') || fixFieldsResult.startsWith('Update failed'))}
                 onClick={async () => {
                   if (!selectedEvent) return;
                   setIsFixingFields(true);
@@ -4152,13 +4261,13 @@ export default function AdminPage(): React.ReactElement {
                     const ok = await updateEvent(selectedEvent.id, { CustomFields: JSON.stringify(fixed) });
                     if (ok) {
                       setFixFieldsResult(changes.length > 0
-                        ? `Geändert: ${changes.join(' | ')}`
-                        : 'Keine Änderungen nötig.');
+                        ? (isDe ? `Geändert: ${changes.join(' | ')}` : `Changed: ${changes.join(' | ')}`)
+                        : (isDe ? 'Keine Änderungen nötig.' : 'No changes needed.'));
                     } else {
-                      setFixFieldsResult('Update fehlgeschlagen.');
+                      setFixFieldsResult(isDe ? 'Update fehlgeschlagen.' : 'Update failed.');
                     }
                   } catch (err) {
-                    setFixFieldsResult('Fehler: ' + (err instanceof Error ? err.message : String(err)));
+                    setFixFieldsResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err)));
                   }
                   setIsFixingFields(false);
                 }}
@@ -4169,28 +4278,34 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
-                title={isRefreshingProfiles ? 'Profile werden geladen…' : 'Profile neu laden'}
-                desc="Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind."
+                title={isRefreshingProfiles ? (isDe ? 'Profile werden geladen…' : 'Loading profiles…') : (isDe ? 'Profile neu laden' : 'Reload profiles')}
+                desc={isDe
+                  ? 'Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind.'
+                  : 'Refreshes job title, location, department and phone number of the last N participants from the Microsoft 365 user profile — e.g. when participant data is outdated after an org change.'}
                 badge="admin"
                 busy={isRefreshingProfiles}
                 disabled={!selectedEvent?.subsiteUrl}
                 result={refreshProfilesResult}
-                resultIsError={!!refreshProfilesResult && refreshProfilesResult.indexOf('Fehler') >= 0}
+                resultIsError={!!refreshProfilesResult && (refreshProfilesResult.indexOf('Fehler') >= 0 || refreshProfilesResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  const ans = prompt('Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)', '20');
+                  const ans = prompt(isDe
+                    ? 'Wie viele der letzten Teilnehmer sollen aus dem Benutzerprofil neu geladen werden? (JobTitle, Standort, Department, Phone)'
+                    : 'How many of the most recent participants should be reloaded from the user profile? (job title, location, department, phone)', '20');
                   if (!ans) return;
                   const n = parseInt(ans, 10);
-                  if (isNaN(n) || n <= 0) { alert('Bitte eine positive Zahl eingeben.'); return; }
+                  if (isNaN(n) || n <= 0) { alert(isDe ? 'Bitte eine positive Zahl eingeben.' : 'Please enter a positive number.'); return; }
                   setIsRefreshingProfiles(true);
                   setRefreshProfilesResult(null);
                   try {
                     const result = await eventServiceRef.fixEventParticipantsProfileData(selectedEvent.subsiteUrl, n);
-                    setRefreshProfilesResult(`${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`);
+                    setRefreshProfilesResult(isDe
+                      ? `${result.scanned} geprüft, ${result.updated} aktualisiert, ${result.failedLookups} Profil-Lookups fehlgeschlagen`
+                      : `${result.scanned} checked, ${result.updated} updated, ${result.failedLookups} profile lookups failed`);
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                   } catch {
-                    setRefreshProfilesResult('Fehler beim Auffrischen der Profile');
+                    setRefreshProfilesResult(isDe ? 'Fehler beim Auffrischen der Profile' : 'Error refreshing profiles');
                   }
                   setIsRefreshingProfiles(false);
                 }}
@@ -4693,21 +4808,23 @@ export default function AdminPage(): React.ReactElement {
           const fmtGap = (ms: number): string => {
             if (!isFinite(ms) || ms < 0) return '—';
             const s = Math.round(ms / 1000);
-            if (s < 90) return `${s} Sek`;
+            if (s < 90) return `${s} ${isDe ? 'Sek' : 'sec'}`;
             const m = Math.round(s / 60);
-            if (m < 90) return `${m} Min`;
+            if (m < 90) return `${m} ${isDe ? 'Min' : 'min'}`;
             const h = Math.round(m / 60);
-            if (h < 48) return `${h} Std`;
-            return `${Math.round(h / 24)} Tage`;
+            if (h < 48) return `${h} ${isDe ? 'Std' : 'h'}`;
+            return `${Math.round(h / 24)} ${isDe ? 'Tage' : 'days'}`;
           };
           return (
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
                 <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.95rem' }}>
-                  Überbuchung – zu prüfen ({flagged.length})
+                  {isDe ? `Überbuchung – zu prüfen (${flagged.length})` : `Overbooking – to review (${flagged.length})`}
                 </strong>
                 <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                  Über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.
+                  {isDe
+                    ? 'Über Kapazität angemeldet. Pro Person entscheiden — danach werden IDs automatisch neu vergeben.'
+                    : 'Registered over capacity. Decide per person — afterwards the IDs are reassigned automatically.'}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <button
@@ -4715,15 +4832,24 @@ export default function AdminPage(): React.ReactElement {
                     style={{ fontSize: '0.78rem', padding: '5px 12px', color: 'var(--dex-red, #c00)' }}
                     onClick={() => { setOverbookModal({ mode: 'confirm', targets: flagged }); setObWithMail(true); setObRemoveCalendar(true); }}
                   >
-                    Alle bestätigen ({flagged.length})
+                    {isDe ? `Alle bestätigen (${flagged.length})` : `Confirm all (${flagged.length})`}
                   </button>
-                  <InfoTooltip placement="left" text={
+                  <InfoTooltip placement="left" text={isDe
+                    ? (
                     <>
                       <strong>Sammel-Aktion:</strong> setzt <strong>alle</strong> markierten Personen auf die <strong>Warteliste</strong> (gruppentreu).<br /><br />
                       Die Optionen <strong>mit/ohne Mail</strong>, <strong>Kalender-Abmeldung</strong> und <strong>Sprache</strong> gelten <strong>für alle gleich</strong> — eine gemeinsame Entscheidung.<br /><br />
                       Der Mailtext ist trotzdem <strong>pro Person personalisiert</strong> (Name + individuelle neue Warteliste-Position).<br /><br />
                       Sollen einzelne Personen <strong>anders</strong> behandelt werden (z.B. &bdquo;Platz behalten&ldquo;), nutze stattdessen die <strong>Einzel-Buttons</strong> pro Zeile.
                     </>
+                    ) : (
+                    <>
+                      <strong>Bulk action:</strong> moves <strong>all</strong> marked people to the <strong>waitlist</strong> (group-faithful).<br /><br />
+                      The options <strong>with/without email</strong>, <strong>calendar removal</strong> and <strong>language</strong> apply <strong>to all alike</strong> — a single shared decision.<br /><br />
+                      The email text is still <strong>personalized per person</strong> (name + individual new waitlist position).<br /><br />
+                      If individual people should be treated <strong>differently</strong> (e.g. &bdquo;keep seat&ldquo;), use the <strong>per-row buttons</strong> instead.
+                    </>
+                    )
                   } />
                 </div>
               </div>
@@ -4731,14 +4857,14 @@ export default function AdminPage(): React.ReactElement {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(237,139,0,0.4)', textAlign: 'left', color: 'var(--dex-gray-600)' }}>
-                      <th style={{ padding: '4px 8px' }}>Aktuell</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Aktuell' : 'Current'}</th>
                       <th style={{ padding: '4px 8px' }}>Name</th>
-                      <th style={{ padding: '4px 8px' }}>Gruppe</th>
-                      <th style={{ padding: '4px 8px' }}>Angemeldet</th>
-                      <th style={{ padding: '4px 8px' }}>Über Kapazität</th>
-                      <th style={{ padding: '4px 8px' }}>Abstand zum letzten fairen Platz</th>
-                      <th style={{ padding: '4px 8px' }}>Fairer Platz</th>
-                      <th style={{ padding: '4px 8px', textAlign: 'right' }}>Aktion</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Gruppe' : 'Group'}</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Angemeldet' : 'Registered'}</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Über Kapazität' : 'Over capacity'}</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Abstand zum letzten fairen Platz' : 'Gap to last fair seat'}</th>
+                      <th style={{ padding: '4px 8px' }}>{isDe ? 'Fairer Platz' : 'Fair seat'}</th>
+                      <th style={{ padding: '4px 8px', textAlign: 'right' }}>{isDe ? 'Aktion' : 'Action'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4768,17 +4894,21 @@ export default function AdminPage(): React.ReactElement {
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
                             {position !== null && cap > 0
-                              ? <>Platz <strong>{position}</strong> bei Kap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>
+                              ? (isDe
+                                ? <>Platz <strong>{position}</strong> bei Kap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>
+                                : <>Seat <strong>{position}</strong> at cap. {cap} <span style={{ color: 'var(--dex-red, #c00)' }}>(+{overBy})</span></>)
                               : '—'}
                           </td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
                             {cutoff
-                              ? <><strong>+{fmtGap(gapMs)}</strong><div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>nach {cutoffNm} ({formatDate(cutoff.RegistrationDate)})</div></>
+                              ? <><strong>+{fmtGap(gapMs)}</strong><div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'nach' : 'after'} {cutoffNm} ({formatDate(cutoff.RegistrationDate)})</div></>
                               : '—'}
                           </td>
                           <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
                             {wlRank > 0
-                              ? <>Warteliste-Platz <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= TeilnehmerID ~#{fairId} bei sauberer Liste</div></>
+                              ? (isDe
+                                ? <>Warteliste-Platz <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= TeilnehmerID ~#{fairId} bei sauberer Liste</div></>
+                                : <>Waitlist position <strong>{wlRank}</strong>{isSplitCapacity ? ` (${grpLabel})` : ''}<div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>= participant ID ~#{fairId} with a clean list</div></>)
                               : '—'}
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -4788,14 +4918,22 @@ export default function AdminPage(): React.ReactElement {
                                 style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
                                 onClick={() => { setOverbookModal({ mode: 'confirm', targets: [reg] }); setObWithMail(true); setObRemoveCalendar(true); }}
                               >
-                                Auf Warteliste
+                                {isDe ? 'Auf Warteliste' : 'To waitlist'}
                               </button>
-                              <InfoTooltip placement="left" text={
+                              <InfoTooltip placement="left" text={isDe
+                                ? (
                                 <>
                                   <strong>&bdquo;Auf Warteliste&ldquo;</strong> — die Person wird (gruppentreu) auf die <strong>Warteliste</strong> gesetzt; sie hatte fälschlich einen Platz.<br /><br />
                                   Im nächsten Dialog wählst du: <strong>mit oder ohne Entschuldigungs-Mail</strong> (Deloitte-Layout, geht in die Mail-Queue — nicht direkt versendet) und ob sie <strong>vom Kalendereintrag abgemeldet</strong> wird.<br /><br />
                                   Es wird ein <strong>Audit-Eintrag</strong> geschrieben (war fälschlich angemeldet, Original-Registrierung). Danach werden die <strong>TeilnehmerIDs automatisch neu vergeben</strong>.
                                 </>
+                                ) : (
+                                <>
+                                  <strong>&bdquo;To waitlist&ldquo;</strong> — the person is moved (group-faithful) to the <strong>waitlist</strong>; they had a seat by mistake.<br /><br />
+                                  In the next dialog you choose: <strong>with or without an apology email</strong> (Deloitte layout, goes into the mail queue — not sent directly) and whether they are <strong>removed from the calendar entry</strong>.<br /><br />
+                                  An <strong>audit entry</strong> is written (was registered by mistake, original registration). Afterwards the <strong>participant IDs are reassigned automatically</strong>.
+                                </>
+                                )
                               } />
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -4804,15 +4942,24 @@ export default function AdminPage(): React.ReactElement {
                                 style={{ fontSize: '0.75rem', padding: '4px 10px' }}
                                 onClick={() => { setOverbookModal({ mode: 'keep', targets: [reg] }); setObKeepVariant('firstWaitlist'); }}
                               >
-                                Platz behalten
+                                {isDe ? 'Platz behalten' : 'Keep seat'}
                               </button>
-                              <InfoTooltip placement="left" text={
+                              <InfoTooltip placement="left" text={isDe
+                                ? (
                                 <>
                                   <strong>&bdquo;Platz behalten&ldquo;</strong> — die Person verliert den Platz <strong>nicht</strong>. Im nächsten Dialog wählst du:<br /><br />
                                   <strong>(a) Erste(r) auf der Warteliste</strong> der Gruppe — rückt beim nächsten frei werdenden Platz garantiert als Erste(r) nach.<br /><br />
                                   <strong>(b) Bleibt angemeldet</strong> — die Gruppe ist dann <strong>+1</strong> über Kapazität; der nächste frei werdende Platz wird <strong>einmal nicht</strong> nachgerückt, bis die Überzahl absorbiert ist.<br /><br />
                                   Beide Varianten mit <strong>Audit-Eintrag</strong>, danach IDs neu.
                                 </>
+                                ) : (
+                                <>
+                                  <strong>&bdquo;Keep seat&ldquo;</strong> — the person does <strong>not</strong> lose the seat. In the next dialog you choose:<br /><br />
+                                  <strong>(a) First on the waitlist</strong> of the group — guaranteed to move up first when the next seat becomes free.<br /><br />
+                                  <strong>(b) Stays registered</strong> — the group is then <strong>+1</strong> over capacity; the next freed seat is <strong>skipped once</strong> until the surplus is absorbed.<br /><br />
+                                  Both variants with an <strong>audit entry</strong>, then IDs reassigned.
+                                </>
+                                )
                               } />
                             </span>
                           </td>
@@ -5188,7 +5335,7 @@ export default function AdminPage(): React.ReactElement {
         {regLoadError ? (
           <p style={{ color: 'var(--dex-red)', fontStyle: 'italic' }}>{regLoadError}</p>
         ) : isLoadingRegs ? (
-          <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Teilnehmer...</p>
+          <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Lade Teilnehmer...' : 'Loading participants...'}</p>
         ) : isConsolidatedMode ? (
           // v14.11: konsolidierter Matrix-View für Events im
           // „Nur Sub-Events"-Modus. Eine Zeile pro eindeutigem Teilnehmer,
@@ -5196,7 +5343,7 @@ export default function AdminPage(): React.ReactElement {
           // Sub-Event-Level- (Pastel B) Custom-Field-Spalten gruppiert.
           renderConsolidatedView()
         ) : activeRegs.length === 0 ? (
-          <p style={{ color: 'var(--dex-gray-400)' }}>Noch keine Teilnehmer registriert.</p>
+          <p style={{ color: 'var(--dex-gray-400)' }}>{isDe ? 'Noch keine Teilnehmer registriert.' : 'No participants registered yet.'}</p>
         ) : (
           /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
              hat die sticky-thead-Berechnung gebrochen (sticky relative zum
@@ -5224,8 +5371,8 @@ export default function AdminPage(): React.ReactElement {
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); hideColumn(id); }}
-                    aria-label={`Spalte ${col.label} ausblenden`}
-                    title="Spalte ausblenden"
+                    aria-label={isDe ? `Spalte ${col.label} ausblenden` : `Hide column ${col.label}`}
+                    title={isDe ? 'Spalte ausblenden' : 'Hide column'}
                     style={{
                       marginLeft: 6, padding: 0, width: 16, height: 16, lineHeight: '14px',
                       border: 'none', background: 'transparent', cursor: 'pointer',
@@ -5273,52 +5420,52 @@ export default function AdminPage(): React.ReactElement {
                       style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }}
                       onClick={() => handleSort(sortable)}
                     >
-                      {id === 'id' ? '#' : id === 'anrede' ? 'Anrede' : id === 'vorname' ? 'Vorname' : id === 'nachname' ? 'Nachname' : id === 'email' ? 'Email' : id === 'status' ? 'Status' : 'Registriert am'}
+                      {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'vorname' ? (isDe ? 'Vorname' : 'First name') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? 'Email' : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
                       {sortIcon(sortable)}
                       {hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'jobTitle') return <th key={id} style={baseStyle}>Job Title{hideButton(id)}</th>;
-                if (id === 'location') return <th key={id} style={baseStyle}>Standort{hideButton(id)}</th>;
+                if (id === 'location') return <th key={id} style={baseStyle}>{isDe ? 'Standort' : 'Location'}{hideButton(id)}</th>;
                 if (id === 'starterType') {
                   return (
-                    <th key={id} style={baseStyle} title="Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'.">
-                      Starter-Typ{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? "Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'." : "Starter type: Durchstarter or Funstarter. Chosen at registration and controls the split capacity + waitlist. The actual start block is in the custom field column 'Start block'."}>
+                      {isDe ? 'Starter-Typ' : 'Starter type'}{hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'promotedDate') {
                   return (
-                    <th key={id} style={baseStyle} title="Zeitpunkt des Nachrueckens — gesetzt sobald der Teilnehmer von der Warteliste in den Aktiv-Bereich promotet wurde. Leer fuer Personen die sich direkt angemeldet haben.">
-                      Nachgerückt am{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? 'Zeitpunkt des Nachrückens — gesetzt sobald der Teilnehmer von der Warteliste in den Aktiv-Bereich promotet wurde. Leer für Personen die sich direkt angemeldet haben.' : 'Time of promotion — set as soon as the participant was promoted from the waitlist into the active area. Empty for people who registered directly.'}>
+                      {isDe ? 'Nachgerückt am' : 'Promoted on'}{hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'replaced') {
                   return (
-                    <th key={id} style={baseStyle} title="Wessen Abmeldung diesen Promote ausgeloest hat. Nur gesetzt fuer nachgerueckte Personen.">
-                      Ersetzt{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? 'Wessen Abmeldung diesen Promote ausgelöst hat. Nur gesetzt für nachgerückte Personen.' : 'Whose cancellation triggered this promotion. Only set for promoted people.'}>
+                      {isDe ? 'Ersetzt' : 'Replaced'}{hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'replacedBy') {
                   return (
-                    <th key={id} style={baseStyle} title="Wer nach der Abmeldung dieses Teilnehmers den Platz uebernommen hat. Nur gesetzt fuer abgemeldete Personen, deren Cancel einen Promote ausgeloest hat.">
-                      Ersetzt durch{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? 'Wer nach der Abmeldung dieses Teilnehmers den Platz übernommen hat. Nur gesetzt für abgemeldete Personen, deren Cancel einen Promote ausgelöst hat.' : 'Who took the seat after this participant cancelled. Only set for cancelled people whose cancellation triggered a promotion.'}>
+                      {isDe ? 'Ersetzt durch' : 'Replaced by'}{hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'registeredBy') {
                   return (
-                    <th key={id} style={baseStyle} title="Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgefuehrt hat.">
-                      Registriert von{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? 'Selbst = der Teilnehmer hat sich selbst registriert. Ansonsten Name des Users, der die Registrierung durchgeführt hat.' : 'Self = the participant registered themselves. Otherwise the name of the user who performed the registration.'}>
+                      {isDe ? 'Registriert von' : 'Registered by'}{hideButton(id)}
                     </th>
                   );
                 }
                 if (id === 'team') {
                   return (
-                    <th key={id} style={baseStyle} title="Team-Name des Teilnehmers (falls Team-Anmeldung aktiv).">
+                    <th key={id} style={baseStyle} title={isDe ? 'Team-Name des Teilnehmers (falls Team-Anmeldung aktiv).' : 'Team name of the participant (if team registration is active).'}>
                       Team{hideButton(id)}
                     </th>
                   );
@@ -5330,7 +5477,7 @@ export default function AdminPage(): React.ReactElement {
                   const roommateCol = availableColumns.find(c => c.id === 'roommate');
                   const roommateLabel = roommateCol?.label || 'Zimmerpartner';
                   return (
-                    <th key={id} style={baseStyle} title="Ausgewählter User-Picker-Wert aus diesem Feld. Match = beide haben sich gegenseitig ausgewählt.">
+                    <th key={id} style={baseStyle} title={isDe ? 'Ausgewählter User-Picker-Wert aus diesem Feld. Match = beide haben sich gegenseitig ausgewählt.' : 'Selected user-picker value from this field. Match = both selected each other.'}>
                       {roommateLabel}{hideButton(id)}
                     </th>
                   );
@@ -5524,7 +5671,7 @@ export default function AdminPage(): React.ReactElement {
                               <span
                                 className="badge"
                                 style={{ marginLeft: 2, background: 'var(--dex-green)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem' }}
-                                title="Beide haben sich gegenseitig als Zimmerpartner ausgewählt"
+                                title={isDe ? 'Beide haben sich gegenseitig als Zimmerpartner ausgewählt' : 'Both selected each other as roommates'}
                               >
                                 Match
                               </span>
@@ -5666,7 +5813,7 @@ export default function AdminPage(): React.ReactElement {
                             setRegistrations(regs);
                           }}
                         >
-                          Auschecken
+                          {isDe ? 'Auschecken' : 'Check out'}
                         </button>
                       ) : (
                         <button
@@ -5679,7 +5826,7 @@ export default function AdminPage(): React.ReactElement {
                             setRegistrations(regs);
                           }}
                         >
-                          Einchecken
+                          {isDe ? 'Einchecken' : 'Check in'}
                         </button>
                       )}
                       <button
@@ -5688,7 +5835,7 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                          if (!confirm(`${name} (${reg.ParticipantEmail}) wirklich abmelden?`)) return;
+                          if (!confirm(isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`)) return;
                           // Lade-Toast anzeigen
                           setAdminToast({ kind: 'cancelling', name });
                           // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
@@ -5801,7 +5948,7 @@ export default function AdminPage(): React.ReactElement {
                               );
                               if (!ok) {
                                 console.warn('[DEX] queueIDReorder returned false');
-                                alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                               }
                             } catch (err) {
                               console.warn('[DEX] queueIDReorder threw:', err);
@@ -5812,7 +5959,7 @@ export default function AdminPage(): React.ReactElement {
                           setRegistrations(regs);
                         }}
                       >
-                        Abmelden
+                        {isDe ? 'Abmelden' : 'Cancel'}
                       </button>
                     </td>
                   );
@@ -5832,7 +5979,7 @@ export default function AdminPage(): React.ReactElement {
                       style={{ fontSize: '0.75rem', padding: '4px 10px' }}
                       onClick={() => setShowColumnPicker(!showColumnPicker)}
                     >
-                      Spalten anpassen
+                      {isDe ? 'Spalten anpassen' : 'Customize columns'}
                     </button>
                     {showColumnPicker && (
                       <div
@@ -5845,7 +5992,7 @@ export default function AdminPage(): React.ReactElement {
                         }}
                       >
                         <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-                          Spalten verwalten
+                          {isDe ? 'Spalten verwalten' : 'Manage columns'}
                         </div>
                         {columnOrder.map((id, idx) => {
                           const col = availableColumns.find(c => c.id === id);
@@ -5882,8 +6029,8 @@ export default function AdminPage(): React.ReactElement {
                                 type="button"
                                 onClick={() => moveColumn(id, -1)}
                                 disabled={!canMoveUp}
-                                aria-label="Spalte nach oben"
-                                title="Nach oben"
+                                aria-label={isDe ? 'Spalte nach oben' : 'Move column up'}
+                                title={isDe ? 'Nach oben' : 'Up'}
                                 style={{
                                   border: 'none', background: 'transparent',
                                   cursor: canMoveUp ? 'pointer' : 'not-allowed',
@@ -5897,8 +6044,8 @@ export default function AdminPage(): React.ReactElement {
                                 type="button"
                                 onClick={() => moveColumn(id, 1)}
                                 disabled={!canMoveDown}
-                                aria-label="Spalte nach unten"
-                                title="Nach unten"
+                                aria-label={isDe ? 'Spalte nach unten' : 'Move column down'}
+                                title={isDe ? 'Nach unten' : 'Down'}
                                 style={{
                                   border: 'none', background: 'transparent',
                                   cursor: canMoveDown ? 'pointer' : 'not-allowed',
@@ -5917,7 +6064,7 @@ export default function AdminPage(): React.ReactElement {
                             style={{ fontSize: '0.72rem', padding: '3px 8px' }}
                             onClick={() => setShowColumnPicker(false)}
                           >
-                            Schließen
+                            {isDe ? 'Schließen' : 'Close'}
                           </button>
                         </div>
                       </div>
@@ -5941,7 +6088,7 @@ export default function AdminPage(): React.ReactElement {
                             return (
                               <tr
                                 key={reg.Id}
-                                title={isOverbook ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : undefined}
+                                title={isOverbook ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above') : undefined}
                                 style={{
                                   borderBottom: '1px solid var(--dex-gray-100)',
                                   ...(isOverbook
@@ -6134,10 +6281,10 @@ export default function AdminPage(): React.ReactElement {
                                       selectedEvent.subsiteUrl, selectedEvent.title
                                     );
                                     if (!ok) {
-                                      alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                      alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                                     }
                                   } catch {
-                                    alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                                    alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                                   }
                                 }
                                 const allRegs = await getAllRegistrations(selectedEvent.id);
@@ -6354,9 +6501,9 @@ export default function AdminPage(): React.ReactElement {
                     } finally { setQrPreviewLoading(false); }
                   }}
                   style={{ fontSize: '0.85rem' }}
-                  title="So sieht die Mail aus, die beim Versand rausgeht — inklusive echtem QR-Code für dich als Empfänger."
+                  title={isDe ? 'So sieht die Mail aus, die beim Versand rausgeht — inklusive echtem QR-Code für dich als Empfänger.' : 'This is how the email looks when sent — including a real QR code for you as the recipient.'}
                 >
-                  {qrPreviewLoading ? 'Lade Vorschau…' : '👁 Vorschau Mail'}
+                  {qrPreviewLoading ? (isDe ? 'Lade Vorschau…' : 'Loading preview…') : (isDe ? 'Vorschau Mail' : 'Preview email')}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -6385,16 +6532,18 @@ export default function AdminPage(): React.ReactElement {
                         emailData.subject, orgEmail, orgFullName, emailData.body,
                         'QRCode', selectedEvent.title, selectedEvent.id
                       );
-                      setQrSendResult(`Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`);
+                      setQrSendResult(isDe
+                        ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
+                        : `Test email sent to ${orgEmail} — please check your mailbox.`);
                     } catch (err) {
-                      setQrSendResult('Fehler beim Test-Versand: ' + (err instanceof Error ? err.message : String(err)));
+                      setQrSendResult((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
                     }
                     setIsSendingQR(false);
                   }}
                   disabled={isSendingQR}
                   style={{ fontSize: '0.85rem' }}
                 >
-                  Nur Test (an mich)
+                  {isDe ? 'Nur Test (an mich)' : 'Test only (to me)'}
                 </button>
                 <button
                   className="btn btn-primary"
@@ -6402,7 +6551,7 @@ export default function AdminPage(): React.ReactElement {
                     if (!eventServiceRef || !selectedEvent) return;
                     const eligible = registrations.filter(r => r.Status === 'Angemeldet');
                     if (eligible.length === 0) {
-                      setQrSendResult('Fehler: Keine angemeldeten Teilnehmer.');
+                      setQrSendResult(isDe ? 'Fehler: Keine angemeldeten Teilnehmer.' : 'Error: no registered participants.');
                       return;
                     }
                     if (!window.confirm(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`)) return;
@@ -6459,13 +6608,15 @@ export default function AdminPage(): React.ReactElement {
                     setRegistrations(regs);
                     setIsSendingQR(false);
                     setQrSendResult(extCount > 0
-                      ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
-                      : `${sent} QR-Codes verschickt.`);
+                      ? (isDe
+                        ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
+                        : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
+                      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
                   }}
                   disabled={isSendingQR}
                   style={{ fontSize: '0.85rem' }}
                 >
-                  {isSendingQR ? `Versende... (${qrSentCount})` : 'An alle Angemeldeten'}
+                  {isSendingQR ? `${isDe ? 'Versende' : 'Sending'}... (${qrSentCount})` : (isDe ? 'An alle Angemeldeten' : 'To all registered')}
                 </button>
               </div>
             </div>
@@ -6804,7 +6955,7 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <div style={{ flex: 1, overflow: 'hidden', background: '#f5f5f5', padding: 12 }}>
               <iframe
-                title="QR-Code-Mail-Vorschau"
+                title={isDe ? 'QR-Code-Mail-Vorschau' : 'QR code email preview'}
                 srcDoc={qrPreviewHtml}
                 sandbox=""
                 style={{ width: '100%', height: '100%', minHeight: 480, border: 'none', borderRadius: 6, background: '#fff' }}
@@ -7948,7 +8099,7 @@ export default function AdminPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={() => { setAdminAddMemberPick(null); setAdminAddMemberQuery(''); setAdminAddMemberResults([]); }}
-                      title="Auswahl entfernen"
+                      title={isDe ? 'Auswahl entfernen' : 'Remove selection'}
                       style={{
                         background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)',
                         width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
