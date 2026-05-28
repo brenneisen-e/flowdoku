@@ -1053,6 +1053,20 @@ export default function RegistrationPage(): React.ReactElement {
     setEmail('');
     setEventSpecific({});
     setRegisterForOther(false);
+    // v18.15: „Zurücksetzen" leert jetzt auch die Event-Section-/Sub-Event-
+    // Auswahl, die Gruppen-Wahl und den Team-Modus — vorher blieb die Auswahl
+    // bestehen (der Button schien „kaputt").
+    setSelectedSessions(new Set());
+    setSessionFieldValues({});
+    setRegisterForParent(true);
+    setPreferredStarterType('');
+    setIsTeamMode(false);
+    setTeamName('');
+    setTeamMembers([]);
+    setTeamMemberFields({});
+    setTeamConsentConfirmed(false);
+    setShowErrors(false);
+    setError('');
   };
 
   // v18.11: Proaktive Absage („Ich nehme nicht teil"). Keine Pflichtfelder

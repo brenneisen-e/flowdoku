@@ -469,21 +469,20 @@
     .registration-event__overlay p { font-size: 0.78rem; opacity: 0.85; }
     .registration-actions { display: flex; justify-content: flex-end; gap: 16px; }
 
-    /* v18.10: Event-Beschreibung (RichText). Vorher blieb „groß" klein, weil
-       die Quill-Größen-Klassen (ql-size-*) außerhalb des Editors keine CSS-
-       Regeln hatten und der Container eine feste kleine Schriftgröße erzwang.
-       Jetzt: lesbare Basis-Größe, normalisierter Zeilenabstand, und die
-       Editor-Größen (klein/groß/sehr groß) greifen relativ dazu. */
+    /* v18.10 / v18.16: Event-Beschreibung (RichText). Vorher feste kleine
+       Größe + lockerer Zeilenabstand. Jetzt größere, gut lesbare Basis und
+       enger Zeilenabstand; die im Editor gewählten Größen (Quill-Klassen ODER
+       inline font-size px) greifen weiterhin relativ/absolut. */
     .dex-event-desc {
-      font-size: 0.95rem;
-      line-height: 1.45;
-      p { margin: 0 0 0.4em; }
+      font-size: 1.05rem;
+      line-height: 1.3;
+      p { margin: 0 0 0.25em; }
       p:last-child { margin-bottom: 0; }
-      ul, ol { margin: 0.3em 0 0.4em; padding-left: 1.4em; }
-      li { margin: 0.1em 0; }
+      ul, ol { margin: 0.2em 0 0.3em; padding-left: 1.4em; }
+      li { margin: 0.05em 0; }
       .ql-size-small { font-size: 0.8em; }
-      .ql-size-large { font-size: 1.5em; }
-      .ql-size-huge { font-size: 2.2em; }
+      .ql-size-large { font-size: 1.6em; }
+      .ql-size-huge { font-size: 2.4em; }
     }
 
     /* ========== My Events ========== */
