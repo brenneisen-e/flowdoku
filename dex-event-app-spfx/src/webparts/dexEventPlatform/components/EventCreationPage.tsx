@@ -11111,7 +11111,7 @@ export default function EventCreationPage(): React.ReactElement {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (!window.confirm(`Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".`)) return;
+                                  if (!window.confirm(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`)) return;
                                   for (const qq of quiz) {
                                     if (qq.section === sec) updateQuizQuestion(qq.id, { section: undefined });
                                   }
