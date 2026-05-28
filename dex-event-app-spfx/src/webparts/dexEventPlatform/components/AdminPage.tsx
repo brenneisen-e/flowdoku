@@ -3236,8 +3236,8 @@ export default function AdminPage(): React.ReactElement {
                     if (!eventServiceRef) return;
                     const nextIsFictive = !isDraft;
                     const confirmMsg = nextIsFictive
-                      ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.'
-                      : 'Event live schalten? Alle Berechtigten können sich danach anmelden.';
+                      ? (isDe ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.' : 'Reset event to "draft"? Regular users will no longer see the event afterwards.')
+                      : (isDe ? 'Event live schalten? Alle Berechtigten können sich danach anmelden.' : 'Publish event? All eligible users can register afterwards.');
                     if (!window.confirm(confirmMsg)) return;
                     // Legacy-Cleanup: Falls das Event noch EventStatus='Under Construction'
                     // hatte, beim Live-Schalten direkt mit auf 'Active' setzen.
@@ -3288,9 +3288,9 @@ export default function AdminPage(): React.ReactElement {
                   navigator.clipboard.writeText(url).then(() => {
                     setCopiedDeepLink(true);
                     setTimeout(() => setCopiedDeepLink(false), 2000);
-                  }).catch(() => { window.prompt('Deep-Link kopieren:', url); });
+                  }).catch(() => { window.prompt(isDe ? 'Deep-Link kopieren:' : 'Copy deep link:', url); });
                 } else {
-                  window.prompt('Deep-Link kopieren:', url);
+                  window.prompt(isDe ? 'Deep-Link kopieren:' : 'Copy deep link:', url);
                 }
               }}
             />
@@ -3310,7 +3310,7 @@ export default function AdminPage(): React.ReactElement {
                   navigator.clipboard.writeText(emails).then(() => {
                     setCopiedEmails(true);
                     setTimeout(() => setCopiedEmails(false), 2000);
-                  }).catch(() => { window.prompt('E-Mail-Adressen kopieren:', emails); });
+                  }).catch(() => { window.prompt(isDe ? 'E-Mail-Adressen kopieren:' : 'Copy email addresses:', emails); });
                 }
               }}
             />
@@ -3650,12 +3650,16 @@ export default function AdminPage(): React.ReactElement {
                       { isB2Run, hasQuiz, customFields },
                       (count, titles) => {
                         const preview = titles.slice(0, 8).map(t => `„${t}"`).join(', ');
-                        const more = titles.length > 8 ? ` …und ${titles.length - 8} weitere` : '';
-                        return window.confirm(
-                          `${count} überflüssige (leere) Duplikat-Spalten in der Teilnehmerliste gefunden ` +
-                          `(${titles.length} Titel betroffen: ${preview}${more}).\n\n` +
-                          `Diese werden jetzt gelöscht (irreversibel). Spalten mit Daten bleiben erhalten ` +
-                          `und werden zur manuellen Prüfung gemeldet.\n\nFortfahren?`
+                        const more = titles.length > 8 ? (isDe ? ` …und ${titles.length - 8} weitere` : ` …and ${titles.length - 8} more`) : '';
+                        return window.confirm(isDe
+                          ? `${count} überflüssige (leere) Duplikat-Spalten in der Teilnehmerliste gefunden ` +
+                            `(${titles.length} Titel betroffen: ${preview}${more}).\n\n` +
+                            `Diese werden jetzt gelöscht (irreversibel). Spalten mit Daten bleiben erhalten ` +
+                            `und werden zur manuellen Prüfung gemeldet.\n\nFortfahren?`
+                          : `Found ${count} redundant (empty) duplicate columns in the participant list ` +
+                            `(${titles.length} titles affected: ${preview}${more}).\n\n` +
+                            `These will now be deleted (irreversible). Columns with data are kept ` +
+                            `and reported for manual review.\n\nProceed?`
                         );
                       }
                     );
@@ -3824,16 +3828,27 @@ export default function AdminPage(): React.ReactElement {
                   if (!eventServiceRef) return;
                   const kids = childEventsOf(selectedEvent.id);
                   const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
-                  const msg = `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
-                    `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
-                    `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
-                    `• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt.\n` +
-                    `• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt.\n` +
-                    `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
-                    `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
-                    (kidsToMigrate.length > 0
-                      ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
-                      : `Keine Sub-Events mit Legacy-B2Run-Spuren gefunden — nur das Hauptevent wird migriert.`);
+                  const msg = isDe
+                    ? `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
+                      `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
+                      `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
+                      `• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt.\n` +
+                      `• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt.\n` +
+                      `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
+                      `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
+                      (kidsToMigrate.length > 0
+                        ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
+                        : `Keine Sub-Events mit Legacy-B2Run-Spuren gefunden — nur das Hauptevent wird migriert.`)
+                    : `Migrate event "${selectedEvent.title}" to the standard schema?\n\n` +
+                      `• The B2Run type is removed — the event will look like a normal Deloitte event.\n` +
+                      `• Labels "Durchstarter" / "Funstarter" are stored as group labels (freely renamable in the wizard).\n` +
+                      `• If a performance-proof requirement was active: it is converted into a regular custom field „Leistungsnachweis vorhanden" (checkbox, required, only for group A).\n` +
+                      `• The hardcoded per-group start-block mapping is removed.\n` +
+                      `• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields.\n` +
+                      `• Registrations, waitlists and sub-events stay unchanged content-wise.\n\n` +
+                      (kidsToMigrate.length > 0
+                        ? `Additionally, ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
+                        : `No sub-events with legacy B2Run traces found — only the main event will be migrated.`);
                   if (!window.confirm(msg)) return;
                   const errors: string[] = [];
                   const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
@@ -3907,13 +3922,17 @@ export default function AdminPage(): React.ReactElement {
                     await refreshEvents();
                     if (errors.length === 0) {
                       const total = 1 + kidsToMigrate.length;
-                      window.alert(`Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`);
+                      window.alert(isDe
+                        ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
+                        : `Migration complete — ${total} event(s) converted to the standard schema.`);
                     } else {
-                      window.alert(`Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console für Details.`);
+                      window.alert(isDe
+                        ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console für Details.`
+                        : `Migration partially failed for: ${errors.join(', ')}. See browser console for details.`);
                     }
                   } catch (err) {
                     console.warn('[DEX] migrate B2Run event failed:', err);
-                    window.alert('Migration fehlgeschlagen — siehe Browser-Console.');
+                    window.alert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
                   }
                 }}
               />
@@ -3939,7 +3958,7 @@ export default function AdminPage(): React.ReactElement {
                   try {
                     const history = await eventServiceRef.getEventCustomFieldsHistory(parseInt(selectedEvent.id, 10));
                     if (history.length === 0) {
-                      window.alert('Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.');
+                      window.alert(isDe ? 'Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.' : 'No version history found — the event has no versions or access was denied.');
                       return;
                     }
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3964,18 +3983,20 @@ export default function AdminPage(): React.ReactElement {
                       }
                     }
                     if (foundFields.length === 0) {
-                      window.alert('Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.');
+                      window.alert(isDe ? 'Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.' : 'No missing b2run_* fields found in the version history — either all fields already exist or there never were any.');
                       return;
                     }
                     const fieldList = foundFields.map(f => `• ${f.label || f.id}`).join('\n');
-                    const modifiedDate = foundModified ? new Date(foundModified).toLocaleString('de-DE') : '?';
-                    if (!window.confirm(`Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`)) {
+                    const modifiedDate = foundModified ? new Date(foundModified).toLocaleString(isDe ? 'de-DE' : 'en-GB') : '?';
+                    if (!window.confirm(isDe
+                      ? `Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`
+                      : `Restore the following ${foundFields.length} custom field(s) from version ${foundVersion} (${modifiedDate})?\n\n${fieldList}\n\nThe fields are appended to the end of your current field list. You can rename, reorder or delete them afterwards in the wizard.`)) {
                       return;
                     }
                     const merged = [...currentFields, ...foundFields];
                     const ok = await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(merged) });
                     if (!ok) {
-                      window.alert('Update fehlgeschlagen — siehe Browser-Console.');
+                      window.alert(isDe ? 'Update fehlgeschlagen — siehe Browser-Console.' : 'Update failed — see browser console.');
                       return;
                     }
                     // Subsite-Spalten gleich mit-syncen, damit die b2run_*-
@@ -4004,10 +4025,12 @@ export default function AdminPage(): React.ReactElement {
                       } catch (err) { console.warn('[DEX] fixRegistrationListColumns nach Restore fehlgeschlagen:', err); }
                     }
                     await refreshEvents();
-                    window.alert(`${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`);
+                    window.alert(isDe
+                      ? `${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`
+                      : `${foundFields.length} custom field(s) successfully restored from version ${foundVersion}.`);
                   } catch (err) {
                     console.warn('[DEX] restore custom fields from history failed:', err);
-                    window.alert('Zurückholen fehlgeschlagen — siehe Browser-Console.');
+                    window.alert(isDe ? 'Zurückholen fehlgeschlagen — siehe Browser-Console.' : 'Restore failed — see browser console.');
                   }
                 }}
               />
@@ -6382,7 +6405,7 @@ export default function AdminPage(): React.ReactElement {
                       setQrSendResult('Fehler: Keine angemeldeten Teilnehmer.');
                       return;
                     }
-                    if (!window.confirm(`QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?`)) return;
+                    if (!window.confirm(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`)) return;
 
                     // Auto-Send-Toggle persistieren
                     if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
@@ -7321,7 +7344,7 @@ export default function AdminPage(): React.ReactElement {
                       navigator.clipboard.writeText(emails).then(() => {
                         setDeclineCopied(true);
                         setTimeout(() => setDeclineCopied(false), 2000);
-                      }).catch(() => window.prompt('E-Mail-Adressen kopieren:', emails));
+                      }).catch(() => window.prompt(isDe ? 'E-Mail-Adressen kopieren:' : 'Copy email addresses:', emails));
                     }}
                   >
                     <Copy size={14} /> {declineCopied ? 'Kopiert!' : 'E-Mails kopieren'}

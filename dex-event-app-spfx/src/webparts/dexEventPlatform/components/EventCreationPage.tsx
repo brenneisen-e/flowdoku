@@ -11,8 +11,9 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { EventService } from '../services/EventService';
+import { EventService, CustomField } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
 import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
@@ -170,6 +171,71 @@ interface CustomFieldInput {
   /** v11.94: Nur fuer type='checkbox' — Text neben der Checkbox im
    *  Registrierungsformular (Default „Ja, bestätigen" / „Yes, confirm"). */
   confirmLabel?: string;
+  /** v17.20: Englische Varianten — nur relevant wenn der Organizer im
+   *  selben Schritt 5 den Toggle „Deutsch und Englisch ermöglichen"
+   *  gesetzt hat. */
+  labelEn?: string;
+  helpTextEn?: string;
+  confirmLabelEn?: string;
+  optionsEn?: string[];
+}
+
+// v17.22: Einziger Serializer fuer Custom-Fields → CustomFields-JSON.
+// Vorher dreimal copy-paste (Create-Save, Edit-Save, Sub-Event-Save), was
+// dazu fuehrte, dass der Sub-Event-Pfad die v17.20-EN-Varianten nicht
+// mitnahm. Zentral hier, damit alle drei Pfade identisch persistieren.
+//
+// Wichtig (v17.22-Fix): DE-Optionen UND EN-Optionen werden POSITIONAL
+// gepaart gefiltert — vorher wurde `options` per `.filter(Boolean)` von
+// Leereintraegen befreit, `optionsEn` aber nicht, wodurch das Index-Mapping
+// zwischen DE und EN bei leeren Slots verrutschte (leere/falsche EN-Labels
+// auf der Anmeldeseite).
+function serializeCustomFields(
+  fields: CustomFieldInput[],
+  bilingual: boolean
+): CustomField[] {
+  return fields
+    .filter(f => f.label && f.label.trim().length > 0)
+    .map(f => {
+      let optionsOut: string[] | undefined;
+      let optionsEnOut: string[] | undefined;
+      if (f.type === 'select') {
+        const pairs = (f.options || [])
+          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim() }))
+          .filter(p => p.de.length > 0);
+        optionsOut = pairs.map(p => p.de);
+        if (bilingual && pairs.some(p => p.en.length > 0)) {
+          optionsEnOut = pairs.map(p => p.en);
+        }
+      }
+      return {
+        id: f.id,
+        label: f.label.trim(),
+        type: f.type,
+        required: !!f.required,
+        visible: f.visible !== false,
+        ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+        ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
+          ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
+          : {}),
+        ...(optionsOut ? { options: optionsOut, ...(f.multi ? { multi: true } : {}) } : {}),
+        ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
+          ? { confirmLabel: f.confirmLabel.trim() }
+          : {}),
+        // v17.20: Englische Varianten — nur wenn der Bilingual-Toggle an ist
+        // UND der Organizer Text eingegeben hat.
+        ...(bilingual && f.labelEn && f.labelEn.trim() ? { labelEn: f.labelEn.trim() } : {}),
+        ...(bilingual && f.helpTextEn && f.helpTextEn.trim() ? { helpTextEn: f.helpTextEn.trim() } : {}),
+        ...(bilingual && f.type === 'checkbox' && f.confirmLabelEn && f.confirmLabelEn.trim()
+          ? { confirmLabelEn: f.confirmLabelEn.trim() }
+          : {}),
+        ...(optionsEnOut ? { optionsEn: optionsEnOut } : {}),
+        ...(f.externalLinks && f.externalLinks.length > 0
+          ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
+          : {}),
+      } as CustomField;
+    });
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
@@ -720,6 +786,11 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
       // v11.94: confirmLabel beim Edit-Mount mit-übernehmen.
       ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+      // v17.20: EN-Varianten beim Edit-Mount mit-übernehmen.
+      ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+      ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+      ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+      ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
     })) : []
   );
@@ -816,6 +887,33 @@ export default function EventCreationPage(): React.ReactElement {
   // Mit Sub-Event + Team). Klick auf eine Karte fuellt das Formular
   // mit der jeweiligen Variante und schliesst das Modal.
   const [showDemoVariantModal, setShowDemoVariantModal] = React.useState<boolean>(false);
+  // v17.21: Modal nach erfolgreichem Speichern — fragt den Organizer, ob er
+  // eine A4-Zusammenfassung des Events herunterladen moechte. Pending-Payload
+  // haelt die Info fuer den `dex-event-submit-success`-Dispatch, der erst
+  // gefeuert wird, wenn der User im Modal eine Auswahl getroffen hat.
+  const [showSummaryModal, setShowSummaryModal] = React.useState<boolean>(false);
+  const [pendingSuccessDispatch, setPendingSuccessDispatch] = React.useState<{
+    title: string; eventId: string; type: 'create' | 'update';
+  } | null>(null);
+  // v17.22: Unmount-Safety. Der Success-Dispatch (dex-event-submit-success,
+  // treibt Erfolgs-Banner + Auto-Navigation in DexEventPlatform) laeuft erst,
+  // wenn der User im Summary-Modal eine Auswahl trifft. Verlaesst er den
+  // Wizard vorher (Header-Navigation, Browser-Back, Tab-Eviction), wuerde der
+  // Dispatch sonst verloren gehen — Folge: kein Banner, kein Redirect, User
+  // denkt der Save sei fehlgeschlagen. Dieser Ref + Cleanup-Effect feuert den
+  // Dispatch beim Unmount nach, falls er noch aussteht.
+  const pendingSuccessDispatchRef = React.useRef<{ title: string; eventId: string; type: 'create' | 'update' } | null>(null);
+  React.useEffect(() => {
+    return () => {
+      const pending = pendingSuccessDispatchRef.current;
+      if (pending) {
+        pendingSuccessDispatchRef.current = null;
+        try {
+          window.dispatchEvent(new CustomEvent('dex-event-submit-success', { detail: pending }));
+        } catch { /* */ }
+      }
+    };
+  }, []);
   const [excludeResolvedUsers, setExcludeResolvedUsers] = React.useState<Array<{ email: string; displayName: string; firstName: string; lastName: string; jobTitle: string; location: string; source: string }>>([]);
   const [excludeResolving, setExcludeResolving] = React.useState(false);
   const [excludeSearch, setExcludeSearch] = React.useState('');
@@ -1333,6 +1431,14 @@ export default function EventCreationPage(): React.ReactElement {
   );
   const [teamJoinRequiresApproval, setTeamJoinRequiresApproval] = React.useState<boolean>(
     !!editEvent?.teamJoinRequiresApproval
+  );
+  // v17.20: Bilingual-Toggle — wenn an, kann der Organizer pro Custom-Field
+  // (Label, Help-Text, Checkbox-Confirm-Text, Dropdown-Optionen) eine
+  // englische Variante hinterlegen. Wird im Wizard-Schritt 5 ganz oben als
+  // separater Toggle eingestellt; die EN-Inputs blenden pro Card auf, wenn
+  // der Toggle aktiv ist.
+  const [bilingualFields, setBilingualFields] = React.useState<boolean>(
+    !!editEvent?.bilingualFields
   );
   // v6.15: Starter-Typ → Startblock-Zuordnung + Leistungsnachweis-Pflicht
   const [durchstarterStartblock, setDurchstarterStartblock] = React.useState<string>(
@@ -2296,33 +2402,11 @@ export default function EventCreationPage(): React.ReactElement {
         }
         keptDbIds.add(draft.dbId);
         // Update bestehender Sub-Event: nur geänderte Felder patchen. CustomFields
-        // werden als JSON-String serialisiert (gleiche Form wie bei regulären
-        // Events; siehe handleSubmit-Edit-Pfad).
-        const cfJson = JSON.stringify((draft.customFields || [])
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id,
-            label: f.label.trim(),
-            type: f.type,
-            required: f.required,
-            visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren.
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          })));
+        // werden als JSON-String serialisiert — v17.22: zentraler
+        // serializeCustomFields-Helper, damit der Sub-Event-Pfad dieselben
+        // EN-Varianten + Options-Pairing erhaelt wie Top-Level (vorher droppte
+        // dieser Pfad labelEn/helpTextEn/confirmLabelEn/optionsEn still).
+        const cfJson = JSON.stringify(serializeCustomFields(draft.customFields || [], bilingualFields));
         // v11.57: Sub-Event-Kommunikations-Felder mit-persistieren — bisher
         // wurden Mail-Sprache, Outlook-Body, Logos pro Sub-Event nur am
         // Top-Level gespeichert. Mit den Tabs in Step 5 kann jeder Sub-Event
@@ -2656,27 +2740,9 @@ export default function EventCreationPage(): React.ReactElement {
         'ContactName': contactName.trim(),
         'ContactEmail': contactEmail.trim(),
         'ContactInfo': contactInfo.trim(),
-        'CustomFields': JSON.stringify(customFields
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Sub-Event-Pfad).
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          }))),
+        // v17.22: zentraler serializeCustomFields-Helper (Options-Pairing +
+        // EN-Varianten konsistent zu allen Pfaden).
+        'CustomFields': JSON.stringify(serializeCustomFields(customFields, bilingualFields)),
       };
 
       // Optionale Felder - immer senden damit Loeschungen wirken
@@ -2841,6 +2907,8 @@ export default function EventCreationPage(): React.ReactElement {
       updates['TeamPartialAllowed'] = !!(teamRegistrationEnabled && teamPartialAllowed);
       updates['TeamOpenSlotsVisible'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible);
       updates['TeamJoinRequiresApproval'] = !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval);
+      // v17.20: Bilingual-Toggle persistieren.
+      updates['BilingualFields'] = !!bilingualFields;
 
       // v11.22: feinere Progress-Stufen waehrend Edit-Save. Vorher
       // sprang es bei 50% sehr lange auf der Stelle, weil zwischen
@@ -3082,9 +3150,13 @@ export default function EventCreationPage(): React.ReactElement {
           // obwohl alles persistiert ist.
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
-          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
-            detail: { title: title, eventId: String(selectedEventId), type: 'update' as const },
-          }));
+          // v17.21: Statt sofort den Wizard zu verlassen, oeffnet sich erst
+          // das Summary-Export-Modal. Der eigentliche Success-Dispatch laeuft
+          // erst, wenn der User dort eine Auswahl getroffen hat (PDF / Word /
+          // Nein, danke).
+          pendingSuccessDispatchRef.current = { title, eventId: String(selectedEventId), type: 'update' };
+          setPendingSuccessDispatch({ title, eventId: String(selectedEventId), type: 'update' });
+          setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
       } else {
@@ -3305,27 +3377,10 @@ export default function EventCreationPage(): React.ReactElement {
         teamPartialAllowed: !!(teamRegistrationEnabled && teamPartialAllowed),
         teamOpenSlotsVisible: !!(teamRegistrationEnabled && teamOpenSlotsVisible),
         teamJoinRequiresApproval: !!(teamRegistrationEnabled && teamOpenSlotsVisible && teamJoinRequiresApproval),
-        customFields: customFields
-          .filter(f => f.label && f.label.trim().length > 0)
-          .map(f => ({
-            id: f.id, label: f.label.trim(), type: f.type, required: f.required, visible: f.visible,
-            ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
-            ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
-              ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
-              : {}),
-            ...(f.type === 'select' ? { options: f.options.map(o => o.trim()).filter(Boolean), ...(f.multi ? { multi: true } : {}) } : {}),
-            ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
-            // v11.94: confirmLabel für Checkbox-Felder mit-persistieren (Create-Pfad).
-            ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
-              ? { confirmLabel: f.confirmLabel.trim() }
-              : {}),
-            // v11.15: externalLinks (AGB/Datenschutz-URLs etc.) beim Save
-            // mit-persistieren — vorher haben alle drei Persist-Pfade
-            // (Edit-Save, Create-Save, Sub-Event-Save) sie gedroppt.
-            ...(f.externalLinks && f.externalLinks.length > 0
-              ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
-              : {}),
-          })),
+        // v17.20: Bilingual-Toggle durchreichen.
+        bilingualFields: !!bilingualFields,
+        // v17.22: zentraler serializeCustomFields-Helper.
+        customFields: serializeCustomFields(customFields, bilingualFields),
         onProgress: reportCreateStage,
       });
 
@@ -3475,9 +3530,10 @@ export default function EventCreationPage(): React.ReactElement {
           // Navigation-Guard nach erfolgreichem Create nicht stoert.
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
-          window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
-            detail: { title: title, eventId: String(eventId), type: 'create' as const },
-          }));
+          // v17.21: Summary-Export-Modal vor dem Submit-Success-Dispatch.
+          pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create' };
+          setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
+          setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
         // Delayed Refresh — SP braucht typischerweise 2-5s bis frische Subsite-
@@ -8529,6 +8585,46 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
+              {/* v17.20: Bilingual-Toggle — Organizer kann pro Custom-Field
+                  eine EN-Variante hinterlegen. Wirkt sich auch auf das
+                  Form-Chrome (Placeholder, Hinweise, Sub-Event-Sektion) aus:
+                  Sobald an, folgt das Form-Chrome der App-Spracheinstellung
+                  des Teilnehmers statt der Event-Mail-Sprache. */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={bilingualFields}
+                    onChange={e => setBilingualFields(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Deutsch und Englisch ermöglichen' : 'Offer German and English'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob du pro Custom-Field, das du unten anlegst, <strong>eine englische Variante</strong> der Texte hinterlegen kannst — also Feld-Name, Beschreibung (i-Tooltip), Checkbox-Bestätigungs-Text und Dropdown-Optionen jeweils auf Deutsch UND auf Englisch. Default: <strong>aus</strong>.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, blendet jede Feld-Karte einen zweiten Eingabe-Block für die EN-Variante ein. Teilnehmer mit App-Sprache <strong>Englisch</strong> bekommen automatisch die EN-Texte zu sehen. Wer als App-Sprache Deutsch eingestellt hat, sieht weiterhin die DE-Texte. Zusätzlich folgt das Standard-Anmelde-Formular (Platzhalter, Hinweis-Boxen, Sub-Event-Sektion) ab dann der <strong>App-Spracheinstellung des Teilnehmers</strong> statt der Mail-Sprache des Events.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> internationale Kolleg:innen, die kein Deutsch sprechen, sehen das komplette Anmelde-Formular sauber auf Englisch. Wer als Organizer keine EN-Variante einträgt, fällt im EN-Modus still auf den DE-Wert zurück — die App bricht also nichts kaputt, falls du nur einige Felder übersetzt.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether, for each custom field you create below, you can store <strong>an English variant</strong> of the texts — i.e. field name, description (i-tooltip), checkbox confirmation text and dropdown options in both German AND English. Default: <strong>off</strong>.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, each field card shows a second input row for the EN variant. Attendees with app language set to <strong>English</strong> automatically see the EN texts. Attendees with German keep seeing the DE texts. In addition, the standard registration form chrome (placeholders, hint boxes, sub-event section) follows the <strong>attendee&apos;s app language</strong> instead of the event&apos;s email language.<br /><br />
+                          <strong>For attendees:</strong> international colleagues who do not speak German see the whole registration form cleanly in English. If an organizer leaves the EN variant empty for some field, the app silently falls back to the DE value — nothing breaks if you only translate a subset of fields.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: aus — wenn aktiviert, kannst du pro Feld eine englische Variante hinterlegen.'
+                        : 'Default: off — when enabled, each field gets a second input row for the English variant.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
                   pickt B2Run-Felder einzeln per Suggested-Felder-Modal
                   (eingeklappte Sektion "B2Run-spezifische Felder"). Damit
@@ -9132,6 +9228,34 @@ export default function EventCreationPage(): React.ReactElement {
                       </button>
                     </div>
 
+                    {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
+                        Toggle oben aktiviert wurde. Sitzt direkt unter dem
+                        DE-Feld-Namen, damit der Organizer beide Sprachen in
+                        einer Linie liest. Flagge + Placeholder machen klar,
+                        welche Sprache gemeint ist. */}
+                    {bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginBottom: 6,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.7rem',
+                          padding: '2px 8px', borderRadius: 8,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.labelEn || ''}
+                          placeholder={isDe
+                            ? 'Englischer Feld-Name (optional — leer = fällt auf den deutschen Text zurück)'
+                            : 'English field name (optional — empty = falls back to the German text)'}
+                          onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.88rem', padding: '6px 10px' }}
+                        />
+                      </div>
+                    )}
+
                     {/* v10.24: Pro-Gruppe-Sichtbarkeit — nur sichtbar wenn die
                         Split-Capacity in Schritt 3 aktiv ist. Der Organizer
                         kann ein Feld auf Gruppe A oder Gruppe B beschränken
@@ -9217,6 +9341,29 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
                     </div>
+                    {/* v17.20: EN-Variante der Beschreibung. */}
+                    {bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginTop: 4,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.65rem',
+                          padding: '1px 6px', borderRadius: 6,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.helpTextEn || ''}
+                          placeholder={isDe
+                            ? 'Englische Beschreibung (optional)'
+                            : 'English description (optional)'}
+                          onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                        />
+                      </div>
+                    )}
 
                     {/* v11.94: Bei Checkbox-Feldern kann der Organizer den
                         Text neben der Checkbox individuell setzen — Default
@@ -9231,6 +9378,29 @@ export default function EventCreationPage(): React.ReactElement {
                           value={field.confirmLabel || ''}
                           onChange={e => updateCustomField(field.id, { confirmLabel: e.target.value })}
                           style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
+                        />
+                      </div>
+                    )}
+                    {/* v17.20: EN-Variante des Checkbox-Bestätigungstexts. */}
+                    {field.type === 'checkbox' && bilingualFields && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginLeft: 64, marginTop: 4,
+                      }}>
+                        <span style={{
+                          flexShrink: 0, fontSize: '0.65rem',
+                          padding: '1px 6px', borderRadius: 6,
+                          background: 'rgba(0,90,156,0.10)',
+                          color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                        }}>EN</span>
+                        <input
+                          className="form-input"
+                          value={field.confirmLabelEn || ''}
+                          placeholder={isDe
+                            ? 'Englischer Text neben Checkbox (optional, Default: „Yes, confirm")'
+                            : 'English text next to checkbox (optional, default: „Yes, confirm")'}
+                          onChange={e => updateCustomField(field.id, { confirmLabelEn: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
                         />
                       </div>
                     )}
@@ -9280,37 +9450,66 @@ export default function EventCreationPage(): React.ReactElement {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(field.options || []).map((opt, optIdx) => (
-                            <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 600, width: 24, textAlign: 'right' }}>
-                                {optIdx + 1}.
-                              </span>
-                              <input
-                                className="form-input"
-                                value={opt}
-                                placeholder={isDe ? `Option ${optIdx + 1}` : `Option ${optIdx + 1}`}
-                                onChange={e => {
-                                  const opts = [...(field.options || [])];
-                                  opts[optIdx] = e.target.value;
-                                  updateCustomField(field.id, { options: opts });
-                                }}
-                                style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const opts = [...(field.options || [])];
-                                  opts.splice(optIdx, 1);
-                                  updateCustomField(field.id, { options: opts });
-                                }}
-                                title={isDe ? 'Option entfernen' : 'Remove option'}
-                                style={{
-                                  flexShrink: 0, width: 28, height: 28, borderRadius: 6,
-                                  background: '#fff', border: '1px solid var(--dex-gray-300)',
-                                  color: 'var(--dex-red, #c00)', cursor: 'pointer',
-                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '1rem', lineHeight: 1, fontWeight: 700,
-                                }}
-                              >−</button>
+                            <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ flexShrink: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontWeight: 600, width: 24, textAlign: 'right' }}>
+                                  {optIdx + 1}.
+                                </span>
+                                <input
+                                  className="form-input"
+                                  value={opt}
+                                  placeholder={isDe ? `Option ${optIdx + 1}` : `Option ${optIdx + 1}`}
+                                  onChange={e => {
+                                    const opts = [...(field.options || [])];
+                                    opts[optIdx] = e.target.value;
+                                    updateCustomField(field.id, { options: opts });
+                                  }}
+                                  style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const opts = [...(field.options || [])];
+                                    opts.splice(optIdx, 1);
+                                    // v17.20: EN-Optionsliste positional mit-zuruecksetzen,
+                                    // damit Index-Mapping konsistent bleibt.
+                                    const optsEn = [...(field.optionsEn || [])];
+                                    if (optsEn.length > optIdx) optsEn.splice(optIdx, 1);
+                                    updateCustomField(field.id, { options: opts, optionsEn: optsEn });
+                                  }}
+                                  title={isDe ? 'Option entfernen' : 'Remove option'}
+                                  style={{
+                                    flexShrink: 0, width: 28, height: 28, borderRadius: 6,
+                                    background: '#fff', border: '1px solid var(--dex-gray-300)',
+                                    color: 'var(--dex-red, #c00)', cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '1rem', lineHeight: 1, fontWeight: 700,
+                                  }}
+                                >−</button>
+                              </div>
+                              {/* v17.20: Positional gemappte EN-Option. */}
+                              {bilingualFields && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 32 }}>
+                                  <span style={{
+                                    flexShrink: 0, fontSize: '0.65rem',
+                                    padding: '1px 6px', borderRadius: 6,
+                                    background: 'rgba(0,90,156,0.10)',
+                                    color: '#005a9c', fontWeight: 700, letterSpacing: 0.5,
+                                  }}>EN</span>
+                                  <input
+                                    className="form-input"
+                                    value={(field.optionsEn || [])[optIdx] || ''}
+                                    placeholder={isDe ? 'Englische Variante (optional)' : 'English variant (optional)'}
+                                    onChange={e => {
+                                      const optsEn = [...(field.optionsEn || [])];
+                                      while (optsEn.length <= optIdx) optsEn.push('');
+                                      optsEn[optIdx] = e.target.value;
+                                      updateCustomField(field.id, { optionsEn: optsEn });
+                                    }}
+                                    style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           ))}
                           <button
@@ -10912,7 +11111,7 @@ export default function EventCreationPage(): React.ReactElement {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (!window.confirm(`Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".`)) return;
+                                  if (!window.confirm(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`)) return;
                                   for (const qq of quiz) {
                                     if (qq.section === sec) updateQuizQuestion(qq.id, { section: undefined });
                                   }
@@ -11356,6 +11555,14 @@ export default function EventCreationPage(): React.ReactElement {
             helpText: f.helpText,
             multi: f.multi,
             showIf: f.showIf,
+            // v17.20: EN-Varianten an die Preview weiterreichen — sonst sieht
+            // der Organizer in der Vorschau nicht, was englische Teilnehmer
+            // bekommen wuerden.
+            confirmLabel: f.confirmLabel,
+            labelEn: f.labelEn,
+            helpTextEn: f.helpTextEn,
+            confirmLabelEn: f.confirmLabelEn,
+            optionsEn: f.optionsEn,
           })),
           isFictive,
           // v14.10: Sub-Events + Sub-Only-Mode + Bezeichnungs-Term an die
@@ -11385,6 +11592,9 @@ export default function EventCreationPage(): React.ReactElement {
           requireSubEventSelection: requireSubEventSelection || subEventsOnlyMode,
           childEventTermSingular: childTermSingular,
           childEventTermPlural: childTermPlural,
+          // v17.22: Bilingual-Flag an die Vorschau — sonst rendert die
+          // Preview die EN-Varianten nie (useEnVariants prueft event.bilingualFields).
+          bilingualFields,
         }}
       />
 
@@ -11664,6 +11874,206 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v17.21: A4-Zusammenfassungs-Modal nach erfolgreichem Save — fragt
+          den Organizer, ob er das gesamte Event als PDF oder Word herunter-
+          laden moechte (z.B. zur Durchsicht durch einen Partner). Beim
+          Klick auf eine Option laeuft der Export sofort, danach feuert der
+          eigentliche „Wizard verlassen"-Dispatch (`dex-event-submit-success`).
+          „Nein, danke" springt direkt zum Dispatch. */}
+      {showSummaryModal && pendingSuccessDispatch && (() => {
+        const closeAndDispatch = (): void => {
+          // v17.22: Ref VOR dem Dispatch leeren, damit der Unmount-Cleanup
+          // nicht ein zweites Mal feuert (Doppel-Navigation/-Banner).
+          const payload = pendingSuccessDispatchRef.current || pendingSuccessDispatch;
+          pendingSuccessDispatchRef.current = null;
+          setShowSummaryModal(false);
+          setPendingSuccessDispatch(null);
+          try {
+            window.dispatchEvent(new CustomEvent('dex-event-submit-success', {
+              detail: payload,
+            }));
+          } catch { /* */ }
+        };
+        const buildData = (): SummaryData => {
+          // Bild als DataURL (falls noch nicht Base64): unten reicht der
+          // bestehende imagePreview, der bei neu hochgeladenen Bildern
+          // bereits eine Data-URL ist und bei bestehenden Events die
+          // SharePoint-URL. Letztere wird im PDF/Doc-Export im Print-View
+          // i.d.R. nicht geladen (CORS) — wir bauen einen Fallback-Text.
+          const subEventsForSummary = subEvents.map(se => ({
+            title: se.title || '',
+            startDate: se.startDate,
+            endDate: se.endDate,
+            location: se.location,
+            description: se.description,
+            maxParticipants: typeof se.maxParticipants === 'number' ? se.maxParticipants : undefined,
+            waitlistEnabled: !!se.waitlistEnabled,
+          }));
+          const customFieldsForSummary = customFields
+            .filter(f => f.label && f.label.trim().length > 0)
+            .map(f => ({
+              id: f.id,
+              label: f.label,
+              type: f.type,
+              required: !!f.required,
+              helpText: f.helpText,
+              confirmLabel: f.confirmLabel,
+              options: f.type === 'select' ? f.options : undefined,
+              multi: !!f.multi,
+              onlyForGroup: f.onlyForGroup,
+              labelEn: f.labelEn,
+              helpTextEn: f.helpTextEn,
+              confirmLabelEn: f.confirmLabelEn,
+              optionsEn: f.optionsEn,
+              showIf: f.showIf,
+            }));
+          // Transferzeiten + Agenda werden in den Summary-Helper als
+          // vereinfachte Spalten gemappt — das Detail-Schema bleibt im
+          // Wizard, der Export nimmt die fuer Reviewer relevanten Spalten.
+          const transfersForSummary = transferTimes.map(t => ({
+            time: [t.date, t.departureTime].filter(Boolean).join(' '),
+            description: [t.location, t.description, t.meetingPoint].filter(Boolean).join(' — '),
+          }));
+          const agendaForSummary = agenda.map(a => ({
+            time: [a.date, a.time, a.endTime ? ` – ${a.endTime}` : ''].filter(Boolean).join(' '),
+            topic: a.title,
+            speaker: a.description,
+          }));
+          const quizForSummary = quiz.map(q => ({
+            question: q.question,
+            options: q.options,
+            correctIndex: (q.correctIndices && q.correctIndices.length > 0) ? q.correctIndices[0] : undefined,
+          }));
+          const documentsForSummary = documents.map(doc => ({
+            name: doc.name,
+            size: doc.size,
+          }));
+          return {
+            title,
+            description,
+            imageDataUrl: imagePreview || eventImageUrl || undefined,
+            startDate,
+            endDate,
+            organizers: organizer.split(';').map(s => s.trim()).filter(Boolean),
+            organizerEmails,
+            contactName,
+            contactEmail,
+            contactInfo,
+            testTeam: testTeamNames,
+            qrScanners: qrScannerNames,
+            isFictive,
+            activeFrom,
+            location,
+            address: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
+            agenda: agendaForSummary,
+            transfers: transfersForSummary,
+            locationFilter: locationFilter ? locationFilter.split(';').map(s => s.trim()).filter(Boolean) : [],
+            audience: audience ? audience.split(';').map(s => s.trim()).filter(Boolean) : [],
+            filterMode,
+            excludedUsers,
+            registrationDeadline,
+            lastDeregisterDate,
+            maxParticipants: Number(maxParticipants) || 0,
+            unlimitedParticipants,
+            waitlistEnabled,
+            durchstarterCapacity: Number(durchstarterCapacity) || 0,
+            funstarterCapacity: Number(funstarterCapacity) || 0,
+            splitLabelA, splitLabelB,
+            splitSharedWaitlist,
+            teamRegistrationEnabled,
+            teamSize,
+            askTeamName,
+            teamPartialAllowed,
+            teamOpenSlotsVisible,
+            teamJoinRequiresApproval,
+            askSalutation,
+            bilingualFields,
+            customFields: customFieldsForSummary,
+            allowAttendeeUpload,
+            attendeeUploadHint,
+            attendeeUploadLabel,
+            emailLanguage,
+            disableEmails,
+            disableOutlook,
+            outlookHeading,
+            outlookSubheading,
+            outlookBody,
+            notifyOrgRegisterMode,
+            notifyOrgRegisterFromDate,
+            notifyOrgCancelMode,
+            documents: documentsForSummary,
+            funZone: quizForSummary,
+            quizClusterSize,
+            subEvents: subEventsForSummary,
+            childTermSingular,
+            childTermPlural,
+            subEventsOnlyMode,
+            requireSubEventSelection,
+            generatedAt: new Date().toISOString(),
+            locale: isDe ? 'de' : 'en',
+          };
+        };
+        const onPdf = (): void => {
+          try { exportSummaryAsPdf(buildData()); } catch (err) {
+            console.warn('[DEX] exportSummaryAsPdf failed:', err);
+          }
+          closeAndDispatch();
+        };
+        const onDoc = (): void => {
+          try { exportSummaryAsDoc(buildData()); } catch (err) {
+            console.warn('[DEX] exportSummaryAsDoc failed:', err);
+          }
+          closeAndDispatch();
+        };
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1300,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}
+            onClick={closeAndDispatch}
+          >
+            <div
+              className="card"
+              style={{
+                width: '100%', maxWidth: 560, padding: 24, borderRadius: 16,
+                background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 style={{ margin: 0, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                {isDe ? 'Event-Zusammenfassung herunterladen?' : 'Download event summary?'}
+              </h3>
+              <p style={{ marginTop: 12, color: 'var(--dex-gray-700)', lineHeight: 1.55, fontSize: '0.95rem' }}>
+                {isDe
+                  ? <>Das Event wurde gespeichert. Möchtest du jetzt eine <strong>A4-Zusammenfassung</strong> mit allen Sektionen (Foto, Beschreibung, Sichtbarkeit, Felder, Kommunikation, Dokumente, Sub-Events…) herunterladen? Du kannst sie z.B. einem Partner zur Durchsicht weiterleiten.</>
+                  : <>The event has been saved. Would you like to download a <strong>one-page A4 summary</strong> with every section (photo, description, visibility, fields, communication, documents, sub-events…)? You can forward it to a partner for review.</>}
+              </p>
+              <div style={{
+                marginTop: 18, padding: '10px 14px', background: 'rgba(0,90,156,0.06)',
+                border: '1px solid rgba(0,90,156,0.25)', borderRadius: 8,
+                fontSize: '0.82rem', color: 'var(--dex-gray-700)',
+              }}>
+                {isDe
+                  ? <><strong>Hinweis:</strong> Beim PDF-Export öffnet sich der Browser-Druckdialog. Wähle dort <strong>&bdquo;Als PDF speichern&ldquo;</strong> als Ziel. Word-Export lädt direkt eine .doc-Datei herunter.</>
+                  : <><strong>Note:</strong> The PDF export opens the browser print dialog — pick <strong>&ldquo;Save as PDF&rdquo;</strong> as the destination. Word export downloads a .doc file directly.</>}
+              </div>
+              <div style={{ marginTop: 22, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-outline" onClick={closeAndDispatch}>
+                  {isDe ? 'Nein, danke' : 'No, thanks'}
+                </button>
+                <button className="btn btn-secondary" onClick={onDoc}>
+                  {isDe ? 'Als Word (.doc)' : 'As Word (.doc)'}
+                </button>
+                <button className="btn btn-primary" onClick={onPdf}>
+                  {isDe ? 'Als PDF' : 'As PDF'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* v8.6: Exclude-Users-Modal — zeigt resolved Mitglieder der
           Verteiler/User-Liste plus Suchfeld. Per Checkbox kann der

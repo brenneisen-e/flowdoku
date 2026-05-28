@@ -15,6 +15,7 @@ import { EventService, SPEvent, CustomField, SPRegistration } from '../services/
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
+import { buildDemoShowcaseEvents, isDemoShowcaseId } from '../services/demoShowcaseEvent';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -203,7 +204,7 @@ interface EventContextType {
    *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
    *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
-  cancelRegistration: (eventId: string) => Promise<boolean>;
+  cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
    *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
    *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
@@ -332,6 +333,8 @@ export interface CreateEventInput {
   teamOpenSlotsVisible?: boolean;
   /** v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän (Default false). */
   teamJoinRequiresApproval?: boolean;
+  /** v17.20: Custom-Fields zweisprachig (DE + EN) anbieten. */
+  bilingualFields?: boolean;
   customFields: CustomField[];
   /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
    *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
@@ -720,6 +723,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamPartialAllowed: !!e.TeamPartialAllowed,
       teamOpenSlotsVisible: !!e.TeamOpenSlotsVisible,
       teamJoinRequiresApproval: !!e.TeamJoinRequiresApproval,
+      // v17.20: Bilingual-Toggle fuer Custom-Fields (DE + EN).
+      bilingualFields: !!e.BilingualFields,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
       // v6.19: QR-Code-Scanner-Liste aus EmailTemplateOverrides._qrScanners (piggyback).
@@ -796,6 +801,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // weil die Filter-Chain auf undefined gefallen ist.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onlyForGroup: (cf as any).onlyForGroup,
+        // v17.19: confirmLabel (Text neben Checkbox) im Mapping nachgezogen
+        // — vorher hier vergessen, Folge: Wizard speicherte den Text korrekt,
+        // RegistrationPage fiel aber immer auf den Default „Ja, bestätigen"
+        // zurueck, weil das Field-Mapping confirmLabel droppte.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        confirmLabel: (cf as any).confirmLabel,
+        // v17.20: Englische Varianten durchreichen — nur dann wirksam, wenn
+        // auf Event-Ebene `bilingualFields=true` ist; die RegistrationPage
+        // entscheidet zur Laufzeit, ob sie die EN-Spalte zieht.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        labelEn: (cf as any).labelEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        helpTextEn: (cf as any).helpTextEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        confirmLabelEn: (cf as any).confirmLabelEn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        optionsEn: (cf as any).optionsEn,
       })),
     };
   }
@@ -841,6 +863,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     participantEmail?: string,
     preferredStarterType?: string // B2Run: 'Durchstarter' | 'Funstarter'
   ): Promise<boolean> {
+    // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
+    // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
+    // ist die zweite Verteidigungslinie.
+    if (isDemoShowcaseId(eventId)) return true;
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
@@ -1957,7 +1983,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return open;
   }
 
-  async function cancelRegistration(eventId: string): Promise<boolean> {
+  async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean }): Promise<boolean> {
+    // v17.25: Demo-Showcase-Event → No-Op.
+    if (isDemoShowcaseId(eventId)) return true;
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 
@@ -2006,7 +2034,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
         // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        if (!event.disableEmails) {
+        // v17.19/v17.22: Notifications werden NUR unterdrueckt, wenn der Aufrufer
+        // das explizit anfordert (`opts.suppressNotifications`). Das passiert
+        // ausschliesslich beim automatischen Schatten-Parent-Cancel im
+        // subEventsOnlyMode (MyEventsPage: letzte Sub-Event-Abmeldung raeumt
+        // den Schatten-Parent ab — die Sub-Event-Abmeldung hat ihre eigene
+        // Mail schon verschickt). v17.22-Fix: vorher wurde pauschal auf
+        // `event.subEventsOnlyMode` geprueft, wodurch Alt-Anmeldungen (User
+        // hat sich noch im Normal-Modus direkt beim Parent angemeldet, bevor
+        // der Organizer das Event auf subEventsOnlyMode umstellte) beim
+        // direkten Abmelden weder Bestaetigungs-Mail noch Outlook-Ausladen
+        // bekamen.
+        const suppressParentNotificationsCancel = !!opts?.suppressNotifications;
+        if (!event.disableEmails && !suppressParentNotificationsCancel) {
           try {
             const lang = event.emailLanguage || 'EN';
             // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
@@ -2036,7 +2076,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
         }
         // Outlook-Termin-Einladung zurückziehen
-        if (!event.disableOutlook) {
+        if (!event.disableOutlook && !suppressParentNotificationsCancel) {
           try {
             await eventService.queueOutlookEvent(
               currentUserEmail, eventId, event.title, 'Ausladen'
@@ -2689,10 +2729,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const raw = window.localStorage?.getItem('dex_demo_impersonation');
       if (!raw) return events;
       const payload = JSON.parse(raw);
+      // v17.25: Im Demo-Impersonation-Modus das synthetische Showcase-Event
+      // (+ Sub-Event) vorne in die Liste haengen, damit der Admin auf der
+      // Register-Seite alle Event-Faehigkeiten durchspielen kann. Existiert
+      // nur client-seitig — kein SP-Roundtrip. Sprache aus dem persistierten
+      // Locale-Key, Fallback DE.
+      let withDemo = events;
+      try {
+        const storedLocale = window.localStorage?.getItem('dex-locale');
+        const demoLocale: 'de' | 'en' = storedLocale === 'en' ? 'en' : 'de';
+        if (!events.some(e => e.isDemoShowcase)) {
+          withDemo = [...buildDemoShowcaseEvents(demoLocale), ...events];
+        }
+      } catch { /* */ }
       const targetId: string = payload?.checkInEventId || '';
       const demoEmail: string = (payload?.email || '').toLowerCase();
-      if (!targetId || !demoEmail) return events;
-      return events.map(e => {
+      if (!targetId || !demoEmail) return withDemo;
+      return withDemo.map(e => {
         if (e.id !== targetId) return e;
         const current = (e.qrScannerEmails || []).map(x => x.toLowerCase());
         if (current.indexOf(demoEmail) >= 0) return e;

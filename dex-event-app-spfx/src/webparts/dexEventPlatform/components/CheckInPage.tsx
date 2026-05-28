@@ -620,11 +620,12 @@ export default function CheckInPage(): React.ReactElement {
           background: '#fff3e0', border: '2px solid #ff9800', borderRadius: 12,
         }}>
           <h3 style={{ margin: '0 0 8px', color: '#e65100', fontSize: '1rem' }}>
-            Kamera nicht verfügbar in der SharePoint App
+            {isDe ? 'Kamera nicht verfügbar in der SharePoint App' : 'Camera not available in the SharePoint app'}
           </h3>
           <p style={{ color: '#bf360c', fontSize: '0.85rem', lineHeight: 1.6, margin: '0 0 12px' }}>
-            Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts.
-            Bitte öffne diese Seite in <strong>Edge</strong> oder <strong>Safari</strong> auf deinem Handy — dort funktioniert der QR-Scanner.
+            {isDe
+              ? <>Die SharePoint Mobile App unterstützt keinen Kamera-Zugriff für Webparts. Bitte öffne diese Seite in <strong>Edge</strong> oder <strong>Safari</strong> auf deinem Handy — dort funktioniert der QR-Scanner.</>
+              : <>The SharePoint mobile app does not support camera access for web parts. Please open this page in <strong>Edge</strong> or <strong>Safari</strong> on your phone — the QR scanner works there.</>}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -633,25 +634,27 @@ export default function CheckInPage(): React.ReactElement {
               onClick={() => {
                 const url = window.location.href;
                 navigator.clipboard.writeText(url).then(() => {
-                  setResultMessage('Link kopiert! Öffne ihn in Edge oder Safari.');
+                  setResultMessage(isDe ? 'Link kopiert! Öffne ihn in Edge oder Safari.' : 'Link copied! Open it in Edge or Safari.');
                   setResultType('info');
                 }).catch(() => {
-                  window.prompt('Link kopieren und in Edge/Safari öffnen:', url);
+                  window.prompt(isDe ? 'Link kopieren und in Edge/Safari öffnen:' : 'Copy link and open in Edge/Safari:', url);
                 });
               }}
             >
-              Link kopieren
+              {isDe ? 'Link kopieren' : 'Copy link'}
             </button>
           </div>
           <p style={{ color: '#bf360c', fontSize: '0.75rem', marginTop: 8, marginBottom: 0 }}>
-            Tipp: Lege dir die Seite als Lesezeichen in Edge an für schnellen Zugriff beim Event.
+            {isDe
+              ? 'Tipp: Lege dir die Seite als Lesezeichen in Edge an für schnellen Zugriff beim Event.'
+              : 'Tip: Bookmark this page in Edge for quick access during the event.'}
           </p>
         </div>
       )}
 
       {/* Bestätigungs-Dialog nach Scan */}
       {pendingCheckIn && (
-        <div ref={confirmCardRef} className="card" role="dialog" aria-modal="true" aria-label="Check-in bestätigen" style={{
+        <div ref={confirmCardRef} className="card" role="dialog" aria-modal="true" aria-label={isDe ? 'Check-in bestätigen' : 'Confirm check-in'} style={{
           padding: 24, marginBottom: 16, border: '2px solid var(--dex-green)',
           borderRadius: 16, background: '#fff',
         }}>
@@ -688,7 +691,7 @@ export default function CheckInPage(): React.ReactElement {
             </div>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', margin: '0 0 16px' }}>
-            Event: <strong>{pendingCheckIn.event.title}</strong>
+            {isDe ? 'Event: ' : 'Event: '}<strong>{pendingCheckIn.event.title}</strong>
           </p>
           <div style={{ display: 'flex', gap: 12 }}>
             <button
@@ -696,14 +699,14 @@ export default function CheckInPage(): React.ReactElement {
               onClick={confirmCheckIn}
               style={{ flex: 1, fontSize: '1rem', padding: '12px 0', background: 'var(--dex-green)' }}
             >
-              Einchecken
+              {isDe ? 'Einchecken' : 'Check in'}
             </button>
             <button
               className="btn btn-secondary"
               onClick={cancelCheckIn}
               style={{ padding: '12px 20px' }}
             >
-              Abbrechen
+              {isDe ? 'Abbrechen' : 'Cancel'}
             </button>
           </div>
         </div>
@@ -713,7 +716,7 @@ export default function CheckInPage(): React.ReactElement {
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
         {!isScanning ? (
           <>
-            <h3 style={{ marginBottom: 12 }}>Live-Scanner</h3>
+            <h3 style={{ marginBottom: 12 }}>{isDe ? 'Live-Scanner' : 'Live scanner'}</h3>
             <div style={{ textAlign: 'center' }}>
               <button className="btn btn-primary" onClick={startCamera} style={{ fontSize: '1.1rem', padding: '14px 36px' }}>
                 {t('checkin.scan')}
