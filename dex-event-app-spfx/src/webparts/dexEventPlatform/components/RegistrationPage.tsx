@@ -217,6 +217,14 @@ export default function RegistrationPage(): React.ReactElement {
   // v18.11: „Ich nehme nicht teil"-Absage.
   const [declined, setDeclined] = React.useState(false);
   const [isDeclining, setIsDeclining] = React.useState(false);
+  // v18.13: Massenimport von Drittpersonen (nur Organizer/Admin im
+  // „Für andere registrieren"-Modus).
+  const [massImportOpen, setMassImportOpen] = React.useState(false);
+  const [massImportText, setMassImportText] = React.useState('');
+  const [massImportMode, setMassImportMode] = React.useState<'mail' | 'nomail' | 'silent'>('mail');
+  const [massImportBusy, setMassImportBusy] = React.useState(false);
+  const [massImportProgress, setMassImportProgress] = React.useState('');
+  const [massImportResult, setMassImportResult] = React.useState<{ ok: number; failed: string[] } | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   // v11.33: Submit-Overlay mit Fortschrittsanzeige (Prozent + Label).
   // Bei vielen Sub-Events / vielen Custom-Fields kann der Submit
@@ -278,6 +286,9 @@ export default function RegistrationPage(): React.ReactElement {
   const [isTeamMode, setIsTeamMode] = React.useState(false);
   const [teamName, setTeamName] = React.useState('');
   const [teamMembers, setTeamMembers] = React.useState<string[]>([]);
+  // v18.12: Custom-Field-Antworten pro Team-Mitglied (Slot-Index → {fieldId: value}).
+  // So kann der Lead z.B. die Essenspraeferenz auch fuer jedes Teammitglied angeben.
+  const [teamMemberFields, setTeamMemberFields] = React.useState<Record<number, Record<string, string>>>({});
   const [teamConsentConfirmed, setTeamConsentConfirmed] = React.useState(false);
   // v15.16: Bei „Für andere registrieren" (registerForOther) braucht es
   // ebenfalls eine explizite Bestätigung, dass die Person der Anmeldung
@@ -297,6 +308,7 @@ export default function RegistrationPage(): React.ReactElement {
       setTeamMembers([]);
       setTeamName('');
       setTeamConsentConfirmed(false);
+      setTeamMemberFields({});
     }
   }, [isTeamMode, teamSize]);
   // Parser fuer People-Picker-Values im Format „DisplayName <email>".
@@ -306,6 +318,14 @@ export default function RegistrationPage(): React.ReactElement {
     return { displayName: m[1].trim(), email: m[2].trim().toLowerCase() };
   };
   const teamMembersParsed = teamMembers.map(parseTeamMember);
+  // v18.12: Custom-Fields, die pro Team-Mitglied abgefragt werden — alle
+  // event-spezifischen Felder AUSSER Personen-Pickern (user/roommate) und
+  // B2Run-Spezialfeldern; gruppen-spezifische Felder nur „fuer alle".
+  const teamMemberApplicableFields = (event?.eventSpecificFields || []).filter(f =>
+    f.type !== 'user' && f.type !== 'roommate' &&
+    f.id !== 'b2run_startblock' && f.id !== 'b2run_mobilnummer' &&
+    (!f.onlyForGroup || f.onlyForGroup === 'all')
+  );
   // Validation des Team-Submits — Lead-Email darf nicht in der Member-Liste
   // sein, Member-Emails muessen untereinander disjunkt sein, im Pflicht-Modus
   // muessen alle Slots gefuellt sein.
@@ -827,9 +847,10 @@ export default function RegistrationPage(): React.ReactElement {
       const leadEmail = email.trim();
       const leadFirstName = firstName.trim();
       const leadLastName = surname.trim();
+      // v18.12: Custom-Field-Antworten pro Mitglied (nach Slot-Index) mitgeben.
       const members = teamMembersParsed
-        .filter((m): m is { displayName: string; email: string } => !!m)
-        .map(m => ({ email: m.email, displayName: m.displayName }));
+        .map((m, idx) => m ? { email: m.email, displayName: m.displayName, customData: { ...(teamMemberFields[idx] || {}) } } : null)
+        .filter((m): m is { displayName: string; email: string; customData: Record<string, string> } => !!m);
       setSubmitProgress(30);
       setSubmitProgressLabel(locale === 'de'
         ? `Team wird angemeldet (${1 + members.length} Personen)…`
@@ -1050,6 +1071,58 @@ export default function RegistrationPage(): React.ReactElement {
     }
   };
 
+  // v18.13: Massenimport — pro Zeile eine E-Mail (optional „Name <email>"
+  // oder „email; Name"). Registriert jede Person stellvertretend; je nach
+  // Modus mit Bestätigungsmail, ohne Mail (aber Outlook) oder still
+  // (keine Mail, kein Kalendereintrag).
+  const runMassImport = async (): Promise<void> => {
+    if (!event || massImportBusy) return;
+    const lines = massImportText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const EMAIL_RE = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/;
+    const entries: Array<{ email: string; inlineName: string }> = [];
+    const seen = new Set<string>();
+    for (const line of lines) {
+      const m = line.match(EMAIL_RE);
+      if (!m) continue;
+      const em = m[1].toLowerCase();
+      if (seen.has(em)) continue;
+      seen.add(em);
+      const inlineName = line.replace(m[1], '').replace(/[<>;,]/g, ' ').trim();
+      entries.push({ email: em, inlineName });
+    }
+    if (entries.length === 0) {
+      setMassImportResult({ ok: 0, failed: [locale === 'de' ? '(keine gültigen E-Mail-Adressen gefunden)' : '(no valid email addresses found)'] });
+      return;
+    }
+    const suppressMail = massImportMode === 'nomail' || massImportMode === 'silent';
+    const suppressOutlook = massImportMode === 'silent';
+    setMassImportBusy(true);
+    setMassImportResult(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const { email: em, inlineName } = entries[i];
+      setMassImportProgress(`${i + 1} / ${entries.length} — ${em}`);
+      let first = ''; let last = '';
+      // Name bestimmen: aus der Zeile, sonst per Profil-Lookup.
+      let nameRaw = inlineName;
+      if (!nameRaw) {
+        try { const p = await searchUser(em); nameRaw = p?.displayName || ''; } catch { /* */ }
+      }
+      if (nameRaw) {
+        if (nameRaw.indexOf(',') >= 0) { const p = nameRaw.split(',').map(s => s.trim()); last = p[0] || ''; first = p[1] || ''; }
+        else { const p = nameRaw.split(/\s+/).filter(Boolean); first = p[0] || ''; last = p.slice(1).join(' '); }
+      }
+      try {
+        const success = await registerForEvent(event.id, {}, first, last, em, undefined, { suppressMail, suppressOutlook });
+        if (success) ok++; else failed.push(em);
+      } catch { failed.push(em); }
+    }
+    setMassImportBusy(false);
+    setMassImportProgress('');
+    setMassImportResult({ ok, failed });
+  };
+
   if (declined) {
     return (
       <div className="page-container text-center">
@@ -1151,12 +1224,16 @@ export default function RegistrationPage(): React.ReactElement {
   // alle anderen Felder. Die Filter-Logik dazu unten in den
   // groupSpecificFields- bzw. generalFields-Konstanten.
   // v13.2: fRaw jetzt typsicher als EventSpecificField (vorher any).
-  const renderRegField = (fRaw: EventSpecificField): React.ReactElement => {
+  const renderRegField = (fRaw: EventSpecificField, store?: Record<string, string>, setStore?: (next: Record<string, string>) => void): React.ReactElement => {
+    // v18.12: optionaler Wert-Store — fuer die Custom-Fields pro Team-Mitglied.
+    // Default = eventSpecific/setEventSpecific (Lead bzw. Solo-Anmeldung).
+    const vals = store || eventSpecific;
+    const setVals = setStore || setEventSpecific;
     // Dynamisch Required erzwingen: bei aktivem Infoservice ist die
     // Mobilnummer Pflicht.
     let field: EventSpecificField = fRaw;
     // Mobilnummer bei aktiviertem Infoservice dynamisch zur Pflicht
-    if (fRaw.id === 'b2run_mobilnummer' && eventSpecific['b2run_infoservice'] === 'true') {
+    if (fRaw.id === 'b2run_mobilnummer' && vals['b2run_infoservice'] === 'true') {
       field = { ...field, required: true };
     }
     // Fallback: b2run_datenschutz ohne gespeicherte externalLinks ->
@@ -1195,11 +1272,11 @@ export default function RegistrationPage(): React.ReactElement {
     {field.type === 'select' && field.multi ? (
       // v11.89: Multi-Select-Dropdown — gleicher Look wie Single-Select,
       // beim Aufklappen Checkboxen pro Option. Werte werden weiterhin
-      // " | "-getrennt im selben Feld eventSpecific[field.id]
+      // " | "-getrennt im selben Feld vals[field.id]
       // gespeichert (kompatibel mit Record<string,string>).
       (() => {
         const sep = ' | ';
-        const raw = (eventSpecific[field.id] || '').trim();
+        const raw = (vals[field.id] || '').trim();
         const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
         const isErr = !!(showErrors && field.required && selected.length === 0);
         // v17.20: Anzeige-Labels fuer den EN-Modus mappen. Der gespeicherte
@@ -1215,14 +1292,14 @@ export default function RegistrationPage(): React.ReactElement {
             options={field.options || []}
             optionLabels={useEnVariants ? displayOptions.map(d => d.label) : undefined}
             value={selected}
-            onChange={next => setEventSpecific({ ...eventSpecific, [field.id]: next.join(sep) })}
+            onChange={next => setVals({ ...vals, [field.id]: next.join(sep) })}
             placeholder={tEvent('reg.pleaseselect')}
             error={isErr}
           />
         );
       })()
     ) : field.type === 'select' ? (
-      <select className="form-select" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}>
+      <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}>
         <option value="">{tEvent('reg.pleaseselect')}</option>
         {field.options && field.options.map((opt, i) => <option key={opt} value={opt}>{pickOptionLabel(field, i, opt)}</option>)}
       </select>
@@ -1233,12 +1310,12 @@ export default function RegistrationPage(): React.ReactElement {
       // Person triggert (siehe EventContext). 'user' ist der
       // generische Personen-Picker ohne Mail-Versand.
       <UserFieldPicker
-        value={eventSpecific[field.id] || ''}
-        onChange={v => setEventSpecific({ ...eventSpecific, [field.id]: v })}
+        value={vals[field.id] || ''}
+        onChange={v => setVals({ ...vals, [field.id]: v })}
         searchUsers={searchUsers}
         searchUserByEmail={searchUser}
         placeholder={tEvent('reg.userfield.placeholder')}
-        errorStyle={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}}
+        errorStyle={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}
         hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
       />
     ) : field.type === 'checkbox' ? (
@@ -1262,18 +1339,18 @@ export default function RegistrationPage(): React.ReactElement {
             // 1.5px Border, 12px Radius. Vorher 44px minHeight = optisch
             // höher als die Dropdowns daneben.
             padding: '12px 16px',
-            border: showErrors && field.required && eventSpecific[field.id] !== 'true'
+            border: showErrors && field.required && vals[field.id] !== 'true'
               ? '1.5px solid var(--dex-red)'
               : '1.5px solid var(--dex-gray-200)',
             borderRadius: 12,
-            background: eventSpecific[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : 'var(--dex-white, #fff)',
+            background: vals[field.id] === 'true' ? 'rgba(134,188,37,0.10)' : 'var(--dex-white, #fff)',
             transition: 'background 0.12s',
           }}
         >
           <input
             type="checkbox"
-            checked={eventSpecific[field.id] === 'true'}
-            onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.checked ? 'true' : 'false' })}
+            checked={vals[field.id] === 'true'}
+            onChange={e => setVals({ ...vals, [field.id]: e.target.checked ? 'true' : 'false' })}
             style={{ width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer', flexShrink: 0 }}
           />
           <span style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
@@ -1305,7 +1382,7 @@ export default function RegistrationPage(): React.ReactElement {
         )}
       </>
     ) : (
-      <input className="form-input" value={eventSpecific[field.id] || ''} onChange={e => setEventSpecific({ ...eventSpecific, [field.id]: e.target.value })} placeholder={displayLabel} style={showErrors && field.required && !eventSpecific[field.id]?.trim() ? errorBorder : {}} />
+      <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}} />
     )}
   </div>
     );
@@ -2009,6 +2086,20 @@ export default function RegistrationPage(): React.ReactElement {
                 {registerForOther ? t('reg.registerself') : t('reg.registerother')}
               </button>
             )}
+            {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
+            {registerForOther && canCreateEvents && (
+              <button
+                type="button"
+                onClick={() => { setMassImportResult(null); setMassImportOpen(true); }}
+                style={{
+                  background: 'none', border: 'none', padding: '4px 12px',
+                  color: 'var(--dex-blue, #0076a8)', fontSize: '0.85rem',
+                  textDecoration: 'underline', cursor: 'pointer', fontWeight: 600,
+                }}
+              >
+                {locale === 'de' ? 'Massenimport' : 'Bulk import'}
+              </button>
+            )}
           </div>
           <div style={{ padding: '24px 20px' }}>
             {canRegisterForOther && (
@@ -2489,6 +2580,25 @@ export default function RegistrationPage(): React.ReactElement {
                         placeholder={locale === 'de' ? 'Name oder E-Mail eingeben...' : 'Type a name or email...'}
                         errorStyle={isErr ? errorBorder : {}}
                       />
+                      {/* v18.12: Custom-Fields pro Team-Mitglied — erscheinen,
+                          sobald die Person ausgewählt ist (z.B. Essenspräferenz). */}
+                      {parsed && teamMemberApplicableFields.length > 0 && (
+                        <div style={{ marginTop: 8, marginLeft: 8, paddingLeft: 12, borderLeft: '2px solid var(--dex-gray-200)' }}>
+                          {teamMemberApplicableFields
+                            .filter(f => {
+                              if (!f.showIf) return true;
+                              const mv = teamMemberFields[idx] || {};
+                              const v = mv[f.showIf.fieldId] || '';
+                              const parts = v.split(' | ').map(s => s.trim());
+                              return f.showIf.values.some(x => v === x || parts.indexOf(x) >= 0);
+                            })
+                            .map(f => renderRegField(
+                              f,
+                              teamMemberFields[idx] || {},
+                              next => setTeamMemberFields(prev => ({ ...prev, [idx]: next }))
+                            ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2530,8 +2640,22 @@ export default function RegistrationPage(): React.ReactElement {
               <Icon iconName="EditNote" style={{ fontSize: 16 }} />
               {t('reg.eventinfo')}
             </div>
-            <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', padding: '0 12px' }}>
-              <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
+              </span>
+              {/* v18.12: „Zurücksetzen" ersetzt den frueheren „Löschen"-Button
+                  aus der Aktions-Zeile — leert das Formular (Eingaben). */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleClear}
+                disabled={isSubmitting}
+                style={{ fontSize: '0.78rem', padding: '4px 12px' }}
+                title={locale === 'de' ? 'Eingaben zurücksetzen' : 'Reset inputs'}
+              >
+                <Trash2 size={14} /> {locale === 'de' ? 'Zurücksetzen' : 'Reset'}
+              </button>
             </span>
           </div>
           <div style={{ padding: '24px 20px' }}>
@@ -2663,7 +2787,7 @@ export default function RegistrationPage(): React.ReactElement {
                           ? `Zusätzliche Angaben für „${grpLabel}"`
                           : `Additional details for „${grpLabel}"`}
                       </div>
-                      {groupSpec.map(renderRegField)}
+                      {groupSpec.map(f => renderRegField(f))}
                     </div>
                   );
                 })()}
@@ -2892,7 +3016,7 @@ export default function RegistrationPage(): React.ReactElement {
                   if (!isSplitGroup) return true;
                   return false;
                 })
-                .map(renderRegField)
+                .map(f => renderRegField(f))
               }
               </div>
             )}
@@ -2915,7 +3039,6 @@ export default function RegistrationPage(): React.ReactElement {
 
       {/* Buttons */}
       <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
-        <button className="btn btn-danger" onClick={handleClear} disabled={isSubmitting}><Trash2 size={16} /> {t('reg.delete')}</button>
         {(() => {
           // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
           // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
@@ -3080,6 +3203,88 @@ export default function RegistrationPage(): React.ReactElement {
       )}
 
       {/* v9.22: Modal fuer externe Email-Anmeldung */}
+      {/* v18.13: Massenimport-Modal. */}
+      {massImportOpen && (
+        <Modal
+          open={massImportOpen}
+          onClose={() => { if (!massImportBusy) setMassImportOpen(false); }}
+          maxWidth={600}
+          padding={24}
+          dismissable={!massImportBusy}
+          ariaLabel={locale === 'de' ? 'Teilnehmer-Massenimport' : 'Bulk participant import'}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+            {locale === 'de' ? 'Teilnehmer-Massenimport' : 'Bulk participant import'}
+          </h3>
+          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {locale === 'de'
+              ? <>Eine <strong>E-Mail-Adresse pro Zeile</strong> einfügen (optional &bdquo;Name &lt;mail&gt;&ldquo; oder &bdquo;mail; Name&ldquo;). Die Personen werden stellvertretend für dieses Event angemeldet.</>
+              : <>Paste <strong>one email address per line</strong> (optionally &bdquo;Name &lt;mail&gt;&ldquo; or &bdquo;mail; Name&ldquo;). The people are registered for this event on their behalf.</>}
+          </p>
+          <textarea
+            className="form-input"
+            value={massImportText}
+            onChange={e => setMassImportText(e.target.value)}
+            disabled={massImportBusy}
+            rows={7}
+            placeholder={'max.mustermann@deloitte.de\nerika.musterfrau@deloitte.de'}
+            style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }}
+          />
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+              {locale === 'de' ? 'Benachrichtigung' : 'Notification'}
+            </div>
+            {([
+              { v: 'mail', de: 'Bestätigungsmail senden (+ Outlook-Termin)', en: 'Send confirmation email (+ Outlook invite)' },
+              { v: 'nomail', de: 'Ohne Bestätigungsmail (aber Outlook-Termin)', en: 'No confirmation email (but Outlook invite)' },
+              { v: 'silent', de: 'Stille Anmeldung (keine Mail, kein Kalendereintrag)', en: 'Silent registration (no email, no calendar invite)' },
+            ] as const).map(opt => (
+              <label key={opt.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="massImportMode"
+                  checked={massImportMode === opt.v}
+                  onChange={() => setMassImportMode(opt.v)}
+                  disabled={massImportBusy}
+                />
+                {locale === 'de' ? opt.de : opt.en}
+              </label>
+            ))}
+          </div>
+          {massImportBusy && (
+            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+              {locale === 'de' ? 'Import läuft…' : 'Importing…'} {massImportProgress}
+            </div>
+          )}
+          {massImportResult && (
+            <div style={{
+              marginTop: 12, padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem',
+              background: massImportResult.failed.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)',
+              border: `1px solid ${massImportResult.failed.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
+              color: 'var(--dex-gray-700)', lineHeight: 1.5,
+            }}>
+              {locale === 'de'
+                ? <><strong>{massImportResult.ok}</strong> Person(en) angemeldet.</>
+                : <><strong>{massImportResult.ok}</strong> person(s) registered.</>}
+              {massImportResult.failed.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {locale === 'de' ? 'Nicht angemeldet (bereits angemeldet / Fehler): ' : 'Not registered (already registered / error): '}
+                  {massImportResult.failed.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setMassImportOpen(false)} disabled={massImportBusy}>
+              {massImportResult ? (locale === 'de' ? 'Schließen' : 'Close') : (locale === 'de' ? 'Abbrechen' : 'Cancel')}
+            </button>
+            <button className="btn btn-primary" onClick={runMassImport} disabled={massImportBusy || !massImportText.trim()}>
+              {massImportBusy ? (locale === 'de' ? 'Läuft…' : 'Running…') : (locale === 'de' ? 'Importieren' : 'Import')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {externalEmailWarning && (
         <Modal
           open={externalEmailWarning}
