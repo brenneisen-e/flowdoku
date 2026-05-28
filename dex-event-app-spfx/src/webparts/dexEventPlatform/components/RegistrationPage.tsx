@@ -1067,6 +1067,8 @@ export default function RegistrationPage(): React.ReactElement {
           <h2 style={{ marginTop: 0 }}>{successHeadline}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
           {(() => {
+            // v18.9: Organizer-Anzeige optional ausgeblendet.
+            if (event.hideOrganizer) return null;
             // Organizer als Chips mit Foto (gleicher Stil wie auf der
             // Anmelde-Seite). „Nachname, Vorname" → „Vorname Nachname".
             const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
@@ -1483,6 +1485,8 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
               {(() => {
+                // v18.9: Organizer-Anzeige optional ausgeblendet.
+                if (event.hideOrganizer) return null;
                 // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
                 // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
                 const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
@@ -1569,12 +1573,12 @@ export default function RegistrationPage(): React.ReactElement {
             // damit Formatierung wie Listen, Links, Fett etc. funktioniert.
             // Die Description kommt aus dem eigenen Tenant — sicherer Origin.
             <div
+              className="dex-event-desc"
               style={{
-                padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                padding: '12px 16px', color: 'var(--dex-gray-700)',
                 background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
                 borderTop: '1px solid var(--dex-gray-200)',
                 wordBreak: 'break-word',
-                lineHeight: 1.55,
               }}
               dangerouslySetInnerHTML={{
                 __html: (() => {

@@ -939,6 +939,9 @@ export default function EventCreationPage(): React.ReactElement {
   // kann sich erst alles in Ruhe anschauen, das Test-Team probiert die
   // Anmeldung durch, und erst wenn alles passt wird der Schalter rausgenommen.
   const [isFictive, setIsFictive] = React.useState(editEvent ? !!editEvent.isFictive : true);
+  // v18.9: Organizer-Anzeige (Chips mit Name + Foto) auf Anmelde-Seite +
+  // „Meine Events" ausblenden. Rein visuell — Rechte/Mails unberührt.
+  const [hideOrganizer, setHideOrganizer] = React.useState(editEvent ? !!editEvent.hideOrganizer : false);
   // Nur im Edit-Modus: standardmaessig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnoetig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -2847,7 +2850,9 @@ export default function EventCreationPage(): React.ReactElement {
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
         : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0)
+      // v18.9: Organizer-Anzeige ausblenden (Piggyback).
+      const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -2859,6 +2864,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...requireSubEventConfig,
             ...subEventsOnlyConfig,
             ...childTermConfig,
+            ...hideOrganizerConfig,
             ...topOverrides,
           })
         : '';
@@ -3342,8 +3348,10 @@ export default function EventCreationPage(): React.ReactElement {
           const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
             ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
             : {};
+          // v18.9: Organizer-Anzeige ausblenden (Piggyback).
+          const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3356,6 +3364,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...reqSubEvtExtra,
                 ...subEvtsOnlyExtra,
                 ...childTermExtra,
+                ...hideOrganizerExtra,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -5467,6 +5476,41 @@ export default function EventCreationPage(): React.ReactElement {
                     })}
                   </div>
                 )}
+              </div>
+
+              {/* v18.9: Organizer-Anzeige ausblenden. Rein visuell — die
+                  Organizer behalten alle Rechte + Mail-Benachrichtigungen,
+                  werden aber auf der Anmelde-Seite und in „Meine Events"
+                  nicht als Ansprechpartner-Chips gezeigt. */}
+              <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={hideOrganizer}
+                    onChange={e => setHideOrganizer(e.target.checked)}
+                    style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Organizer ausblenden' : 'Hide organizer'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob die <strong>Organizer-Kacheln</strong> (Name + Foto + Mail) auf der <strong>Anmelde-Seite</strong> und in <strong>&bdquo;Meine Events&ldquo;</strong> angezeigt werden.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, sehen Teilnehmer <strong>keine Organizer-Ansprechpartner</strong> mehr bei diesem Event. Der optionale Ansprechpartner unten bleibt davon unberührt.<br /><br />
+                          <strong>Wichtig:</strong> das ist rein optisch — die Organizer behalten alle <strong>Rechte</strong> (bearbeiten, Teilnehmer verwalten) und ihre <strong>Mail-Benachrichtigungen</strong>.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether the <strong>organizer chips</strong> (name + photo + email) are shown on the <strong>registration page</strong> and in <strong>&bdquo;My Events&ldquo;</strong>.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, attendees no longer see organizer contacts for this event. The optional contact person below is not affected.<br /><br />
+                          <strong>Note:</strong> this is purely visual — organizers keep all <strong>permissions</strong> (edit, manage attendees) and their <strong>email notifications</strong>.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: aus — Organizer werden als Ansprechpartner angezeigt.'
+                        : 'Default: off — organizers are shown as contacts.'}
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {/* v10.16: Optionaler Ansprechpartner. Reines Anzeige-Feld

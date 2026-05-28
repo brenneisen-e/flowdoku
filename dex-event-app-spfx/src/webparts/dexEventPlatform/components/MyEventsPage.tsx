@@ -1694,8 +1694,8 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
 
-                    {/* Organizer mit Foto (Hover vergroessert) */}
-                    {event.organizers.length > 0 && (
+                    {/* Organizer mit Foto (Hover vergroessert). v18.9: optional ausgeblendet. */}
+                    {!event.hideOrganizer && event.organizers.length > 0 && (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
                         <OrganizerList
@@ -1762,11 +1762,12 @@ export default function MyEventsPage(): React.ReactElement {
                       </button>
                       {isOpen && (
                         <div
+                          className="dex-event-desc"
                           style={{
-                            marginTop: 6, padding: '10px 14px', fontSize: '0.82rem',
+                            marginTop: 6, padding: '10px 14px',
                             color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
                             borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
-                            lineHeight: 1.55, wordBreak: 'break-word',
+                            wordBreak: 'break-word',
                           }}
                           dangerouslySetInnerHTML={{
                             __html: (() => {
