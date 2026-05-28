@@ -66,7 +66,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { t, locale } = useLanguage();
@@ -214,6 +214,9 @@ export default function RegistrationPage(): React.ReactElement {
   const [fallbackDialog, setFallbackDialog] = React.useState<{ wunsch: string; alt: string; altFree: number } | null>(null);
   const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  // v18.11: „Ich nehme nicht teil"-Absage.
+  const [declined, setDeclined] = React.useState(false);
+  const [isDeclining, setIsDeclining] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   // v11.33: Submit-Overlay mit Fortschrittsanzeige (Prozent + Label).
   // Bei vielen Sub-Events / vielen Custom-Fields kann der Submit
@@ -1023,6 +1026,51 @@ export default function RegistrationPage(): React.ReactElement {
     setEventSpecific({});
     setRegisterForOther(false);
   };
+
+  // v18.11: Proaktive Absage („Ich nehme nicht teil"). Keine Pflichtfelder
+  // nötig — der User signalisiert nur, dass er nicht kommt.
+  const handleDecline = async (): Promise<void> => {
+    if (!event || isDeclining) return;
+    if (event.isDemoShowcase) {
+      setError(locale === 'de'
+        ? 'Dies ist ein Demo-Event — es wird nichts gespeichert.'
+        : 'This is a demo event — nothing is stored.');
+      return;
+    }
+    setIsDeclining(true);
+    setError('');
+    try {
+      const ok = await declineEvent(event.id);
+      if (ok) setDeclined(true);
+      else setError(t('reg.genericerror') || 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+    } catch {
+      setError(t('reg.genericerror') || 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
+    } finally {
+      setIsDeclining(false);
+    }
+  };
+
+  if (declined) {
+    return (
+      <div className="page-container text-center">
+        <div className="card" style={{ padding: '48px 32px', maxWidth: 640, margin: '0 auto' }}>
+          <h2 style={{ marginTop: 0 }}>
+            {locale === 'de' ? 'Absage erfasst' : 'Decline recorded'}
+          </h2>
+          <p className="mt-8" style={{ color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+            {locale === 'de'
+              ? <>Danke für die Rückmeldung — wir haben vermerkt, dass du <strong>nicht</strong> an &bdquo;{event?.title}&ldquo; teilnimmst. Falls sich das ändert, kannst du dich jederzeit über diese Seite anmelden.</>
+              : <>Thanks for letting us know — we noted that you will <strong>not</strong> attend &bdquo;{event?.title}&ldquo;. If that changes, you can register any time via this page.</>}
+          </p>
+          <div style={{ marginTop: 28 }}>
+            <button className="btn btn-primary" onClick={() => navigate('register')}>
+              {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     const sessionsOnlyHint = sessionsOnlySubmitted;
@@ -2930,6 +2978,25 @@ export default function RegistrationPage(): React.ReactElement {
             </button>
           );
         })()}
+        {/* v18.11: „Ich nehme nicht teil" — proaktive Absage. Nur bei
+            Selbst-Anmeldung (nicht „für andere", nicht Team-Modus, kein
+            Demo-Event). Braucht keine Pflichtfelder. */}
+        {!registerForOther && !isTeamMode && !(event && event.isDemoShowcase) && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleDecline}
+            disabled={isDeclining || isSubmitting}
+            title={locale === 'de'
+              ? 'Melde zurück, dass du nicht teilnehmen wirst (keine Anmeldung).'
+              : 'Let us know you will not attend (no registration).'}
+            style={{ color: 'var(--dex-red, #c00)' }}
+          >
+            {isDeclining
+              ? (locale === 'de' ? 'Wird gesendet…' : 'Submitting…')
+              : (locale === 'de' ? 'Ich nehme nicht teil' : 'I will not attend')}
+          </button>
+        )}
       </div>
 
       {/* Datenschutz-Hinweis als Fußnote ganz unten.

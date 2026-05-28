@@ -6397,6 +6397,69 @@ export class EventService {
   }
 
   /**
+   * v18.11: Proaktive Absage durch einen Teilnehmer, der sich NICHT angemeldet
+   * hat („Ich nehme nicht teil"). Legt eine Teilnehmer-Zeile direkt mit
+   * Status='Abgemeldet' an — KEINE Sitzplatz-Reservierung, KEINE TeilnehmerID.
+   * Profil-Daten (Vorname/Nachname/Location/JobTitle/Department) werden geladen,
+   * damit die Abmeldungs-Liste im Admin-Center dieselben Spalten füllen kann
+   * wie Teilnehmer-/Warteliste. Marker `_declined` in CustomData unterscheidet
+   * die proaktive Absage von einer regulären Abmeldung (die nach vorheriger
+   * Anmeldung erfolgte).
+   */
+  public async declineRegistration(
+    subsiteUrl: string,
+    firstName: string,
+    surname: string,
+    participantEmail: string,
+    actorName?: string,
+    actorEmail?: string
+  ): Promise<boolean> {
+    try {
+      const myEmail = (this.context.pageContext.user.email || '').toLowerCase();
+      const profile = (participantEmail || '').toLowerCase() === myEmail
+        ? await this.getCurrentUserProfile()
+        : await this.getUserProfileByEmail(participantEmail);
+      const nowIso = new Date().toISOString();
+      const auditName = actorName || this.context.pageContext.user.displayName || '';
+      const auditEmail = (actorEmail || this.context.pageContext.user.email || '').toLowerCase();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
+        '__metadata': { 'type': REG_LIST_ITEM_TYPE },
+        'Title': participantEmail,
+        'Vorname': firstName,
+        'Nachname': surname,
+        'ParticipantName': `${firstName} ${surname}`.trim(),
+        'ParticipantEmail': participantEmail,
+        'Department': profile.department,
+        'Location': profile.location,
+        'JobTitle': profile.jobTitle,
+        'Phone': profile.phone,
+        'Status': 'Abgemeldet',
+        'RegistrationDate': nowIso,
+        'CancellationDate': nowIso,
+        // Marker: proaktive Absage (nie angemeldet gewesen).
+        'CustomData': JSON.stringify({ _declined: 'true' }),
+      };
+      if (auditName) { payload['RegisteredByName'] = auditName; payload['CancelledByName'] = auditName; }
+      if (auditEmail) { payload['RegisteredByEmail'] = auditEmail; payload['CancelledByEmail'] = auditEmail; }
+      const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`;
+      let resp = await this._post(url, payload);
+      if (!resp.ok && (auditName || auditEmail)) {
+        // Fallback ohne Audit-Felder (alte Subsite-Liste ohne diese Spalten).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const noAudit: Record<string, any> = { ...payload };
+        delete noAudit['RegisteredByName']; delete noAudit['RegisteredByEmail'];
+        delete noAudit['CancelledByName']; delete noAudit['CancelledByEmail'];
+        resp = await this._post(url, noAudit);
+      }
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] declineRegistration error:', err);
+      return false;
+    }
+  }
+
+  /**
    * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen).
    * v7.16: Erfasst zusaetzlich, WANN und VON WEM der Check-In ausgeloest
    * wurde (CheckedInDate / CheckedInByName / CheckedInByEmail). Diese
