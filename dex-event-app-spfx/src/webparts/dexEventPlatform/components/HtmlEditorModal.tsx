@@ -150,6 +150,24 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   const setColor = (hex: string): void => exec('foreColor', hex);
 
+  // v18.16: Zeilenabstand für die GESAMTE Beschreibung einstellbar. Wir
+  // wrappen den kompletten Editor-Inhalt in ein div[data-lh] mit inline
+  // line-height — das wird in der gespeicherten innerHTML mitgesichert und
+  // überschreibt auf der Anmelde-Seite die Default-Zeilenhöhe.
+  const setLineHeight = (lh: string): void => {
+    const root = editorRef.current;
+    if (!root) return;
+    let wrapper = root.querySelector(':scope > div[data-lh]') as HTMLElement | null;
+    if (!wrapper || root.childNodes.length !== 1) {
+      wrapper = document.createElement('div');
+      wrapper.setAttribute('data-lh', '1');
+      while (root.firstChild) wrapper.appendChild(root.firstChild);
+      root.appendChild(wrapper);
+    }
+    wrapper.style.lineHeight = lh;
+    fireChange();
+  };
+
   const insertVariable = (key: string): void => {
     restoreSelection();
     // execCommand insertText fuegt an Cursor ein (oder ersetzt Selektion).
@@ -363,6 +381,20 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   >
                     <option value="" disabled>Größe</option>
                     {FONT_SIZES.map(f => <option key={f.px} value={f.px}>{f.label} ({f.px}px)</option>)}
+                  </select>
+                  {/* v18.16: Zeilenabstand für die gesamte Beschreibung. */}
+                  <select
+                    title="Zeilenabstand"
+                    onChange={e => { if (e.target.value) { setLineHeight(e.target.value); e.target.value = ''; } }}
+                    defaultValue=""
+                    style={{ height: 28, fontSize: '0.78rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)' }}
+                  >
+                    <option value="" disabled>Zeilenabstand</option>
+                    <option value="1.0">Eng (1.0)</option>
+                    <option value="1.15">Kompakt (1.15)</option>
+                    <option value="1.3">Normal (1.3)</option>
+                    <option value="1.5">Locker (1.5)</option>
+                    <option value="2.0">Weit (2.0)</option>
                   </select>
                   <span style={{ width: 1, height: 22, background: 'var(--dex-gray-300)', margin: '0 4px' }} />
                   <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>Farbe:</span>
