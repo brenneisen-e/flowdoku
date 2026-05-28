@@ -831,6 +831,9 @@ export default function MyEventsPage(): React.ReactElement {
   const [editData, setEditData] = React.useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = React.useState(false);
   const [loadError, setLoadError] = React.useState('');
+  // v17.23: Event-Beschreibung auf der MyEvents-Karte ist standardmaessig
+  // eingeklappt — pro Event-Id gemerkt, ob der User sie aufgeklappt hat.
+  const [descExpanded, setDescExpanded] = React.useState<Record<string, boolean>>({});
   // v11.34: Cascade-Cancel-Dialog (Parent → Sub-Events). State haelt
   // den Dialog-Inhalt + die Resolver-Funktion, damit performCancel auf
   // die User-Wahl awaiten kann statt window.confirm.
@@ -1720,26 +1723,50 @@ export default function MyEventsPage(): React.ReactElement {
                 {/* v17.22: Event-Beschreibung auch unter „Meine Events"
                     anzeigen (vorher nur auf der Anmeldeseite). RichText-HTML
                     aus dem eigenen Tenant — gleiche Render-Logik wie auf der
-                    RegistrationPage (HTML erlaubt, sonst \n→<br>). */}
-                {event.description && (!editingId || editingId !== event.id) && (
-                  <div
-                    style={{
-                      marginTop: 10, padding: '10px 14px', fontSize: '0.82rem',
-                      color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
-                      borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
-                      lineHeight: 1.55, wordBreak: 'break-word',
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: (() => {
-                        const raw = event.description || '';
-                        const isHtml = /<[a-z][\s\S]*>/i.test(raw);
-                        return isHtml
-                          ? raw
-                          : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-                      })(),
-                    }}
-                  />
-                )}
+                    RegistrationPage (HTML erlaubt, sonst \n→<br>).
+                    v17.23: standardmaessig eingeklappt, per Button aufklappbar. */}
+                {event.description && (!editingId || editingId !== event.id) && (() => {
+                  const isOpen = !!descExpanded[event.id];
+                  return (
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setDescExpanded(prev => ({ ...prev, [event.id]: !prev[event.id] }))}
+                        aria-expanded={isOpen}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                          fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-green-dark, #4a7c1f)',
+                        }}
+                      >
+                        <span style={{
+                          display: 'inline-block', transition: 'transform 0.15s',
+                          transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: '0.7rem',
+                        }}>▶</span>
+                        {isDe ? 'Beschreibung' : 'Description'}
+                      </button>
+                      {isOpen && (
+                        <div
+                          style={{
+                            marginTop: 6, padding: '10px 14px', fontSize: '0.82rem',
+                            color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)',
+                            borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
+                            lineHeight: 1.55, wordBreak: 'break-word',
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: (() => {
+                              const raw = event.description || '';
+                              const isHtml = /<[a-z][\s\S]*>/i.test(raw);
+                              return isHtml
+                                ? raw
+                                : raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                            })(),
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* v10.26: Custom-Field-Antworten als rechteckige
                     pastellgrüne Tags — visuell eindeutig von den
