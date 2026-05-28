@@ -22,6 +22,7 @@ import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -656,7 +657,7 @@ export default function MyEventsPage(): React.ReactElement {
   // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
   // searchUsers wird fuer den Add-Member-Picker gebraucht (gleiche API wie
   // im Registrierungs-Formular).
-  const { searchUsers } = useRoles();
+  const { searchUsers, isImpersonating } = useRoles();
   const [addMemberDialog, setAddMemberDialog] = React.useState<{
     eventId: string;
     teamId: string;
@@ -894,6 +895,20 @@ export default function MyEventsPage(): React.ReactElement {
       setLoadError('');
     }
     const entries: MyEventEntry[] = [];
+
+    // v18: Im Demo-Modus immer einen Demo-Eintrag in „Meine Events" zeigen
+    // (zweite der drei Demo-Sichten). Nicht an eine echte Anmeldung gekoppelt
+    // — die Register-Anmeldung ist im Demo deaktiviert; dieser Eintrag zeigt
+    // nur, wie eine Anmeldung in „Meine Events" aussieht.
+    if (isImpersonating) {
+      try {
+        const demoEvent = buildDemoShowcaseEvents(isDe ? 'de' : 'en')[0];
+        entries.push({
+          event: demoEvent,
+          registration: buildDemoMyRegistration(currentUser?.email || 'demo.user@deloitte.de', `${currentUser?.firstName || 'Demo'} ${currentUser?.surname || 'User'}`.trim()),
+        });
+      } catch { /* */ }
+    }
 
     // Schneller Pfad: DEX_Participants abfragen
     const tNums = performance.now();

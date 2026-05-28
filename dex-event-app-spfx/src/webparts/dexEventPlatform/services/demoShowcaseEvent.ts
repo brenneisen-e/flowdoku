@@ -9,6 +9,7 @@
 // Zweisprachigkeit, Dokumente, Quiz).
 
 import { DeloitteEvent, AgendaItem, TransferTime, EventSpecificField } from '../types';
+import { SPRegistration } from './EventService';
 
 export const DEMO_SHOWCASE_ID = '__demo_showcase__';
 export const DEMO_SHOWCASE_CHILD_PREFIX = '__demo_showcase_child_';
@@ -120,16 +121,15 @@ function demoCustomFields(): EventSpecificField[] {
       helpTextEn: 'Generic people picker (no email sent).',
     },
     {
-      id: 'demo_group_a_field',
-      label: 'Lauferfahrung (nur Vormittagsgruppe)',
-      labelEn: 'Running experience (morning group only)',
+      id: 'demo_experience',
+      label: 'Lauferfahrung',
+      labelEn: 'Running experience',
       type: 'select',
       required: false,
       options: ['Anfaenger:in', 'Fortgeschritten', 'Profi'],
       optionsEn: ['Beginner', 'Intermediate', 'Pro'],
-      onlyForGroup: 'A',
-      helpText: 'Gruppen-spezifisches Feld — nur fuer Gruppe A (Vormittag) sichtbar.',
-      helpTextEn: 'Group-specific field — only visible for group A (morning).',
+      helpText: 'Einfaches Dropdown.',
+      helpTextEn: 'Simple dropdown.',
     },
   ];
 }
@@ -204,6 +204,128 @@ function demoSubEvents(parentId: string): DeloitteEvent[] {
   ];
 }
 
+// v17.26 / v18: Deterministische synthetische Teilnehmerliste fuer das
+// Demo-Event, damit der Admin/Organizer unter „Organizer & Events" die
+// Teilnehmer-Verwaltung mit echten Daten durchspielen kann (~20 Angemeldete,
+// ein paar Abgemeldete, zwei Warteliste-Eintraege, ein Team). Rein
+// client-seitig — kein SharePoint.
+const DEMO_FIRST_NAMES = ['Anna', 'Ben', 'Clara', 'David', 'Eva', 'Felix', 'Greta', 'Hannes', 'Ida', 'Jonas', 'Klara', 'Lukas', 'Mia', 'Noah', 'Olivia', 'Paul', 'Quirin', 'Rosa', 'Sophie', 'Tom', 'Ulrike', 'Viktor', 'Wanda', 'Xaver', 'Yara', 'Zoe'];
+const DEMO_LAST_NAMES = ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Schulz', 'Hoffmann', 'Koch', 'Bauer', 'Richter', 'Klein', 'Wolf', 'Schröder', 'Neumann', 'Braun', 'Werner', 'Krüger', 'Hofmann', 'Hartmann', 'Lange', 'Schmitt', 'Krause', 'Meier'];
+const DEMO_LOCATIONS = ['Düsseldorf', 'München', 'Berlin', 'Hamburg', 'Frankfurt', 'Stuttgart', 'Köln'];
+
+export function buildDemoRegistrations(): SPRegistration[] {
+  const rows: SPRegistration[] = [];
+  const baseDate = new Date();
+  baseDate.setDate(baseDate.getDate() - 20);
+  const mkDate = (offsetDays: number, hour = 10): string => {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() + offsetDays);
+    d.setHours(hour, 0, 0, 0);
+    return d.toISOString();
+  };
+  const teamId = 'demo-team-uuid-0001';
+  let tid = 1;
+  // 20 Angemeldete (inkl. 4er-Team), abwechselnd Gruppe A/B, mit Custom-Data.
+  for (let i = 0; i < 20; i++) {
+    const first = DEMO_FIRST_NAMES[i % DEMO_FIRST_NAMES.length];
+    const last = DEMO_LAST_NAMES[i % DEMO_LAST_NAMES.length];
+    const email = `${first.toLowerCase()}.${last.toLowerCase().replace(/[äöü]/g, m => ({ ä: 'ae', ö: 'oe', ü: 'ue' }[m] || m))}@deloitte.de`;
+    const isTeam = i < 4; // erste 4 = ein Team
+    const starter = i % 2 === 0 ? 'Durchstarter' : 'Funstarter';
+    rows.push({
+      Id: 1000 + i,
+      Title: email,
+      TeilnehmerID: tid++,
+      Anrede: i % 3 === 0 ? 'Frau' : i % 3 === 1 ? 'Herr' : 'Divers',
+      Vorname: first,
+      Nachname: last,
+      StarterType: starter,
+      ParticipantName: `${first} ${last}`,
+      ParticipantEmail: email,
+      Status: 'Angemeldet',
+      RegistrationDate: mkDate(i),
+      CancellationDate: '',
+      Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
+      ...(isTeam ? { TeamId: teamId, TeamLead: i === 0, TeamName: 'Die Schnellläufer' } : {}),
+      CustomData: JSON.stringify({
+        demo_select: i % 3 === 0 ? 'Vegetarisch' : i % 3 === 1 ? 'Fleisch' : 'Vegan',
+        demo_checkbox: 'true',
+      }),
+    });
+  }
+  // 2 Warteliste-Eintraege.
+  for (let i = 0; i < 2; i++) {
+    const first = DEMO_FIRST_NAMES[(20 + i) % DEMO_FIRST_NAMES.length];
+    const last = DEMO_LAST_NAMES[(20 + i) % DEMO_LAST_NAMES.length];
+    const email = `${first.toLowerCase()}.${last.toLowerCase()}@deloitte.de`;
+    rows.push({
+      Id: 2000 + i,
+      Title: email,
+      TeilnehmerID: tid++,
+      Vorname: first,
+      Nachname: last,
+      ParticipantName: `${first} ${last}`,
+      ParticipantEmail: email,
+      Status: 'Warteliste',
+      RegistrationDate: mkDate(20 + i),
+      CancellationDate: '',
+      Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
+      CustomData: '{}',
+    });
+  }
+  // 3 Abgemeldete.
+  for (let i = 0; i < 3; i++) {
+    const first = DEMO_FIRST_NAMES[(22 + i) % DEMO_FIRST_NAMES.length];
+    const last = DEMO_LAST_NAMES[(22 + i) % DEMO_LAST_NAMES.length];
+    const email = `${first.toLowerCase()}.${last.toLowerCase()}@deloitte.de`;
+    rows.push({
+      Id: 3000 + i,
+      Title: email,
+      Vorname: first,
+      Nachname: last,
+      ParticipantName: `${first} ${last}`,
+      ParticipantEmail: email,
+      Status: 'Abgemeldet',
+      RegistrationDate: mkDate(i),
+      CancellationDate: mkDate(15 + i),
+      Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
+      CustomData: '{}',
+    });
+  }
+  return rows;
+}
+
+/**
+ * Synthetische Eigen-Anmeldung des Demo-Users fuer die „Meine Events"-Ansicht.
+ * v18: wird im Demo-Modus IMMER angezeigt (nicht an eine echte Anmeldung
+ * gekoppelt — die Register-Anmeldung ist im Demo bewusst deaktiviert). Zeigt,
+ * wie eine Anmeldung in „Meine Events" aussieht: Team-Badge, Custom-Field-
+ * Antworten, Beschreibung etc.
+ */
+export function buildDemoMyRegistration(email: string, displayName: string): SPRegistration {
+  const name = (displayName || 'Demo User').trim();
+  const parts = name.split(' ');
+  return {
+    Id: 9999,
+    Title: email || 'demo.user@deloitte.de',
+    TeilnehmerID: 7,
+    Anrede: 'Keine Angabe',
+    Vorname: parts[0] || 'Demo',
+    Nachname: parts.slice(1).join(' ') || 'User',
+    StarterType: 'Durchstarter',
+    ParticipantName: name,
+    ParticipantEmail: email || 'demo.user@deloitte.de',
+    Status: 'Angemeldet',
+    RegistrationDate: new Date(Date.now() - 3 * 86400000).toISOString(),
+    CancellationDate: '',
+    Location: 'Düsseldorf',
+    TeamId: 'demo-team-uuid-0001',
+    TeamLead: true,
+    TeamName: 'Die Schnellläufer',
+    CustomData: JSON.stringify({ demo_text: 'Demo User', demo_select: 'Vegetarisch', demo_multi: 'Gluten | Laktose', demo_checkbox: 'true' }),
+  };
+}
+
 /**
  * Baut das komplette Demo-Showcase-Set: das Hauptevent + Sub-Event(s).
  * Index 0 ist immer das Hauptevent (DEMO_SHOWCASE_ID).
@@ -236,8 +358,8 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
       ? '<p>Dies ist ein <strong>Demo-Event</strong>. Es zeigt alle Funktionen, die ein echtes Event haben kann: eigene Felder, Agenda, Transferzeiten, geteilte Kapazitäten, Team-Anmeldung, Sub-Events, Zweisprachigkeit und mehr.</p><p>Klapp die Bereiche unten auf, um die jeweiligen Funktionen auszuprobieren. <em>Es wird keine echte Anmeldung gespeichert.</em></p>'
       : '<p>This is a <strong>demo event</strong>. It showcases everything a real event can do: custom fields, agenda, transfer times, split capacity, team registration, sub-events, bilingual content and more.</p><p>Expand the sections below to try each capability. <em>No real registration is stored.</em></p>',
     maxParticipants: 50,
-    currentParticipants: 18,
-    waitlistCount: 0,
+    currentParticipants: 25,
+    waitlistCount: 2,
     waitlistEnabled: true,
     imageUrl: '',
     outlookBody: '',
@@ -248,12 +370,9 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
     allowAttendeeUpload: true,
     attendeeUploadLabel: isDe ? 'Dokument hochladen (Demo)' : 'Upload document (demo)',
     attendeeUploadHint: isDe ? 'Hier könntest du z.B. einen Nachweis hochladen.' : 'You could upload a proof document here.',
-    // Geteilte Kapazitaet (zwei Gruppen, gemeinsame Warteliste)
-    durchstarterCapacity: 25,
-    funstarterCapacity: 25,
-    splitLabelA: isDe ? 'Vormittagsgruppe' : 'Morning group',
-    splitLabelB: isDe ? 'Nachmittagsgruppe' : 'Afternoon group',
-    splitSharedWaitlist: true,
+    // v18: Standardmaessig EINE Teilnehmergruppe (keine geteilte Kapazitaet).
+    // Die „zwei Gruppen"-Funktion wird auf der Register-Seite als
+    // einklappbarer Showcase-Bereich illustriert, nicht als Live-Split.
     // Team-Anmeldung mit allen Auspraegungen
     teamRegistrationEnabled: true,
     teamSize: 4,

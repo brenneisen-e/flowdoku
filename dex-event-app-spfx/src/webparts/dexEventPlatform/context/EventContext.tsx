@@ -15,7 +15,7 @@ import { EventService, SPEvent, CustomField, SPRegistration } from '../services/
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
-import { buildDemoShowcaseEvents, isDemoShowcaseId } from '../services/demoShowcaseEvent';
+import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 
 /**
  * Organizer-Namen fuer Mail-Anreden sauber formatieren:
@@ -2380,6 +2380,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function getAllRegistrations(eventId: string): Promise<SPRegistration[]> {
+    // v18: Demo-Event → synthetische Teilnehmerliste (~25 Demo-User inkl.
+    // Team, Warteliste, Abmeldungen), damit der Admin die Teilnehmer-
+    // Verwaltung im Demo-Modus durchspielen kann.
+    if (isDemoShowcaseId(eventId)) return buildDemoRegistrations();
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return [];
     return eventService.getAllRegistrations(subsiteUrl);
@@ -2410,6 +2414,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
+    // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
+    // die UI blendet den Löschen-Button fuer das Demo-Event ohnehin aus.
+    if (isDemoShowcaseId(eventId)) return false;
     // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
     // Outlook-Kalendertermine, Subsites und Teilnehmerlisten aufgeräumt werden.

@@ -73,7 +73,7 @@ export class SharePointService {
             },
             body: JSON.stringify({
               '__metadata': { 'type': 'SP.FieldChoice' },
-              'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
+              'Choices': { 'results': ['Admin', 'Power User', 'Organizer', 'User'] },
             }),
           }
         );
@@ -109,7 +109,7 @@ export class SharePointService {
         'Title': 'Role',
         'FieldTypeKind': 6, // Choice
         'Required': true,
-        'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
+        'Choices': { 'results': ['Admin', 'Power User', 'Organizer', 'User'] },
       },
       {
         '__metadata': { 'type': 'SP.Field' },
