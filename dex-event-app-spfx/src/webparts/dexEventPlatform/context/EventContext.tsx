@@ -157,7 +157,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean }) => Promise<boolean>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -871,7 +871,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     participantFirstName?: string,
     participantLastName?: string,
     participantEmail?: string,
-    preferredStarterType?: string // B2Run: 'Durchstarter' | 'Funstarter'
+    preferredStarterType?: string, // B2Run: 'Durchstarter' | 'Funstarter'
+    // v18.13: Massenimport — pro Anmeldung Bestätigungsmail bzw. Outlook-Termin
+    // unterdrücken („stille Anmeldung").
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean }
   ): Promise<boolean> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1030,7 +1033,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Bestaetigungs-Mail und KEINEN Outlook-Termin bekommen — die
       // tatsaechlichen Teilnahme-Mails kommen pro Sub-Event.
       const suppressParentNotifications = !!event.subEventsOnlyMode;
-      if (!event.disableEmails && !suppressParentNotifications) {
+      if (!event.disableEmails && !suppressParentNotifications && !opts?.suppressMail) {
         // v8.5: Organizer-BCC-Modus auswerten. Bei 'always' immer BCC,
         // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
         // ist, bei 'never'/undefined keinen BCC.
@@ -1179,7 +1182,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
       // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
       // nicht am Parent).
-      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentNotifications) {
+      if (status !== 'Warteliste' && !event.disableOutlook && !skipOutlookForExternal && !suppressParentNotifications && !opts?.suppressOutlook) {
         eventService.queueOutlookEvent(
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));

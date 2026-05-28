@@ -217,6 +217,14 @@ export default function RegistrationPage(): React.ReactElement {
   // v18.11: „Ich nehme nicht teil"-Absage.
   const [declined, setDeclined] = React.useState(false);
   const [isDeclining, setIsDeclining] = React.useState(false);
+  // v18.13: Massenimport von Drittpersonen (nur Organizer/Admin im
+  // „Für andere registrieren"-Modus).
+  const [massImportOpen, setMassImportOpen] = React.useState(false);
+  const [massImportText, setMassImportText] = React.useState('');
+  const [massImportMode, setMassImportMode] = React.useState<'mail' | 'nomail' | 'silent'>('mail');
+  const [massImportBusy, setMassImportBusy] = React.useState(false);
+  const [massImportProgress, setMassImportProgress] = React.useState('');
+  const [massImportResult, setMassImportResult] = React.useState<{ ok: number; failed: string[] } | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   // v11.33: Submit-Overlay mit Fortschrittsanzeige (Prozent + Label).
   // Bei vielen Sub-Events / vielen Custom-Fields kann der Submit
@@ -1061,6 +1069,58 @@ export default function RegistrationPage(): React.ReactElement {
     } finally {
       setIsDeclining(false);
     }
+  };
+
+  // v18.13: Massenimport — pro Zeile eine E-Mail (optional „Name <email>"
+  // oder „email; Name"). Registriert jede Person stellvertretend; je nach
+  // Modus mit Bestätigungsmail, ohne Mail (aber Outlook) oder still
+  // (keine Mail, kein Kalendereintrag).
+  const runMassImport = async (): Promise<void> => {
+    if (!event || massImportBusy) return;
+    const lines = massImportText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const EMAIL_RE = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/;
+    const entries: Array<{ email: string; inlineName: string }> = [];
+    const seen = new Set<string>();
+    for (const line of lines) {
+      const m = line.match(EMAIL_RE);
+      if (!m) continue;
+      const em = m[1].toLowerCase();
+      if (seen.has(em)) continue;
+      seen.add(em);
+      const inlineName = line.replace(m[1], '').replace(/[<>;,]/g, ' ').trim();
+      entries.push({ email: em, inlineName });
+    }
+    if (entries.length === 0) {
+      setMassImportResult({ ok: 0, failed: [locale === 'de' ? '(keine gültigen E-Mail-Adressen gefunden)' : '(no valid email addresses found)'] });
+      return;
+    }
+    const suppressMail = massImportMode === 'nomail' || massImportMode === 'silent';
+    const suppressOutlook = massImportMode === 'silent';
+    setMassImportBusy(true);
+    setMassImportResult(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const { email: em, inlineName } = entries[i];
+      setMassImportProgress(`${i + 1} / ${entries.length} — ${em}`);
+      let first = ''; let last = '';
+      // Name bestimmen: aus der Zeile, sonst per Profil-Lookup.
+      let nameRaw = inlineName;
+      if (!nameRaw) {
+        try { const p = await searchUser(em); nameRaw = p?.displayName || ''; } catch { /* */ }
+      }
+      if (nameRaw) {
+        if (nameRaw.indexOf(',') >= 0) { const p = nameRaw.split(',').map(s => s.trim()); last = p[0] || ''; first = p[1] || ''; }
+        else { const p = nameRaw.split(/\s+/).filter(Boolean); first = p[0] || ''; last = p.slice(1).join(' '); }
+      }
+      try {
+        const success = await registerForEvent(event.id, {}, first, last, em, undefined, { suppressMail, suppressOutlook });
+        if (success) ok++; else failed.push(em);
+      } catch { failed.push(em); }
+    }
+    setMassImportBusy(false);
+    setMassImportProgress('');
+    setMassImportResult({ ok, failed });
   };
 
   if (declined) {
@@ -2024,6 +2084,20 @@ export default function RegistrationPage(): React.ReactElement {
                 }}
               >
                 {registerForOther ? t('reg.registerself') : t('reg.registerother')}
+              </button>
+            )}
+            {/* v18.13: Massenimport — nur Organizer/Admin im „Für andere"-Modus. */}
+            {registerForOther && canCreateEvents && (
+              <button
+                type="button"
+                onClick={() => { setMassImportResult(null); setMassImportOpen(true); }}
+                style={{
+                  background: 'none', border: 'none', padding: '4px 12px',
+                  color: 'var(--dex-blue, #0076a8)', fontSize: '0.85rem',
+                  textDecoration: 'underline', cursor: 'pointer', fontWeight: 600,
+                }}
+              >
+                {locale === 'de' ? 'Massenimport' : 'Bulk import'}
               </button>
             )}
           </div>
@@ -3129,6 +3203,88 @@ export default function RegistrationPage(): React.ReactElement {
       )}
 
       {/* v9.22: Modal fuer externe Email-Anmeldung */}
+      {/* v18.13: Massenimport-Modal. */}
+      {massImportOpen && (
+        <Modal
+          open={massImportOpen}
+          onClose={() => { if (!massImportBusy) setMassImportOpen(false); }}
+          maxWidth={600}
+          padding={24}
+          dismissable={!massImportBusy}
+          ariaLabel={locale === 'de' ? 'Teilnehmer-Massenimport' : 'Bulk participant import'}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+            {locale === 'de' ? 'Teilnehmer-Massenimport' : 'Bulk participant import'}
+          </h3>
+          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {locale === 'de'
+              ? <>Eine <strong>E-Mail-Adresse pro Zeile</strong> einfügen (optional &bdquo;Name &lt;mail&gt;&ldquo; oder &bdquo;mail; Name&ldquo;). Die Personen werden stellvertretend für dieses Event angemeldet.</>
+              : <>Paste <strong>one email address per line</strong> (optionally &bdquo;Name &lt;mail&gt;&ldquo; or &bdquo;mail; Name&ldquo;). The people are registered for this event on their behalf.</>}
+          </p>
+          <textarea
+            className="form-input"
+            value={massImportText}
+            onChange={e => setMassImportText(e.target.value)}
+            disabled={massImportBusy}
+            rows={7}
+            placeholder={'max.mustermann@deloitte.de\nerika.musterfrau@deloitte.de'}
+            style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }}
+          />
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+              {locale === 'de' ? 'Benachrichtigung' : 'Notification'}
+            </div>
+            {([
+              { v: 'mail', de: 'Bestätigungsmail senden (+ Outlook-Termin)', en: 'Send confirmation email (+ Outlook invite)' },
+              { v: 'nomail', de: 'Ohne Bestätigungsmail (aber Outlook-Termin)', en: 'No confirmation email (but Outlook invite)' },
+              { v: 'silent', de: 'Stille Anmeldung (keine Mail, kein Kalendereintrag)', en: 'Silent registration (no email, no calendar invite)' },
+            ] as const).map(opt => (
+              <label key={opt.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="massImportMode"
+                  checked={massImportMode === opt.v}
+                  onChange={() => setMassImportMode(opt.v)}
+                  disabled={massImportBusy}
+                />
+                {locale === 'de' ? opt.de : opt.en}
+              </label>
+            ))}
+          </div>
+          {massImportBusy && (
+            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+              {locale === 'de' ? 'Import läuft…' : 'Importing…'} {massImportProgress}
+            </div>
+          )}
+          {massImportResult && (
+            <div style={{
+              marginTop: 12, padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem',
+              background: massImportResult.failed.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)',
+              border: `1px solid ${massImportResult.failed.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
+              color: 'var(--dex-gray-700)', lineHeight: 1.5,
+            }}>
+              {locale === 'de'
+                ? <><strong>{massImportResult.ok}</strong> Person(en) angemeldet.</>
+                : <><strong>{massImportResult.ok}</strong> person(s) registered.</>}
+              {massImportResult.failed.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {locale === 'de' ? 'Nicht angemeldet (bereits angemeldet / Fehler): ' : 'Not registered (already registered / error): '}
+                  {massImportResult.failed.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setMassImportOpen(false)} disabled={massImportBusy}>
+              {massImportResult ? (locale === 'de' ? 'Schließen' : 'Close') : (locale === 'de' ? 'Abbrechen' : 'Cancel')}
+            </button>
+            <button className="btn btn-primary" onClick={runMassImport} disabled={massImportBusy || !massImportText.trim()}>
+              {massImportBusy ? (locale === 'de' ? 'Läuft…' : 'Running…') : (locale === 'de' ? 'Importieren' : 'Import')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {externalEmailWarning && (
         <Modal
           open={externalEmailWarning}
