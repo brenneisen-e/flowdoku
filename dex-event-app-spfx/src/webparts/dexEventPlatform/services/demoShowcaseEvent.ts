@@ -223,14 +223,13 @@ export function buildDemoRegistrations(): SPRegistration[] {
     d.setHours(hour, 0, 0, 0);
     return d.toISOString();
   };
-  const teamId = 'demo-team-uuid-0001';
   let tid = 1;
-  // 20 Angemeldete (inkl. 4er-Team), abwechselnd Gruppe A/B, mit Custom-Data.
+  // 20 Angemeldete, abwechselnd Gruppe A/B, mit Custom-Data. v18.6: keine
+  // Team-Zuordnung mehr (Team-Anmeldung im Demo deaktiviert).
   for (let i = 0; i < 20; i++) {
     const first = DEMO_FIRST_NAMES[i % DEMO_FIRST_NAMES.length];
     const last = DEMO_LAST_NAMES[i % DEMO_LAST_NAMES.length];
     const email = `${first.toLowerCase()}.${last.toLowerCase().replace(/[äöü]/g, m => ({ ä: 'ae', ö: 'oe', ü: 'ue' }[m] || m))}@deloitte.de`;
-    const isTeam = i < 4; // erste 4 = ein Team
     const starter = i % 2 === 0 ? 'Durchstarter' : 'Funstarter';
     rows.push({
       Id: 1000 + i,
@@ -246,7 +245,6 @@ export function buildDemoRegistrations(): SPRegistration[] {
       RegistrationDate: mkDate(i),
       CancellationDate: '',
       Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
-      ...(isTeam ? { TeamId: teamId, TeamLead: i === 0, TeamName: 'Die Schnellläufer' } : {}),
       CustomData: JSON.stringify({
         demo_select: i % 3 === 0 ? 'Vegetarisch' : i % 3 === 1 ? 'Fleisch' : 'Vegan',
         demo_checkbox: 'true',
@@ -319,9 +317,6 @@ export function buildDemoMyRegistration(email: string, displayName: string): SPR
     RegistrationDate: new Date(Date.now() - 3 * 86400000).toISOString(),
     CancellationDate: '',
     Location: 'Düsseldorf',
-    TeamId: 'demo-team-uuid-0001',
-    TeamLead: true,
-    TeamName: 'Die Schnellläufer',
     CustomData: JSON.stringify({ demo_text: 'Demo User', demo_select: 'Vegetarisch', demo_multi: 'Gluten | Laktose', demo_checkbox: 'true' }),
   };
 }
@@ -373,13 +368,9 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
     // v18: Standardmaessig EINE Teilnehmergruppe (keine geteilte Kapazitaet).
     // Die „zwei Gruppen"-Funktion wird auf der Register-Seite als
     // einklappbarer Showcase-Bereich illustriert, nicht als Live-Split.
-    // Team-Anmeldung mit allen Auspraegungen
-    teamRegistrationEnabled: true,
-    teamSize: 4,
-    askTeamName: true,
-    teamPartialAllowed: true,
-    teamOpenSlotsVisible: true,
-    teamJoinRequiresApproval: false,
+    // v18.6: Team-Anmeldung im Demo-Event deaktiviert (auf Wunsch — keine
+    // Teams im Demo).
+    teamRegistrationEnabled: false,
     // Sub-Event-Bezeichnung
     childEventTermSingular: isDe ? 'Sub-Event' : 'Sub-event',
     childEventTermPlural: isDe ? 'Sub-Events' : 'Sub-events',

@@ -459,7 +459,9 @@ export default function EventCreationPage(): React.ReactElement {
     () => (roles || []).filter(r => r.isPowerUser),
     [roles]
   );
-  const [powerUserHintDismissed, setPowerUserHintDismissed] = React.useState(false);
+  // v18.6: Power-User-Hilfe als zugeklappter „?"-Ball unten rechts —
+  // Klick klappt das Panel auf, X klappt es wieder zum Ball zu.
+  const [powerUserHelpOpen, setPowerUserHelpOpen] = React.useState(false);
   // v13.0: Frühe Permission-Prüfung — vorher konnte ein Demo-User die
   // Seite öffnen und das Save würde erst beim SP-Write scheitern. Mit
   // Guard zurück zur Start-Seite, falls keine Organizer-Rechte.
@@ -11759,74 +11761,96 @@ export default function EventCreationPage(): React.ReactElement {
           Mit Gruppen, Mit Sub-Event, Mit Sub-Event + Team. Klick auf
           eine Karte schliesst das Modal und fuellt das Formular mit
           der jeweiligen Variante. */}
-      {/* v18.4: Power-User-Hilfe-Layover unten rechts — nur auf Wizard-Seite 1
-          (Grundlagen), schliessbar. Zeigt den Self-Service-Hinweis + die
-          Power User (Experten-Organizer) mit Foto + Name als Ansprechpartner. */}
-      {currentStep === 0 && !powerUserHintDismissed && powerUsers.length > 0 && (
-        <div style={{
-          position: 'fixed', right: 20, bottom: 20, zIndex: 1400,
-          width: 'min(360px, calc(100vw - 40px))',
-          background: '#fff', borderRadius: 'var(--dex-radius-lg, 16px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
-          border: '1px solid var(--dex-gray-200)',
-          overflow: 'hidden',
-          animation: 'dexBannerSlideIn 0.35s ease-out',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '12px 16px', background: 'rgba(0,118,168,0.08)',
-            borderBottom: '1px solid var(--dex-gray-200)',
-          }}>
-            <Icon iconName="Help" style={{ fontSize: 18, color: 'var(--dex-blue, #0076a8)' }} />
-            <strong style={{ flex: 1, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Brauchst du Hilfe?' : 'Need help?'}
-            </strong>
-            <button
-              type="button"
-              onClick={() => setPowerUserHintDismissed(true)}
-              aria-label={isDe ? 'Schließen' : 'Close'}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', padding: 2, display: 'inline-flex' }}
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div style={{ padding: '14px 16px' }}>
-            <p style={{ margin: '0 0 12px', fontSize: '0.83rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
-              {isDe
-                ? <>DEX ist als <strong>Self-Service</strong> gedacht und versucht, möglichst selbsterklärend zu sein. Wenn du trotzdem mal nicht weiterkommst oder etwas nicht verstehst, wende dich gern an unsere <strong>Power User</strong>:</>
-                : <>DEX is designed as <strong>self-service</strong> and tries to be as self-explanatory as possible. If you do get stuck or something is unclear, feel free to reach out to our <strong>power users</strong>:</>}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {powerUsers.map(pu => {
-                // Name aus „Nachname, Vorname" → „Vorname Nachname".
-                const parts = (pu.userName || '').split(',').map(s => s.trim());
-                const displayName = parts.length === 2 ? `${parts[1]} ${parts[0]}` : (pu.userName || pu.userEmail);
-                const photoUrl = `${siteUrl}/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(pu.userEmail)}&size=M`;
-                return (
-                  <a
-                    key={pu.id}
-                    href={`mailto:${pu.userEmail}`}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
-                      padding: '6px 8px', borderRadius: 'var(--dex-radius, 12px)',
-                      border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-800)',
-                    }}
-                  >
-                    <img
-                      src={photoUrl}
-                      alt={displayName}
-                      style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--dex-gray-100)' }}
-                      onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
-                    />
-                    <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</span>
-                      <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-blue, #0076a8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pu.userEmail}</span>
-                    </span>
-                  </a>
-                );
-              })}
+      {/* v18.6: Power-User-Hilfe als „?"-Ball unten rechts (nur auf Wizard-
+          Seite 1, nur wenn Power User existieren). Klick auf den Ball klappt
+          das Panel mit dem Self-Service-Hinweis + den Power-User-Kontakten
+          auf; X (oder erneuter Ball-Klick) klappt es wieder zu. */}
+      {currentStep === 0 && powerUsers.length > 0 && (
+        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+          {powerUserHelpOpen && (
+            <div style={{
+              width: 'min(360px, calc(100vw - 40px))',
+              background: '#fff', borderRadius: 'var(--dex-radius-lg, 16px)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
+              border: '1px solid var(--dex-gray-200)',
+              overflow: 'hidden',
+              animation: 'dexBannerSlideIn 0.25s ease-out',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '12px 16px', background: 'rgba(0,118,168,0.08)',
+                borderBottom: '1px solid var(--dex-gray-200)',
+              }}>
+                <Icon iconName="Help" style={{ fontSize: 18, color: 'var(--dex-blue, #0076a8)' }} />
+                <strong style={{ flex: 1, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+                  {isDe ? 'Brauchst du Hilfe?' : 'Need help?'}
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => setPowerUserHelpOpen(false)}
+                  aria-label={isDe ? 'Schließen' : 'Close'}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', padding: 2, display: 'inline-flex' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div style={{ padding: '14px 16px' }}>
+                <p style={{ margin: '0 0 12px', fontSize: '0.83rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+                  {isDe
+                    ? <>DEX ist als <strong>Self-Service</strong> gedacht und versucht, möglichst selbsterklärend zu sein. Wenn du trotzdem mal nicht weiterkommst oder etwas nicht verstehst, wende dich gern an unsere <strong>Power User</strong>:</>
+                    : <>DEX is designed as <strong>self-service</strong> and tries to be as self-explanatory as possible. If you do get stuck or something is unclear, feel free to reach out to our <strong>power users</strong>:</>}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {powerUsers.map(pu => {
+                    // Name aus „Nachname, Vorname" → „Vorname Nachname".
+                    const parts = (pu.userName || '').split(',').map(s => s.trim());
+                    const displayName = parts.length === 2 ? `${parts[1]} ${parts[0]}` : (pu.userName || pu.userEmail);
+                    const photoUrl = `${siteUrl}/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(pu.userEmail)}&size=M`;
+                    return (
+                      <a
+                        key={pu.id}
+                        href={`mailto:${pu.userEmail}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+                          padding: '6px 8px', borderRadius: 'var(--dex-radius, 12px)',
+                          border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-800)',
+                        }}
+                      >
+                        <img
+                          src={photoUrl}
+                          alt={displayName}
+                          style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--dex-gray-100)' }}
+                          onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                        />
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</span>
+                          <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-blue, #0076a8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pu.userEmail}</span>
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+          {/* Runder „?"-Ball — toggelt das Panel. */}
+          <button
+            type="button"
+            onClick={() => setPowerUserHelpOpen(o => !o)}
+            aria-label={isDe ? 'Hilfe: Power User kontaktieren' : 'Help: contact power users'}
+            aria-expanded={powerUserHelpOpen}
+            title={isDe ? 'Brauchst du Hilfe? Power User kontaktieren' : 'Need help? Contact power users'}
+            style={{
+              width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--dex-blue, #0076a8)', color: '#fff',
+              border: 'none', cursor: 'pointer', alignSelf: 'flex-end',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.6rem', fontWeight: 700, lineHeight: 1,
+            }}
+          >
+            {powerUserHelpOpen ? <X size={24} /> : '?'}
+          </button>
         </div>
       )}
 
