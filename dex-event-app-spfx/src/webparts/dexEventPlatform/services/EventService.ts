@@ -5255,8 +5255,23 @@ export class EventService {
     const inc = Math.max(1, Math.floor(count));
     const field = this.seatFieldFor(group);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    // v18.8 (Überbuchungs-Fix): Der Counter allein ist NICHT verlässlich.
+    // Der Power-Automate-Nachrück-Flow promotet Warteliste→Angemeldet, ohne
+    // SeatsTaken zu erhöhen; läuft der app-seitige syncSeatsToActiveCount
+    // zeitlich VOR dieser asynchronen Promotion, steht der Counter unter dem
+    // echten Aktiv-Bestand. Folge (real beobachtet): trotz voller Warteliste
+    // sah der nächste Registrant einen Phantom-Platz und überbuchte. Deshalb
+    // lesen wir EINMAL pro Aufruf den echten Aktiv-Bestand der Gruppe und
+    // floor-en den Counter-Wert dagegen (max). Das schließt die Drift-Lücke,
+    // erhält die atomare CAS-Serialisierung paralleler Anmeldungen UND heilt
+    // den Counter nach oben. Bei Lesefehler (Throttling): kein Floor (-1) →
+    // Fallback auf reines Counter-Verhalten, nicht schlechter als vorher.
+    let realActive = -1;
+    try {
+      const rc = await this.getActiveCounts(subsiteUrl);
+      realActive = group === 'Durchstarter' ? rc.durch : group === 'Funstarter' ? rc.fun : rc.total;
+    } catch { realActive = -1; }
     const MAX_RETRIES = 40;
-    let triedSeed = false;
     let triedLazyCreate = false;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let getResp: SPHttpClientResponse;
@@ -5279,17 +5294,17 @@ export class EventService {
       const rawVal = data?.[field] ?? data?.d?.[field];
       let current: number;
       if (rawVal === null || rawVal === undefined) {
-        // Feld noch nie initialisiert → einmalig aus echtem Bestand seeden.
-        if (triedSeed) { current = 0; } else {
-          triedSeed = true;
-          try {
-            const counts = await this.getActiveCounts(subsiteUrl);
-            current = group === 'Durchstarter' ? counts.durch : group === 'Funstarter' ? counts.fun : counts.total;
-          } catch { current = 0; }
-        }
+        // Feld noch nie initialisiert → aus echtem Bestand seeden. v18.8:
+        // den bereits oben gelesenen realActive wiederverwenden (kein zweiter
+        // getActiveCounts-Roundtrip); nur falls der Read fehlschlug (-1),
+        // konservativ auf 0.
+        current = realActive >= 0 ? realActive : 0;
       } else {
         current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
       }
+      // v18.8: gegen echten Aktiv-Bestand floor-en (siehe Kommentar oben) —
+      // fängt eine durch den Nachrück-Flow nach unten gedriftete Zählung ab.
+      if (realActive >= 0 && realActive > current) current = realActive;
       // v11.82: Team-Anmeldungen reservieren N Plaetze atomar. Wenn nicht alle
       // N in dieselbe Gruppe passen, schlaegt die Reservierung als „full" fehl —
       // der Aufrufer setzt das gesamte Team auf Warteliste (kein Teil-Team
