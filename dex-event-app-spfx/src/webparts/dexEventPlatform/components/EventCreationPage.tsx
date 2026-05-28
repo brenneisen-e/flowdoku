@@ -11444,7 +11444,7 @@ export default function EventCreationPage(): React.ReactElement {
                 }));
               }
             }}
-            previewMode={(isOutlook || isDescription) ? 'outlook' : 'email'}
+            previewMode={isDescription ? 'plain' : (isOutlook ? 'outlook' : 'email')}
             emailSubject={(!isOutlook && !isDescription) ? currentSubject : undefined}
             onEmailSubjectChange={(!isOutlook && !isDescription) ? (s) => setEmailTemplateOverrides(prev => ({
               ...prev,

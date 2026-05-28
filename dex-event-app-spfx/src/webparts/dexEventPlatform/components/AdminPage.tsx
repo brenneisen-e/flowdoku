@@ -8150,13 +8150,13 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   return (
     <div style={{
       position: 'fixed',
-      // v17.17: Buttons auf die LINKE Seite des Contents — vorher rechts,
-      // wo sie mit den Action-Buttons der Teilnehmer-Zeilen (Bearbeiten/
-      // Einchecken/Abmelden) ueberlappt haben. Links ist die Spalte # /
-      // Vorname, da gibt's keine ueberlappenden Action-Buttons.
-      left: 'max(20px, calc(50vw - 600px - 8px))',
+      // v18: Buttons horizontal ZENTRIERT ueber dem Content (vorher links am
+      // Rand „im Raum haengend"). Als Zeile nebeneinander, mittig unten —
+      // liegt damit in der horizontalen Mitte der Teilnehmer-Tabelle /
+      // Spaltenueberschriften statt am Seitenrand.
+      left: '50%', transform: 'translateX(-50%)',
       bottom: 20, zIndex: 900,
-      display: 'flex', flexDirection: 'column', gap: 8,
+      display: 'flex', flexDirection: 'row', gap: 8,
     }}>
       {hasWaitlist && (
         <button
