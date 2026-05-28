@@ -213,6 +213,17 @@ const DEMO_FIRST_NAMES = ['Anna', 'Ben', 'Clara', 'David', 'Eva', 'Felix', 'Gret
 const DEMO_LAST_NAMES = ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Schulz', 'Hoffmann', 'Koch', 'Bauer', 'Richter', 'Klein', 'Wolf', 'Schröder', 'Neumann', 'Braun', 'Werner', 'Krüger', 'Hofmann', 'Hartmann', 'Lange', 'Schmitt', 'Krause', 'Meier'];
 const DEMO_LOCATIONS = ['Düsseldorf', 'München', 'Berlin', 'Hamburg', 'Frankfurt', 'Stuttgart', 'Köln'];
 
+const UMLAUT_MAP: Record<string, string> = { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' };
+function demoFirst(idx: number): string { return DEMO_FIRST_NAMES[idx % DEMO_FIRST_NAMES.length]; }
+function demoLast(idx: number): string { return DEMO_LAST_NAMES[idx % DEMO_LAST_NAMES.length]; }
+function demoName(idx: number): string { return `${demoFirst(idx)} ${demoLast(idx)}`; }
+function demoEmail(idx: number): string {
+  return `${demoFirst(idx).toLowerCase()}.${demoLast(idx).toLowerCase().replace(/[äöüß]/g, m => UMLAUT_MAP[m] || m)}@deloitte.de`;
+}
+// People-Picker-Wert im Format „Name <email>" (so erwartet es die App +
+// die Roommate-Match-Logik in AdminPage).
+function pickerValue(idx: number): string { return `${demoName(idx)} <${demoEmail(idx)}>`; }
+
 export function buildDemoRegistrations(): SPRegistration[] {
   const rows: SPRegistration[] = [];
   const baseDate = new Date();
@@ -223,72 +234,105 @@ export function buildDemoRegistrations(): SPRegistration[] {
     d.setHours(hour, 0, 0, 0);
     return d.toISOString();
   };
+  // Roommate-Paare (gegenseitig → „Match"). Nur gerade Indizes (die haben
+  // Hotel=true, daher ist das showIf-abhaengige Roommate-Feld sichtbar):
+  // 0↔2, 4↔6, 8↔10, 12↔14, 16↔18.
+  const roommatePartner = (i: number): number => ((i / 2) % 2 === 0 ? i + 2 : i - 2);
+  const MEALS = ['Vegetarisch', 'Fleisch', 'Vegan'];
+  const ALLERGIES = [['Gluten', 'Laktose'], [], ['Nuesse'], ['Meeresfruechte', 'Gluten']];
+  const RUN_LEVELS = ['Anfaenger:in', 'Fortgeschritten', 'Profi'];
+
   let tid = 1;
-  // 20 Angemeldete, abwechselnd Gruppe A/B, mit Custom-Data. v18.6: keine
-  // Team-Zuordnung mehr (Team-Anmeldung im Demo deaktiviert).
+  // 20 Angemeldete (= voll bei maxParticipants 20), abwechselnd Gruppe A/B,
+  // ALLE Custom-Fields mit Demo-Daten befuellt.
   for (let i = 0; i < 20; i++) {
-    const first = DEMO_FIRST_NAMES[i % DEMO_FIRST_NAMES.length];
-    const last = DEMO_LAST_NAMES[i % DEMO_LAST_NAMES.length];
-    const email = `${first.toLowerCase()}.${last.toLowerCase().replace(/[äöü]/g, m => ({ ä: 'ae', ö: 'oe', ü: 'ue' }[m] || m))}@deloitte.de`;
-    const starter = i % 2 === 0 ? 'Durchstarter' : 'Funstarter';
-    rows.push({
+    const starter = i % 2 === 0 ? 'Durchstarter' : 'Funstarter'; // gerade = Gruppe A
+    const hotel = i % 2 === 0; // gerade Indizes brauchen Hotel → Roommate sichtbar
+    const cd: Record<string, string> = {
+      demo_text: demoFirst(i), // Wunschname auf dem Badge
+      demo_select: MEALS[i % MEALS.length], // Essenspraeferenz
+      demo_multi: ALLERGIES[i % ALLERGIES.length].join(' | '), // Allergien (Multi)
+      demo_number: String(i % 3), // Anzahl Begleitpersonen (0..2)
+      demo_checkbox: 'true', // Teilnahmebedingungen
+      demo_hotel: hotel ? 'true' : 'false', // Hotel benoetigt?
+      demo_user: pickerValue((i + 3) % 20), // Ansprechpartner:in im Team
+    };
+    // Roommate nur wenn Hotel benoetigt (showIf demo_hotel=true) → gegenseitig.
+    if (hotel) cd.demo_roommate = pickerValue(roommatePartner(i));
+    // Gruppen-A-Feld (Lauferfahrung) nur fuer Durchstarter.
+    if (starter === 'Durchstarter') cd.demo_group_a_field = RUN_LEVELS[i % RUN_LEVELS.length];
+
+    const row: SPRegistration = {
       Id: 1000 + i,
-      Title: email,
+      Title: demoEmail(i),
       TeilnehmerID: tid++,
       Anrede: i % 3 === 0 ? 'Frau' : i % 3 === 1 ? 'Herr' : 'Divers',
-      Vorname: first,
-      Nachname: last,
+      Vorname: demoFirst(i),
+      Nachname: demoLast(i),
       StarterType: starter,
-      ParticipantName: `${first} ${last}`,
-      ParticipantEmail: email,
+      ParticipantName: demoName(i),
+      ParticipantEmail: demoEmail(i),
       Status: 'Angemeldet',
       RegistrationDate: mkDate(i),
       CancellationDate: '',
       Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
+      CustomData: JSON.stringify(cd),
+    };
+    // „Registriert von" demonstrieren: eine Anmeldung stellvertretend durch
+    // einen Organizer angelegt.
+    if (i === 5) { row.RegisteredByName = 'Beispiel, Anna'; row.RegisteredByEmail = 'anna.beispiel@deloitte.de'; }
+    // Nachrueck-Audit demonstrieren: die letzten zwei Aktiven sind von der
+    // Warteliste nachgerueckt und haben je eine abgemeldete Person ersetzt.
+    if (i === 18) { row.PromotedDate = mkDate(17); row.ReplacedParticipantEmail = demoEmail(22); }
+    if (i === 19) { row.PromotedDate = mkDate(18); row.ReplacedParticipantEmail = demoEmail(23); }
+    rows.push(row);
+  }
+  // 2 Warteliste-Eintraege (konsistent: Event ist mit 20/20 voll), ebenfalls
+  // mit Custom-Daten gefuellt.
+  for (let k = 0; k < 2; k++) {
+    const i = 20 + k;
+    rows.push({
+      Id: 2000 + k,
+      Title: demoEmail(i),
+      TeilnehmerID: tid++,
+      Anrede: 'Keine Angabe',
+      Vorname: demoFirst(i),
+      Nachname: demoLast(i),
+      PreferredStarterType: k % 2 === 0 ? 'Durchstarter' : 'Funstarter',
+      ParticipantName: demoName(i),
+      ParticipantEmail: demoEmail(i),
+      Status: 'Warteliste',
+      RegistrationDate: mkDate(20 + k),
+      CancellationDate: '',
+      Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
       CustomData: JSON.stringify({
-        demo_select: i % 3 === 0 ? 'Vegetarisch' : i % 3 === 1 ? 'Fleisch' : 'Vegan',
+        demo_text: demoFirst(i),
+        demo_select: MEALS[i % MEALS.length],
         demo_checkbox: 'true',
+        demo_hotel: 'false',
+        demo_user: pickerValue((i + 1) % 20),
       }),
     });
   }
-  // 2 Warteliste-Eintraege.
-  for (let i = 0; i < 2; i++) {
-    const first = DEMO_FIRST_NAMES[(20 + i) % DEMO_FIRST_NAMES.length];
-    const last = DEMO_LAST_NAMES[(20 + i) % DEMO_LAST_NAMES.length];
-    const email = `${first.toLowerCase()}.${last.toLowerCase()}@deloitte.de`;
-    rows.push({
-      Id: 2000 + i,
-      Title: email,
-      TeilnehmerID: tid++,
-      Vorname: first,
-      Nachname: last,
-      ParticipantName: `${first} ${last}`,
-      ParticipantEmail: email,
-      Status: 'Warteliste',
-      RegistrationDate: mkDate(20 + i),
-      CancellationDate: '',
-      Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
-      CustomData: '{}',
-    });
-  }
-  // 3 Abgemeldete.
-  for (let i = 0; i < 3; i++) {
-    const first = DEMO_FIRST_NAMES[(22 + i) % DEMO_FIRST_NAMES.length];
-    const last = DEMO_LAST_NAMES[(22 + i) % DEMO_LAST_NAMES.length];
-    const email = `${first.toLowerCase()}.${last.toLowerCase()}@deloitte.de`;
-    rows.push({
-      Id: 3000 + i,
-      Title: email,
-      Vorname: first,
-      Nachname: last,
-      ParticipantName: `${first} ${last}`,
-      ParticipantEmail: email,
+  // 3 Abgemeldete — zwei davon wurden durch die Nachruecker (i=18/19) ersetzt.
+  for (let k = 0; k < 3; k++) {
+    const i = 22 + k;
+    const row: SPRegistration = {
+      Id: 3000 + k,
+      Title: demoEmail(i),
+      Vorname: demoFirst(i),
+      Nachname: demoLast(i),
+      ParticipantName: demoName(i),
+      ParticipantEmail: demoEmail(i),
       Status: 'Abgemeldet',
-      RegistrationDate: mkDate(i),
-      CancellationDate: mkDate(15 + i),
+      RegistrationDate: mkDate(k),
+      CancellationDate: mkDate(15 + k),
       Location: DEMO_LOCATIONS[i % DEMO_LOCATIONS.length],
       CustomData: '{}',
-    });
+    };
+    if (k === 0) row.ReplacedByParticipantEmail = demoEmail(18);
+    if (k === 1) row.ReplacedByParticipantEmail = demoEmail(19);
+    rows.push(row);
   }
   return rows;
 }
@@ -352,8 +396,10 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
     description: isDe
       ? '<p>Dies ist ein <strong>Demo-Event</strong>. Es zeigt alle Funktionen, die ein echtes Event haben kann: eigene Felder, Agenda, Transferzeiten, geteilte Kapazitäten, Team-Anmeldung, Sub-Events, Zweisprachigkeit und mehr.</p><p>Klapp die Bereiche unten auf, um die jeweiligen Funktionen auszuprobieren. <em>Es wird keine echte Anmeldung gespeichert.</em></p>'
       : '<p>This is a <strong>demo event</strong>. It showcases everything a real event can do: custom fields, agenda, transfer times, split capacity, team registration, sub-events, bilingual content and more.</p><p>Expand the sections below to try each capability. <em>No real registration is stored.</em></p>',
-    maxParticipants: 50,
-    currentParticipants: 25,
+    // v18.7: Kapazität 20 → 20 Angemeldete (voll) + 2 Warteliste sind damit
+    // konsistent (vorher 50/20/2 = unstimmig).
+    maxParticipants: 20,
+    currentParticipants: 20,
     waitlistCount: 2,
     waitlistEnabled: true,
     imageUrl: '',
