@@ -164,7 +164,7 @@ interface EventContextType {
   registerTeam: (
     eventId: string,
     leadData: { firstName: string; lastName: string; email: string; salutation?: string; customData: Record<string, string>; preferredStarterType?: string },
-    members: Array<{ email: string; displayName: string }>,
+    members: Array<{ email: string; displayName: string; customData?: Record<string, string> }>,
     teamName: string | undefined
   ) => Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — fuer das
@@ -1223,7 +1223,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       customData: Record<string, string>;
       preferredStarterType?: string;
     },
-    members: Array<{ email: string; displayName: string }>,
+    members: Array<{ email: string; displayName: string; customData?: Record<string, string> }>,
     teamName: string | undefined
   ): Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
@@ -1345,7 +1345,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           teamId,
           teamLead: false,
           teamName,
-          customData: {},
+          // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspraeferenz).
+          customData: m.customData || {},
           customFieldMap: fieldMap,
           starterType: effectiveStarterType,
           preferredStarterType: leadData.preferredStarterType,
