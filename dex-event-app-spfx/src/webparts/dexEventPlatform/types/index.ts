@@ -102,6 +102,11 @@ export interface DeloitteEvent {
    *  + die einklappbaren Bereiche auf der Register-Seite und blockt einen
    *  echten Submit. Existiert nie in SharePoint. */
   isDemoShowcase?: boolean;
+  /** v18.9: Wenn true, werden die Organizer-Chips (Name + Foto) auf der
+   *  Anmelde-Seite und in „Meine Events" NICHT angezeigt. Rein visuell —
+   *  Organizer-Rechte, Mails und BCC bleiben unberührt. Persistiert als
+   *  Piggyback `_hideOrganizer` in EmailTemplateOverrides. */
+  hideOrganizer?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

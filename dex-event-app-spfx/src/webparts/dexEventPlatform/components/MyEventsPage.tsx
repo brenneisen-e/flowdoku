@@ -1694,8 +1694,8 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
 
-                    {/* Organizer mit Foto (Hover vergroessert) */}
-                    {event.organizers.length > 0 && (
+                    {/* Organizer mit Foto (Hover vergroessert). v18.9: optional ausgeblendet. */}
+                    {!event.hideOrganizer && event.organizers.length > 0 && (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
                         <OrganizerList

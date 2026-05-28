@@ -1067,6 +1067,8 @@ export default function RegistrationPage(): React.ReactElement {
           <h2 style={{ marginTop: 0 }}>{successHeadline}</h2>
           <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
           {(() => {
+            // v18.9: Organizer-Anzeige optional ausgeblendet.
+            if (event.hideOrganizer) return null;
             // Organizer als Chips mit Foto (gleicher Stil wie auf der
             // Anmelde-Seite). „Nachname, Vorname" → „Vorname Nachname".
             const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
@@ -1483,6 +1485,8 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
               {(() => {
+                // v18.9: Organizer-Anzeige optional ausgeblendet.
+                if (event.hideOrganizer) return null;
                 // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
                 // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
                 const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {

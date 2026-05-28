@@ -666,6 +666,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._subEventsOnlyMode);
         } catch { return false; }
       })(),
+      // v18.9: Organizer-Anzeige ausblenden (Piggyback _hideOrganizer).
+      hideOrganizer: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._hideOrganizer);
+        } catch { return false; }
+      })(),
       childEventTermSingular: ((): string | undefined => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
