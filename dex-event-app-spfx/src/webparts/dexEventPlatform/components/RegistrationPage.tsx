@@ -1573,12 +1573,12 @@ export default function RegistrationPage(): React.ReactElement {
             // damit Formatierung wie Listen, Links, Fett etc. funktioniert.
             // Die Description kommt aus dem eigenen Tenant — sicherer Origin.
             <div
+              className="dex-event-desc"
               style={{
-                padding: '12px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+                padding: '12px 16px', color: 'var(--dex-gray-700)',
                 background: 'var(--dex-gray-50)', borderRadius: '0 0 var(--dex-radius) var(--dex-radius)',
                 borderTop: '1px solid var(--dex-gray-200)',
                 wordBreak: 'break-word',
-                lineHeight: 1.55,
               }}
               dangerouslySetInnerHTML={{
                 __html: (() => {
