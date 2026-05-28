@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Trash2, Send } from './Icons';
+import { Trash2, Send, X } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -217,11 +217,18 @@ export default function RegistrationPage(): React.ReactElement {
   // v18.11: „Ich nehme nicht teil"-Absage.
   const [declined, setDeclined] = React.useState(false);
   const [isDeclining, setIsDeclining] = React.useState(false);
-  // v18.13: Massenimport von Drittpersonen (nur Organizer/Admin im
-  // „Für andere registrieren"-Modus).
+  // v18.13/v18.14: Massenimport von Drittpersonen (nur Organizer/Admin im
+  // „Für andere registrieren"-Modus). Zwei Schritte: (1) Liste einfügen →
+  // gegen das Verzeichnis auflösen, (2) Vorschau-Tabelle prüfen → anmelden.
   const [massImportOpen, setMassImportOpen] = React.useState(false);
   const [massImportText, setMassImportText] = React.useState('');
   const [massImportMode, setMassImportMode] = React.useState<'mail' | 'nomail' | 'silent'>('mail');
+  const [massImportStep, setMassImportStep] = React.useState<'input' | 'preview'>('input');
+  const [massImportResolving, setMassImportResolving] = React.useState(false);
+  const [massImportRows, setMassImportRows] = React.useState<Array<{
+    email: string; firstName: string; lastName: string; jobTitle: string; location: string;
+    status: 'ok' | 'duplicate' | 'notfound'; raw: string;
+  }>>([]);
   const [massImportBusy, setMassImportBusy] = React.useState(false);
   const [massImportProgress, setMassImportProgress] = React.useState('');
   const [massImportResult, setMassImportResult] = React.useState<{ ok: number; failed: string[] } | null>(null);
@@ -1071,52 +1078,80 @@ export default function RegistrationPage(): React.ReactElement {
     }
   };
 
-  // v18.13: Massenimport — pro Zeile eine E-Mail (optional „Name <email>"
-  // oder „email; Name"). Registriert jede Person stellvertretend; je nach
-  // Modus mit Bestätigungsmail, ohne Mail (aber Outlook) oder still
-  // (keine Mail, kein Kalendereintrag).
-  const runMassImport = async (): Promise<void> => {
-    if (!event || massImportBusy) return;
+  // v18.14: Schritt 1 — eingefügte Liste gegen das Verzeichnis auflösen und
+  // eine Vorschau-Tabelle (Vorname/Nachname/Position/Standort/E-Mail) bauen.
+  // Pro Zeile: E-Mail erkennen (dann Profil-Lookup per E-Mail) ODER nur ein
+  // Name (dann Personensuche → bester Treffer). Duplikate + nicht auflösbare
+  // Zeilen werden markiert.
+  const splitName = (raw: string): { firstName: string; lastName: string } => {
+    const dn = (raw || '').trim();
+    if (!dn) return { firstName: '', lastName: '' };
+    if (dn.indexOf(',') >= 0) { const p = dn.split(',').map(s => s.trim()); return { firstName: p[1] || '', lastName: p[0] || '' }; }
+    const p = dn.split(/\s+/).filter(Boolean);
+    if (p.length <= 1) return { firstName: p[0] || '', lastName: '' };
+    return { firstName: p[0], lastName: p.slice(1).join(' ') };
+  };
+  const resolveMassImport = async (): Promise<void> => {
+    if (massImportResolving) return;
     const lines = massImportText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const EMAIL_RE = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/;
-    const entries: Array<{ email: string; inlineName: string }> = [];
+    setMassImportResolving(true);
+    const rows: typeof massImportRows = [];
     const seen = new Set<string>();
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      setMassImportProgress(`${i + 1} / ${lines.length}`);
       const m = line.match(EMAIL_RE);
-      if (!m) continue;
-      const em = m[1].toLowerCase();
-      if (seen.has(em)) continue;
-      seen.add(em);
-      const inlineName = line.replace(m[1], '').replace(/[<>;,]/g, ' ').trim();
-      entries.push({ email: em, inlineName });
+      let email = m ? m[1].toLowerCase() : '';
+      const nameRaw = line.replace(m ? m[1] : '', '').replace(/[<>;,\t]/g, ' ').trim();
+      let jobTitle = ''; let location = ''; let displayName = nameRaw;
+      if (email) {
+        // Profil per E-Mail nachschlagen (für Position + Standort + Name).
+        try { const p = await searchUser(email); if (p) { displayName = p.displayName || nameRaw; jobTitle = p.jobTitle || ''; location = p.location || ''; } } catch { /* */ }
+      } else if (nameRaw) {
+        // Kein E-Mail in der Zeile → Personensuche, besten Treffer nehmen.
+        try {
+          const results = await searchUsers(nameRaw, false);
+          if (results && results.length > 0) {
+            const best = results[0];
+            email = (best.email || '').toLowerCase();
+            displayName = best.displayName || nameRaw;
+            jobTitle = best.jobTitle || '';
+            location = best.location || '';
+          }
+        } catch { /* */ }
+      }
+      const { firstName, lastName } = splitName(displayName);
+      let status: 'ok' | 'duplicate' | 'notfound';
+      if (!email) status = 'notfound';
+      else if (seen.has(email)) status = 'duplicate';
+      else { seen.add(email); status = 'ok'; }
+      rows.push({ email, firstName, lastName, jobTitle, location, status, raw: line });
     }
-    if (entries.length === 0) {
-      setMassImportResult({ ok: 0, failed: [locale === 'de' ? '(keine gültigen E-Mail-Adressen gefunden)' : '(no valid email addresses found)'] });
-      return;
-    }
+    setMassImportRows(rows);
+    setMassImportStep('preview');
+    setMassImportResolving(false);
+    setMassImportProgress('');
+  };
+
+  // v18.14: Schritt 2 — die aufgelösten, gültigen Zeilen anmelden.
+  const runMassImport = async (): Promise<void> => {
+    if (!event || massImportBusy) return;
+    const toRegister = massImportRows.filter(r => r.status === 'ok');
+    if (toRegister.length === 0) return;
     const suppressMail = massImportMode === 'nomail' || massImportMode === 'silent';
     const suppressOutlook = massImportMode === 'silent';
     setMassImportBusy(true);
     setMassImportResult(null);
     let ok = 0;
     const failed: string[] = [];
-    for (let i = 0; i < entries.length; i++) {
-      const { email: em, inlineName } = entries[i];
-      setMassImportProgress(`${i + 1} / ${entries.length} — ${em}`);
-      let first = ''; let last = '';
-      // Name bestimmen: aus der Zeile, sonst per Profil-Lookup.
-      let nameRaw = inlineName;
-      if (!nameRaw) {
-        try { const p = await searchUser(em); nameRaw = p?.displayName || ''; } catch { /* */ }
-      }
-      if (nameRaw) {
-        if (nameRaw.indexOf(',') >= 0) { const p = nameRaw.split(',').map(s => s.trim()); last = p[0] || ''; first = p[1] || ''; }
-        else { const p = nameRaw.split(/\s+/).filter(Boolean); first = p[0] || ''; last = p.slice(1).join(' '); }
-      }
+    for (let i = 0; i < toRegister.length; i++) {
+      const r = toRegister[i];
+      setMassImportProgress(`${i + 1} / ${toRegister.length} — ${r.email}`);
       try {
-        const success = await registerForEvent(event.id, {}, first, last, em, undefined, { suppressMail, suppressOutlook });
-        if (success) ok++; else failed.push(em);
-      } catch { failed.push(em); }
+        const success = await registerForEvent(event.id, {}, r.firstName, r.lastName, r.email, undefined, { suppressMail, suppressOutlook });
+        if (success) ok++; else failed.push(r.email);
+      } catch { failed.push(r.email); }
     }
     setMassImportBusy(false);
     setMassImportProgress('');
@@ -2090,7 +2125,7 @@ export default function RegistrationPage(): React.ReactElement {
             {registerForOther && canCreateEvents && (
               <button
                 type="button"
-                onClick={() => { setMassImportResult(null); setMassImportOpen(true); }}
+                onClick={() => { setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}
                 style={{
                   background: 'none', border: 'none', padding: '4px 12px',
                   color: 'var(--dex-blue, #0076a8)', fontSize: '0.85rem',
@@ -3216,72 +3251,147 @@ export default function RegistrationPage(): React.ReactElement {
           <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
             {locale === 'de' ? 'Teilnehmer-Massenimport' : 'Bulk participant import'}
           </h3>
-          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-            {locale === 'de'
-              ? <>Eine <strong>E-Mail-Adresse pro Zeile</strong> einfügen (optional &bdquo;Name &lt;mail&gt;&ldquo; oder &bdquo;mail; Name&ldquo;). Die Personen werden stellvertretend für dieses Event angemeldet.</>
-              : <>Paste <strong>one email address per line</strong> (optionally &bdquo;Name &lt;mail&gt;&ldquo; or &bdquo;mail; Name&ldquo;). The people are registered for this event on their behalf.</>}
-          </p>
-          <textarea
-            className="form-input"
-            value={massImportText}
-            onChange={e => setMassImportText(e.target.value)}
-            disabled={massImportBusy}
-            rows={7}
-            placeholder={'max.mustermann@deloitte.de\nerika.musterfrau@deloitte.de'}
-            style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }}
-          />
-          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
-              {locale === 'de' ? 'Benachrichtigung' : 'Notification'}
-            </div>
-            {([
-              { v: 'mail', de: 'Bestätigungsmail senden (+ Outlook-Termin)', en: 'Send confirmation email (+ Outlook invite)' },
-              { v: 'nomail', de: 'Ohne Bestätigungsmail (aber Outlook-Termin)', en: 'No confirmation email (but Outlook invite)' },
-              { v: 'silent', de: 'Stille Anmeldung (keine Mail, kein Kalendereintrag)', en: 'Silent registration (no email, no calendar invite)' },
-            ] as const).map(opt => (
-              <label key={opt.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="massImportMode"
-                  checked={massImportMode === opt.v}
-                  onChange={() => setMassImportMode(opt.v)}
-                  disabled={massImportBusy}
-                />
-                {locale === 'de' ? opt.de : opt.en}
-              </label>
-            ))}
-          </div>
-          {massImportBusy && (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-              {locale === 'de' ? 'Import läuft…' : 'Importing…'} {massImportProgress}
-            </div>
-          )}
-          {massImportResult && (
-            <div style={{
-              marginTop: 12, padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem',
-              background: massImportResult.failed.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)',
-              border: `1px solid ${massImportResult.failed.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
-              color: 'var(--dex-gray-700)', lineHeight: 1.5,
-            }}>
-              {locale === 'de'
-                ? <><strong>{massImportResult.ok}</strong> Person(en) angemeldet.</>
-                : <><strong>{massImportResult.ok}</strong> person(s) registered.</>}
-              {massImportResult.failed.length > 0 && (
-                <div style={{ marginTop: 4 }}>
-                  {locale === 'de' ? 'Nicht angemeldet (bereits angemeldet / Fehler): ' : 'Not registered (already registered / error): '}
-                  {massImportResult.failed.join(', ')}
+
+          {massImportStep === 'input' && (
+            <>
+              <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {locale === 'de'
+                  ? <>Namen und/oder E-Mail-Adressen einfügen — <strong>eine Person pro Zeile</strong>. Das Tool gleicht jede Zeile mit dem Deloitte-Verzeichnis ab und zeigt dir danach eine <strong>Vorschau-Tabelle</strong> (Vorname, Nachname, Position, Standort, E-Mail) zum Prüfen, bevor angemeldet wird.</>
+                  : <>Paste names and/or email addresses — <strong>one person per line</strong>. The tool matches each line against the Deloitte directory and then shows a <strong>preview table</strong> (first name, last name, position, location, email) to review before registering.</>}
+              </p>
+              <textarea
+                className="form-input"
+                value={massImportText}
+                onChange={e => setMassImportText(e.target.value)}
+                disabled={massImportResolving}
+                rows={8}
+                placeholder={'Mustermann, Max\nerika.musterfrau@deloitte.de\nMax Mustermann; max.mustermann@deloitte.de'}
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }}
+              />
+              {massImportResolving && (
+                <div style={{ marginTop: 10, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                  {locale === 'de' ? 'Verzeichnis-Abgleich läuft…' : 'Matching against the directory…'} {massImportProgress}
                 </div>
               )}
-            </div>
+              <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-secondary" onClick={() => setMassImportOpen(false)} disabled={massImportResolving}>
+                  {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button className="btn btn-primary" onClick={resolveMassImport} disabled={massImportResolving || !massImportText.trim()}>
+                  {massImportResolving ? (locale === 'de' ? 'Wird abgeglichen…' : 'Matching…') : (locale === 'de' ? 'Abgleichen & Vorschau' : 'Match & preview')}
+                </button>
+              </div>
+            </>
           )}
-          <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setMassImportOpen(false)} disabled={massImportBusy}>
-              {massImportResult ? (locale === 'de' ? 'Schließen' : 'Close') : (locale === 'de' ? 'Abbrechen' : 'Cancel')}
-            </button>
-            <button className="btn btn-primary" onClick={runMassImport} disabled={massImportBusy || !massImportText.trim()}>
-              {massImportBusy ? (locale === 'de' ? 'Läuft…' : 'Running…') : (locale === 'de' ? 'Importieren' : 'Import')}
-            </button>
-          </div>
+
+          {massImportStep === 'preview' && (() => {
+            const okCount = massImportRows.filter(r => r.status === 'ok').length;
+            const dupCount = massImportRows.filter(r => r.status === 'duplicate').length;
+            const nfCount = massImportRows.filter(r => r.status === 'notfound').length;
+            const removeRow = (idx: number): void => setMassImportRows(prev => prev.filter((_, i) => i !== idx));
+            const tdStyle: React.CSSProperties = { padding: '6px 8px', fontSize: '0.8rem', borderBottom: '1px solid var(--dex-gray-100)' };
+            const thStyle: React.CSSProperties = { padding: '6px 8px', fontSize: '0.75rem', textAlign: 'left', color: 'var(--dex-gray-500)', borderBottom: '2px solid var(--dex-gray-200)', textTransform: 'uppercase', letterSpacing: 0.4 };
+            return (
+              <>
+                <p style={{ margin: '0 0 10px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {locale === 'de'
+                    ? <><strong>{okCount}</strong> bereit zum Anmelden{dupCount > 0 ? `, ${dupCount} Duplikat(e)` : ''}{nfCount > 0 ? `, ${nfCount} nicht gefunden` : ''}. Prüfe die Tabelle — nicht passende Zeilen kannst du entfernen.</>
+                    : <><strong>{okCount}</strong> ready to register{dupCount > 0 ? `, ${dupCount} duplicate(s)` : ''}{nfCount > 0 ? `, ${nfCount} not found` : ''}. Review the table — remove rows that don&apos;t fit.</>}
+                </p>
+                <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>{locale === 'de' ? 'Vorname' : 'First name'}</th>
+                        <th style={thStyle}>{locale === 'de' ? 'Nachname' : 'Last name'}</th>
+                        <th style={thStyle}>{locale === 'de' ? 'Position' : 'Position'}</th>
+                        <th style={thStyle}>{locale === 'de' ? 'Standort' : 'Location'}</th>
+                        <th style={thStyle}>E-Mail</th>
+                        <th style={thStyle}>{locale === 'de' ? 'Status' : 'Status'}</th>
+                        <th style={thStyle} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {massImportRows.map((r, idx) => (
+                        <tr key={`${r.email || r.raw}-${idx}`} style={{ opacity: r.status === 'ok' ? 1 : 0.6 }}>
+                          <td style={tdStyle}>{r.firstName || '–'}</td>
+                          <td style={tdStyle}>{r.lastName || '–'}</td>
+                          <td style={{ ...tdStyle, color: 'var(--dex-gray-600)' }}>{r.jobTitle || '–'}</td>
+                          <td style={{ ...tdStyle, color: 'var(--dex-gray-600)' }}>{r.location || '–'}</td>
+                          <td style={{ ...tdStyle, color: 'var(--dex-gray-600)' }}>{r.email || <span style={{ color: 'var(--dex-red, #c00)' }}>{r.raw}</span>}</td>
+                          <td style={tdStyle}>
+                            {r.status === 'ok' && <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-green-dark, #4a7c1f)' }}>{locale === 'de' ? 'OK' : 'OK'}</span>}
+                            {r.status === 'duplicate' && <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-orange-dark, #b35a00)' }}>{locale === 'de' ? 'Duplikat' : 'Duplicate'}</span>}
+                            {r.status === 'notfound' && <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-red, #c00)' }}>{locale === 'de' ? 'Nicht gefunden' : 'Not found'}</span>}
+                          </td>
+                          <td style={tdStyle}>
+                            <button type="button" onClick={() => removeRow(idx)} disabled={massImportBusy} title={locale === 'de' ? 'Zeile entfernen' : 'Remove row'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', padding: 2 }}>
+                              <X size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>
+                    {locale === 'de' ? 'Benachrichtigung' : 'Notification'}
+                  </div>
+                  {([
+                    { v: 'mail', de: 'Bestätigungsmail senden (+ Outlook-Termin)', en: 'Send confirmation email (+ Outlook invite)' },
+                    { v: 'nomail', de: 'Ohne Bestätigungsmail (aber Outlook-Termin)', en: 'No confirmation email (but Outlook invite)' },
+                    { v: 'silent', de: 'Stille Anmeldung (keine Mail, kein Kalendereintrag)', en: 'Silent registration (no email, no calendar invite)' },
+                  ] as const).map(opt => (
+                    <label key={opt.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="radio" name="massImportMode" checked={massImportMode === opt.v} onChange={() => setMassImportMode(opt.v)} disabled={massImportBusy} />
+                      {locale === 'de' ? opt.de : opt.en}
+                    </label>
+                  ))}
+                </div>
+
+                {massImportBusy && (
+                  <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                    {locale === 'de' ? 'Anmeldung läuft…' : 'Registering…'} {massImportProgress}
+                  </div>
+                )}
+                {massImportResult && (
+                  <div style={{
+                    marginTop: 12, padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem',
+                    background: massImportResult.failed.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)',
+                    border: `1px solid ${massImportResult.failed.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`,
+                    color: 'var(--dex-gray-700)', lineHeight: 1.5,
+                  }}>
+                    {locale === 'de' ? <><strong>{massImportResult.ok}</strong> Person(en) angemeldet.</> : <><strong>{massImportResult.ok}</strong> person(s) registered.</>}
+                    {massImportResult.failed.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        {locale === 'de' ? 'Nicht angemeldet (bereits angemeldet / Fehler): ' : 'Not registered (already registered / error): '}
+                        {massImportResult.failed.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  {massImportResult ? (
+                    <button className="btn btn-primary" onClick={() => setMassImportOpen(false)}>
+                      {locale === 'de' ? 'Schließen' : 'Close'}
+                    </button>
+                  ) : (
+                    <>
+                      <button className="btn btn-secondary" onClick={() => { setMassImportStep('input'); setMassImportResult(null); }} disabled={massImportBusy}>
+                        {locale === 'de' ? 'Zurück' : 'Back'}
+                      </button>
+                      <button className="btn btn-primary" onClick={runMassImport} disabled={massImportBusy || okCount === 0}>
+                        {massImportBusy ? (locale === 'de' ? 'Läuft…' : 'Running…') : (locale === 'de' ? `${okCount} anmelden` : `Register ${okCount}`)}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </Modal>
       )}
 
