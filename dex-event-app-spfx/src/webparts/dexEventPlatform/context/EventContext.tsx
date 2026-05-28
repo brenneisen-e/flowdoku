@@ -205,6 +205,9 @@ interface EventContextType {
    *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
+  /** v18.11: Proaktive Absage durch einen (noch nicht angemeldeten) Teilnehmer
+   *  — „Ich nehme nicht teil". Landet als Abgemeldet-Eintrag im Admin-Center. */
+  declineEvent: (eventId: string) => Promise<boolean>;
   /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
    *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
    *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
@@ -2374,6 +2377,49 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
   }
 
+  // v18.11: Proaktive Absage durch den eingeloggten User („Ich nehme nicht
+  // teil"). Wenn schon eine aktive/Warteliste-Anmeldung existiert, wird sie
+  // regulär abgemeldet (Seat-Sync, Mail, IDReorder laufen mit). Sonst wird
+  // eine reine Absage-Zeile (Status=Abgemeldet, Marker _declined) angelegt.
+  async function declineEvent(eventId: string): Promise<boolean> {
+    if (isDemoShowcaseId(eventId)) return true;
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+    // Name aus displayName ableiten („Nachname, Vorname" oder „Vorname Nachname").
+    const dn = (currentUserName || '').trim();
+    let firstName = ''; let lastName = '';
+    if (dn.indexOf(',') >= 0) {
+      const p = dn.split(',').map(s => s.trim());
+      lastName = p[0] || ''; firstName = p[1] || '';
+    } else {
+      const p = dn.split(/\s+/).filter(Boolean);
+      firstName = p[0] || ''; lastName = p.slice(1).join(' ');
+    }
+    const existing = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+    if (existing) {
+      // Bereits abgemeldet/abgesagt → nichts zu tun. Aktiv/Warteliste →
+      // regulärer Cancel-Pfad (gibt Sitzplatz frei, Mail, IDReorder).
+      if (existing.Status === 'Abgemeldet') return true;
+      return await cancelRegistration(eventId);
+    }
+    const ok = await eventService.declineRegistration(
+      subsiteUrl, firstName, lastName, currentUserEmail, currentUserName, currentUserEmail
+    );
+    if (ok) {
+      const event = events.find(e => e.id === eventId);
+      eventService.writeChangeLog({
+        action: 'ParticipantDeclined',
+        targetType: 'Participant',
+        targetId: currentUserEmail,
+        targetName: `${firstName} ${lastName}`.trim() || currentUserEmail,
+        eventId,
+        eventTitle: event?.title || '',
+        details: { asActor: 'self', proactiveDecline: true },
+      }).catch(() => { /* */ });
+    }
+    return ok;
+  }
+
   async function getMyRegistration(eventId: string): Promise<SPRegistration | null> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return null;
@@ -2790,6 +2836,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         decideTeamJoinRequest,
         listOpenTeamsForEvent,
         cancelRegistration,
+        declineEvent,
         cancelTeamMember,
         getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,

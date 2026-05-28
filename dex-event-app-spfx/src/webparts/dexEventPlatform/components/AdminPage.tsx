@@ -760,6 +760,9 @@ export default function AdminPage(): React.ReactElement {
   // = Reihenfolge nach TeilnehmerID asc (FIFO-Position der Warteliste).
   const [waitlistSortColumn, setWaitlistSortColumn] = React.useState<'pos' | 'vorname' | 'nachname' | 'email' | 'jobtitle' | 'location' | 'date'>('pos');
   const [waitlistSortAsc, setWaitlistSortAsc] = React.useState(true);
+  // v18.11: Sortierung der Abmeldungs-Liste (gleiche Spalten wie Teilnehmer/Warteliste).
+  const [cancelledSortColumn, setCancelledSortColumn] = React.useState<'vorname' | 'nachname' | 'email' | 'jobtitle' | 'location' | 'type' | 'date'>('date');
+  const [cancelledSortAsc, setCancelledSortAsc] = React.useState(false);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
   const [isResettingCounter, setIsResettingCounter] = React.useState(false);
@@ -6347,27 +6350,88 @@ export default function AdminPage(): React.ReactElement {
           return renderWaitlistTable('Warteliste', waitlistRegs, 'var(--dex-orange)');
         })()}
 
-        {cancelledRegs.length > 0 && (
-          <>
-            <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>Abgemeldet ({cancelledRegs.length})</h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', opacity: 0.6 }}>
-                <tbody>
-                  {cancelledRegs.map(reg => (
-                    <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                      <td style={{ padding: 8 }}>{(reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName}</td>
-                      <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                      <td style={{ padding: 8 }}>
-                        <span className="badge badge-red">Abgemeldet</span>
-                      </td>
-                      <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
+        {cancelledRegs.length > 0 && (() => {
+          // v18.11: Abmeldungs-Liste mit denselben Spalten + Sortierung wie
+          // Teilnehmer-/Warteliste. Unterscheidet proaktive Absagen
+          // (CustomData _declined = „Ich nehme nicht teil", ohne vorherige
+          // Anmeldung) von regulären Abmeldungen.
+          const isDeclined = (reg: SPRegistration): boolean => {
+            try { return !!(JSON.parse(reg.CustomData || '{}')._declined); } catch { return false; }
+          };
+          const safe = (s: string | undefined): string => (s || '').toLowerCase();
+          const dateMs = (s: string | undefined): number => s ? new Date(s).getTime() : 0;
+          const dir = cancelledSortAsc ? 1 : -1;
+          const sorted = cancelledRegs.slice().sort((a, b) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyA = a as any; const anyB = b as any;
+            switch (cancelledSortColumn) {
+              case 'vorname': return safe(a.Vorname).localeCompare(safe(b.Vorname), 'de') * dir;
+              case 'nachname': return safe(a.Nachname).localeCompare(safe(b.Nachname), 'de') * dir;
+              case 'email': return safe(a.ParticipantEmail).localeCompare(safe(b.ParticipantEmail)) * dir;
+              case 'jobtitle': return safe(anyA.JobTitle).localeCompare(safe(anyB.JobTitle), 'de') * dir;
+              case 'location': return safe(anyA.Location).localeCompare(safe(anyB.Location), 'de') * dir;
+              case 'type': return ((isDeclined(a) ? 1 : 0) - (isDeclined(b) ? 1 : 0)) * dir;
+              case 'date': return (dateMs(a.CancellationDate) - dateMs(b.CancellationDate)) * dir;
+            }
+            return 0;
+          });
+          const arrow = (k: typeof cancelledSortColumn): string => k === cancelledSortColumn ? (cancelledSortAsc ? ' ▲' : ' ▼') : '';
+          const toggleSort = (k: typeof cancelledSortColumn): void => {
+            if (cancelledSortColumn === k) setCancelledSortAsc(v => !v);
+            else { setCancelledSortColumn(k); setCancelledSortAsc(true); }
+          };
+          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
+          const declineCount = cancelledRegs.filter(isDeclined).length;
+          return (
+            <>
+              <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
+                {isDe ? 'Abmeldungen' : 'Cancellations'} ({cancelledRegs.length})
+                {declineCount > 0 && (
+                  <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
+                    {isDe ? `davon ${declineCount} Absage(n)` : `incl. ${declineCount} decline(s)`}
+                  </span>
+                )}
+              </h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                      <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  </thead>
+                  <tbody>
+                    {sorted.map(reg => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const anyReg = reg as any;
+                      const declined = isDeclined(reg);
+                      return (
+                        <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.JobTitle || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.Location || '-'}</td>
+                          <td style={{ padding: 8 }}>
+                            {declined
+                              ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}</span>
+                              : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
+                          </td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* ===== TEILNEHMER-EDIT MODAL (v8.0) ===== */}
