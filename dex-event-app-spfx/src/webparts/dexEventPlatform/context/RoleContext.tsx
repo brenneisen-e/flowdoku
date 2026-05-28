@@ -31,6 +31,7 @@ interface RoleContextType {
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
+  setPowerUser: (itemId: number, isPowerUser: boolean) => Promise<boolean>;
   updateRoleLocation: (itemId: number, location: string) => Promise<boolean>;
   removeRole: (itemId: number) => Promise<boolean>;
   refreshRoles: () => Promise<void>;
@@ -45,7 +46,7 @@ interface RoleContextType {
 function migrateRole(spRole: string): UserRole {
   if (spRole === 'SuperAdmin') return 'Admin';
   if (spRole === 'EventAdmin') return 'Organizer';
-  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User' || spRole === 'Power User') return spRole as UserRole;
+  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
   return 'User';
 }
 
@@ -121,6 +122,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         location: r.UserLocation || '',
         assignedBy: r.AssignedBy || '',
         assignedDate: r.AssignedDate || '',
+        isPowerUser: !!r.IsPowerUser,
       }));
       setRoles(mapped);
       setCurrentUserRole(myRole ? migrateRole(myRole.Role) : 'User');
@@ -150,6 +152,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       id: r.Id, userEmail: r.Title || '', userName: r.UserName || '',
       role: migrateRole(r.Role), location: r.UserLocation || '',
       assignedBy: r.AssignedBy || '', assignedDate: r.AssignedDate || '',
+      isPowerUser: !!r.IsPowerUser,
     }));
     setRoles(mapped);
     const myRole = spRoles.find(
@@ -168,8 +171,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
           await spService.grantOrganizerPermissions(userEmail); // Site-Rechte fuer Subsite-Erstellung
-        } else if (role === 'Organizer' || role === 'Power User') {
-          // v18.4: Power User bekommt dieselben SP-Rechte wie ein Organizer.
+        } else if (role === 'Organizer') {
           await spService.grantReadOnRolesList(userEmail);
           await spService.grantOrganizerPermissions(userEmail);
         }
@@ -188,7 +190,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
-        } else if (newRole === 'Organizer' || newRole === 'Power User') {
+        } else if (newRole === 'Organizer') {
           await spService.grantReadOnRolesList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
         } else if (newRole === 'User') {
@@ -198,6 +200,13 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       } catch (err) { console.warn('[DEX] permission grant for updateRole failed (best-effort):', err); }
       await refreshRoles();
     }
+    return success;
+  }
+
+  // v18.5: Power-User-Flag setzen/entfernen (Zusatz auf einem Organizer).
+  async function setPowerUser(itemId: number, isPowerUser: boolean): Promise<boolean> {
+    const success = await spService.setPowerUser(itemId, isPowerUser);
+    if (success) await refreshRoles();
     return success;
   }
 
@@ -248,8 +257,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const isImpersonating = typeof window !== 'undefined' && !!window.localStorage?.getItem('dex_demo_impersonation');
   const effectiveRole: UserRole = isImpersonating ? 'User' : currentUserRole;
   const isAdmin = effectiveRole === 'Admin';
-  // v18.4: „Power User" zaehlt permission-seitig als Organizer.
-  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin' || effectiveRole === 'Power User';
+  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin';
   const canCreateEvents = isOrganizer;
   const originalIsAdmin = currentUserRole === 'Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
@@ -261,7 +269,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         roles, currentUserRole, isRolesLoading,
         isAdmin, isOrganizer, canCreateEvents, siteUrl,
         originalIsAdmin, isImpersonating,
-        addRole, updateRole, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
+        addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
       },
     },
     props.children

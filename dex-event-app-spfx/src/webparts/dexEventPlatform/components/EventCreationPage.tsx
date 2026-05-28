@@ -456,7 +456,7 @@ export default function EventCreationPage(): React.ReactElement {
   // v18.4: Power User = Experten-Organizer; auf Wizard-Seite 1 als
   // Hilfe-Ansprechpartner im einklappbaren Layover unten rechts angezeigt.
   const powerUsers = React.useMemo(
-    () => (roles || []).filter(r => r.role === 'Power User'),
+    () => (roles || []).filter(r => r.isPowerUser),
     [roles]
   );
   const [powerUserHintDismissed, setPowerUserHintDismissed] = React.useState(false);
