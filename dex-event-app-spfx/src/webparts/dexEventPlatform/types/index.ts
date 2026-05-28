@@ -96,6 +96,12 @@ export interface DeloitteEvent {
    *  „Aktualisierter Termin"-Benachrichtigung bekommen. */
   outlookDirty?: boolean;
   emailLanguage: string; // 'DE' | 'EN'
+  /** v17.25: Markiert das synthetische Demo-Showcase-Event, das nur im
+   *  Demo-Impersonation-Modus client-seitig in die Event-Liste injiziert
+   *  wird. Treibt die „DEMO"-Markierung in der Liste, den Showcase-Banner
+   *  + die einklappbaren Bereiche auf der Register-Seite und blockt einen
+   *  echten Submit. Existiert nie in SharePoint. */
+  isDemoShowcase?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

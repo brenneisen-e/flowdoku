@@ -613,6 +613,14 @@ export default function RegistrationPage(): React.ReactElement {
   const externalEmailConfirmedRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
+    // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
+    // Hinweis statt SP-Roundtrip; der Context-Guard wuerde ohnehin no-oppen.
+    if (event?.isDemoShowcase) {
+      setError(locale === 'de'
+        ? 'Dies ist ein Demo-Event — es wird keine echte Anmeldung gespeichert. Du kannst die Bereiche oben frei ausprobieren.'
+        : 'This is a demo event — no real registration is stored. Feel free to explore the sections above.');
+      return;
+    }
     // Validierung Pflichtfelder
     setShowErrors(true);
 
@@ -1346,6 +1354,72 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
           </div>
           <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+        </div>
+      )}
+      {/* v17.25: Demo-Showcase-Banner + ein-/ausklappbare Bereiche. Nur fuer
+          das synthetische Demo-Event (Demo-Impersonation-Modus). Zeigt
+          Agenda + Transferzeiten (sonst nirgends im Anmeldeformular sichtbar)
+          und erklaert, dass die Felder/Gruppen/Team-Sektionen unten alle
+          ausprobiert werden koennen. */}
+      {event && event.isDemoShowcase && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{
+            padding: '12px 16px', marginBottom: 12, borderRadius: 'var(--dex-radius, 12px)',
+            background: 'rgba(0,118,168,0.08)', border: '1px solid var(--dex-blue, #0076a8)',
+            color: 'var(--dex-gray-800)', fontSize: '0.85rem', lineHeight: 1.55,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{
+                padding: '2px 8px', borderRadius: 999, background: 'var(--dex-blue, #0076a8)',
+                color: '#fff', fontSize: '0.66rem', fontWeight: 700, letterSpacing: 1,
+              }}>DEMO</span>
+              <strong>{locale === 'de' ? 'Demo-Event — alle Funktionen' : 'Demo event — all features'}</strong>
+            </div>
+            {locale === 'de'
+              ? <>Dieses Event existiert nur im Demo-Modus. Klapp die Bereiche unten auf, um zu sehen, was ein Event alles kann — <strong>eigene Felder</strong> (alle Typen, zweisprachig), <strong>Agenda</strong>, <strong>Transferzeiten</strong>, <strong>geteilte Kapazität</strong> (zwei Gruppen), <strong>Team-Anmeldung</strong> und <strong>Sub-Events</strong>. Eine echte Anmeldung wird nicht gespeichert.</>
+              : <>This event only exists in demo mode. Expand the sections below to see what an event can do — <strong>custom fields</strong> (every type, bilingual), <strong>agenda</strong>, <strong>transfer times</strong>, <strong>split capacity</strong> (two groups), <strong>team registration</strong> and <strong>sub-events</strong>. No real registration is stored.</>}
+          </div>
+          {event.agenda && event.agenda.length > 0 && (
+            <CollapsibleSection
+              title={locale === 'de' ? 'Agenda / Programm' : 'Agenda / programme'}
+              subtitle={locale === 'de' ? 'Zeitplan des Events' : 'Event schedule'}
+              defaultOpen={false}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {event.agenda.map(a => (
+                  <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: '0.85rem' }}>
+                    <div style={{ flexShrink: 0, fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', minWidth: 92 }}>
+                      {a.time}{a.endTime ? `–${a.endTime}` : ''}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{a.title}</div>
+                      {a.description && <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{a.description}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
+          {event.transferTimes && event.transferTimes.length > 0 && (
+            <CollapsibleSection
+              title={locale === 'de' ? 'Transferzeiten' : 'Transfer times'}
+              subtitle={locale === 'de' ? 'An- und Abreise-Shuttles' : 'Arrival and departure shuttles'}
+              defaultOpen={false}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {event.transferTimes.map(tr => (
+                  <div key={tr.id} style={{ fontSize: '0.85rem', borderLeft: '3px solid var(--dex-green, #86bc25)', paddingLeft: 10 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {tr.departureTime}{tr.arrivalTime ? `–${tr.arrivalTime}` : ''} · {tr.location}
+                    </div>
+                    {tr.meetingPoint && <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{locale === 'de' ? 'Treffpunkt' : 'Meeting point'}: {tr.meetingPoint}</div>}
+                    {tr.address && <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{tr.address}</div>}
+                    {tr.description && <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{tr.description}</div>}
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
         </div>
       )}
       <div className="registration-layout">
@@ -3171,6 +3245,49 @@ export default function RegistrationPage(): React.ReactElement {
           </Modal>
         );
       })()}
+    </div>
+  );
+}
+
+// v17.25: Ein-/ausklappbarer Abschnitt — fuer die Showcase-Bereiche der
+// Demo-Register-Seite (Felder, Agenda, Transferzeiten …). Default-Zustand
+// per `defaultOpen` steuerbar.
+function CollapsibleSection(props: {
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(props.defaultOpen !== false);
+  return (
+    <div style={{
+      border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius, 12px)',
+      marginBottom: 12, overflow: 'hidden', background: '#fff',
+    }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 16px', background: open ? 'rgba(134,188,37,0.07)' : 'var(--dex-gray-50, #fafafa)',
+          border: 'none', borderBottom: open ? '1px solid var(--dex-gray-200)' : 'none',
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{
+          display: 'inline-block', transition: 'transform 0.15s',
+          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem',
+        }}>▶</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>{props.title}</span>
+          {props.subtitle && (
+            <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{props.subtitle}</span>
+          )}
+        </span>
+      </button>
+      {open && <div style={{ padding: '14px 16px' }}>{props.children}</div>}
     </div>
   );
 }
