@@ -703,6 +703,12 @@ export default function AdminPage(): React.ReactElement {
   }, [selectedEvent?.id, selectedEvent?.parentEventId]);
   const [isLoadingRegs, setIsLoadingRegs] = React.useState(false);
   const [regLoadError, setRegLoadError] = React.useState('');
+  // v18.24: beim Event-/Tab-Wechsel die aktuelle Höhe der Detail-Card
+  // „einfrieren", solange die Teilnehmer neu geladen werden — sonst klappt
+  // die Card auf die „Lade..."-Zeile zusammen und springt danach wieder auf
+  // (klein→groß-Flackern). null = keine Reservierung aktiv.
+  const detailCardRef = React.useRef<HTMLDivElement>(null);
+  const [reservedDetailHeight, setReservedDetailHeight] = React.useState<number | undefined>(undefined);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
   // eintippen bevor der Loesch-Button aktiv wird. Schutz gegen versehentliche
@@ -1729,6 +1735,10 @@ export default function AdminPage(): React.ReactElement {
   };
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
+    // v18.24: aktuelle Card-Höhe einfrieren, BEVOR der State wechselt (DOM
+    // zeigt noch den alten Stand) — verhindert das Zusammenklappen während
+    // die Teilnehmer des neuen Events geladen werden.
+    setReservedDetailHeight(detailCardRef.current?.offsetHeight);
     setSelectedEvent(event);
     // v10.19: NavigationContext.selectedEventId mitziehen, damit Header die
     // Page-ID granular ableiten kann (admin-center vs. admin-event) und der
@@ -1748,6 +1758,9 @@ export default function AdminPage(): React.ReactElement {
       setRegLoadError('Teilnehmerliste konnte nicht geladen werden.');
     }
     setIsLoadingRegs(false);
+    // Reservierung freigeben — der neue Inhalt steht jetzt, die Card nimmt
+    // im selben Render die echte neue Höhe an (kein Zwischen-Kollaps).
+    setReservedDetailHeight(undefined);
   };
 
   // v6.31: wenn navigation.selectedEventId gesetzt ist beim Mount (z.B. vom
@@ -3004,7 +3017,7 @@ export default function AdminPage(): React.ReactElement {
           statt vorher 2-Spalten. */}
       <ActionsRegistryProvider>
       <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
-        <div className="card" style={{ padding: 24 }}>
+        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
