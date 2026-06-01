@@ -400,6 +400,46 @@ EmailTemplateOverrides analog zum Hauptevent), DisableEmails,
 DisableOutlook. Aktive Tab-UI ist konsistent mit dem AdminPage-Tab-Look
 (grüne Unterstreichung).
 
+### Custom-Field-Properties: zweiter CustomFields-Write beim Edit-Save (WICHTIG, wiederkehrender Bug)
+
+**Symptom:** Eine neue Property an einem Custom-Field (z.B. `helpText`,
+`showIf`, `confirmLabel`, `externalLinks`, `onlyForGroup`, `multi`,
+`helpTextStyle`) wird im Wizard gesetzt, ist nach dem **Speichern eines
+bestehenden Events** (Edit) aber sofort wieder weg / auf Default.
+
+**Ursache:** `handleSubmit` in `EventCreationPage.tsx` schreibt beim
+**Edit-Save** das `CustomFields`-JSON **zweimal**:
+
+1. Erster Write (≈ Zeile 2769): `JSON.stringify(serializeCustomFields(...))`
+   — der zentrale Serializer, der **alle** Properties korrekt persistiert.
+2. **Zweiter Write** (≈ Zeile 3082): nach `fixRegistrationListColumns()`
+   wird `CustomFields` **nochmal** überschrieben, um die `spInternalName`-
+   Zuordnung der Teilnehmerlisten-Spalten nachzutragen. Dieser zweite
+   Payload wird aus dem **separaten `cfForFix`-Mapping** (≈ Zeile 3030)
+   gebaut — und dieses Mapping listet die Properties **einzeln und
+   manuell auf**. Jede Property, die dort fehlt, wird vom zweiten Write
+   wieder vom SP-Item **entfernt**.
+
+**Regel:** Wenn du eine neue Custom-Field-Property einführst, musst du sie
+an **beiden** Stellen ergänzen:
+- in `serializeCustomFields()` (Helper, ≈ Zeile 196) **und**
+- im `cfForFix`-Mapping in `handleSubmit` (≈ Zeile 3030).
+
+Bug-Historie (immer dasselbe Muster): v11.21 (`helpText`/`showIf`),
+v11.94 (`confirmLabel`), v11.15 (`externalLinks`), v18.20 (`helpTextStyle`).
+Der zweite Write feuert nur, wenn `fixResult.customFieldMap` Einträge
+liefert (also Spalten gemappt/angelegt wurden) — deshalb fällt der Bug
+oft erst bei Events mit echten Teilnehmerlisten-Spalten auf, nicht in der
+Wizard-Live-Vorschau (die `serializeCustomFields` gar nicht durchläuft).
+
+**Hinweis (Tech-Debt):** Der zweite Write baut die Feldliste komplett neu,
+statt nur `spInternalName` in die bereits serialisierten Felder zu mergen.
+Besserer Fix beim nächsten Touch: das Ergebnis von `serializeCustomFields`
+nehmen und nur `spInternalName` pro Feld ergänzen — dann kann diese
+Property-Liste nie wieder veralten. Caveat: die EN-Varianten (`labelEn`,
+`helpTextEn`, `optionsEn`, `confirmLabelEn`) werden vom zweiten Write
+aktuell **ebenfalls** gedroppt — bei Bilingual-Events also dieselbe Falle.
+
 ### SharePoint REST API — MERGE-Requests (WICHTIG)
 
 Bei allen SharePoint-List-Item-Updates per `this._merge(url, body)`:
