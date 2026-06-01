@@ -93,7 +93,7 @@ export default function LandingPage(): React.ReactElement {
           <div className="landing__text">
             <h1>
               {isDe ? 'Hallo' : 'Hi'}{firstName ? <> <strong>{firstName}</strong></> : ''}{isDe ? ', willkommen bei ' : ', welcome to '}
-              <strong style={{ whiteSpace: 'nowrap' }}>DEX</strong>
+              <strong style={{ whiteSpace: 'nowrap' }}>DEX</strong>.
             </h1>
             <p>
               {isDe
