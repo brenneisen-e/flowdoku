@@ -3,11 +3,10 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
-// v18.25: personalisierte Begrüßung (Vorname) + Live-KPIs (Events/Teilnehmer)
-// direkt im Landing-Hero — useCurrentUser + useEvents werden dafür wieder
-// hier benötigt.
+// v18.25: personalisierte Begrüßung (Vorname) im Landing-Hero — useCurrentUser
+// wird dafür wieder hier benötigt. (v18.26: KPI-Zeile wieder entfernt — die
+// Einsatz-Zahlen stehen nur auf dem Boot-Loader davor.)
 import { useCurrentUser } from '../context/UserContext';
-import { useEvents } from '../context/EventContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
@@ -20,16 +19,6 @@ export default function LandingPage(): React.ReactElement {
   // v18.25: Vorname für die persönliche Begrüßung.
   const { currentUser } = useCurrentUser();
   const firstName = (currentUser?.firstName || '').trim();
-  // v18.25: gecachte KPI-Zahlen (Events / Teilnehmer) für die Einsatz-Zeile.
-  // getKpiCache ist EIN schneller REST-Call (gleiche Quelle wie der Boot-Loader).
-  const { getKpiCache } = useEvents();
-  const [kpi, setKpi] = React.useState<{ participants: number; events: number } | null>(null);
-  React.useEffect(() => {
-    let cancelled = false;
-    getKpiCache().then(v => { if (!cancelled && v) setKpi(v); }).catch(() => { /* */ });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [showInfo, setShowInfo] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
@@ -111,19 +100,6 @@ export default function LandingPage(): React.ReactElement {
                 ? '– der neuen App für die Organisation von Deloitte Events.'
                 : '– the new app for organising Deloitte events.'}
             </p>
-            {kpi && kpi.events > 0 && (
-              <p style={{ fontSize: '0.9rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
-                {isDe ? (
-                  <>DEX wurde im April 2026 neu gelauncht und kam bereits bei{' '}
-                    <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{kpi.events.toLocaleString('de-DE')}</strong> Events mit{' '}
-                    <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{kpi.participants.toLocaleString('de-DE')}</strong> Teilnehmern zum Einsatz.</>
-                ) : (
-                  <>DEX launched in April 2026 and has already been used for{' '}
-                    <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{kpi.events.toLocaleString('en-US')}</strong> events with{' '}
-                    <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{kpi.participants.toLocaleString('en-US')}</strong> attendees.</>
-                )}
-              </p>
-            )}
           </div>
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
             {t('landing.start')}
