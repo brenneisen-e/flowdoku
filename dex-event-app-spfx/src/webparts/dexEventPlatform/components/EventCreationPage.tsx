@@ -3050,6 +3050,12 @@ export default function EventCreationPage(): React.ReactElement {
                 // direkt nach dem Save wieder weg, obwohl der erste
                 // updateEvent sie korrekt geschrieben hatte.
                 ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+                // v18.20 BUG-FIX (gleiches Muster wie v11.21): helpTextStyle
+                // wurde hier nicht mit-uebernommen — der zweite updateEvent-Call
+                // (merged-JSON unten) hat die Property wieder vom SP-Item
+                // entfernt. Folge: „Text unter dem Feld-Titel" war direkt nach
+                // dem Speichern wieder weg und das Feld zeigte die „i"-Box.
+                ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
                 ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
                   ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
                   : {}),

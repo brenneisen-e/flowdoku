@@ -60,12 +60,12 @@ export interface HtmlEditorModalProps {
   headerExtra?: React.ReactNode;
 }
 
-const FONT_SIZES: Array<{ label: string; px: number }> = [
-  { label: 'Klein', px: 12 },
-  { label: 'Normal', px: 14 },
-  { label: 'Groß', px: 18 },
-  { label: 'Sehr groß', px: 24 },
-];
+// v18.20: px-basierte Auswahl (wie in Word). Benannte Stufen werden als
+// Zusatz angezeigt, damit „Klein/Normal/Groß" weiterhin auffindbar sind.
+const FONT_SIZE_OPTIONS: number[] = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48];
+const FONT_SIZE_NAMES: Record<number, string> = {
+  12: 'Klein', 14: 'Normal', 18: 'Groß', 24: 'Sehr groß',
+};
 
 const COLORS: string[] = [
   '#000000', '#555555', '#86bc25', '#0076a8', '#ed8b00', '#c9302c', '#6b21a8', '#0d6efd',
@@ -90,6 +90,9 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const savedSelectionRef = React.useRef<Range | null>(null);
+  // v18.20: aktuelle Schriftgröße der Auswahl (px) — treibt die „wie in Word"-
+  // Anzeige im Größen-Dropdown. null = keine Auswahl im Editor / unbekannt.
+  const [currentFontPx, setCurrentFontPx] = React.useState<number | null>(null);
 
   // External value beim Oeffnen in den Editor laden (Re-Open mit anderem Template)
   React.useEffect(() => {
@@ -110,6 +113,25 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
     }
   };
+
+  // v18.20: effektive Schriftgröße der aktuellen Auswahl ermitteln (px), damit
+  // das Größen-Dropdown — wie in Word — zeigt, wie groß der markierte Text
+  // gerade ist. Wir lesen die berechnete font-size des Elements am Cursor.
+  const detectFontSize = (): void => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) { setCurrentFontPx(null); return; }
+    const node = sel.anchorNode;
+    if (!node || !editorRef.current.contains(node)) { setCurrentFontPx(null); return; }
+    const el: HTMLElement | null = node.nodeType === Node.ELEMENT_NODE
+      ? (node as HTMLElement)
+      : node.parentElement;
+    if (!el) { setCurrentFontPx(null); return; }
+    const px = Math.round(parseFloat(window.getComputedStyle(el).fontSize));
+    setCurrentFontPx(isNaN(px) ? null : px);
+  };
+
+  // Auswahl sichern UND Größen-Anzeige aktualisieren (mouseup/keyup im Editor).
+  const syncSelection = (): void => { saveSelection(); detectFontSize(); };
 
   const restoreSelection = (): void => {
     const range = savedSelectionRef.current;
@@ -149,8 +171,13 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       const r = document.createRange();
       r.selectNodeContents(span);
       sel.addRange(r);
+      savedSelectionRef.current = r.cloneRange();
     } catch { /* ignore */ }
     fireChange();
+    // v18.20: Anzeige sofort auf die gesetzte Größe stellen — der User sieht
+    // im Dropdown direkt die neue Größe, und die Live-Vorschau aktualisiert
+    // sich über fireChange().
+    setCurrentFontPx(px);
   };
 
   const setColor = (hex: string): void => exec('foreColor', hex);
@@ -414,15 +441,27 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   <button type="button" style={tbBtn} title="Kursiv" onMouseDown={e => e.preventDefault()} onClick={() => exec('italic')}><em>I</em></button>
                   <button type="button" style={tbBtn} title="Unterstrichen" onMouseDown={e => e.preventDefault()} onClick={() => exec('underline')}><span style={{ textDecoration: 'underline' }}>U</span></button>
                   <span style={{ width: 1, height: 22, background: 'var(--dex-gray-300)', margin: '0 4px' }} />
+                  {/* v18.20: kontrolliertes Größen-Dropdown — zeigt (wie in Word)
+                      die Größe des aktuell markierten Texts und setzt sie beim
+                      Ändern. Live-Vorschau aktualisiert sich über fireChange(). */}
                   <select
-                    title="Schriftgröße"
+                    title="Schriftgröße der Auswahl"
+                    value={currentFontPx != null ? String(currentFontPx) : ''}
                     onMouseDown={() => saveSelection()}
-                    onChange={e => { setFontSize(parseInt(e.target.value, 10)); e.target.value = ''; }}
-                    defaultValue=""
+                    onChange={e => { if (e.target.value) setFontSize(parseInt(e.target.value, 10)); }}
                     style={{ height: 28, fontSize: '0.78rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)' }}
                   >
                     <option value="" disabled>Größe</option>
-                    {FONT_SIZES.map(f => <option key={f.px} value={f.px}>{f.label} ({f.px}px)</option>)}
+                    {/* Aktuelle Größe sicher im Menü vorhalten, auch wenn sie nicht
+                        in der Standardliste steht (z.B. 15px aus Alt-Inhalten). */}
+                    {currentFontPx != null && FONT_SIZE_OPTIONS.indexOf(currentFontPx) === -1 && (
+                      <option value={currentFontPx}>{currentFontPx} px</option>
+                    )}
+                    {FONT_SIZE_OPTIONS.map(px => (
+                      <option key={px} value={px}>
+                        {px} px{FONT_SIZE_NAMES[px] ? ` · ${FONT_SIZE_NAMES[px]}` : ''}
+                      </option>
+                    ))}
                   </select>
                   {/* v18.16: Zeilenabstand für die gesamte Beschreibung. */}
                   <select
@@ -466,8 +505,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   suppressContentEditableWarning
                   onInput={fireChange}
                   onBlur={() => { saveSelection(); fireChange(); }}
-                  onMouseUp={saveSelection}
-                  onKeyUp={saveSelection}
+                  onMouseUp={syncSelection}
+                  onKeyUp={syncSelection}
                   onKeyDown={e => {
                     // Enter = <br> (E-Mail-konform); Shift+Enter = neuer Absatz
                     if (e.key === 'Enter' && !e.shiftKey) {
