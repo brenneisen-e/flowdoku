@@ -40,7 +40,7 @@ export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
   templateType: string
-): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string } | null {
+): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean } | null {
   // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
   // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
   // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
@@ -55,9 +55,9 @@ export function applyEventTemplateOverride(
     };
   }
   try {
-    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string }>;
+    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean }>;
     const o = all[templateType];
-    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize)) {
+    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
       if (!spTemplate) return null;
       return {
         subject: spTemplate.subject,
@@ -77,6 +77,13 @@ export function applyEventTemplateOverride(
       // v18.19: Überschrift-Farbe + -Größe pro Event überschreibbar.
       headingColor: o.headingColor || spTemplate?.headingColor || '#86bc25',
       ...(o.headingFontSize ? { headingFontSize: o.headingFontSize } : {}),
+      // v18.22: Fett/Kursiv (Überschrift) + Unter-Überschrift-Formatierung.
+      ...(o.headingBold !== undefined ? { headingBold: o.headingBold } : {}),
+      ...(o.headingItalic !== undefined ? { headingItalic: o.headingItalic } : {}),
+      ...(o.subheadingColor ? { subheadingColor: o.subheadingColor } : {}),
+      ...(o.subheadingFontSize ? { subheadingFontSize: o.subheadingFontSize } : {}),
+      ...(o.subheadingBold !== undefined ? { subheadingBold: o.subheadingBold } : {}),
+      ...(o.subheadingItalic !== undefined ? { subheadingItalic: o.subheadingItalic } : {}),
     };
   } catch {
     if (!spTemplate) return null;

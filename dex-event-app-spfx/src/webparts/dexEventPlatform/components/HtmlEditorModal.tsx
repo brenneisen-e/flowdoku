@@ -38,6 +38,20 @@ export interface HtmlEditorModalProps {
   emailHeadingFontSize?: string;
   onEmailHeadingColorChange?: (hex: string) => void;
   onEmailHeadingFontSizeChange?: (px: string) => void;
+  /** v18.22: Überschrift fett/kursiv. */
+  emailHeadingBold?: boolean;
+  emailHeadingItalic?: boolean;
+  onEmailHeadingBoldChange?: (b: boolean) => void;
+  onEmailHeadingItalicChange?: (b: boolean) => void;
+  /** v18.22: Unter-Überschrift frei formatierbar (Farbe/Größe/fett/kursiv). */
+  emailSubheadingColor?: string;
+  emailSubheadingFontSize?: string;
+  emailSubheadingBold?: boolean;
+  emailSubheadingItalic?: boolean;
+  onEmailSubheadingColorChange?: (hex: string) => void;
+  onEmailSubheadingFontSizeChange?: (px: string) => void;
+  onEmailSubheadingBoldChange?: (b: boolean) => void;
+  onEmailSubheadingItalicChange?: (b: boolean) => void;
   /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
   outlookHeading?: string;
   onOutlookHeadingChange?: (s: string) => void;
@@ -71,6 +85,71 @@ const COLORS: string[] = [
   '#000000', '#555555', '#86bc25', '#0076a8', '#ed8b00', '#c9302c', '#6b21a8', '#0d6efd',
 ];
 
+const isHex6 = (v: string): boolean => /^#[0-9a-fA-F]{6}$/.test(v);
+
+// v18.22: Farbwahl mit Swatches + nativem Farb-Picker + freiem Hex-Code.
+// `value` = aktuell aktive Farbe (für Highlight + Picker-Startwert).
+const ColorControl: React.FC<{ value: string; onChange: (_hex: string) => void }> = ({ value, onChange }) => {
+  const [hexDraft, setHexDraft] = React.useState(value);
+  React.useEffect(() => { setHexDraft(value); }, [value]);
+  const commitHex = (h: string): void => {
+    let v = (h || '').trim();
+    if (v && !v.startsWith('#')) v = '#' + v;
+    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onChange(v.toLowerCase());
+    else setHexDraft(value);
+  };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {COLORS.map(c => (
+        <button
+          key={c}
+          type="button"
+          title={c}
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => onChange(c)}
+          style={{
+            width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
+            border: (value || '').toLowerCase() === c.toLowerCase() ? '2px solid var(--dex-gray-700)' : '1px solid var(--dex-gray-300)',
+            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+          }}
+        />
+      ))}
+      <input
+        type="color"
+        value={isHex6(value) ? value : '#000000'}
+        onChange={e => onChange(e.target.value.toLowerCase())}
+        title="Freie Farbe wählen"
+        style={{ width: 26, height: 26, padding: 0, border: '1px solid var(--dex-gray-300)', borderRadius: 4, cursor: 'pointer', background: '#fff' }}
+      />
+      <input
+        value={hexDraft}
+        onChange={e => setHexDraft(e.target.value)}
+        onBlur={() => commitHex(hexDraft)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitHex(hexDraft); } }}
+        placeholder="#RRGGBB"
+        maxLength={7}
+        style={{ width: 76, height: 24, fontSize: '0.72rem', fontFamily: 'monospace', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 6px' }}
+      />
+    </span>
+  );
+};
+
+// v18.22: Fett/Kursiv-Umschalter (für Überschrift + Unter-Überschrift).
+const FmtToggle: React.FC<{ active: boolean; onClick: () => void; title: string; children: React.ReactNode }> = ({ active, onClick, title, children }) => (
+  <button
+    type="button"
+    title={title}
+    onMouseDown={e => e.preventDefault()}
+    onClick={onClick}
+    style={{
+      minWidth: 28, height: 26, padding: '0 8px', borderRadius: 4, cursor: 'pointer',
+      border: active ? '1px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
+      background: active ? 'var(--dex-green, #86bc25)' : '#fff',
+      color: active ? '#fff' : 'var(--dex-gray-800)', fontSize: '0.82rem',
+    }}
+  >{children}</button>
+);
+
 export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const {
     open, onClose, title,
@@ -79,7 +158,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     emailSubject, onEmailSubjectChange,
     emailHeading, onEmailHeadingChange, emailHeadingColor = '#86bc25',
     emailHeadingFontSize, onEmailHeadingColorChange, onEmailHeadingFontSizeChange,
+    emailHeadingBold, emailHeadingItalic, onEmailHeadingBoldChange, onEmailHeadingItalicChange,
     emailSubheading, onEmailSubheadingChange,
+    emailSubheadingColor, emailSubheadingFontSize, emailSubheadingBold, emailSubheadingItalic,
+    onEmailSubheadingColorChange, onEmailSubheadingFontSizeChange, onEmailSubheadingBoldChange, onEmailSubheadingItalicChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
     previewVars = {}, insertableVars = [],
@@ -93,6 +175,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // v18.20: aktuelle Schriftgröße der Auswahl (px) — treibt die „wie in Word"-
   // Anzeige im Größen-Dropdown. null = keine Auswahl im Editor / unbekannt.
   const [currentFontPx, setCurrentFontPx] = React.useState<number | null>(null);
+  // v18.22: freier Hex-Code für die Body-Textfarbe (Picker/Eingabe).
+  const [bodyHexDraft, setBodyHexDraft] = React.useState('#000000');
 
   // External value beim Oeffnen in den Editor laden (Re-Open mit anderem Template)
   React.useEffect(() => {
@@ -248,7 +332,14 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       const isAlreadyWrapped = /^\s*(<!doctype|<html)/i.test(bodyWithVars);
       const wrapped = isAlreadyWrapped
         ? bodyWithVars
-        : wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars, emailHeadingFontSize);
+        : wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars, emailHeadingFontSize, {
+          headingBold: emailHeadingBold,
+          headingItalic: emailHeadingItalic,
+          subheadingColor: emailSubheadingColor,
+          subheadingFontSize: emailSubheadingFontSize,
+          subheadingBold: emailSubheadingBold,
+          subheadingItalic: emailSubheadingItalic,
+        });
       return wrapped
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
         .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
@@ -333,8 +424,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       onChange={e => onEmailHeadingChange && onEmailHeadingChange(e.target.value)}
                       style={{ fontSize: '0.85rem' }}
                     />
-                    {/* v18.19: Überschrift Größe + Farbe einstellbar. */}
-                    {(onEmailHeadingFontSizeChange || onEmailHeadingColorChange) && (
+                    {/* v18.19/v18.22: Überschrift Größe + freie Farbe + fett/kursiv. */}
+                    {(onEmailHeadingFontSizeChange || onEmailHeadingColorChange || onEmailHeadingBoldChange) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
                         {onEmailHeadingFontSizeChange && (
                           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
@@ -350,22 +441,20 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                             </select>
                           </label>
                         )}
+                        {(onEmailHeadingBoldChange || onEmailHeadingItalicChange) && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {onEmailHeadingBoldChange && (
+                              <FmtToggle active={!!emailHeadingBold} onClick={() => onEmailHeadingBoldChange(!emailHeadingBold)} title="Fett"><strong>F</strong></FmtToggle>
+                            )}
+                            {onEmailHeadingItalicChange && (
+                              <FmtToggle active={!!emailHeadingItalic} onClick={() => onEmailHeadingItalicChange(!emailHeadingItalic)} title="Kursiv"><em>K</em></FmtToggle>
+                            )}
+                          </span>
+                        )}
                         {onEmailHeadingColorChange && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
                             Farbe
-                            {['#86bc25', '#000000', '#0076a8', '#da291c', '#ed8b00', '#4a7c1f'].map(c => (
-                              <button
-                                key={c}
-                                type="button"
-                                title={c}
-                                onClick={() => onEmailHeadingColorChange(c)}
-                                style={{
-                                  width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer',
-                                  border: (emailHeadingColor || '#86bc25').toLowerCase() === c.toLowerCase() ? '2px solid var(--dex-gray-700)' : '1px solid var(--dex-gray-300)',
-                                  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
-                                }}
-                              />
-                            ))}
+                            <ColorControl value={emailHeadingColor || '#86bc25'} onChange={onEmailHeadingColorChange} />
                           </span>
                         )}
                       </div>
@@ -382,6 +471,41 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       onChange={e => onEmailSubheadingChange && onEmailSubheadingChange(e.target.value)}
                       style={{ fontSize: '0.85rem' }}
                     />
+                    {/* v18.22: Unter-Überschrift Größe + freie Farbe + fett/kursiv. */}
+                    {(onEmailSubheadingFontSizeChange || onEmailSubheadingColorChange || onEmailSubheadingBoldChange) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+                        {onEmailSubheadingFontSizeChange && (
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                            Größe
+                            <select
+                              value={emailSubheadingFontSize || '20px'}
+                              onChange={e => onEmailSubheadingFontSizeChange(e.target.value)}
+                              style={{ height: 26, fontSize: '0.78rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)' }}
+                            >
+                              {['14px', '16px', '18px', '20px', '24px', '28px', '32px'].map(px => (
+                                <option key={px} value={px}>{px}{px === '20px' ? ' (Standard)' : ''}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        {(onEmailSubheadingBoldChange || onEmailSubheadingItalicChange) && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {onEmailSubheadingBoldChange && (
+                              <FmtToggle active={emailSubheadingBold !== false} onClick={() => onEmailSubheadingBoldChange(emailSubheadingBold === false)} title="Fett"><strong>F</strong></FmtToggle>
+                            )}
+                            {onEmailSubheadingItalicChange && (
+                              <FmtToggle active={!!emailSubheadingItalic} onClick={() => onEmailSubheadingItalicChange(!emailSubheadingItalic)} title="Kursiv"><em>K</em></FmtToggle>
+                            )}
+                          </span>
+                        )}
+                        {onEmailSubheadingColorChange && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                            Farbe
+                            <ColorControl value={emailSubheadingColor || '#000000'} onChange={onEmailSubheadingColorChange} />
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -503,6 +627,33 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       }}
                     />
                   ))}
+                  {/* v18.22: freie Body-Textfarbe — nativer Picker + Hex-Eingabe.
+                      Auswahl wird vor dem Fokuswechsel gesichert (onMouseDown). */}
+                  <input
+                    type="color"
+                    value={isHex6(bodyHexDraft) ? bodyHexDraft : '#000000'}
+                    title="Freie Textfarbe wählen"
+                    onMouseDown={() => saveSelection()}
+                    onChange={e => { setBodyHexDraft(e.target.value.toLowerCase()); setColor(e.target.value.toLowerCase()); }}
+                    style={{ width: 24, height: 24, padding: 0, border: '1px solid var(--dex-gray-300)', borderRadius: 4, cursor: 'pointer', background: '#fff' }}
+                  />
+                  <input
+                    value={bodyHexDraft}
+                    onMouseDown={() => saveSelection()}
+                    onChange={e => setBodyHexDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        let v = bodyHexDraft.trim();
+                        if (v && !v.startsWith('#')) v = '#' + v;
+                        if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) setColor(v.toLowerCase());
+                      }
+                    }}
+                    placeholder="#RRGGBB"
+                    maxLength={7}
+                    title="Hex-Code eingeben + Enter — färbt die Auswahl"
+                    style={{ width: 76, height: 24, fontSize: '0.72rem', fontFamily: 'monospace', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 6px' }}
+                  />
                   <span style={{ width: 1, height: 22, background: 'var(--dex-gray-300)', margin: '0 4px' }} />
                   <button type="button" style={tbBtn} title="Liste" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertUnorderedList')}>•</button>
                   <button type="button" style={tbBtn} title="Nummerierte Liste" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertOrderedList')}>1.</button>

@@ -119,8 +119,8 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Im HTML-Editor stehen Fett, Kursiv, Unterstrichen, Schriftgröße (12/14/18/24 px), 8 Brand-Farben, Listen (Bullet + nummeriert) und ein Format-Reset zur Verfügung. Enter erzeugt einen <br> (E-Mail-konform), Shift+Enter einen neuen Absatz.'
-                  : 'The HTML editor offers Bold, Italic, Underline, font size (12/14/18/24 px), 8 brand colors, lists (bullet + numbered), and a format reset. Enter inserts a <br> (email-friendly), Shift+Enter starts a new paragraph.'}
+                  ? 'Im HTML-Editor stehen Fett, Kursiv, Unterstrichen, Schriftgröße (das Dropdown zeigt die Größe des markierten Texts wie in Word), Brand-Farben plus freie Farbwahl über Farb-Picker oder Hex-Code, Listen (Bullet + nummeriert) und ein Format-Reset zur Verfügung. Enter erzeugt einen <br> (E-Mail-konform), Shift+Enter einen neuen Absatz. Über dem Body lassen sich Überschrift UND Unter-Überschrift separat formatieren (Größe, Farbe, fett, kursiv).'
+                  : 'The HTML editor offers Bold, Italic, Underline, font size (the dropdown shows the selected text\'s size like in Word), brand colors plus free color choice via color picker or hex code, lists (bullet + numbered), and a format reset. Enter inserts a <br> (email-friendly), Shift+Enter starts a new paragraph. Above the body, the heading AND subheading can each be styled separately (size, color, bold, italic).'}
               </>
             ),
             tip: isDe
