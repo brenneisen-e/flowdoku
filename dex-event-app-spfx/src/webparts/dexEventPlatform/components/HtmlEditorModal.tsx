@@ -34,6 +34,10 @@ export interface HtmlEditorModalProps {
   emailSubheading?: string;
   onEmailSubheadingChange?: (s: string) => void;
   emailHeadingColor?: string;
+  /** v18.19: Mail-Überschrift Größe + Farbe einstellbar (pro Event). */
+  emailHeadingFontSize?: string;
+  onEmailHeadingColorChange?: (hex: string) => void;
+  onEmailHeadingFontSizeChange?: (px: string) => void;
   /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
   outlookHeading?: string;
   onOutlookHeadingChange?: (s: string) => void;
@@ -74,6 +78,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     previewMode,
     emailSubject, onEmailSubjectChange,
     emailHeading, onEmailHeadingChange, emailHeadingColor = '#86bc25',
+    emailHeadingFontSize, onEmailHeadingColorChange, onEmailHeadingFontSizeChange,
     emailSubheading, onEmailSubheadingChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
@@ -207,7 +212,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       const isAlreadyWrapped = /^\s*(<!doctype|<html)/i.test(bodyWithVars);
       const wrapped = isAlreadyWrapped
         ? bodyWithVars
-        : wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars);
+        : wrapTemplate(emailHeadingColor, heading, subheading, bodyWithVars, emailHeadingFontSize);
       return wrapped
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
         .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
@@ -292,6 +297,43 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       onChange={e => onEmailHeadingChange && onEmailHeadingChange(e.target.value)}
                       style={{ fontSize: '0.85rem' }}
                     />
+                    {/* v18.19: Überschrift Größe + Farbe einstellbar. */}
+                    {(onEmailHeadingFontSizeChange || onEmailHeadingColorChange) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+                        {onEmailHeadingFontSizeChange && (
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                            Größe
+                            <select
+                              value={emailHeadingFontSize || '26px'}
+                              onChange={e => onEmailHeadingFontSizeChange(e.target.value)}
+                              style={{ height: 26, fontSize: '0.78rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)' }}
+                            >
+                              {['18px', '22px', '26px', '32px', '40px', '48px'].map(px => (
+                                <option key={px} value={px}>{px}{px === '26px' ? ' (Standard)' : ''}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        {onEmailHeadingColorChange && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+                            Farbe
+                            {['#86bc25', '#000000', '#0076a8', '#da291c', '#ed8b00', '#4a7c1f'].map(c => (
+                              <button
+                                key={c}
+                                type="button"
+                                title={c}
+                                onClick={() => onEmailHeadingColorChange(c)}
+                                style={{
+                                  width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer',
+                                  border: (emailHeadingColor || '#86bc25').toLowerCase() === c.toLowerCase() ? '2px solid var(--dex-gray-700)' : '1px solid var(--dex-gray-300)',
+                                  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+                                }}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
@@ -440,7 +482,16 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     minHeight: 280, padding: '10px 12px',
                     border: '1px solid var(--dex-gray-300)',
                     borderBottomLeftRadius: 6, borderBottomRightRadius: 6,
-                    fontSize: '0.9rem', lineHeight: 1.5,
+                    // v18.19: WYSIWYG — bei Mail/Outlook-Bodies exakt die echte
+                    // Mail-Basis (Aptos 14px / line-height 1.6) verwenden, damit
+                    // „was du im Editor siehst = was der Empfänger bekommt".
+                    // Vorher 0.9rem ≈ 14.4px → Organizer haben Größen
+                    // „nachjustiert", was zwischen Sub-Events zu uneinheitlichen
+                    // Schriftgrößen führte. Bei der Beschreibung ('plain') bleibt
+                    // die etwas größere Editor-Schrift.
+                    ...(previewMode === 'email' || previewMode === 'outlook'
+                      ? { fontFamily: 'Aptos, Arial, Helvetica, sans-serif', fontSize: '14px', lineHeight: 1.6 }
+                      : { fontSize: '0.9rem', lineHeight: 1.5 }),
                     outline: 'none', overflowY: 'auto',
                     background: '#fff',
                   }}

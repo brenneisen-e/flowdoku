@@ -40,7 +40,7 @@ export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
   templateType: string
-): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string } | null {
+): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string } | null {
   // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
   // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
   // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
@@ -55,9 +55,9 @@ export function applyEventTemplateOverride(
     };
   }
   try {
-    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string }>;
+    const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string }>;
     const o = all[templateType];
-    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml)) {
+    if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize)) {
       if (!spTemplate) return null;
       return {
         subject: spTemplate.subject,
@@ -74,7 +74,9 @@ export function applyEventTemplateOverride(
       // soll respektiert werden, damit man die zweite Zeile abschalten kann.
       subheading: o.subheading !== undefined ? o.subheading : (spTemplate?.subheading || ''),
       bodyHtml: o.bodyHtml || spTemplate?.bodyHtml || '',
-      headingColor: spTemplate?.headingColor || '#86bc25',
+      // v18.19: Überschrift-Farbe + -Größe pro Event überschreibbar.
+      headingColor: o.headingColor || spTemplate?.headingColor || '#86bc25',
+      ...(o.headingFontSize ? { headingFontSize: o.headingFontSize } : {}),
     };
   } catch {
     if (!spTemplate) return null;

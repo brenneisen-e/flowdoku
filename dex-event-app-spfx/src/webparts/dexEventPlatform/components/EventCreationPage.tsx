@@ -956,7 +956,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [triggerOutlookUpdate, setTriggerOutlookUpdate] = React.useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: number; templateType: string; language: string; subject: string; heading: string; headingColor: string; bodyHtml: string }>>([]);
-  const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>>(
+  const [emailTemplateOverrides, setEmailTemplateOverrides] = React.useState<Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }>>(
     editEvent?.emailTemplateOverrides ? (() => {
       try {
         const parsed = JSON.parse(editEvent.emailTemplateOverrides);
@@ -982,7 +982,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags;
-        return rest as Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
+        return rest as Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }>;
       } catch { return {}; }
     })() : {}
   );
@@ -1066,7 +1066,7 @@ export default function EventCreationPage(): React.ReactElement {
      *  jeweils eigene An-/Abmelde-Mails versenden können). Vorher landeten
      *  Änderungen auf einem Sub-Tab fälschlicherweise im Top-Level-Override
      *  → die Sub-Events feuerten die Haupt-Event-Texte ab. */
-    emailTemplateOverrides?: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
+    emailTemplateOverrides?: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }>;
     /** v11.57: Snapshot der initialen Outlook-relevanten Felder, um beim Save
      *  zu erkennen, ob die Teilnehmer einen Update-Termin bekommen sollen. */
     initialOutlookEventId?: string;
@@ -1116,7 +1116,7 @@ export default function EventCreationPage(): React.ReactElement {
       // versehentlich beim Haupt-Event.
       let emailLogo = '';
       let outlookLogo = '';
-      let subOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }> = {};
+      let subOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }> = {};
       // v15.0: Inheritance-Flags aus dem Piggyback-JSON lesen. Wenn der
       // Flag nicht persistiert wurde (alte Events) faellt die App auf
       // datenbasierte Heuristik zurueck (siehe weiter unten).
@@ -1128,15 +1128,19 @@ export default function EventCreationPage(): React.ReactElement {
         inheritFlagsRaw = (ov?._inheritFlags as { capacity?: boolean; fields?: boolean; location?: boolean } | undefined);
         // Piggyback-Keys (mit Unterstrich-Prefix) rausstrippen, der Rest sind
         // die echten Mail-Template-Overrides pro TemplateType.
-        const filtered: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }> = {};
+        const filtered: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }> = {};
         for (const key of Object.keys(ov)) {
           if (key.startsWith('_')) continue;
-          const val = ov[key] as { subject?: string; heading?: string; bodyHtml?: string } | undefined;
-          if (val && (val.subject || val.heading || val.bodyHtml)) {
+          const val = ov[key] as { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string } | undefined;
+          if (val && (val.subject || val.heading || val.bodyHtml || val.headingColor || val.headingFontSize || val.subheading !== undefined)) {
             filtered[key] = {
               subject: val.subject || '',
               heading: val.heading || '',
               bodyHtml: val.bodyHtml || '',
+              // v18.19: Überschrift-Farbe/-Größe + Subheading mit-übernehmen.
+              ...(val.subheading !== undefined ? { subheading: val.subheading } : {}),
+              ...(val.headingColor ? { headingColor: val.headingColor } : {}),
+              ...(val.headingFontSize ? { headingFontSize: val.headingFontSize } : {}),
             };
           }
         }
@@ -2555,7 +2559,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
-    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }>;
   } | null>(null);
   // v11.57: Bevor wir submitten, muessen die Werte des aktuell sichtbaren
   // Tabs ins zugehoerige Slot zurueckgeschrieben werden — sonst gehen die
@@ -2605,7 +2609,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     disableEmails: boolean;
     disableOutlook: boolean;
-    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string }>;
+    emailTemplateOverrides: Record<string, { subject: string; heading: string; subheading?: string; bodyHtml: string; headingColor?: string; headingFontSize?: string }>;
   } => {
     if (activeCommTabIdx === 0) {
       return {
@@ -11501,6 +11505,9 @@ export default function EventCreationPage(): React.ReactElement {
           : isDescription
             ? description
             : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
+        // v18.19: Überschrift-Farbe + -Größe (Override > Template-Default).
+        const currentHeadingColor = (override?.headingColor) || (defaultTpl?.headingColor) || '#86bc25';
+        const currentHeadingFontSize = override?.headingFontSize || '26px';
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
@@ -11560,7 +11567,30 @@ export default function EventCreationPage(): React.ReactElement {
                 bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
               },
             })) : undefined}
-            emailHeadingColor={(!isOutlook && !isDescription) ? (defaultTpl?.headingColor || '#86bc25') : undefined}
+            emailHeadingColor={(!isOutlook && !isDescription) ? currentHeadingColor : undefined}
+            emailHeadingFontSize={(!isOutlook && !isDescription) ? currentHeadingFontSize : undefined}
+            onEmailHeadingColorChange={(!isOutlook && !isDescription) ? (hex) => setEmailTemplateOverrides(prev => ({
+              ...prev,
+              [tType]: {
+                subject: prev[tType]?.subject ?? currentSubject,
+                heading: prev[tType]?.heading ?? currentHeading,
+                subheading: prev[tType]?.subheading !== undefined ? prev[tType]!.subheading : currentSubheading,
+                bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
+                headingColor: hex,
+                headingFontSize: prev[tType]?.headingFontSize ?? (currentHeadingFontSize !== '26px' ? currentHeadingFontSize : undefined),
+              },
+            })) : undefined}
+            onEmailHeadingFontSizeChange={(!isOutlook && !isDescription) ? (px) => setEmailTemplateOverrides(prev => ({
+              ...prev,
+              [tType]: {
+                subject: prev[tType]?.subject ?? currentSubject,
+                heading: prev[tType]?.heading ?? currentHeading,
+                subheading: prev[tType]?.subheading !== undefined ? prev[tType]!.subheading : currentSubheading,
+                bodyHtml: prev[tType]?.bodyHtml ?? currentBody,
+                headingColor: prev[tType]?.headingColor ?? (currentHeadingColor !== '#86bc25' ? currentHeadingColor : undefined),
+                headingFontSize: px,
+              },
+            })) : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
             outlookSubheading={isOutlook ? outlookSubheading : undefined}

@@ -35,7 +35,8 @@ function getDate(): string {
  * BodyHtml-Feld versendet werden (z.B. OutlookDeclineReminder), weil dort
  * keine SPFx-seitige wrapTemplate()-Wrapper-Logik greift.
  */
-export function wrapTemplateForStorage(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+export function wrapTemplateForStorage(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string): string {
+  const hSize = (headingFontSize && headingFontSize.trim()) || '26px';
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -67,7 +68,7 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 </tr>
 <tr>
 <td style="padding:30px 30px 10px 30px;">
-  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
+  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:${hSize};font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
   <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
 </td>
 </tr>
@@ -97,7 +98,9 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 </html>`;
 }
 
-export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string): string {
+export function wrapTemplate(headingColor: string, heading: string, subheading: string, bodyHtml: string, headingFontSize?: string): string {
+  // v18.19: optionale Überschrift-Größe (z.B. '32px'); Default 26px.
+  const hSize = (headingFontSize && headingFontSize.trim()) || '26px';
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -141,7 +144,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== CONTENT ===== -->
 <tr>
 <td style="padding:30px 30px 10px 30px;">
-  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:26px;font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
+  <h1 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:${hSize};font-weight:400;color:${headingColor};margin:0 0 6px;">${heading}</h1>
   <h2 style="font-family:Aptos,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#000000;margin:0 0 24px;">${subheading}</h2>
 </td>
 </tr>
@@ -230,7 +233,7 @@ export function replacePlaceholdersPlain(text: string, vars: Record<string, stri
  * Nutzt wrapTemplate fuer das Deloitte-Design.
  */
 export function buildEmailFromTemplate(
-  template: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string },
+  template: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string; headingFontSize?: string },
   vars: Record<string, string>
 ): { subject: string; body: string } {
   // Subject + Heading: plain text (kein HTML-Escaping, sonst wird "&" zu "&amp;")
@@ -252,7 +255,7 @@ export function buildEmailFromTemplate(
     subject,
     body: isPreWrapped
       ? bodyHtml
-      : wrapTemplate(template.headingColor, heading, subheading, bodyHtml),
+      : wrapTemplate(template.headingColor, heading, subheading, bodyHtml, template.headingFontSize),
   };
 }
 
