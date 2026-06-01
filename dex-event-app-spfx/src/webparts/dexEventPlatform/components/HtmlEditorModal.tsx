@@ -156,23 +156,32 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   const setFontSize = (px: number): void => {
     restoreSelection();
-    // Wrap selection in <span style="font-size:Xpx">. execCommand 'fontSize' nutzt nur 1-7
-    // (HTML-Tags font size=...) und ist nicht praezise — eigener Wrapper ist robuster.
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    if (range.collapsed) return;
-    const span = document.createElement('span');
-    span.style.fontSize = `${px}px`;
-    try {
-      span.appendChild(range.extractContents());
-      range.insertNode(span);
-      sel.removeAllRanges();
-      const r = document.createRange();
-      r.selectNodeContents(span);
-      sel.addRange(r);
-      savedSelectionRef.current = r.cloneRange();
-    } catch { /* ignore */ }
+    if (sel.getRangeAt(0).collapsed) return;
+    const root = editorRef.current;
+    if (!root) return;
+    // v18.21: robuste Größen-Zuweisung über execCommand (wie foreColor) statt
+    // manuellem range.extractContents() — letzteres warf bei Auswahlen über
+    // Element-/Zeilen-Grenzen (z.B. fett markiertes „Location:") eine
+    // Exception, die verschluckt wurde → es entstand KEIN Span, die Vorschau
+    // blieb unverändert. Trick: styleWithCSS aus → execCommand('fontSize','7')
+    // wrappt die Auswahl robust in <font size="7"> (eindeutiger Marker), die
+    // wir danach in <span style="font-size:Npx"> umschreiben.
+    try { document.execCommand('styleWithCSS', false, 'false'); } catch { /* ignore */ }
+    try { document.execCommand('fontSize', false, '7'); } catch { /* ignore */ }
+    const markers = root.querySelectorAll('font[size="7"]');
+    markers.forEach(node => {
+      const span = document.createElement('span');
+      span.style.fontSize = `${px}px`;
+      while (node.firstChild) span.appendChild(node.firstChild);
+      node.parentNode?.replaceChild(span, node);
+    });
+    // Fallback: hat ein Browser trotz styleWithCSS=false einen span mit
+    // font-size:xxx-large erzeugt (Sentinel von Größe 7), auch den umschreiben.
+    root.querySelectorAll('span[style*="xxx-large"]').forEach(node => {
+      (node as HTMLElement).style.fontSize = `${px}px`;
+    });
     fireChange();
     // v18.20: Anzeige sofort auf die gesetzte Größe stellen — der User sieht
     // im Dropdown direkt die neue Größe, und die Live-Vorschau aktualisiert
