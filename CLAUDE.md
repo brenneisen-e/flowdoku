@@ -498,6 +498,13 @@ Wenn du also eine neue SP-Liste mit Sonderzeichen im Namen anlegst und Items per
 - Event creation creates a SharePoint subsite per event with a "Teilnehmer" list
 - Item-Level Security on registration lists (users see only their own entries)
 - DEX_Emails queue list for Power Automate email sending
+  - v18.30: Spalte `Importance` (Single line text, leer/`Normal` = normal,
+    `High` = Outlook hohe Wichtigkeit / rotes „!"). `queueEmail(..., importance?)`
+    schreibt sie; idempotent via `ensureImportanceFieldExists` in
+    `ensureEmailsList`. Der `DEX_SEND_MAIL`-Flow muss den Wert per Expression
+    auslesen (siehe `docs/flow-jsons.md`, UI-Anleitung v18.30) — bis dahin
+    gehen alle Mails normal raus. Genutzt von der DEX-Anfrage-Mail
+    (`sendAdminInquiry`).
 - 3 roles: User, Organizer, Admin (stored in DEX_Roles list)
 
 ### Roles & Permissions

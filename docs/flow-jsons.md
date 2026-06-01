@@ -522,6 +522,39 @@ PROCESS_BATCH_SCOPE:
 
 Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden (mit Cc + Bcc) → Status=Sent
 
+### UI-Anleitung 2026-06-01 (v18.30) — Wichtigkeit aus der Queue lesen (hohe Wichtigkeit / rotes „!")
+
+**Hintergrund:** Die App schreibt jetzt eine neue Spalte `Importance` in
+`DEX_Emails` (leer/`Normal` = normal, `High` = rotes Ausrufezeichen). Aktuell
+steht im Flow die Wichtigkeit fest auf `Normal`. Damit z.B. die DEX-Anfrage-
+Mail von der Landing-Page mit hoher Wichtigkeit ankommt, muss die Versand-
+Aktion den Wert aus dem Trigger-Item lesen.
+
+**Schritte (alles über die UI, kein Code-View):**
+
+1. Flow `DEX_SEND_MAIL` öffnen → **Bearbeiten**.
+2. Die Aktion **„Send an email from a shared mailbox (V2)"** aufklappen.
+3. Falls **Importance** nicht sichtbar ist: unten auf **„Show advanced
+   options"** / „Erweiterte Optionen anzeigen" klicken — dort steht das Feld
+   **Importance** (aktuell auf `Normal`).
+4. In das **Importance**-Feld klicken → den festen Wert `Normal` entfernen →
+   rechts auf das **Blitz-/fx-Symbol** für dynamischen Inhalt. Im
+   **Expression-Tab (fx)** folgenden Ausdruck eingeben und mit **OK**
+   bestätigen:
+
+   ```
+   if(equals(triggerBody()?['Importance'], 'High'), 'High', 'Normal')
+   ```
+
+   (Liest die `Importance`-Spalte des neuen DEX_Emails-Eintrags; ist sie
+   `High`, geht die Mail mit hoher Wichtigkeit raus, sonst normal.)
+5. **Speichern**.
+
+Danach den **aktuellen Flow-JSON** (Code View → kopieren) hier in
+`docs/flow-jsons.md` einpflegen. Bis dahin gilt: die App setzt das Feld
+korrekt, der Flow ignoriert es aber noch (alle Mails normal) — nicht
+destruktiv.
+
 ### Änderungen 2026-04-29 (v8.5)
 
 `SEND_EMAIL`-Aktion wurde um zwei Header erweitert:
