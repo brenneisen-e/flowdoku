@@ -866,6 +866,48 @@ nicht mehr testen):
 - `Header`-Menü-Eintrag „Demo: als User testen": Sichtbarkeit
   via `originalIsAdmin` (vorhanden seit v12.7).
 
+### Mail-Editor: Überschrift- + Unter-Überschrift-Formatierung (v18.19–v18.22)
+
+Der `HtmlEditorModal` (E-Mail-Template-Editor im Wizard, Schritt 6) erlaubt
+pro Event die freie Formatierung von Überschrift (h1) und Unter-Überschrift
+(h2):
+
+- **v18.19:** Überschrift Größe (`headingFontSize`) + Farbe (`headingColor`).
+- **v18.20/v18.21:** Body-Schriftgröße — kontrolliertes Dropdown, zeigt die
+  Größe der Auswahl (wie in Word) und setzt sie robust via
+  `execCommand('fontSize','7')` → Umschreiben in `<span style="font-size:Npx">`
+  (manuelles `range.extractContents()` warf bei Auswahlen über
+  Element-/Zeilen-Grenzen eine verschluckte Exception → kein Span).
+- **v18.22:** Unter-Überschrift frei formatierbar (`subheadingColor`,
+  `subheadingFontSize`, `subheadingBold`, `subheadingItalic`), Überschrift
+  zusätzlich fett/kursiv (`headingBold`, `headingItalic`), und **freie
+  Farbwahl** (Swatches + nativer `<input type="color">` + Hex-Code-Eingabe)
+  für Überschrift-, Unter-Überschrift- UND Body-Textfarbe (`ColorControl`-
+  Komponente in `HtmlEditorModal.tsx`).
+
+**Render-/Persistenz-Kette (wichtig bei neuen Heading-Properties):**
+
+1. `EmailTemplates.ts` → `wrapTemplate()` / `wrapTemplateForStorage()` nehmen
+   einen optionalen Trailing-Parameter `opts: WrapHeadingOpts` (NICHT
+   weitere Positions-Parameter — sonst brechen die ~25 Bestands-Aufrufe).
+   Die h1/h2-Zeilen baut der gemeinsame Helper `buildHeadingsHtml()`. Defaults
+   bleiben unverändert (h1: 400/normal/headingColor; h2: 20px/700/normal/#000),
+   damit alle Alt-Aufrufe gleich aussehen.
+2. `buildEmailFromTemplate()` reicht die Felder als `opts` an `wrapTemplate`.
+3. `EventContext.applyEventTemplateOverride()` löst Override > SP-Template auf
+   und MUSS jedes neue Feld durchreichen (Resolver-Return-Type + Empty-Check
+   + Spread-Block ergänzen).
+4. `EventCreationPage.tsx`: Override-Form ist der zentrale Type-Alias
+   `EmailOverrideEntry` (neue Felder NUR dort ergänzen). Alle Editor-Handler
+   laufen über den `patchOverride()`-Helper (merged ein Teil-Update und
+   bewahrt alle übrigen Override-Felder — vorher droppte z.B. ein
+   Heading-Text-Edit die zuvor gesetzte Farbe). Persistenz passiert über die
+   `EmailTemplateOverrides`-Spalte (JSON); Sub-Events tragen dieselben Felder
+   im Piggyback-JSON.
+
+Die Felder sind **Override-only** (kein globales SP-Template-Feld) — analog
+zu `headingColor`/`headingFontSize`.
+
 ### Mail-Template-Architektur (v12.11–v13.0)
 
 Alle automatischen App-Mails leben jetzt in `DEX_EmailTemplates` als
