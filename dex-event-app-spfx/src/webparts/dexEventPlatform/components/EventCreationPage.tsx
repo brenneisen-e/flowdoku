@@ -161,6 +161,9 @@ interface CustomFieldInput {
   /** v7.20: Optionale Beschreibung — landet als "i"-Tooltip neben dem
    *  Feld-Label im Registrierungsformular. */
   helpText?: string;
+  /** v18.18: 'tooltip' (Default) = "i"-Hover-Box neben dem Label;
+   *  'inline' = nicht-fetter Erklär-Text direkt unter dem Label. */
+  helpTextStyle?: 'tooltip' | 'inline';
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
@@ -215,6 +218,8 @@ function serializeCustomFields(
         required: !!f.required,
         visible: f.visible !== false,
         ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
+        // v18.18: nur persistieren wenn 'inline' (Default 'tooltip' = weglassen).
+        ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
         ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
           ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
           : {}),
@@ -791,6 +796,7 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? [...f.options] : [], visible: true,
       ...(f.multi ? { multi: true } : {}),
       ...(f.helpText ? { helpText: f.helpText } : {}),
+      ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
       // v11.94: confirmLabel beim Edit-Mount mit-übernehmen.
@@ -1193,6 +1199,7 @@ export default function EventCreationPage(): React.ReactElement {
         externalLinks: f.externalLinks,
         multi: f.multi,
         helpText: f.helpText,
+        helpTextStyle: f.helpTextStyle,
         showIf: f.showIf,
       })),
       // v15.3: pro-Sub-Event Felder aus dem Event-Datenmodell laden. Alle
@@ -2718,6 +2725,7 @@ export default function EventCreationPage(): React.ReactElement {
           type: f.type,
           required: f.required,
           helpText: f.helpText,
+          helpTextStyle: f.helpTextStyle,
           onlyForGroup: f.onlyForGroup,
           showIf: f.showIf,
           externalLinks: f.externalLinks,
@@ -9381,18 +9389,42 @@ export default function EventCreationPage(): React.ReactElement {
                       );
                     })()}
 
-                    {/* v7.20: Beschreibung pro Feld — landet im Registrierungs-
-                        formular als "i"-Tooltip neben dem Label. */}
+                    {/* v7.20: Beschreibung pro Feld. v18.18: Darstellung
+                        wählbar — „i"-Box neben dem Label ODER Erklär-Text
+                        unter dem Label. */}
                     <div style={{ marginLeft: 32, marginTop: 10 }}>
                       <input
                         className="form-input"
                         placeholder={isDe
-                          ? 'Beschreibung (optional, erscheint als "i"-Tooltip neben dem Feld)'
-                          : 'Description (optional, shown as "i" tooltip next to the field)'}
+                          ? 'Beschreibung (optional)'
+                          : 'Description (optional)'}
                         value={field.helpText || ''}
                         onChange={e => updateCustomField(field.id, { helpText: e.target.value })}
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
+                      {field.helpText && field.helpText.trim() && (
+                        <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                          <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`helpStyle-${field.id}`}
+                              checked={(field.helpTextStyle || 'tooltip') !== 'inline'}
+                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'tooltip' })}
+                            />
+                            {isDe ? '„i"-Info-Box (Hover)' : '„i" info box (hover)'}
+                          </label>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`helpStyle-${field.id}`}
+                              checked={field.helpTextStyle === 'inline'}
+                              onChange={() => updateCustomField(field.id, { helpTextStyle: 'inline' })}
+                            />
+                            {isDe ? 'Text unter dem Feld-Titel' : 'Text below the field title'}
+                          </label>
+                        </div>
+                      )}
                     </div>
                     {/* v17.20: EN-Variante der Beschreibung. */}
                     {bilingualFields && (
@@ -11606,6 +11638,7 @@ export default function EventCreationPage(): React.ReactElement {
             // Teilnehmer spaeter sieht (i-Tooltip, Multi-Select-Liste,
             // Sichtbarkeitsbedingung).
             helpText: f.helpText,
+            helpTextStyle: f.helpTextStyle,
             multi: f.multi,
             showIf: f.showIf,
             // v17.20: EN-Varianten an die Preview weiterreichen — sonst sieht
@@ -11637,6 +11670,7 @@ export default function EventCreationPage(): React.ReactElement {
               visible: f.visible !== false,
               options: f.type === 'select' ? f.options : undefined,
               helpText: f.helpText,
+              helpTextStyle: f.helpTextStyle,
               multi: f.multi,
               showIf: f.showIf,
             })),
@@ -12064,6 +12098,7 @@ export default function EventCreationPage(): React.ReactElement {
               type: f.type,
               required: !!f.required,
               helpText: f.helpText,
+              helpTextStyle: f.helpTextStyle,
               confirmLabel: f.confirmLabel,
               options: f.type === 'select' ? f.options : undefined,
               multi: !!f.multi,

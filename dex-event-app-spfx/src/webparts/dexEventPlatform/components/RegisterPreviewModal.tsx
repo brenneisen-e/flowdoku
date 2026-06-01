@@ -141,6 +141,7 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
         required: !!f.required,
         options: f.options,
         helpText: f.helpText || '',
+        helpTextStyle: f.helpTextStyle === 'inline' ? 'inline' : 'tooltip',
         ...(f.multi ? { multi: true } : {}),
         ...(f.showIf ? { showIf: f.showIf } : {}),
         // v17.22: EN-Varianten + confirmLabel an den Synth-Event durchreichen,
@@ -201,6 +202,8 @@ function buildSynthChildEvents(data: RegisterPreviewData): DeloitteEvent[] {
           required: !!f.required,
           options: f.options,
           helpText: f.helpText || '',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          helpTextStyle: ((f as any).helpTextStyle === 'inline' ? 'inline' : 'tooltip') as 'inline' | 'tooltip',
           ...(f.multi ? { multi: true } : {}),
           ...(f.showIf ? { showIf: f.showIf } : {}),
         })),

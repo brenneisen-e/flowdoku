@@ -495,6 +495,8 @@ export interface CustomField {
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */
   helpText?: string;
+  /** v18.18: 'tooltip' (Default) oder 'inline' (Erklär-Text unter dem Label). */
+  helpTextStyle?: 'tooltip' | 'inline';
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };

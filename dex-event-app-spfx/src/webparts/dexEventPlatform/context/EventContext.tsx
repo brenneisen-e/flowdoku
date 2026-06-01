@@ -790,6 +790,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v7.20: helpText durchreichen, damit das Registrierungsformular ihn
         // im "i"-Tooltip neben dem Label anzeigen kann.
         helpText: cf.helpText || '',
+        // v18.18: Darstellungs-Stil der Beschreibung (tooltip|inline).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        helpTextStyle: (cf as any).helpTextStyle === 'inline' ? 'inline' : 'tooltip',
         // v7.21: showIf-Bedingung durchreichen — RegistrationPage filtert
         // anhand davon, ob das Feld angezeigt wird.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
