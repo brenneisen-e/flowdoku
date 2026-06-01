@@ -74,12 +74,9 @@ export interface HtmlEditorModalProps {
   headerExtra?: React.ReactNode;
 }
 
-// v18.20: px-basierte Auswahl (wie in Word). Benannte Stufen werden als
-// Zusatz angezeigt, damit „Klein/Normal/Groß" weiterhin auffindbar sind.
+// v18.20: px-basierte Auswahl (wie in Word). v18.23: nur px, keine
+// „Klein/Groß"-Beiwörter — die reine px-Angabe ist eindeutiger.
 const FONT_SIZE_OPTIONS: number[] = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48];
-const FONT_SIZE_NAMES: Record<number, string> = {
-  12: 'Klein', 14: 'Normal', 18: 'Groß', 24: 'Sehr groß',
-};
 
 const COLORS: string[] = [
   '#000000', '#555555', '#86bc25', '#0076a8', '#ed8b00', '#c9302c', '#6b21a8', '#0d6efd',
@@ -591,9 +588,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       <option value={currentFontPx}>{currentFontPx} px</option>
                     )}
                     {FONT_SIZE_OPTIONS.map(px => (
-                      <option key={px} value={px}>
-                        {px} px{FONT_SIZE_NAMES[px] ? ` · ${FONT_SIZE_NAMES[px]}` : ''}
-                      </option>
+                      <option key={px} value={px}>{px} px</option>
                     ))}
                   </select>
                   {/* v18.16: Zeilenabstand für die gesamte Beschreibung. */}
