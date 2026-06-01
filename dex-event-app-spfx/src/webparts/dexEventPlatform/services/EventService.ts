@@ -633,6 +633,13 @@ export class EventService {
         await this.ensureBccFieldExists(listName);
       } catch { /* ignore */ }
 
+      // v18.30: Importance-Feld nachtraeglich anlegen — der DEX_SEND_MAIL-Flow
+      // setzt darauf basierend die Outlook-Wichtigkeit (High = rotes „!").
+      // Leer/„Normal" = normale Wichtigkeit.
+      try {
+        await this.ensureImportanceFieldExists(listName);
+      } catch { /* ignore */ }
+
       // Berechtigungen pruefen
       try {
         const listInfo = await this.context.spHttpClient.get(
@@ -671,6 +678,8 @@ export class EventService {
       { title: 'EventId', type: 2 },
       { title: 'Status', type: 6, choices: ['Pending', 'Sent', 'Failed'], metaType: 'SP.FieldChoice' },
       { title: 'SentDate', type: 4 },
+      // v18.30: Outlook-Wichtigkeit (leer/„Normal" = normal, „High" = rotes „!").
+      { title: 'Importance', type: 2 },
     ];
 
     for (const f of fields) {
@@ -766,6 +775,23 @@ export class EventService {
     );
   }
 
+  // v18.30: Importance-Spalte (Single line text) idempotent anlegen. Der
+  // DEX_SEND_MAIL-Flow liest sie und sendet bei „High" mit hoher Wichtigkeit.
+  private async ensureImportanceFieldExists(listName: string): Promise<void> {
+    const probeUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Importance')?$select=Id`;
+    const probe = await this.context.spHttpClient.get(probeUrl, SPHttpClient.configurations.v1);
+    if (probe.ok) return;
+    await this._post(
+      `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
+      {
+        '__metadata': { 'type': 'SP.Field' },
+        'Title': 'Importance',
+        'FieldTypeKind': 2,
+        'Required': false,
+      }
+    );
+  }
+
   /**
    * Berechtigungen fuer DEX_Emails: Owners Full Control, Members Contribute, Item-Level Security
    */
@@ -852,7 +878,9 @@ export class EventService {
     eventTitle: string,
     eventId: string,
     cc?: string,
-    bcc?: string
+    bcc?: string,
+    // v18.30: 'High' = Outlook hohe Wichtigkeit (rotes „!"). Default normal.
+    importance?: 'High' | 'Normal'
   ): Promise<boolean> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -869,6 +897,7 @@ export class EventService {
       };
       if (cc) payload['Cc'] = cc;
       if (bcc) payload['Bcc'] = bcc;
+      if (importance === 'High') payload['Importance'] = 'High';
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
         payload

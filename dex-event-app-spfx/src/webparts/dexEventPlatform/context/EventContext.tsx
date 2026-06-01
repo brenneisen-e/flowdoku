@@ -2748,8 +2748,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // und der Flow direkt in Get_Event failed (clientRequestId-Fehler).
     // Get_Event liefert dann 0 Items, Compose_Image faellt automatisch auf
     // das Default-Bild aus _Config zurueck - die Mail geht trotzdem raus.
+    // v18.30: Anfrage-Mail mit hoher Wichtigkeit (rotes „!" in Outlook) —
+    // der DEX_SEND_MAIL-Flow liest das Importance-Feld aus der Queue aus.
     return eventService.queueEmail(
-      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '0', requesterEmail
+      subject, adminTo, 'DEX Admin Team', body, 'Info', eventName || 'DEX-Anfrage', '0', requesterEmail, undefined, 'High'
     );
   }
 
