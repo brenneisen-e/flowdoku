@@ -168,15 +168,16 @@ export default function EventListPage(): React.ReactElement {
   // oder ActiveFrom in der Zukunft) als auch Cancelled/Completed aus —
   // konsistent mit der Konsolidierung „Entwurf = Entwurf, kein zweites
   // Under-Construction-Konzept mehr".
+  // v18.17 — BUG-FIX: vorher hat dieser Filter ALLE isFictive-Events (und
+  // ActiveFrom-zukünftige) hart entfernt, BEVOR die Test-Team-/Co-Organizer-
+  // /QR-Scanner-Sichtbarkeitsprüfung weiter unten greifen konnte. Folge:
+  // wer ohne Organizer-Rechte ins Test-Team eines Entwurfs aufgenommen wurde,
+  // konnte das Event trotzdem nicht sehen. Der Entwurfs-/ActiveFrom-Check
+  // läuft jetzt ausschließlich in `fictiveFiltered` unten, wo die
+  // per-User-Whitelist (Test-Team etc.) korrekt berücksichtigt wird.
   const nowTs = Date.now();
   const statusFiltered = onlyActive
-    ? events.filter((e) => {
-        if (e.status !== 'Active') return false;
-        if (e.isFictive) return false;
-        const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
-        if (activeFromTs > 0 && activeFromTs > nowTs) return false;
-        return true;
-      })
+    ? events.filter((e) => e.status === 'Active')
     : events;
 
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
