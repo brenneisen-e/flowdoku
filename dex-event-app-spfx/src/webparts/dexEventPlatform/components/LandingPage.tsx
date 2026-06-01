@@ -97,8 +97,8 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? '– der neuen App für die Organisation von Deloitte Events.'
-                : '– the new app for organising Deloitte events.'}
+                ? 'Deine zentrale Plattform für Deloitte Events – von der Einladung über die Anmeldung bis zum Check-in.'
+                : 'Your central platform for Deloitte events – from invitation through registration to check-in.'}
             </p>
           </div>
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
