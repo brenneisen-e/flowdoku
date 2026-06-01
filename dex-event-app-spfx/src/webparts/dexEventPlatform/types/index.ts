@@ -308,6 +308,11 @@ export interface EventSpecificField {
   required: boolean;
   options?: string[];
   helpText?: string;
+  /** v18.18: Darstellung der Beschreibung (`helpText`). `'tooltip'` (Default,
+   *  Backward-Compat): erscheint als „i"-Hover-Box neben dem Label.
+   *  `'inline'`: erscheint als nicht-fetter Erklär-Text direkt unter dem
+   *  (fetten) Feld-Label. Pro Feld vom Organizer wählbar. */
+  helpTextStyle?: 'tooltip' | 'inline';
   spInternalName?: string;
   /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
   externalLinks?: Array<{ label: string; url: string }>;

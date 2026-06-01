@@ -1306,17 +1306,27 @@ export default function RegistrationPage(): React.ReactElement {
     const displayLabel = pickFieldLabel(field);
     const displayHelp = pickFieldHelp(field);
     const displayConfirmLabel = pickFieldConfirmLabel(field);
+    // v18.18: 'inline' = Erklär-Text unter dem Label (nicht fett), sonst
+    // weiterhin "i"-Hover-Box neben dem Label.
+    const isInlineHelp = field.helpTextStyle === 'inline';
+    const inlineHelpEl = (displayHelp && isInlineHelp)
+      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6 }}>{displayHelp}</div>
+      : null;
     return (
   <div className="form-group" key={field.id}>
     {field.type !== 'checkbox' && (
+      <>
       <label className="form-label">
         {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
         {displayLabel}
         {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
             gibt schoenes Hover-Popover mit der vom Organizer
-            beim Event-Anlegen hinterlegten Beschreibung. */}
-        {displayHelp && <InfoTooltip text={displayHelp} />}
+            beim Event-Anlegen hinterlegten Beschreibung.
+            v18.18: nur im 'tooltip'-Modus; 'inline' rendert darunter. */}
+        {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
       </label>
+      {inlineHelpEl}
+      </>
     )}
     {field.type === 'select' && field.multi ? (
       // v11.89: Multi-Select-Dropdown — gleicher Look wie Single-Select,
@@ -1378,8 +1388,9 @@ export default function RegistrationPage(): React.ReactElement {
         <label className="form-label">
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
           {displayLabel}
-          {displayHelp && <InfoTooltip text={displayHelp} />}
+          {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
         </label>
+        {inlineHelpEl}
         <label
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
