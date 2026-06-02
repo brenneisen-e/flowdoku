@@ -19,6 +19,68 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
 
+### UI-Anleitung 2026-06-02 (v18.55) — Paginierung: alle Teilnehmer laden (>1.000 / ILS-Listen)
+
+**Problem:** `Get_Enrolled_Participants` ist ein **einzelner** HTTP-GET
+(`…/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne 'Abgemeldet'&$orderby=RegistrationDate asc&$top=5000`).
+SharePoint liefert auf **großen** bzw. **Item-Level-Security**-Listen oft nur
+eine **Teil-Seite** (~1.000 Zeilen) zurück plus einen `@odata.nextLink` — eine
+einzelne „Send an HTTP request"-Action **folgt diesem nextLink NICHT**. Folge:
+Ab ~1.000 Teilnehmern werden nur die ersten ~1.000 renummeriert/gezählt, der
+Rest fällt still weg → ID-Vergabe und Nachrück-Logik „nicht mehr sauber".
+
+**Lösung:** den einzelnen GET durch eine **Paginierungs-Schleife** ersetzen, die
+solange weiter-GETtet, wie ein `@odata.nextLink` zurückkommt, und alle Zeilen in
+einer Array-Variable sammelt. Feld-Casing (`Id`, `Status`, …) bleibt identisch,
+deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
+`ID` statt `Id` und würde `GenerateSPData` brechen).
+
+**UI-Schritte:**
+
+1. **Zwei Variablen anlegen** (direkt nach `Get_ListItemType`, VOR der bisherigen
+   `Get_Enrolled_Participants`-Action):
+   - **Initialize variable** `AllParticipants`, Typ **Array**, Wert `[]`.
+   - **Initialize variable** `NextPageUri`, Typ **String**, Wert (fx-Tab):
+     `concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')`
+2. **Do until** „Load_All_Pages" einfügen (nach den beiden Init-Variablen):
+   - Bedingung: `NextPageUri` **is equal to** `` (leerer String).
+   - Change limits: Count `5000`, Timeout `PT1H`.
+   - **Inhalt der Schleife (in dieser Reihenfolge):**
+     a. **Send an HTTP request to SharePoint** `Get_Page`:
+        - Site Address (fx): `outputs('Settings')?['siteAddress']`
+        - Method: **GET**
+        - Uri (fx): `variables('NextPageUri')`
+        - Headers: `Accept` = `application/json;odata=nometadata`
+     b. **Set variable** `AllParticipants` (fx):
+        `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
+        — runAfter `Get_Page` Succeeded.
+     c. **Set variable** `NextPageUri` (fx):
+        `if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))`
+        — runAfter Schritt b Succeeded. (Wandelt den absoluten nextLink in den
+        relativen `_api/…`-Pfad; bei letzter Seite → leerer String → Schleife endet.)
+3. **Alte Action entfernen:** `Get_Enrolled_Participants` **löschen**. Die Action,
+   die bisher danach lief (`Count_Active`), per **Configure run after** auf
+   **`Load_All_Pages` Succeeded** setzen.
+4. **Drei Referenzen umbiegen** von `body('Get_Enrolled_Participants')?['value']`
+   auf `variables('AllParticipants')`:
+   - `Count_Active` (Compose): `@length(filter(variables('AllParticipants'), not(equals(item()?['Status'], 'Warteliste'))))`
+   - `Generate_Indices` (Compose): `@range(0, length(variables('AllParticipants')))`
+   - `GenerateSPData` (Select) → „From" bleibt `@outputs('Generate_Indices')`, im
+     Map-Feld **ID**: `@variables('AllParticipants')[item()]?['Id']` (TeilnehmerID
+     bleibt `@add(item(), 1)`).
+5. **Speichern.** Test mit einem Event > 1.000 aktiven Teilnehmern: nach einer
+   Abmeldung müssen ALLE TeilnehmerIDs lückenlos 1..N neu vergeben sein (nicht nur
+   die ersten ~1.000).
+
+**Hinweis Listen-View-Threshold:** Bei **> 5.000** Items pro Event greift zusätzlich
+die SharePoint-5000er-Grenze — `Id` ist indiziert, `$orderby=RegistrationDate`
+und `$filter=Status` sind es i. d. R. nicht. Eure Events liegen bei ~1.500, daher
+unkritisch; falls je > 5.000, müssten `RegistrationDate`/`Status` als
+Listen-Indizes angelegt werden.
+
+Sobald im Tenant umgesetzt: bitte den exportierten Flow-JSON zurückspielen, dann
+aktualisiere ich den Flow-Block unten in dieser Datei.
+
 ### UI-Anleitung 2026-09-XX (v17.15) — Nachrueck-Audit (PromotedDate / ReplacedParticipantEmail / ReplacedByParticipantEmail)
 
 **Hintergrund:** seit App-Version v17.15 gibt es drei neue Spalten in jeder Subsite-Teilnehmerliste, mit denen wir nachvollziehen wann ein Wartelistler nachgerueckt ist und wessen Abmeldung den Promote ausgeloest hat. Die App-Logik in `EventService.promoteFirstWaitlistItem` setzt diese Felder bereits — fuer den **User-Self-Cancel-Pfad**, der durch den Power-Automate-Flow promotet, muessen die gleichen Felder hier zusaetzlich gesetzt werden. Sonst sind die App-Spalten nur halb gefuellt (nur Admin-Cancels haben das Audit).
