@@ -210,9 +210,21 @@ deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
      c. **Set variable** `AllParticipants` (fx): `outputs('Merge_Pages')`
         — runAfter `Merge_Pages` Succeeded.
      d. **Set variable** `NextPageUri` (fx):
-        `if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))`
-        — runAfter Schritt c Succeeded. (Wandelt den absoluten nextLink in den
-        relativen `_api/…`-Pfad; bei letzter Seite → leerer String → Schleife endet.)
+        `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
+        — runAfter Schritt c Succeeded. (Schneidet den relativen Pfad **ab `_api`**
+        aus dem nextLink heraus; bei letzter Seite → leerer String → Schleife endet.)
+        **WICHTIG (v18.67) — Endlosschleifen-Fix:** die frühere Variante baute
+        den relativen Pfad per `replace(nextLink, siteAddress + '/', '')`. Bei
+        `$filter`/`$orderby` auf **nicht-indizierten** Spalten (hier `Status` /
+        `RegistrationDate`) macht SharePoint ein **Listen-Scan-Paging** und
+        liefert einen `nextLink` mit `$skiptoken` — **auch bei winzigen Listen**.
+        Passte `SubsiteUrl` nicht **zeichengenau** auf das nextLink-Präfix
+        (Groß-/Kleinschreibung, Slash), blieb die URI **absolut** → `Get_Page`
+        holte dieselbe Seite erneut → der `$skiptoken` advancte nie →
+        **Endlosschleife** bis count 400 / Timeout 3 h. Der `split('_api')`-Ansatz
+        ist robust gegen Host/Casing/Slash und deckt zusätzlich beide
+        nextLink-Schreibweisen ab (`@odata.nextLink` bzw. `odata.nextLink` unter
+        `odata=nometadata`).
 3. **Alte Action entfernen:** `Get_Enrolled_Participants` **löschen**. Die Action,
    die bisher danach lief (`Count_Active`), per **Configure run after** auf
    **`Load_All_Pages` Succeeded** setzen.
@@ -476,7 +488,7 @@ Load_All_Pages (Until @equals(variables('NextPageUri'),''), count 400, timeout P
   Merge_Pages (Compose): @concat(variables('AllParticipants'), body('Get_Page')?['value'])   runAfter Get_Page
   Append_Page (SetVariable AllParticipants): @outputs('Merge_Pages')                          runAfter Merge_Pages
   Set_NextPageUri (SetVariable NextPageUri):
-    @if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))  runAfter Append_Page
+    @if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))  runAfter Append_Page
 
 Filter_Non_Waitlist (Query)  runAfter Load_All_Pages
   from:  @variables('AllParticipants')
@@ -560,7 +572,7 @@ If_Counter_Stale (If Current != Max)  runAfter Compute_CurrentCounter
 > - **Init_NextPageUri:** `concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')`
 > - **Merge_Pages:** `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
 > - **Append_Page (Wert):** `outputs('Merge_Pages')`
-> - **Set_NextPageUri:** `if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))`
+> - **Set_NextPageUri (v18.67, Endlosschleifen-Fix):** `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
 > - **Org-Template-URI (alle drei Zweige):** `concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')` — Header `Accept: application/json;odata=verbose`
 > - **Org-Mail Body (Beispiel Zweig N):** `replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
 
