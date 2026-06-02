@@ -23,6 +23,8 @@ import { InfoTooltip } from './InfoTooltip';
 import BulkUserImportModal from './BulkUserImportModal';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import { generateSelfCheckInToken } from '../utils/selfCheckIn';
+import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -1457,6 +1459,24 @@ export default function EventCreationPage(): React.ReactElement {
   const [askSalutation, setAskSalutation] = React.useState<boolean>(
     !!editEvent?.askSalutation
   );
+  // v18.33: Self-Check-in — Teilnehmer checken sich selbst per QR-Code ein.
+  // Konfiguration in Schritt 3 (Kapazität & Sichtbarkeit). Beim Aktivieren
+  // wird einmalig ein geheimer Token generiert (Schlüssel für statischen Link
+  // + rotierenden HMAC-QR) und ein Erklär-Modal geöffnet.
+  const [selfCheckInEnabled, setSelfCheckInEnabled] = React.useState<boolean>(
+    !!editEvent?.selfCheckInEnabled
+  );
+  const [selfCheckInToken, setSelfCheckInToken] = React.useState<string>(
+    editEvent?.selfCheckInToken || ''
+  );
+  const [selfCheckInFrom, setSelfCheckInFrom] = React.useState<string>(
+    editEvent?.selfCheckInFrom || ''
+  );
+  const [selfCheckInTo, setSelfCheckInTo] = React.useState<string>(
+    editEvent?.selfCheckInTo || ''
+  );
+  // Erklär-Modal beim Aktivieren des Self-Check-ins.
+  const [showSelfCheckInModal, setShowSelfCheckInModal] = React.useState<boolean>(false);
   // v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
   // Konfiguration im neuen Schritt 4 (Team-Anmeldung). Die tatsächliche
   // Multi-Person-Anmelde-Logik folgt mit v11.81+; aktuell wird nur die
@@ -2954,6 +2974,11 @@ export default function EventCreationPage(): React.ReactElement {
       updates['AttendeeUploadLabel'] = (attendeeUploadLabel || '').trim();
       // v11.80: Anrede-Toggle + Team-Anmeldung-Konfiguration mit-persistieren.
       updates['AskSalutation'] = !!askSalutation;
+      // v18.33: Self-Check-in mit-persistieren. Token nur schreiben, wenn aktiv.
+      updates['SelfCheckInEnabled'] = !!selfCheckInEnabled;
+      updates['SelfCheckInToken'] = selfCheckInEnabled ? (selfCheckInToken || '') : '';
+      updates['SelfCheckInFrom'] = selfCheckInEnabled && selfCheckInFrom ? selfCheckInFrom : null;
+      updates['SelfCheckInTo'] = selfCheckInEnabled && selfCheckInTo ? selfCheckInTo : null;
       updates['TeamRegistrationEnabled'] = !!teamRegistrationEnabled;
       updates['TeamSize'] = teamRegistrationEnabled && teamSize > 0 ? teamSize : null;
       updates['AskTeamName'] = !!askTeamName;
@@ -3431,6 +3456,11 @@ export default function EventCreationPage(): React.ReactElement {
         allowAttendeeUpload: !!allowAttendeeUpload,
         attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
         attendeeUploadLabel: (attendeeUploadLabel || '').trim() || undefined,
+        // v18.33: Self-Check-in mit-durchreichen (Token + optionales Fenster).
+        selfCheckInEnabled: !!selfCheckInEnabled,
+        selfCheckInToken: selfCheckInEnabled ? (selfCheckInToken || undefined) : undefined,
+        selfCheckInFrom: selfCheckInEnabled && selfCheckInFrom ? selfCheckInFrom : undefined,
+        selfCheckInTo: selfCheckInEnabled && selfCheckInTo ? selfCheckInTo : undefined,
         // v11.80: Anrede-Toggle + Team-Anmelde-Konfiguration mit-durchreichen.
         askSalutation: !!askSalutation,
         teamRegistrationEnabled: !!teamRegistrationEnabled,
@@ -8578,6 +8608,112 @@ export default function EventCreationPage(): React.ReactElement {
                   Mails, Outlook, Slot-Beitritt, Lead-Approval, Admin-Center-
                   Team-Management) ist seit v11.82–v11.86 live. */}
 
+              {/* ===== v18.33: Self-Check-in ===== */}
+              <div className="form-section" style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--dex-gray-200, #eee)' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {isDe ? 'Self-Check-in per QR-Code' : 'Self check-in via QR code'}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> ob sich Teilnehmer am Veranstaltungstag <strong>selbst einchecken</strong> können, indem sie einen event-spezifischen QR-Code scannen — ohne dass das Check-in-Team jeden einzeln abhaken muss.<br /><br />
+                        <strong>Anzeige in der App:</strong> nach dem Speichern findest du im <strong>Admin Center</strong> dieses Events zwei Wege: ein <strong>druckbares QR-PDF</strong> (zum Aushängen, bequem) und eine <strong>rotierende Live-Anzeige</strong> für einen Bildschirm am Eingang (der Code wechselt automatisch, damit ein abfotografierter Code schnell verfällt).<br /><br />
+                        <strong>Automatismen:</strong> wer den Code mit der Handy-Kamera scannt, wird automatisch als <strong>anwesend</strong> markiert — sofern er angemeldet und im erlaubten Zeitfenster ist. Jeder checkt immer nur <strong>sich selbst</strong> ein.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> kein Anstehen am Check-in-Schalter — einfach Code scannen, fertig.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> whether attendees can <strong>check themselves in</strong> on the event day by scanning an event-specific QR code — no need for the check-in team to tick everyone off manually.<br /><br />
+                        <strong>Where you see it:</strong> after saving you get two options in this event&apos;s <strong>admin center</strong>: a <strong>printable QR PDF</strong> (convenient, for posting) and a <strong>rotating live display</strong> for a screen at the entrance (the code changes automatically so a photographed code expires quickly).<br /><br />
+                        <strong>Automations:</strong> whoever scans the code with their phone camera is automatically marked <strong>present</strong> — provided they are registered and within the allowed time window. Everyone only ever checks in <strong>themselves</strong>.<br /><br />
+                        <strong>For attendees:</strong> no queue at the check-in desk — just scan and done.
+                      </>
+                    )} />
+                  </label>
+                  <div className="toggle-wrapper" style={{ marginTop: 4 }}>
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={selfCheckInEnabled}
+                        onChange={e => {
+                          const on = e.target.checked;
+                          setSelfCheckInEnabled(on);
+                          if (on) {
+                            if (!selfCheckInToken) setSelfCheckInToken(generateSelfCheckInToken());
+                            setShowSelfCheckInModal(true);
+                          }
+                        }}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
+                    <span style={{ fontSize: '0.9rem' }}>{selfCheckInEnabled ? t('create.enabled') : t('create.disabled')}</span>
+                  </div>
+                </div>
+
+                {selfCheckInEnabled && (
+                  <div style={{ marginTop: 14, padding: 16, background: 'var(--dex-gray-50, #f7f7f5)', borderRadius: 10, border: '1px solid var(--dex-gray-200, #eee)' }}>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--dex-gray-700, #444)', lineHeight: 1.5, marginBottom: 14 }}>
+                      {isDe
+                        ? 'Der QR-Code (PDF zum Drucken sowie die rotierende Live-Anzeige) steht nach dem Speichern im Admin Center dieses Events bereit.'
+                        : 'The QR code (printable PDF and the rotating live display) is available in this event\'s admin center after saving.'}
+                    </div>
+
+                    {/* Optionales Zeitfenster */}
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-700, #444)', marginBottom: 8 }}>
+                      {isDe ? 'Check-in-Zeitfenster (optional)' : 'Check-in time window (optional)'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontSize: '0.8rem' }}>{isDe ? 'Von' : 'From'}</label>
+                        <input
+                          type="datetime-local"
+                          className="form-input"
+                          value={selfCheckInFrom}
+                          onChange={e => setSelfCheckInFrom(e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontSize: '0.8rem' }}>{isDe ? 'Bis' : 'Until'}</label>
+                        <input
+                          type="datetime-local"
+                          className="form-input"
+                          value={selfCheckInTo}
+                          onChange={e => setSelfCheckInTo(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500, #888)', marginTop: 6 }}>
+                      {isDe
+                        ? 'Leer lassen = Check-in ist nur am Veranstaltungstag möglich (vom Start- bis zum End-Datum).'
+                        : 'Leave empty = check-in is only possible on the event day (from start to end date).'}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowSelfCheckInModal(true)}
+                        style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--dex-gray-300, #ccc)', background: '#fff', color: 'var(--dex-gray-700, #444)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}
+                      >
+                        <Icon iconName="Info" style={{ marginRight: 6 }} />
+                        {isDe ? 'Wie funktioniert das?' : 'How does it work?'}
+                      </button>
+                      {!!(editEvent?.selfCheckInEnabled && editEvent?.selfCheckInToken) && (
+                        <button
+                          type="button"
+                          onClick={() => downloadSelfCheckInPdf({
+                            eventTitle: title || 'Event',
+                            token: editEvent.selfCheckInToken as string,
+                          })}
+                          style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--dex-green, #86bc25)', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}
+                        >
+                          <Icon iconName="PDF" style={{ marginRight: 6 }} />
+                          {isDe ? 'QR-PDF herunterladen' : 'Download QR PDF'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               </div>
 
               {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
@@ -12888,6 +13024,76 @@ export default function EventCreationPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v18.33: Self-Check-in Erklär-Modal */}
+      <Modal
+        open={showSelfCheckInModal}
+        onClose={() => setShowSelfCheckInModal(false)}
+        maxWidth={560}
+        ariaLabel={isDe ? 'Self-Check-in erklärt' : 'Self check-in explained'}
+      >
+        {showSelfCheckInModal && (
+          <>
+            <h3 style={{ marginTop: 0, marginBottom: 6, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="QRCode" style={{ color: 'var(--dex-green, #86bc25)' }} />
+              {isDe ? 'Self-Check-in per QR-Code' : 'Self check-in via QR code'}
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {isDe
+                ? 'Teilnehmer checken sich am Veranstaltungstag selbst ein, indem sie einen QR-Code scannen — ganz ohne Anstehen am Check-in-Schalter. Du hast zwei Wege, den Code bereitzustellen:'
+                : 'Attendees check themselves in on the event day by scanning a QR code — no queue at the check-in desk. You have two ways to provide the code:'}
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: 14, borderRadius: 10, border: '1px solid var(--dex-gray-200, #eee)', background: 'var(--dex-gray-50, #f7f7f5)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800, #333)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon iconName="PDF" style={{ color: 'var(--dex-green, #86bc25)' }} />
+                  {isDe ? 'Druckbares QR-PDF (statisch)' : 'Printable QR PDF (static)'}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Bequem zum Aushängen oder Auslegen. Hinweis: ein abfotografierter Code lässt sich theoretisch weitergeben — deshalb am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren. Jeder checkt ohnehin nur sich selbst ein.'
+                    : 'Convenient for posting. Note: a photographed code could in theory be shared — best combined with the "event day only" time window. Everyone only checks themselves in anyway.'}
+                </div>
+              </div>
+              <div style={{ padding: 14, borderRadius: 10, border: '1px solid var(--dex-gray-200, #eee)', background: 'var(--dex-gray-50, #f7f7f5)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800, #333)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon iconName="Refresh" style={{ color: 'var(--dex-green, #86bc25)' }} />
+                  {isDe ? 'Rotierende Live-Anzeige (foto-sicher)' : 'Rotating live display (photo-safe)'}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Läuft auf einem Bildschirm am Eingang (Laptop, Tablet, Beamer). Der QR-Code wechselt automatisch alle paar Sekunden — ein abfotografierter Code ist dadurch sofort wertlos. Die beste Wahl, wenn du sicher sein willst, dass nur Anwesende einchecken.'
+                    : 'Runs on a screen at the entrance (laptop, tablet, projector). The QR code changes automatically every few seconds — a photographed code is instantly worthless. Best choice if you want to ensure only people on site check in.'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(134,188,37,0.08)', border: '1px solid rgba(134,188,37,0.3)', fontSize: '0.85rem', color: 'var(--dex-gray-700, #444)', lineHeight: 1.5 }}>
+              <Icon iconName="Camera" style={{ marginRight: 6, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+              {isDe
+                ? 'Teilnehmer scannen mit der normalen Handy-Kamera (kein In-App-Scanner nötig) — das funktioniert zuverlässig auch in der SharePoint-App.'
+                : 'Attendees scan with their normal phone camera (no in-app scanner needed) — this works reliably even inside the SharePoint app.'}
+            </div>
+
+            <div style={{ marginTop: 16, fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'QR-PDF und Live-Anzeige findest du nach dem Speichern im Admin Center dieses Events.'
+                : 'You will find the QR PDF and live display in this event\'s admin center after saving.'}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setShowSelfCheckInModal(false)}
+                style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {isDe ? 'Verstanden' : 'Got it'}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* v9.28/v13.4: Modal — neuer Quiz-Bereich anlegen, jetzt über <Modal>-Wrapper. */}
       <Modal

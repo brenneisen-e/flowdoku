@@ -388,6 +388,66 @@ ohne den Umweg über „Meine Events" als Team-Lead.
   selbst bleibt für nicht-berechtigte Rollen verborgen, weil die
   Admin-Detail-Seite ohnehin nur für sie gerendert wird.
 
+### Self-Check-in per QR-Code (v18.33)
+
+Teilnehmer checken sich am Veranstaltungstag selbst ein, indem sie einen
+event-spezifischen QR-Code mit der **nativen Handy-Kamera** scannen. Das
+umgeht bewusst den In-App-Scanner (`CheckInPage`/`qr-scanner`), weil die
+SharePoint-Mobile-App `getUserMedia` im WebView blockiert — der native
+Kamera-Scan öffnet stattdessen einen Deep-Link, der die App startet und den
+eingeloggten User automatisch eincheckt.
+
+**Zwei QR-Modi, ein geheimer Token pro Event:**
+
+- **Statisches PDF** (druckbar, bequem): URL `?action=selfcheckin&token=<Token>`.
+  Der Token ist der Lookup-Key. Per Foto teilbar → mit Zeitfenster kombinieren.
+- **Rotierende Live-Anzeige** (foto-sicher): URL
+  `?action=selfcheckin&event=<Nr>&code=<HMAC>&t=<Fenster>`. Der Code wechselt
+  alle `SELF_CHECKIN_STEP_SECONDS` (45s) und wird per HMAC-SHA256(Token,
+  Fenster-Index) über **Web Crypto** clientseitig validiert (aktuelles + 1
+  vorheriges Fenster gelten als frisch). Kein Server / keine Power-Automate-
+  Änderung nötig.
+
+**Neue SP-Spalten auf `DEX_Events`** (in `getEventsFieldDefinitions()`, daher
+via `ensureMissingFields()` auch auf Bestands-Tenants nachgezogen):
+
+- `SelfCheckInEnabled` (Boolean) — Feature an/aus.
+- `SelfCheckInToken` (Single line text) — geheimer Token (Lookup-Key +
+  HMAC-Schlüssel). Wird beim Aktivieren im Wizard einmalig per
+  `generateSelfCheckInToken()` erzeugt und bleibt stabil.
+- `SelfCheckInFrom` / `SelfCheckInTo` (DateTime, optional) — Check-in-
+  Zeitfenster. Leer = Default „nur am Event-Tag" (Start- bis End-Datum,
+  `isWithinCheckInWindow()`).
+
+**Architektur:**
+
+- `utils/selfCheckIn.ts` — HMAC/Fenster-Logik, Token-Gen, URL-Builder,
+  Fenster-/Frische-Prüfung (alles rein client, Web Crypto).
+- `utils/selfCheckInPdf.ts` — `downloadSelfCheckInPdf()` baut das A4-PDF per
+  **jsPDF** (neue Dependency `jspdf`) mit QR (`qrcode`) + Anleitung.
+- `EventContext.selfCheckIn(params)` — orchestriert: Event per Token ODER
+  Event-Nr auflösen (`EventService.getEventBySelfCheckInToken` /
+  `getEventByEventNumber`), Enabled/Fenster/Frische prüfen, eigene
+  Registrierung via `getMyRegistration` finden, `checkInParticipant`. Gibt
+  `SelfCheckInResult` (`success`/`already`/`not-registered`/`on-waitlist`/
+  `not-found`/`disabled`/`closed`/`expired`/`error`).
+- `SelfCheckInPage.tsx` — vollflächige Ergebnis-UI für den User
+  (Deep-Link `?action=selfcheckin`, in `DexEventPlatform.tsx` vor dem
+  Boot-Loader abgefangen).
+- `SelfCheckInDisplayPage.tsx` — rotierende Live-Anzeige für den Organizer
+  (Page `self-checkin-display`, Deep-Link `?action=selfcheckin-display&event=<id>`).
+- Wizard: Toggle + Zeitfenster + Erklär-Modal in Schritt **Kapazität &
+  Sichtbarkeit** (`EventCreationPage.tsx`); Persistenz im create-Objekt UND
+  im Edit-`updates`-Payload.
+- Admin Center: zwei `ActionTile`s „Self-Check-in: QR-PDF" und „… Live-
+  Anzeige" (sichtbar bei `selfCheckInEnabled` + Admin/Organizer + Token).
+
+**Sicherheit:** Jeder checkt nur **sich selbst** ein (Login-gebunden,
+Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
+(Default Event-Tag) + im Live-Modus die Code-Rotation (abfotografierter Code
+verfällt). Restrisiko des statischen PDFs ist bewusst akzeptiert (nur
+Anwesenheits-Schummeln, keine Fremd-Anmeldung).
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event

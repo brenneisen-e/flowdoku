@@ -467,6 +467,10 @@ export interface SPEvent {
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
   AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
   AskSalutation?: boolean;       // v11.80: Anrede im Registrierungsformular abfragen
+  SelfCheckInEnabled?: boolean;  // v18.33: Self-Check-in per QR-Code erlauben
+  SelfCheckInToken?: string;     // v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR)
+  SelfCheckInFrom?: string;      // v18.33: optionaler Start des Check-in-Fensters (ISO), leer = nur am Event-Tag
+  SelfCheckInTo?: string;        // v18.33: optionales Ende des Check-in-Fensters (ISO)
   TeamRegistrationEnabled?: boolean; // v11.80: Team-Anmeldung erlauben
   TeamSize?: number;             // v11.80: Maximale Teamgröße
   AskTeamName?: boolean;         // v11.80: Team-Namen abfragen
@@ -2642,6 +2646,10 @@ export class EventService {
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
       { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
       { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
+      { title: 'SelfCheckInEnabled', type: 8, metaType: 'SP.Field' }, // v18.33: Boolean - Self-Check-in per QR-Code erlauben
+      { title: 'SelfCheckInToken', type: 2 }, // v18.33: Single line text - geheimer Token (statischer Link + HMAC-Schlüssel)
+      { title: 'SelfCheckInFrom', type: 4 }, // v18.33: DateTime - optionaler Start des Check-in-Fensters
+      { title: 'SelfCheckInTo', type: 4 }, // v18.33: DateTime - optionales Ende des Check-in-Fensters
       { title: 'TeamRegistrationEnabled', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Anmeldung erlauben
       { title: 'TeamSize', type: 9 }, // v11.80: Number - Maximale Teamgröße (0 = nicht gesetzt)
       { title: 'AskTeamName', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Team-Name abfragen
@@ -3024,7 +3032,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3129,6 +3137,46 @@ export class EventService {
   }
 
   /**
+   * v18.33: Event anhand des Self-Check-in-Tokens finden (für den statischen
+   * Check-in-Link ?action=selfcheckin&token=…). Liefert das erste Event mit
+   * passendem Token. Alle eingeloggten User dürfen DEX_Events lesen.
+   */
+  public async getEventBySelfCheckInToken(token: string): Promise<SPEvent | null> {
+    try {
+      const safe = token.replace(/'/g, "''");
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$filter=SelfCheckInToken eq '${safe}'&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      const arr = data.value || (data.d && data.d.results) || [];
+      return arr.length > 0 ? arr[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * v18.33: Event anhand der Event-Nummer finden (für den rotierenden Live-QR
+   * ?action=selfcheckin&event=<Nr>&code=…&t=…).
+   */
+  public async getEventByEventNumber(eventNumber: number): Promise<SPEvent | null> {
+    try {
+      const response = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EventService.EVENT_SELECT}&$filter=EventNumber eq ${eventNumber}&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      const arr = data.value || (data.d && data.d.results) || [];
+      return arr.length > 0 ? arr[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Neues Event erstellen + Subsite mit Teilnehmerliste anlegen
    */
   public async createEvent(event: {
@@ -3184,6 +3232,14 @@ export class EventService {
     attendeeUploadLabel?: string;
     /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
     askSalutation?: boolean;
+    /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
+    selfCheckInEnabled?: boolean;
+    /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
+    selfCheckInToken?: string;
+    /** v18.33: optionaler Start des Check-in-Fensters (ISO). */
+    selfCheckInFrom?: string;
+    /** v18.33: optionales Ende des Check-in-Fensters (ISO). */
+    selfCheckInTo?: string;
     /** v11.80: Team-Anmeldung erlauben (Default false). */
     teamRegistrationEnabled?: boolean;
     /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
@@ -3379,6 +3435,10 @@ export class EventService {
         'AttendeeUploadHint': event.attendeeUploadHint || '',
         'AttendeeUploadLabel': event.attendeeUploadLabel || '',
         'AskSalutation': !!event.askSalutation,
+        'SelfCheckInEnabled': !!event.selfCheckInEnabled,
+        'SelfCheckInToken': event.selfCheckInToken || '',
+        'SelfCheckInFrom': event.selfCheckInFrom || null,
+        'SelfCheckInTo': event.selfCheckInTo || null,
         'TeamRegistrationEnabled': !!event.teamRegistrationEnabled,
         'TeamSize': typeof event.teamSize === 'number' && event.teamSize > 0 ? event.teamSize : null,
         'AskTeamName': !!event.askTeamName,

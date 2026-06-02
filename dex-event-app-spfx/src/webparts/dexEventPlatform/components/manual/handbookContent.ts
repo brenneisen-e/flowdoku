@@ -18,6 +18,7 @@ import { manageParticipantsSection } from './sections/manageParticipants';
 import { registerForOtherSection } from './sections/registerForOther';
 import { teamRegistrationSection } from './sections/teamRegistration';
 import { checkInSection } from './sections/checkIn';
+import { selfCheckInSection } from './sections/selfCheckIn';
 import { quizSection } from './sections/quiz';
 import { massMailSection } from './sections/massMail';
 import { inviteMailSection } from './sections/inviteMail';
@@ -42,6 +43,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     myEventsSection(locale),
     profileSection(locale),
     checkInSection(locale),
+    selfCheckInSection(locale),
     createEventSection(locale),
     editEventSection(locale),
     subEventsSection(locale),
