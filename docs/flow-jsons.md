@@ -52,6 +52,15 @@ Quelle wurde die `from`-Bindung geleert und in der Paginierungs-Anleitung
    equal to* / `Warteliste`) — Power Automate quotet den Wert dann selbst.
    Die Split-Filter (`Filter_Active_Durchstarter` / `_Funstarter`) haben die
    Anführungszeichen bereits korrekt.
+3. **Self-reference in `Append_Page`** (Paginierungs-Schleife). Die
+   `Set variable AllParticipants`-Action darf `variables('AllParticipants')`
+   nicht im eigenen Set-Wert referenzieren (Fehler beim Speichern:
+   `WorkflowRunActionInputsInvalidProperty` — „Self reference is not
+   supported…"). **Fix:** einen **Compose** `Merge_Pages` =
+   `concat(variables('AllParticipants'), body('Get_Page')?['value'])` zwischen
+   `Get_Page` und `Append_Page` einschieben, und `Append_Page` auf
+   `outputs('Merge_Pages')` setzen. Siehe Schritt b/c in der
+   Paginierungs-Anleitung unten.
 
 **Verifikation nach dem Fix:** Event mit Cap = 2, 2 Aktiven, 1 Wartelistler;
 eine **dritte** Person zusätzlich auf die Warteliste setzen; jetzt eine
@@ -183,12 +192,20 @@ deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
         - Method: **GET**
         - Uri (fx): `variables('NextPageUri')`
         - Headers: `Accept` = `application/json;odata=nometadata`
-     b. **Set variable** `AllParticipants` (fx):
+     b. **Compose** `Merge_Pages` (fx):
         `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
         — runAfter `Get_Page` Succeeded.
-     c. **Set variable** `NextPageUri` (fx):
+        **WICHTIG (v18.66):** dieser Compose-Zwischenschritt ist Pflicht. Eine
+        **Set variable**-Action darf die eigene Variable **nicht** im Set-Wert
+        referenzieren (Power Automate: „Self reference is not supported when
+        updating the value of variable 'AllParticipants'" →
+        `WorkflowRunActionInputsInvalidProperty`). Compose darf die Variable
+        lesen, Set variable liest danach nur den Compose-Output.
+     c. **Set variable** `AllParticipants` (fx): `outputs('Merge_Pages')`
+        — runAfter `Merge_Pages` Succeeded.
+     d. **Set variable** `NextPageUri` (fx):
         `if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))`
-        — runAfter Schritt b Succeeded. (Wandelt den absoluten nextLink in den
+        — runAfter Schritt c Succeeded. (Wandelt den absoluten nextLink in den
         relativen `_api/…`-Pfad; bei letzter Seite → leerer String → Schleife endet.)
 3. **Alte Action entfernen:** `Get_Enrolled_Participants` **löschen**. Die Action,
    die bisher danach lief (`Count_Active`), per **Configure run after** auf
