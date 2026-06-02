@@ -4829,6 +4829,28 @@ export default function AdminPage(): React.ReactElement {
               <div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
                 Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig. Bitte ein paar Minuten warten, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Meist musst du gar nichts tun.
               </div>
+              {/* v18.60: Direkter Korrektur-Button in der Box — Admin ODER
+                  Organizer des Events. Use-Case: die automatische Batch-
+                  Korrektur ist offensichtlich NICHT gelaufen (IDs seit längerem
+                  falsch). Vorher musste der Organizer den Button im Aktionen-
+                  Dropdown suchen. */}
+              {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={isReorderingIDs}
+                  style={{ marginTop: 12, fontSize: '0.82rem', opacity: isReorderingIDs ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={async () => {
+                    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                    if (!confirm(isDe
+                      ? 'TeilnehmerIDs jetzt neu vergeben (1, 2, 3, …)?\n\nNur klicken, wenn die automatische Korrektur offensichtlich nicht gelaufen ist (IDs schon länger falsch) — NICHT mitten in einer Anmeldewelle.'
+                      : 'Reassign participant IDs now (1, 2, 3, …)?\n\nOnly click if the automatic correction clearly did not run (IDs wrong for a while) — NOT in the middle of a registration wave.')) return;
+                    await runIdReorder();
+                  }}
+                >
+                  <Hash size={14} /> {isReorderingIDs ? (isDe ? 'IDs werden korrigiert…' : 'Fixing IDs…') : (isDe ? 'IDs jetzt korrigieren' : 'Fix IDs now')}
+                </button>
+              )}
             </div>
           );
         })()}
