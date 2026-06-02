@@ -983,16 +983,24 @@ export default function MyEventsPage(): React.ReactElement {
           CancellationDate: '',
           CustomData: '',
         };
-        // v18.53: Im subEventsOnlyMode hält die Schatten-Parent-Registrierung die
-        // übergreifenden Hauptevent-Antworten (Food Preferences, Hotel, Assistenz
-        // etc.). Ohne sie war „Angaben ergänzen" in MyEvents leer, obwohl das
-        // Admin-Center die Werte korrekt zeigt. Echte Parent-Registrierung laden;
-        // Fallback bleibt die virtualReg (kein Regress, wenn nichts gefunden wird).
+        // v18.53/v18.56: Im subEventsOnlyMode hält die Schatten-Parent-
+        // Registrierung die übergreifenden Hauptevent-Antworten (Food
+        // Preferences, Hotel, Assistenz etc.) — die brauchen wir für die
+        // „Angaben ergänzen"-Vorbefüllung. ABER: der Aktiv/Abgemeldet-Bucket
+        // dieser Karte richtet sich nach den AKTIVEN Sub-Event-Anmeldungen
+        // (sessionsOnly), NICHT nach dem Status der Schatten-Parent-Zeile (die
+        // kann z.B. aus einer alten Abmeldung 'Abgemeldet' sein). Daher NUR die
+        // CustomData (+ Id für den Edit-Pfad) übernehmen und den aktiven
+        // virtualReg-Status behalten. v18.56-Fix: vorher wurde die komplette
+        // realParentReg übernommen → bei Status='Abgemeldet' verschwand das
+        // Event fälschlich aus „Meine Events".
         let parentRegForEntry: SPRegistration = virtualReg;
         if (parent.subEventsOnlyMode) {
           try {
             const realParentReg = await getMyRegistration(parent.id);
-            if (realParentReg) parentRegForEntry = realParentReg;
+            if (realParentReg && realParentReg.CustomData) {
+              parentRegForEntry = { ...virtualReg, CustomData: realParentReg.CustomData, Id: realParentReg.Id };
+            }
           } catch { /* Fallback virtualReg */ }
         }
         entries.push({

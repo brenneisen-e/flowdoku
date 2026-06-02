@@ -9635,21 +9635,23 @@ export default function EventCreationPage(): React.ReactElement {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: '0.78rem',
                       }}>{idx + 1}</span>
-                      <input
+                      {/* v18.56: Textarea statt Input — lange Fragen brechen jetzt
+                          um statt abgeschnitten zu werden. Auto-Höhe via ref
+                          (height = scrollHeight). resize:none + overflow:hidden,
+                          damit es wie ein wachsendes Eingabefeld wirkt. */}
+                      <textarea
                         className="form-input"
                         value={field.label}
+                        rows={1}
                         placeholder={isDe ? 'Feld-Name (z.B. T-Shirt Größe)' : 'Field name (e.g. T-shirt size)'}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
+                        ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
                         style={{
-                          /* v11.1: max-width begrenzen, damit Typ + Pflicht
-                             + X immer in einer Zeile bleiben (vorher: flex
-                             1 1 220px hat den Input bei breiten Cards bis
-                             zur halben Card-Breite gestreckt). 320px reicht
-                             für lange Feld-Namen, lässt aber genug Raum
-                             für die rechten Aktions-Elemente. */
-                          flex: '0 1 320px', minWidth: 180, maxWidth: 320,
+                          flex: '1 1 280px', minWidth: 180, maxWidth: 360,
                           fontSize: '1rem', fontWeight: 600,
                           padding: '8px 12px',
+                          resize: 'none', overflow: 'hidden', lineHeight: 1.35,
+                          fontFamily: 'inherit',
                           color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
                         }}
                       />
@@ -11808,35 +11810,14 @@ export default function EventCreationPage(): React.ReactElement {
                     „Aenderungen speichern und zurueck zum Event" plus
                     Info-Tooltip mit Erklaerung. */}
                 {isEditMode && currentStep < steps.length - 1 && (
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <button
-                      className="btn btn-primary"
-                      disabled={!title}
-                      onClick={attemptSubmit}
-                      style={{ opacity: !title ? 0.5 : 1 }}
-                    >
-                      <Send size={16} /> {isDe ? 'Änderungen speichern und zurück zum Event' : 'Save changes and return to event'}
-                    </button>
-                    <InfoTooltip text={isDe ? (
-                      <>
-                        <strong>Was passiert beim Klick?</strong>
-                        <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: 1.5 }}>
-                          <li>Alle Eingaben aus allen Wizard-Schritten werden in einem Rutsch gespeichert — kein &bdquo;Zwischenspeichern&ldquo; pro Step nötig.</li>
-                          <li>Der Edit-Modus wird geschlossen.</li>
-                          <li>Du landest direkt im Organizer-Menü dieses Events (Teilnehmer-Übersicht, Aktionen).</li>
-                        </ul>
-                      </>
-                    ) : (
-                      <>
-                        <strong>What happens on click?</strong>
-                        <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: 1.5 }}>
-                          <li>All inputs across the wizard steps are persisted in one go — no per-step interim save needed.</li>
-                          <li>Edit mode is closed.</li>
-                          <li>You return directly to the organizer menu of this event (participant overview, actions).</li>
-                        </ul>
-                      </>
-                    )} />
-                  </div>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!title}
+                    onClick={attemptSubmit}
+                    style={{ opacity: !title ? 0.5 : 1 }}
+                  >
+                    <Send size={16} /> {isDe ? 'Änderungen speichern und zurück zum Event' : 'Save changes and return to event'}
+                  </button>
                 )}
 
                 {currentStep < steps.length - 1 ? (
