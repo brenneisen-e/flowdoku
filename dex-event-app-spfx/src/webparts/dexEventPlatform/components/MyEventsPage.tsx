@@ -2972,7 +2972,7 @@ function MyEventUpload(props: {
 function MyEventSubEvents(props: {
   parentEvent: DeloitteEvent;
   childEvents: DeloitteEvent[];
-  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;

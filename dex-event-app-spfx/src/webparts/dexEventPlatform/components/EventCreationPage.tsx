@@ -9017,7 +9017,7 @@ export default function EventCreationPage(): React.ReactElement {
                   className="form-input"
                   value={registrationLanguage}
                   onChange={e => setRegistrationLanguage(e.target.value as '' | 'de' | 'en')}
-                  style={{ maxWidth: 320 }}
+                  style={{ width: '100%', maxWidth: 460 }}
                 >
                   <option value="">{isDe ? 'Automatisch (App-Sprache des Teilnehmers)' : 'Automatic (attendee\'s app language)'}</option>
                   <option value="de">{isDe ? 'Immer Deutsch' : 'Always German'}</option>
