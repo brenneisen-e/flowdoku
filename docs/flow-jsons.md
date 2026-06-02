@@ -709,6 +709,35 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-06-02 (v18.34) — Ort in den Outlook-Termin übernehmen
+
+**Hintergrund:** Das „Ort"-Feld des Outlook-Termins blieb bisher leer, weil
+die `Create event (V4)`-Action keinen Location-Parameter setzt. Die SPFx-App
+schreibt jetzt eine neue Spalte **`OutlookLocation`** in `DEX_Events` (lesbarer
+Ort = Veranstaltungsort + Adresse, z.B. „Rheinterrasse Düsseldorf,
+Schwannstraße 6, 40476 Düsseldorf"). Der Flow muss diese Spalte nur ins
+Location-Feld des Termins mappen — ein einziger Klick, keine Expression.
+
+**Schritte (alles über die UI):**
+
+1. Flow `DEX_CreateOutlookEvent` öffnen → **Bearbeiten**.
+2. Die Aktion **„Create event (V4)"** (Outlook-Termin anlegen) aufklappen.
+3. Falls das Feld **Location** nicht sichtbar ist: unten auf **„Show advanced
+   options"** / „Erweiterte Optionen anzeigen" klicken.
+4. In das Feld **Location** klicken → rechts auf das **Blitz-Symbol**
+   (dynamischer Inhalt) → in der Liste den Trigger-Wert **`OutlookLocation`**
+   (aus „When an item is created", DEX_Events) auswählen.
+5. **Speichern**.
+
+Damit bekommt **jeder neu angelegte Termin** automatisch den Ort. Für
+**bestehende Events** siehe die UI-Anleitung in Flow 4
+(`DEX_Outlook_Einladungen`, UpdateEvent) — dort wird der Ort beim Aktualisieren
+nachgezogen; die App füllt `OutlookLocation` bei Bestands-Events automatisch
+nach, sobald eine Outlook-Aktion (Einladen / Aktualisieren) ansteht.
+
+Danach den aktuellen Flow-JSON hier einpflegen. Der zu ergänzende Parameter:
+`"item/location": "@triggerBody()?['OutlookLocation']"`.
+
 ### Hinweis 2026-05-21 (v11.58): KEINE Flow-Änderung für OutlookDirty nötig
 
 Mit v11.57 gibt es auf der `DEX_Events`-Liste die Boolean-Spalte
@@ -969,12 +998,25 @@ HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
   "showAs": "busy",
   "responseRequested": false,
   "sensitivity": "private",
+  "location": {
+    "displayName": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookLocation'], '')}"
+  },
   "body": {
     "contentType": "html",
     "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
   }
 }
 ```
+
+**UI-Anleitung 2026-06-02 (v18.34) — Ort beim Aktualisieren übernehmen
+(bestehende Events):** Damit auch **bestehende** Outlook-Termine den Ort
+bekommen, wird im `UpdateEvent`-Zweig der Ort mit-gepatcht. In der
+Compose-Action **`Build_Update_Body`** im JSON die Zeile
+`"location": { "displayName": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookLocation'], '')}" }`
+ergänzen (siehe oben). Bestands-Events bekommen den Ort dann, sobald der
+Organizer das Event bearbeitet und das Outlook-Update bestätigt — die SPFx-App
+(v18.34) wertet eine reine **Ort-Änderung** jetzt ebenfalls als
+Outlook-relevant und füllt `OutlookLocation` in `DEX_Events` automatisch nach.
 
 **Stand 2026-05-22 (v11.88):** der Body schreibt zusaetzlich `showAs: busy`
 + `responseRequested: false` + `sensitivity: private`. Damit landet der

@@ -1790,7 +1790,12 @@ export default function MyEventsPage(): React.ReactElement {
                     User sofort sieht: das ist „was ich angegeben habe", nicht
                     „wer organisiert das". */}
                 {!editingId || editingId !== event.id ? (
-                  displayData.length > 0 && (
+                  // v18.38: Edit-Bereich anzeigen, sobald das Event ueberhaupt
+                  // bearbeitbare Felder hat — NICHT mehr nur wenn schon Werte
+                  // ausgefuellt sind. Sonst kann ein Teilnehmer, der ein
+                  // optionales Feld leer gelassen hat (z.B. „zusaetzliche
+                  // Nacht"), es spaeter nicht mehr nachtragen.
+                  (displayData.length > 0 || (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0) && (
                     <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                       {displayData.map(({ label, value }) => (
                         <span key={label} style={{
@@ -1804,7 +1809,10 @@ export default function MyEventsPage(): React.ReactElement {
                       ))}
                       {/* v11.30: Edit-Button direkt neben den Angaben-Tags
                           (statt unten in der Aktions-Zeile). Naeher am Inhalt
-                          den er bearbeitet. */}
+                          den er bearbeitet.
+                          v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
+                          nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
+                      {(event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 && (
                       <button
                         type="button"
                         onClick={() => { setEditData(customData); setEditingId(event.id); }}
@@ -1816,10 +1824,11 @@ export default function MyEventsPage(): React.ReactElement {
                           cursor: 'pointer',
                           display: 'inline-flex', alignItems: 'center', gap: 4,
                         }}
-                        title={t('myevents.edit')}
+                        title={displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                       >
-                        <Pencil size={12} /> {t('myevents.edit')}
+                        <Pencil size={12} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                       </button>
+                      )}
                     </div>
                   )
                 ) : (

@@ -29,6 +29,8 @@ import RoleMatrixPage from './RoleMatrixPage';
 import ParticipantsPage from './ParticipantsPage';
 import FlowchartPage from './FlowchartPage';
 import CheckInPage from './CheckInPage';
+import SelfCheckInPage from './SelfCheckInPage';
+import SelfCheckInDisplayPage from './SelfCheckInDisplayPage';
 import ManualPage from './manual/ManualPage';
 import { KpiRow } from './LandingPage';
 
@@ -190,6 +192,15 @@ function AppContent(): React.ReactElement {
     } catch { return false; }
   }, []);
 
+  // v18.33: Self-Check-in-Deep-Link (?action=selfcheckin&…). Wird per Handy-
+  // Kamera gescannter QR-Code aufgerufen. Rendert direkt die Ergebnisseite,
+  // unabhängig von currentPage — kein In-App-Scanner nötig.
+  const isSelfCheckInDeepLink = React.useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('action') === 'selfcheckin';
+    } catch { return false; }
+  }, []);
+
   // v9.43: Deep-Link Handling für ?action=event-created/event-updated&event=<id>.
   // Wird beim Klick auf 'Zur Übersicht' nach Event-Erstellung/-Update aufgerufen
   // (Hard-Reload). Zeigt eine grüne Erfolgs-Banner-Meldung und navigiert
@@ -294,6 +305,16 @@ function AppContent(): React.ReactElement {
           const cleanUrl = window.location.pathname + (window.location.hash || '');
           window.history.replaceState({}, '', cleanUrl);
         } catch { /* */ }
+      } else if (action === 'selfcheckin-display' && eventParam) {
+        // v18.33: Deep-Link auf die rotierende Live-Check-in-Anzeige (Organizer).
+        // event = SharePoint-Item-ID oder Event-Nummer.
+        didHandleDeepLink.current = true;
+        let evt = events.find(e => e.id === eventParam);
+        if (!evt) {
+          const asNumber = parseInt(eventParam, 10);
+          if (!isNaN(asNumber)) evt = events.find(e => e.eventNumber === asNumber);
+        }
+        navigate('self-checkin-display', evt ? evt.id : undefined);
       } else if (action === 'manual') {
         // v6.23: Deep-Link ins Handbuch. Optionaler `section`-Query-Parameter
         // steuert die initial angezeigte Sektion (wird in ManualPage direkt aus
@@ -395,7 +416,7 @@ function AppContent(): React.ReactElement {
     // geladen haben (DEX_Roles + DEX_Events). Vorher einen Vollbild-Spinner
     // zeigen, damit der User nicht kurz die LandingPage ohne Bubble sieht,
     // bevor die Bubble nachrutscht.
-    if (currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading)) {
+    if (currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && (isEventsLoading || isRolesLoading)) {
       // Denselben Orb-Look wie auf der Landing-Page, damit der Übergang
       // Boot-Loader → LandingPage flüssig wirkt. Keyframes injizieren wir
       // hier selbst, falls LandingPage noch nicht gemountet war.
@@ -505,6 +526,10 @@ function AppContent(): React.ReactElement {
         </div>
       );
     }
+    // v18.33: Self-Check-in-Deep-Link rendert direkt die Ergebnisseite.
+    if (isSelfCheckInDeepLink) {
+      return <SelfCheckInPage />;
+    }
     switch (currentPage) {
       case 'landing':
         return <LandingPage />;
@@ -533,6 +558,8 @@ function AppContent(): React.ReactElement {
         return <FlowchartPage />;
       case 'check-in':
         return <CheckInPage />;
+      case 'self-checkin-display':
+        return <SelfCheckInDisplayPage />;
       case 'manual':
         return <ManualPage />;
       default:
@@ -543,7 +570,7 @@ function AppContent(): React.ReactElement {
   // v6.29: Während der Boot-Loader läuft, Header verstecken. Sonst würde
   // schon die "Jetzt einchecken"-Bubble / QR-Icon blinken bevor der eigentliche
   // Welcome-Screen sichtbar ist.
-  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && (isEventsLoading || isRolesLoading);
+  const isBootLoading = currentPage === 'landing' && !isCancelDeepLink && !isSelfCheckInDeepLink && (isEventsLoading || isRolesLoading);
   // v9.26: Page-ID jetzt im Header-Avatar-Popup statt unten links.
   return (
     <div className="app-layout" ref={layoutRef}>

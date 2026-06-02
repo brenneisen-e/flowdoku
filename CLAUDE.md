@@ -388,6 +388,89 @@ ohne den Umweg über „Meine Events" als Team-Lead.
   selbst bleibt für nicht-berechtigte Rollen verborgen, weil die
   Admin-Detail-Seite ohnehin nur für sie gerendert wird.
 
+### Self-Check-in per QR-Code (v18.33)
+
+Teilnehmer checken sich am Veranstaltungstag selbst ein, indem sie einen
+event-spezifischen QR-Code mit der **nativen Handy-Kamera** scannen. Das
+umgeht bewusst den In-App-Scanner (`CheckInPage`/`qr-scanner`), weil die
+SharePoint-Mobile-App `getUserMedia` im WebView blockiert — der native
+Kamera-Scan öffnet stattdessen einen Deep-Link, der die App startet und den
+eingeloggten User automatisch eincheckt.
+
+**Zwei QR-Modi, ein geheimer Token pro Event:**
+
+- **Statisches PDF** (druckbar, bequem): URL `?action=selfcheckin&token=<Token>`.
+  Der Token ist der Lookup-Key. Per Foto teilbar → mit Zeitfenster kombinieren.
+- **Rotierende Live-Anzeige** (foto-sicher): URL
+  `?action=selfcheckin&event=<Nr>&code=<HMAC>&t=<Fenster>`. Der Code wechselt
+  alle `SELF_CHECKIN_STEP_SECONDS` (45s) und wird per HMAC-SHA256(Token,
+  Fenster-Index) über **Web Crypto** clientseitig validiert (aktuelles + 1
+  vorheriges Fenster gelten als frisch). Kein Server / keine Power-Automate-
+  Änderung nötig.
+
+**Neue SP-Spalten auf `DEX_Events`** (in `getEventsFieldDefinitions()`, daher
+via `ensureMissingFields()` auch auf Bestands-Tenants nachgezogen):
+
+- `SelfCheckInEnabled` (Boolean) — Feature an/aus.
+- `SelfCheckInToken` (Single line text) — geheimer Token (Lookup-Key +
+  HMAC-Schlüssel). Wird beim Aktivieren im Wizard einmalig per
+  `generateSelfCheckInToken()` erzeugt und bleibt stabil.
+- `SelfCheckInFrom` / `SelfCheckInTo` (DateTime, optional) — Check-in-
+  Zeitfenster. Leer = Default „nur am Event-Tag" (Start- bis End-Datum,
+  `isWithinCheckInWindow()`).
+
+**Architektur:**
+
+- `utils/selfCheckIn.ts` — HMAC/Fenster-Logik, Token-Gen, URL-Builder,
+  Fenster-/Frische-Prüfung (alles rein client, Web Crypto).
+- `utils/selfCheckInPdf.ts` — `downloadSelfCheckInPdf()` baut das A4-PDF per
+  **jsPDF** (neue Dependency `jspdf`) mit QR (`qrcode`) + Anleitung.
+- `EventContext.selfCheckIn(params)` — orchestriert: Event per Token ODER
+  Event-Nr auflösen (`EventService.getEventBySelfCheckInToken` /
+  `getEventByEventNumber`), Enabled/Fenster/Frische prüfen, eigene
+  Registrierung via `getMyRegistration` finden, `checkInParticipant`. Gibt
+  `SelfCheckInResult` (`success`/`already`/`not-registered`/`on-waitlist`/
+  `not-found`/`disabled`/`closed`/`expired`/`error`).
+- `SelfCheckInPage.tsx` — vollflächige Ergebnis-UI für den User
+  (Deep-Link `?action=selfcheckin`, in `DexEventPlatform.tsx` vor dem
+  Boot-Loader abgefangen).
+- `SelfCheckInDisplayPage.tsx` — rotierende Live-Anzeige für den Organizer
+  (Page `self-checkin-display`, Deep-Link `?action=selfcheckin-display&event=<id>`).
+- Wizard: Toggle + Zeitfenster + Erklär-Modal in Schritt **Kapazität &
+  Sichtbarkeit** (`EventCreationPage.tsx`); Persistenz im create-Objekt UND
+  im Edit-`updates`-Payload.
+- Admin Center: zwei `ActionTile`s „Self-Check-in: QR-PDF" und „… Live-
+  Anzeige" (sichtbar bei `selfCheckInEnabled` + Admin/Organizer + Token).
+
+**Sicherheit:** Jeder checkt nur **sich selbst** ein (Login-gebunden,
+Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
+(Default Event-Tag) + im Live-Modus die Code-Rotation (abfotografierter Code
+verfällt). Restrisiko des statischen PDFs ist bewusst akzeptiert (nur
+Anwesenheits-Schummeln, keine Fremd-Anmeldung).
+
+### Anmeldesprache vorgeben (v18.35)
+
+Pro Event kann der Organizer die **Sprache der Anmeldeseite** fest vorgeben —
+unabhängig von der App-Sprache des Teilnehmers. Use-Case: ein englisch-
+sprachiges Event soll die Anmeldung (inkl. Datenschutz-Disclaimer) **immer auf
+Englisch** zeigen, auch wenn der User die App auf Deutsch nutzt.
+
+- **Neue SP-Spalte `RegistrationLanguage`** (Single line text, `''`/`'de'`/`'en'`)
+  auf `DEX_Events`, via `getEventsFieldDefinitions()` (→ `ensureMissingFields`
+  auch auf Bestands-Tenants). `''`/undefined = Default „folgt App-Sprache".
+- **Wizard:** Dropdown „Sprache des Anmeldeformulars" in Schritt **Felder**
+  (`EventCreationPage.tsx`): Automatisch / Immer Deutsch / Immer Englisch.
+  Persistiert im create-Objekt UND im Edit-`updates`-Payload.
+- **`RegistrationPage.tsx`:** überschreibt lokal `locale` (und `t`, sowie
+  `eventLocale` für das Form-Chrome) mit der erzwungenen Sprache, sobald
+  `event.registrationLanguage` gesetzt ist. Dadurch greifen **alle**
+  bestehenden `t(...)`/`locale`-Verwendungen automatisch — inkl. Disclaimer
+  (`t('reg.privacy')`). Custom-Field-EN-Varianten greifen über das bestehende
+  `bilingualFields`-Verhalten.
+- **Header-Hinweis (`Header.tsx`):** auf der Registrierungsseite eines Events
+  mit fester Sprache zeigt der Header einen kleinen Chip **in der erzwungenen
+  Sprache** („Anmeldung auf Deutsch" / „Registration in English").
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event
@@ -781,6 +864,16 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 - DEX_IDReorder_TeilnehmerIDs — TeilnehmerIDs renummerieren + Warteliste nachrücken
 - DEX_SEND_MAIL — Mail-Versand aus DEX_Emails-Queue
 - DEX_CreateOutlookEvent — Outlook-Termin initial anlegen
+  - **Ort im Termin (v18.34):** Neue Spalte `OutlookLocation` (Single line text)
+    auf `DEX_Events` — lesbarer Ort (Veranstaltungsort + Adresse), gebaut von
+    `utils/eventFormat.ts → buildOutlookLocation()`. Geschrieben beim Anlegen
+    (`createEvent`-Payload) UND beim Bearbeiten (Wizard-`updates`), plus
+    Backfill in `EventService.queueOutlookEvent` (einmal pro Event/Session) für
+    Bestands-Events. Der Flow mappt `item/location` ←
+    `triggerBody()?['OutlookLocation']` (siehe `docs/flow-jsons.md`, UI-Anleitung
+    v18.34); der `DEX_Outlook_Einladungen`-UpdateEvent-Zweig patcht den Ort beim
+    Aktualisieren mit. Eine reine Ort-Änderung im Wizard gilt seit v18.34 als
+    Outlook-relevant (öffnet das Update-Modal).
   - **Trigger-Konsequenz (wichtig):** Der Flow lauscht ausschließlich auf
     `GetOnNewItems` in DEX_Events — er feuert **nur** beim Anlegen eines
     neuen DEX_Events-Items, **nicht** bei MERGE/PATCH-Updates. Wenn der

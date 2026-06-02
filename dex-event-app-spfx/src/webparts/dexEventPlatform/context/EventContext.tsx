@@ -12,6 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
+import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
@@ -158,6 +159,35 @@ export function formatOrganizerList(organizers: string[], lang: string): string 
   return `${names.slice(0, -1).join(', ')}${conj}${names[names.length - 1]}`;
 }
 
+/** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
+ *  QR) ODER `eventNumber` + `code` + `windowIndex` (rotierender Live-QR). */
+export interface SelfCheckInParams {
+  token?: string;
+  eventNumber?: number;
+  code?: string;
+  windowIndex?: number;
+}
+
+/** v18.33: Strukturiertes Ergebnis des Self-Check-ins für die Ergebnis-UI. */
+export type SelfCheckInStatus =
+  | 'success'        // erfolgreich eingecheckt
+  | 'already'        // war bereits eingecheckt
+  | 'not-registered' // nicht für dieses Event angemeldet
+  | 'on-waitlist'    // auf der Warteliste — kein Check-in möglich
+  | 'not-found'      // Event/Token nicht gefunden
+  | 'disabled'       // Self-Check-in für dieses Event nicht aktiviert
+  | 'closed'         // außerhalb des Check-in-Zeitfensters
+  | 'expired'        // rotierender Code abgelaufen / ungültig
+  | 'error';         // technischer Fehler
+
+export interface SelfCheckInResult {
+  status: SelfCheckInStatus;
+  eventTitle?: string;
+  eventStart?: string;
+  opensAt?: string;   // ISO, bei status='closed'
+  closesAt?: string;  // ISO, bei status='closed'
+}
+
 interface EventContextType {
   events: DeloitteEvent[];
   /** Top-Level-Events (ohne parentEventId) — was in EventListPage/MyEventsPage angezeigt wird. */
@@ -228,6 +258,11 @@ interface EventContextType {
     memberRegistration: SPRegistration
   ) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
+  /** v18.33: Self-Check-in über einen gescannten QR-Deep-Link. Löst das Event
+   *  per Token (statischer QR) oder Event-Nummer + HMAC-Code (rotierender QR)
+   *  auf, validiert Fenster/Frische und setzt die eigene Registrierung auf
+   *  „Eingecheckt". Gibt ein strukturiertes Ergebnis für die Ergebnis-UI. */
+  selfCheckIn: (params: SelfCheckInParams) => Promise<SelfCheckInResult>;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
@@ -314,6 +349,8 @@ export interface CreateEventInput {
   /** Seit v6.4: wenn gesetzt, wird das Event als Sub-Event zum angegebenen Parent angelegt. */
   parentEventId?: string;
   emailLanguage?: string;
+  /** v18.35: erzwungene Anmeldeseiten-Sprache ('de' | 'en'); leer = App-Sprache. */
+  registrationLanguage?: 'de' | 'en';
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -333,6 +370,14 @@ export interface CreateEventInput {
   attendeeUploadLabel?: string;
   /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
   askSalutation?: boolean;
+  /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
+  selfCheckInEnabled?: boolean;
+  /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
+  selfCheckInToken?: string;
+  /** v18.33: optionaler Start des Check-in-Fensters (ISO). */
+  selfCheckInFrom?: string;
+  /** v18.33: optionales Ende des Check-in-Fensters (ISO). */
+  selfCheckInTo?: string;
   /** v11.80: Team-Anmeldung erlauben (Default false). */
   teamRegistrationEnabled?: boolean;
   /** v11.80: Maximale Teamgröße (0 = nicht gesetzt). */
@@ -657,6 +702,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // und das Outlook-Update-Confirm-Modal kam deshalb nie.
       calendarLink: e.CalendarLink || '',
       emailLanguage: e.EmailLanguage || 'EN',
+      // v18.35: erzwungene Anmeldeseiten-Sprache (nur 'de'/'en' gültig, sonst undefined).
+      registrationLanguage: (e.RegistrationLanguage === 'de' || e.RegistrationLanguage === 'en') ? e.RegistrationLanguage : undefined,
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,
@@ -732,6 +779,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Alte Tenants ohne diese Spalten interpretieren undefined als false /
       // 0, das passt zum Default-Verhalten (Anrede aus, Team-Anmeldung aus).
       askSalutation: !!e.AskSalutation,
+      // v18.33: Self-Check-in. Alte Tenants ohne diese Spalten lesen undefined
+      // als false / leer — Self-Check-in bleibt dann schlicht aus.
+      selfCheckInEnabled: !!e.SelfCheckInEnabled,
+      selfCheckInToken: e.SelfCheckInToken || undefined,
+      selfCheckInFrom: e.SelfCheckInFrom || undefined,
+      selfCheckInTo: e.SelfCheckInTo || undefined,
       teamRegistrationEnabled: !!e.TeamRegistrationEnabled,
       teamSize: typeof e.TeamSize === 'number' ? e.TeamSize : 0,
       askTeamName: !!e.AskTeamName,
@@ -2448,6 +2501,72 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getMyRegistration(subsiteUrl, email);
   }
 
+  // v18.33: Self-Check-in über gescannten QR-Deep-Link.
+  async function selfCheckIn(params: SelfCheckInParams): Promise<SelfCheckInResult> {
+    try {
+      // 1) Event auflösen — per Token (statischer QR) ODER Event-Nummer (rotierend).
+      let sp: SPEvent | null = null;
+      if (params.token) {
+        sp = await eventService.getEventBySelfCheckInToken(params.token);
+      } else if (typeof params.eventNumber === 'number' && !isNaN(params.eventNumber)) {
+        sp = await eventService.getEventByEventNumber(params.eventNumber);
+      }
+      if (!sp) return { status: 'not-found' };
+
+      const eventTitle = sp.Title;
+      const eventStart = sp.StartDate;
+
+      // 2) Self-Check-in muss aktiviert sein.
+      if (!sp.SelfCheckInEnabled) {
+        return { status: 'disabled', eventTitle, eventStart };
+      }
+
+      // 3) Rotierender Code: Frische + HMAC prüfen.
+      if (!params.token) {
+        const secret = sp.SelfCheckInToken || '';
+        const ok = await verifyRotatingCode(
+          secret,
+          params.code || '',
+          typeof params.windowIndex === 'number' ? params.windowIndex : NaN
+        );
+        if (!ok) return { status: 'expired', eventTitle, eventStart };
+      }
+
+      // 4) Zeitfenster prüfen (from/to ODER Default „Event-Tag").
+      const win = isWithinCheckInWindow(
+        sp.StartDate,
+        sp.EndDate,
+        sp.SelfCheckInFrom,
+        sp.SelfCheckInTo
+      );
+      if (!win.ok) {
+        return {
+          status: 'closed',
+          eventTitle,
+          eventStart,
+          opensAt: win.opensAt ? win.opensAt.toISOString() : undefined,
+          closesAt: win.closesAt ? win.closesAt.toISOString() : undefined,
+        };
+      }
+
+      // 5) Eigene Registrierung auf der Subsite finden.
+      const subsiteUrl = sp.SubsiteUrl;
+      if (!subsiteUrl) return { status: 'error', eventTitle, eventStart };
+      const myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail);
+      if (!myReg) return { status: 'not-registered', eventTitle, eventStart };
+      if (myReg.Status === 'Eingecheckt') return { status: 'already', eventTitle, eventStart };
+      if (myReg.Status === 'Warteliste') return { status: 'on-waitlist', eventTitle, eventStart };
+      if (myReg.Status === 'Abgemeldet') return { status: 'not-registered', eventTitle, eventStart };
+
+      // 6) Einchecken (eigener Eintrag — Item-Level-Security erlaubt das Schreiben).
+      const ok = await eventService.checkInParticipant(subsiteUrl, myReg.Id);
+      return { status: ok ? 'success' : 'error', eventTitle, eventStart };
+    } catch (e) {
+      console.warn('[DEX] selfCheckIn error:', e);
+      return { status: 'error' };
+    }
+  }
+
   async function getAllRegistrations(eventId: string): Promise<SPRegistration[]> {
     // v18: Demo-Event → synthetische Teilnehmerliste (~25 Demo-User inkl.
     // Team, Warteliste, Abmeldungen), damit der Admin die Teilnehmer-
@@ -2856,7 +2975,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

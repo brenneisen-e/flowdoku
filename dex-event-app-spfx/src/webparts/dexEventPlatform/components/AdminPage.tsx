@@ -16,7 +16,8 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode } from './Icons';
+import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -3373,6 +3374,35 @@ export default function AdminPage(): React.ReactElement {
               badge="organizer"
               href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
             />
+
+            {/* v18.33: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
+                Nur sichtbar wenn Self-Check-in fuer dieses Event aktiviert ist
+                und der User Admin oder (Co-)Organizer ist. */}
+            {selectedEvent.selfCheckInEnabled && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.selfCheckInToken && (
+              <ActionTile
+                icon={<Download size={18} />}
+                title={isDe ? 'Self-Check-in: QR-PDF' : 'Self check-in: QR PDF'}
+                desc={isDe
+                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
+                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. Tip: best combined with the "event day only" window.'}
+                badge="organizer"
+                onClick={() => downloadSelfCheckInPdf({
+                  eventTitle: selectedEvent.title || 'Event',
+                  token: selectedEvent.selfCheckInToken as string,
+                })}
+              />
+            )}
+            {selectedEvent.selfCheckInEnabled && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.selfCheckInToken && (
+              <ActionTile
+                icon={<QrCode size={18} />}
+                title={isDe ? 'Self-Check-in: Live-Anzeige' : 'Self check-in: live display'}
+                desc={isDe
+                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante.'
+                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option.'}
+                badge="organizer"
+                onClick={() => navigate('self-checkin-display', selectedEvent.id)}
+              />
+            )}
 
             {/* v10.19: Deep-Link kopieren — Organizer/Admin können den Link
                 des aktuell offenen Events in die Zwischenablage legen und z.B.

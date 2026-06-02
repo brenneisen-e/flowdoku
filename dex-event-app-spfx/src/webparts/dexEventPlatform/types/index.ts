@@ -226,6 +226,27 @@ export interface DeloitteEvent {
    *  Events brauchen keine Anrede. Gespeicherte Anrede ist in dem Fall
    *  ein leerer String. */
   askSalutation?: boolean;
+  /** v18.35: Anmeldesprache vorgeben. Wenn gesetzt ('de' | 'en'), wird die
+   *  komplette Registrierungsseite (inkl. Disclaimer) in dieser Sprache
+   *  angezeigt — unabhängig von der App-Sprache des Users. Leer/undefined =
+   *  Anmeldeseite folgt der App-Sprache (Default). */
+  registrationLanguage?: 'de' | 'en';
+  /** v18.33: Self-Check-in. Wenn true, kann sich jeder angemeldete
+   *  Teilnehmer selbst einchecken, indem er den event-spezifischen
+   *  QR-Code scannt (statischer QR im PDF ODER rotierender Live-QR am
+   *  Eingang). Default false. */
+  selfCheckInEnabled?: boolean;
+  /** v18.33: Geheimer Token pro Event — dient als Schlüssel für den
+   *  statischen Check-in-Link (?action=selfcheckin&token=…) UND als
+   *  HMAC-Schlüssel für den rotierenden Live-QR-Code. Wird beim Aktivieren
+   *  einmalig generiert und bleibt danach stabil. */
+  selfCheckInToken?: string;
+  /** v18.33: Optionaler Beginn des Self-Check-in-Zeitfensters (ISO).
+   *  Leer = Default „nur am Event-Tag" (Start- bis End-Datum). */
+  selfCheckInFrom?: string;
+  /** v18.33: Optionales Ende des Self-Check-in-Zeitfensters (ISO).
+   *  Leer = Default „nur am Event-Tag". */
+  selfCheckInTo?: string;
   /** v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
    *  Default false. Die tatsächliche Multi-Person-Anmelde-Logik folgt
    *  mit v11.82+; aktuell wird die Konfiguration nur persistiert. */

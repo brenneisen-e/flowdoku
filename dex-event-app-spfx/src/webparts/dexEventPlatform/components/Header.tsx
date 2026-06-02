@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, QrCode, RefreshCw } from './Icons';
+import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 
 export default function Header(): React.ReactElement {
@@ -45,6 +46,17 @@ export default function Header(): React.ReactElement {
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
+
+  // v18.35: Hinweis-Chip, wenn die Anmeldeseite in einer festen Sprache
+  // angezeigt wird (Organizer hat sie pro Event vorgegeben). Der Text steht
+  // bewusst IN der erzwungenen Sprache — passend zu dem, was der Teilnehmer
+  // auf der Anmeldeseite sieht.
+  const regHintEvent = events.find(e => e.id === selectedEventId);
+  const forcedRegLang: 'de' | 'en' | undefined =
+    (regHintEvent?.registrationLanguage === 'de' || regHintEvent?.registrationLanguage === 'en')
+      ? regHintEvent.registrationLanguage : undefined;
+  const showRegLangHint = currentPage === 'registration' && !!forcedRegLang;
+  const regLangHintText = forcedRegLang === 'de' ? 'Anmeldung auf Deutsch' : 'Registration in English';
 
   const pageIdMap: Record<string, string> = {
     'landing': 'landing',
@@ -141,6 +153,22 @@ export default function Header(): React.ReactElement {
             <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
               {getTitle()}
             </span>
+            {showRegLangHint && (
+              <span
+                title={forcedRegLang === 'de'
+                  ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
+                  : 'This registration form is shown in English.'}
+                style={{
+                  marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: 'var(--dex-gray-100, #f0f0ee)', color: 'var(--dex-gray-600, #555)',
+                  border: '1px solid var(--dex-gray-200, #e0e0e0)', borderRadius: 999,
+                  padding: '2px 10px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+                }}
+              >
+                <Icon iconName="Globe" style={{ fontSize: 12 }} />
+                {regLangHintText}
+              </span>
+            )}
           </>
         )}
       </div>

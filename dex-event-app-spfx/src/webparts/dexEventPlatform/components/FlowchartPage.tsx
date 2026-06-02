@@ -753,6 +753,51 @@ function MassEmailFlow(): React.ReactElement {
   );
 }
 
+function SelfCheckInFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode type="start" label="Organizer aktiviert 'Self-Check-in' im Wizard (Kapazität & Sichtbarkeit)" details="Beim Aktivieren wird einmalig ein geheimer Token für das Event erzeugt (Schlüssel für den statischen Link UND für den rotierenden HMAC-QR-Code). Optional kann ein Zeitfenster (Von/Bis) gesetzt werden — leer = nur am Event-Tag." />
+      <Arrow />
+      <FlowNode type="decision" label="Welcher QR-Modus am Eingang?" />
+      <BranchContainer>
+        <Branch label="Statisches PDF">
+          <FlowNode type="process" label="Admin Center → 'Self-Check-in: QR-PDF' → A4-PDF mit QR + Anleitung herunterladen, ausdrucken, aushängen" details="Der QR enthält den statischen Link ?action=selfcheckin&token=<Token>. Bequem, aber per Foto teilbar — daher mit Zeitfenster kombinieren." />
+        </Branch>
+        <Branch label="Rotierende Live-Anzeige">
+          <FlowNode type="process" label="Admin Center → 'Self-Check-in: Live-Anzeige' → Bildschirm am Eingang zeigt QR, der alle ~45s automatisch wechselt" details="Der QR enthält ?action=selfcheckin&event=<Nr>&code=<HMAC>&t=<Fenster>. Ein abfotografierter Code verfällt nach max. 2 Fenstern — foto-sicher." />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="process" label="Teilnehmer scannt den QR-Code mit der NATIVEN Handy-Kamera" details="Bewusst kein In-App-Scanner: der native Kamera-Scan funktioniert zuverlässig auch in der SharePoint-Mobile-App, die getUserMedia im WebView blockiert. Der Link öffnet die DEX-App." />
+      <Arrow />
+      <FlowNode type="subprocess" label="App liest URL-Parameter (?action=selfcheckin…) und ruft EventContext.selfCheckIn() auf" />
+      <Arrow />
+      <FlowNode type="decision" label="Token gültig + (bei Live) Code frisch + im Zeitfenster?" />
+      <BranchContainer>
+        <Branch label="Nein">
+          <FlowNode type="end" color="var(--dex-orange)" label="Ergebnis-Seite zeigt Grund: 'Code abgelaufen' / 'Check-in noch nicht offen' / 'Event nicht gefunden'" />
+        </Branch>
+        <Branch label="Ja">
+          <FlowNode type="subprocess" label="Eigene Registrierung auf der Subsite per E-Mail des eingeloggten Users finden" details="Jeder checkt ausschließlich sich selbst ein — Item-Level-Security erlaubt nur das Schreiben des eigenen Eintrags." />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="decision" label="Status der eigenen Anmeldung?" />
+      <BranchContainer>
+        <Branch label="Angemeldet / QR versendet">
+          <FlowNode type="data" label="MERGE Status='Eingecheckt' + CheckedInDate/By — grüne Bestätigung 'Eingecheckt!'" />
+        </Branch>
+        <Branch label="Bereits eingecheckt">
+          <FlowNode type="end" color="var(--dex-green)" label="Hinweis 'Bereits eingecheckt' — kein doppelter Counter" />
+        </Branch>
+        <Branch label="Warteliste / keine Anmeldung">
+          <FlowNode type="end" color="var(--dex-orange)" label="Hinweis: kein Check-in möglich" />
+        </Branch>
+      </BranchContainer>
+    </div>
+  );
+}
+
 function IDReorderManualFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -914,6 +959,7 @@ export default function FlowchartPage(): React.ReactElement {
     { id: 'creation', label: 'Event-Erstellung', icon: '+' },
     { id: 'massemail', label: 'Massenmail', icon: '✉' },
     { id: 'teamjoin', label: 'Team-Beitritt (v11.83)', icon: '+' },
+    { id: 'selfcheckin', label: 'Self-Check-in (v18.33)', icon: '✓' },
     { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
     { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
   ];
@@ -926,6 +972,7 @@ export default function FlowchartPage(): React.ReactElement {
       case 'creation': return <EventCreationFlow />;
       case 'massemail': return <MassEmailFlow />;
       case 'teamjoin': return <TeamJoinFlow />;
+      case 'selfcheckin': return <SelfCheckInFlow />;
       case 'idmanual': return <IDReorderManualFlow />;
       case 'columnfix': return <ColumnFixFlow />;
       default: return <RegistrationFlow />;
