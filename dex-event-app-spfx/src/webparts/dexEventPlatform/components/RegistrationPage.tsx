@@ -457,24 +457,29 @@ export default function RegistrationPage(): React.ReactElement {
   // Vorbelegen: Parent-Reg prüfen + Sessions-Meta laden (bereits-registrierte
   // Sessions werden als angehakt voreingestellt).
   React.useEffect(() => {
-    if (!event || registerForOther) return;
-    (async () => {
-      try {
-        const r = await getMyRegistration(event.id) as { Status?: string; StarterType?: string; PreferredStarterType?: string } | null;
-        setMyParentReg(r);
-        if (r && r.Status !== 'Abgemeldet') {
-          setRegisterForParent(false);
-          // v11.10: Bei bereits angemeldetem Parent den existierenden
-          // Starter-Typ in die Group-Selection vorladen, damit auch im
-          // Sessions-Only-Modus eine Gruppe sichtbar gewählt ist und
-          // Sub-Events sauber davon erben.
-          const existing = r.StarterType || r.PreferredStarterType;
-          if (existing && (existing === 'Durchstarter' || existing === 'Funstarter')) {
-            setPreferredStarterType(existing);
+    if (!event) return;
+    // Parent-Reg-Vorbelegung nur im Selbst-Modus — sie beruht auf
+    // getMyRegistration des eingeloggten Users und ist im Stellvertreter-
+    // Modus bedeutungslos.
+    if (!registerForOther) {
+      (async () => {
+        try {
+          const r = await getMyRegistration(event.id) as { Status?: string; StarterType?: string; PreferredStarterType?: string } | null;
+          setMyParentReg(r);
+          if (r && r.Status !== 'Abgemeldet') {
+            setRegisterForParent(false);
+            // v11.10: Bei bereits angemeldetem Parent den existierenden
+            // Starter-Typ in die Group-Selection vorladen, damit auch im
+            // Sessions-Only-Modus eine Gruppe sichtbar gewählt ist und
+            // Sub-Events sauber davon erben.
+            const existing = r.StarterType || r.PreferredStarterType;
+            if (existing && (existing === 'Durchstarter' || existing === 'Funstarter')) {
+              setPreferredStarterType(existing);
+            }
           }
-        }
-      } catch { /* */ }
-    })();
+        } catch { /* */ }
+      })();
+    }
     if (childEvents.length > 0) {
       (async () => {
         try {
@@ -482,25 +487,40 @@ export default function RegistrationPage(): React.ReactElement {
           const preselect = new Set<string>();
           const starterPre: Record<string, string> = {};
           for (const ce of childEvents) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const [myReg, allRegs] = await Promise.all([
-              getMyRegistration(ce.id) as Promise<{ Status?: string; StarterType?: string; PreferredStarterType?: string } | null>,
-              getAllRegistrations(ce.id),
-            ]);
-            const wasRegistered = !!myReg && myReg.Status !== 'Abgemeldet';
-            const count = (allRegs || []).filter(r => {
-              const s = r.Status || '';
-              return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
-            }).length;
-            meta[ce.id] = { count, wasRegistered };
-            if (wasRegistered) {
-              preselect.add(ce.id);
-              const existingType = myReg?.StarterType || myReg?.PreferredStarterType;
-              if (existingType) starterPre[ce.id] = existingType;
+            if (registerForOther) {
+              // v18.37: Stellvertreter-Modus — nur die Belegungszahl laden
+              // (für die „X/Y belegt"-/Voll-Anzeige). KEINE Self-Vorbelegung,
+              // weil getMyRegistration die Daten des eingeloggten Users liefert,
+              // nicht die der angemeldeten Person. Der Assistent wählt die
+              // Sub-Events frisch aus.
+              const allRegs = await getAllRegistrations(ce.id);
+              const count = (allRegs || []).filter(r => {
+                const s = r.Status || '';
+                return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
+              }).length;
+              meta[ce.id] = { count, wasRegistered: false };
+            } else {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const [myReg, allRegs] = await Promise.all([
+                getMyRegistration(ce.id) as Promise<{ Status?: string; StarterType?: string; PreferredStarterType?: string } | null>,
+                getAllRegistrations(ce.id),
+              ]);
+              const wasRegistered = !!myReg && myReg.Status !== 'Abgemeldet';
+              const count = (allRegs || []).filter(r => {
+                const s = r.Status || '';
+                return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
+              }).length;
+              meta[ce.id] = { count, wasRegistered };
+              if (wasRegistered) {
+                preselect.add(ce.id);
+                const existingType = myReg?.StarterType || myReg?.PreferredStarterType;
+                if (existingType) starterPre[ce.id] = existingType;
+              }
             }
           }
           setSessionMeta(meta);
-          setSelectedSessions(preselect);
+          // Im Stellvertreter-Modus startet die Auswahl leer (frische Anmeldung).
+          setSelectedSessions(registerForOther ? new Set<string>() : preselect);
           setSessionStarterType(prev => ({ ...starterPre, ...prev }));
         } catch { /* */ }
       })();
@@ -2870,16 +2890,18 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
 
-            {/* v11.10: Sub-Events-Auswahl als eigener Block — nur bei
-                Self-Registration mit Sub-Events. Bei „Für andere
-                registrieren" bleibt der alte Flow (nur Parent), weil die
-                Session-Zuordnung über getMyRegistration nur für den
-                eingeloggten User funktioniert. Der Parent-Event-Checkbox
-                ist hier weiterhin enthalten — er steuert, ob das Haupt-
-                Event registriert werden soll. Hardcoded Pro-Sub-Event-
-                Gruppen-Radios sind weg, Sub-Events erben grundsätzlich
+            {/* v11.10: Sub-Events-Auswahl als eigener Block.
+                v18.37: jetzt AUCH im Stellvertreter-Modus („Für andere
+                registrieren") sichtbar — der Submit-Pfad meldet ausgewählte
+                Sub-Events längst für die Zielperson an (registerForEvent mit
+                participantEmail), nur die Auswahl-UI war versehentlich hinter
+                !registerForOther versteckt. Die Belegungszahlen werden im
+                Stellvertreter-Modus über getAllRegistrations geladen, ohne
+                Self-Vorbelegung. Der Haupt-Event-Checkbox wird im
+                Stellvertreter-Modus ausgeblendet (das Haupt-Event wird dort
+                ohnehin immer mit angemeldet). Sub-Events erben
                 preferredStarterType vom Group-Selection-Block oben. */}
-            {childEvents.length > 0 && !registerForOther && (
+            {childEvents.length > 0 && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 {/* v15.11: im subEventsOnlyMode ist die Hauptevent-Anmeldung
                     deaktiviert — Überschrift + Hinweis entsprechend
@@ -2901,6 +2923,10 @@ export default function RegistrationPage(): React.ReactElement {
                         : (locale === 'de'
                             ? 'Bitte wähle mindestens ein Sub-Event, für das du dich anmelden möchtest.'
                             : 'Please pick at least one sub-event you want to register for.'))
+                    : registerForOther
+                      ? (locale === 'de'
+                          ? `Die Person wird für das Haupt-Event angemeldet. Wähle zusätzlich die gewünschten ${childTermPlural || 'Sub-Events'} aus.`
+                          : `The person will be registered for the main event. Additionally pick the desired ${childTermPlural || 'sub-events'}.`)
                     : (childTermPlural
                         ? (locale === 'de'
                             ? `Haupt-Event und ${childTermPlural} können unabhängig voneinander an- oder abgewählt werden.`
@@ -2911,8 +2937,11 @@ export default function RegistrationPage(): React.ReactElement {
                 {/* v15.7: Hauptevent-Card auch hier ausblenden bei
                     subEventsOnlyMode — gleicher Fix wie der primäre Pfad
                     weiter oben. Vorher wurde dieser Render-Pfad (Register
-                    for someone else) übersehen. */}
-                {!event.subEventsOnlyMode && (
+                    for someone else) übersehen.
+                    v18.37: im Stellvertreter-Modus ebenfalls ausblenden — die
+                    Person wird dort immer für das Haupt-Event angemeldet, ein
+                    steuerbarer Haken wäre irreführend. */}
+                {!event.subEventsOnlyMode && !registerForOther && (
                 <label style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
                   borderRadius: 8,
