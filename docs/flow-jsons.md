@@ -1065,8 +1065,18 @@ VOR `Is_DeleteEvent`):**
    **Initialize variable** → Name `LockAcquired`, Typ **Boolean**, Wert `false`.
    (Diese Action ans erste Position direkt nach dem Trigger ziehen.)
 2. **Do until** „Lock_erwerben" hinzufügen. Bedingung: Variable
-   `LockAcquired` **is equal to** `true`. Unter **Change limits**: Count `60`,
-   Timeout `PT30M`.
+   `LockAcquired` **is equal to** `true`. Unter **Change limits**: Count `400`,
+   Timeout `PT3H`.
+   **Wichtig:** In einer Do-until zählen **Count UND Timeout gleichzeitig** —
+   die Schleife endet, sobald das **erste** Limit erreicht ist. Bei `Count 60`
+   × 15-Sek-Delay wäre also schon nach **~15 Minuten** Schluss, egal wie hoch
+   der Timeout steht. Da ein einzelner Lauf fürs selbe Event 13–40 Minuten
+   dauert und sich bei Grossevents mehrere stapeln können, muss der wartende
+   Lauf **Stunden** tolerieren. Faustregel: Count × Delay ≳ Timeout, hier
+   `400 × 30 Sek ≈ 3,3 h` ≥ `PT3H`. Wer noch mehr Puffer will, setzt z.B.
+   `Count 600` + `PT5H`. (Ein dauerhaft hängender Lock ist trotzdem
+   unwahrscheinlich, weil die Release-Action unten **immer** läuft — der
+   Timeout ist nur das Sicherheitsnetz gegen einen abgestürzten Lauf.)
 3. **In** die Do-until-Schleife eine **Scope**-Action „Try_Claim_Lock" legen.
    Darin eine **Create item**-Action (SharePoint) auf die Liste
    **`DEX_OutlookLocks`**:
@@ -1078,7 +1088,7 @@ VOR `Is_DeleteEvent`):**
    → Bei dieser Action über **⋮ → Configure run after** **nur** „Try_Claim_Lock
    **is successful**" anhaken (die anderen Häkchen entfernen).
 5. **Daneben** (ebenfalls nach der Scope) eine **Delay**-Action
-   „Warte_und_Retry": **15 Sekunden**.
+   „Warte_und_Retry": **30 Sekunden** (passend zur Count/Timeout-Rechnung oben).
    → Bei dieser Action über **⋮ → Configure run after** **nur** „Try_Claim_Lock
    **has failed**" anhaken. (So wird nur gewartet, wenn der Lock gerade von
    einem anderen Lauf desselben Events gehalten wird; danach läuft die Schleife
