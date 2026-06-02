@@ -751,8 +751,14 @@ export default function RegistrationPage(): React.ReactElement {
     // ist. Dieselbe Bedingung wie shouldShadowRegisterParent unten verwenden.
     const isSubOnlyModeValidate = !!(event && event.subEventsOnlyMode);
     const sessionsBeingAddedValidate = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
+    // v18.56 BUG-FIX: KEIN `!myParentReg` mehr. Die übergreifenden Hauptevent-
+    // Pflichtfelder (insb. die pro Absenden neu leere „Bestätigung"-Checkbox)
+    // werden bei JEDER Sub-Event-Anmeldung im subEventsOnlyMode angezeigt und
+    // müssen daher IMMER validiert werden — auch wenn schon eine (Schatten-)
+    // Parent-Registrierung existiert. Vorher konnte man beim Hinzufügen einer
+    // weiteren Session mit leerem Pflichtfeld absenden.
     const willCollectMainFields = willRegisterParent || registerForOther
-      || (isSubOnlyModeValidate && sessionsBeingAddedValidate && !myParentReg && !registerForOther);
+      || (isSubOnlyModeValidate && sessionsBeingAddedValidate && !registerForOther);
     if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
       // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
@@ -1477,6 +1483,7 @@ export default function RegistrationPage(): React.ReactElement {
         placeholder={tEvent('reg.userfield.placeholder')}
         errorStyle={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}
         hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
+        forcedIsDe={locale === 'de'}
       />
     ) : field.type === 'checkbox' ? (
       // v11.91: Checkbox bekommt jetzt eine ordentliche Karten-Box mit
@@ -2739,6 +2746,7 @@ export default function RegistrationPage(): React.ReactElement {
                         searchUserByEmail={searchUser}
                         placeholder={locale === 'de' ? 'Name oder E-Mail eingeben...' : 'Type a name or email...'}
                         errorStyle={isErr ? errorBorder : {}}
+                        forcedIsDe={locale === 'de'}
                       />
                       {/* v18.12: Custom-Fields pro Team-Mitglied — erscheinen,
                           sobald die Person ausgewählt ist (z.B. Essenspräferenz). */}
@@ -3739,6 +3747,10 @@ function UserFieldPicker(props: {
   placeholder: string;
   errorStyle: React.CSSProperties;
   hint?: string;
+  // v18.56: erzwungene Anmeldesprache des Events durchreichen, damit auch der
+  // „Auch international suchen"-Toggle der Event-Sprache folgt (nicht der
+  // App-Sprache des Teilnehmers). undefined = App-Sprache.
+  forcedIsDe?: boolean;
 }): React.ReactElement {
   // Parse "Name <email>" aus dem gespeicherten Wert (z.B. nach Remount/Reload),
   // damit der Chip mit Foto sofort wieder erscheint.
@@ -3748,7 +3760,7 @@ function UserFieldPicker(props: {
     return { name: m[1].trim(), email: m[2].trim() };
   };
   const { locale } = useLanguage();
-  const isDe = locale === 'de';
+  const isDe = props.forcedIsDe !== undefined ? props.forcedIsDe : (locale === 'de');
   const initialParsed = parseValue(props.value);
   const [query, setQuery] = React.useState(initialParsed ? '' : (props.value || ''));
   const [results, setResults] = React.useState<Array<{ email: string; displayName: string; location?: string; jobTitle?: string }>>([]);
