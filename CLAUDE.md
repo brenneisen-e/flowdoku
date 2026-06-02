@@ -1096,6 +1096,11 @@ ein guter Teil davon ad-hoc inline in `EventContext.tsx` /
   `TeamJoinRejected`, `TeamLeadTransferred`, `TeamMemberCancelled`
 - **v13.0:** `RoommateRequest`, `GroupSwitchConfirmed`,
   `GroupSwitchWaitlist`, `OverbookingApology`
+- **v18.63:** `OrgNachruecker` — Organizer-Benachrichtigung bei Abmeldung mit
+  Nachrücker. Pre-wrapped gespeichert (wie `Nachruecken`), wird vom
+  `DEX_IDReorder`-Flow nach erfolgreichem Promote an die Organizer gequeued
+  (nicht von der App). Platzhalter: `{{EventTitle}}`, `{{PromotedName}}`. Flow-
+  UI-Anleitung in `docs/flow-jsons.md` (v18.63).
 
 **Reseed-Button (v12.11):** Admin → Settings → Karte „Default-Mail-
 Templates re-seed" → Confirm. Ruft

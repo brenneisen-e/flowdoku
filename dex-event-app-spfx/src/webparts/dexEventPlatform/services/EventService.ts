@@ -201,6 +201,27 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
+// v18.63: Organizer-Benachrichtigung bei Abmeldung MIT Nachrücker. Wird vom
+// DEX_IDReorder-Flow nach einem erfolgreichen Promote an die Organizer
+// gequeued (nicht von der App). Pre-wrapped gespeichert wie Nachruecken; der
+// Flow ersetzt nur {{EventTitle}} und {{PromotedName}} per replace(). Daher
+// KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste App-URL eingebaut.
+// Platzhalter: {{EventTitle}}, {{PromotedName}} (voller Name des Nachrückers).
+const ORG_NACHRUECKER_BODY_EN = wrapTemplateForStorage(
+  '#86bc25', 'Cancellation — waitlist move-up', 'Event {{EventTitle}}',
+  `<p>Hello,</p>
+<p>There was a <strong>cancellation</strong> for the event <strong>{{EventTitle}}</strong>. As a result, <strong>{{PromotedName}}</strong> was automatically <strong>moved up from the waitlist</strong> and is now a confirmed participant.</p>
+<p>You don't need to do anything — the participant list and participant IDs have already been updated automatically. You can review the current status in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your DEX Team</strong></p>`
+);
+const ORG_NACHRUECKER_BODY_DE = wrapTemplateForStorage(
+  '#86bc25', 'Abmeldung — Nachrücker', 'Event {{EventTitle}}',
+  `<p>Hallo,</p>
+<p>beim Event <strong>{{EventTitle}}</strong> gab es eine <strong>Abmeldung</strong>. Daraufhin ist <strong>{{PromotedName}}</strong> automatisch von der <strong>Warteliste nachgerückt</strong> und ist jetzt fester Teilnehmer.</p>
+<p>Du musst nichts weiter tun — die Teilnehmerliste und die TeilnehmerIDs wurden bereits automatisch aktualisiert. Den aktuellen Stand siehst du im <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
+);
+
 // v12.13: Team-bezogene Mail-Vorlagen — vorher inline in EventContext.tsx
 // als ad-hoc-HTML zusammengebaut, jetzt zentral in DEX_EmailTemplates
 // hinterlegt damit Admins sie genauso wie Anmeldung/Abmeldung/Nachrücken
@@ -1556,6 +1577,11 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
+      // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
+      { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
+        BodyHtml: ORG_NACHRUECKER_BODY_EN },
+      { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
+        BodyHtml: ORG_NACHRUECKER_BODY_DE },
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
@@ -1768,6 +1794,11 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
+      // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
+      { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
+        BodyHtml: ORG_NACHRUECKER_BODY_EN },
+      { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
+        BodyHtml: ORG_NACHRUECKER_BODY_DE },
       { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
         BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
       { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',

@@ -19,6 +19,52 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
 
+### UI-Anleitung 2026-06-02 (v18.63) — Organizer-Mail bei Abmeldung mit Nachrücker
+
+**Ziel:** Sobald der Flow nach einer Abmeldung jemanden von der Warteliste
+nachrückt, soll **zusätzlich** eine Standard-Mail an die **Organizer** des
+Events gehen („Es gab eine Abmeldung, X ist nachgerückt"). Die App legt dafür
+das Template **`OrgNachruecker`** (DE+EN, pre-wrapped) in `DEX_EmailTemplates`
+an — bitte einmalig **Settings → „Default-Mail-Templates re-seed"** klicken,
+damit es vorhanden ist. Platzhalter: `{{EventTitle}}`, `{{PromotedName}}`.
+
+**Wo einbauen:** Pro Nachrück-Zweig — also im **NEIN-Zweig** (`Check_Nachrücken`
+→ `Promote_Waitlist`) und, falls genutzt, in den beiden **B2Run-Split-Zweigen**
+(`Promote_Durchstarter` / `Promote_Funstarter`) — jeweils **direkt nach** der
+bestehenden `Queue_Email`-Action (die die Nachrück-Mail an die nachgerückte
+Person schreibt). Am einfachsten die bestehenden Actions `Get_Email_Template`
++ `Queue_Email` duplizieren und anpassen:
+
+**Schritt A — `Get_Org_Template`** (SharePoint „Send an HTTP request", GET):
+- URI (fx): `@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')`
+- runAfter: `Promote_Waitlist` (bzw. `Promote_Durchstarter`/`_Funstarter`) → Succeeded.
+
+**Schritt B — `Queue_Org_Email`** (Create item in **DEX_Emails**) — Felder
+(fx). `PromotedName` = voller Name des Nachrückers; im Normal-Zweig aus
+`Get_Waitlist_First`, im Split-Zweig aus `Get_Waitlist_First_Durchstarter` bzw.
+`_Funstarter`:
+- **item/Title:**
+  `@replace(replace(coalesce(first(body('Get_Org_Template')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname']))`
+- **item/Recipient:** `@first(outputs('Get_EventDetails')?['body/value'])?['OrganizerEmail']`
+- **item/RecipientName:** `Organizer`
+- **item/Body:**
+  `@replace(replace(coalesce(first(body('Get_Org_Template')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname']))`
+- **item/EmailType Value:** `OrgNachruecker`
+- **item/EventTitle:** `@first(outputs('Get_EventDetails')?['body/value'])?['Title']`
+- **item/EventId:** `@triggerOutputs()?['body/EventId']` (bzw. die EventId-Quelle wie in `Queue_Email`)
+- **item/Status Value:** `Pending`
+- runAfter: `Get_Org_Template` → Succeeded.
+
+**Hinweis:** Der `OrganizerEmail`-Wert in `DEX_Events` ist `;`-getrennt — der
+`DEX_SEND_MAIL`-Flow verarbeitet mehrere Empfänger genauso wie bei den
+Organizer-BCCs. Die fertige Mail wird (wie alle Queue-Mails) von `DEX_SEND_MAIL`
+versendet inkl. Logo/ORB-Ersetzung. In den B2Run-Split-Zweigen die
+`Get_Waitlist_First`-Referenzen oben durch `Get_Waitlist_First_Durchstarter`
+bzw. `Get_Waitlist_First_Funstarter` ersetzen.
+
+Sobald im Tenant umgesetzt: bitte den Flow-JSON zurückschicken, dann pflege ich
+den finalen Stand hier ein.
+
 ### UI-Anleitung 2026-06-02 (v18.55) — Paginierung: alle Teilnehmer laden (>1.000 / ILS-Listen)
 
 **Problem:** `Get_Enrolled_Participants` ist ein **einzelner** HTTP-GET
