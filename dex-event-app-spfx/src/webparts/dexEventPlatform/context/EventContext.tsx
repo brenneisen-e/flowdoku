@@ -378,6 +378,8 @@ export interface CreateEventInput {
   registrationLanguage?: 'de' | 'en';
   /** v18.40: manueller Outlook-Termin-Ort; leer = Auto aus Veranstaltungsort + Adresse. */
   outlookLocation?: string;
+  /** v18.42: Betreff des Outlook-Termins; leer = Event-Titel. */
+  outlookSubject?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -722,6 +724,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
+      outlookSubject: e.OutlookSubject || undefined,
       outlookLocation: e.OutlookLocation || undefined,
       outlookEventId: e.OutlookEventId || '',
       // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der

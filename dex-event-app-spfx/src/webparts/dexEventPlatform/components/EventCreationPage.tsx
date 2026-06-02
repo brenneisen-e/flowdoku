@@ -867,6 +867,9 @@ export default function EventCreationPage(): React.ReactElement {
     }
     return '';
   });
+  // v18.42: Betreff des Outlook-Termins (leer = Event-Titel). Per-Tab gespiegelt
+  // wie outlookHeading; persistiert in der DEX_Events-Spalte OutlookSubject.
+  const [outlookSubject, setOutlookSubject] = React.useState<string>(editEvent?.outlookSubject || '');
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
   const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email' | 'description'>('outlook');
@@ -1100,6 +1103,8 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody?: string;
     outlookHeading?: string;
     outlookSubheading?: string;
+    /** v18.42: Betreff des Sub-Event-Outlook-Termins (leer = Sub-Event-Titel). */
+    outlookSubject?: string;
     /** v14.4: Pro-Sub-Event Mail-Text-Overrides (Anmeldung / Warteliste /
      *  Abmeldung / Nachruecken). Erlaubt es, jedem Sub-Event eigene Subjects,
      *  Headings und Bodies zu geben — Frage von 2026-05 (3 Sub-Events sollen
@@ -1227,6 +1232,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookBody: stripOutlookWrapper(k.outlookBody || ''),
       outlookHeading: parsedHeads.heading || k.title || '',
       outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
+      outlookSubject: k.outlookSubject || '',
       // v11.57: Snapshot der initialen Outlook-relevanten Felder
       initialOutlookEventId: k.outlookEventId || '',
       // v11.61: CalendarLink (iCalUId) als Outlook-Existenz-Indikator. Der
@@ -1352,7 +1358,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Aenderung loest das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string }>({
     title: editEvent?.title || '',
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
@@ -1360,6 +1366,9 @@ export default function EventCreationPage(): React.ReactElement {
     // v18.34/v18.40: effektiver Ort in den Snapshot (gespeicherte Override ODER
     // Auto). Eine reine Ort-Aenderung soll das Outlook-Update-Modal oeffnen.
     outlookLocation: editEvent?.outlookLocation || buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
+    // v18.42: Betreff in den Snapshot — eine reine Betreff-Aenderung soll das
+    // Outlook-Update-Modal ebenfalls oeffnen.
+    outlookSubject: editEvent?.outlookSubject || '',
   });
   // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
   // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
@@ -1375,7 +1384,7 @@ export default function EventCreationPage(): React.ReactElement {
     kind: 'top' | 'sub';
     eventId: string;
     title: string;
-    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'>;
+    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject'>;
     /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
      *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
      *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
@@ -2307,6 +2316,7 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookBodyRaw = (typeof draft.outlookBody === 'string' && draft.outlookBody !== '') ? draft.outlookBody : '';
       const subOutlookHeading = draft.outlookHeading || draft.title || '';
       const subOutlookSub = draft.outlookSubheading || '';
+      const subOutlookSubject = (draft.outlookSubject || '').trim();
       const subEmailLogo = draft.emailLogoBase64 || '';
       const subOutlookLogo = draft.outlookLogoBase64 || '';
       // Outlook-Body wrappen, wenn vorhanden — sonst leer lassen, der Flow
@@ -2371,6 +2381,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: sanitizedOrgPair.orgEmailString,
         outlookEventId: '',
         outlookBody: wrappedSubOutlookBody,
+        outlookSubject: subOutlookSubject || undefined,
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
         documents: '[]',
@@ -2520,6 +2531,7 @@ export default function EventCreationPage(): React.ReactElement {
           'MaxParticipants': childPayload.maxParticipants,
           'DisableEmails': childPayload.disableEmails,
           'DisableOutlook': childPayload.disableOutlook,
+          'OutlookSubject': subOutlookSubject,
           'EmailLanguage': childPayload.emailLanguage,
           'OutlookBody': childPayload.outlookBody,
           'EmailTemplateOverrides': childPayload.emailTemplateOverrides,
@@ -2567,6 +2579,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookBody,
         outlookHeading,
         outlookSubheading,
+        outlookSubject,
         disableEmails,
         disableOutlook,
         // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
@@ -2586,6 +2599,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookBody,
         outlookHeading,
         outlookSubheading,
+        outlookSubject,
         disableEmails,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
@@ -2601,6 +2615,7 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookBody(snap.outlookBody || '');
         setOutlookHeading(snap.outlookHeading || '');
         setOutlookSubheading(snap.outlookSubheading || '');
+        setOutlookSubject(snap.outlookSubject || '');
         setDisableEmails(!!snap.disableEmails);
         setDisableOutlook(!!snap.disableOutlook);
         setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
@@ -2614,6 +2629,7 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookBody(sub.outlookBody || '');
         setOutlookHeading(sub.outlookHeading || sub.title || '');
         setOutlookSubheading(sub.outlookSubheading || '');
+        setOutlookSubject(sub.outlookSubject || '');
         setDisableEmails(!!sub.disableEmails);
         setDisableOutlook(!!sub.disableOutlook);
         setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
@@ -2630,6 +2646,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody: string;
     outlookHeading: string;
     outlookSubheading: string;
+    outlookSubject: string;
     disableEmails: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
@@ -2650,6 +2667,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookBody,
         outlookHeading,
         outlookSubheading,
+        outlookSubject,
         disableEmails,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
@@ -2680,6 +2698,7 @@ export default function EventCreationPage(): React.ReactElement {
     outlookBody: string;
     outlookHeading: string;
     outlookSubheading: string;
+    outlookSubject: string;
     disableEmails: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
@@ -2692,6 +2711,7 @@ export default function EventCreationPage(): React.ReactElement {
         outlookBody,
         outlookHeading,
         outlookSubheading,
+        outlookSubject,
         disableEmails,
         disableOutlook,
         emailTemplateOverrides,
@@ -2709,6 +2729,7 @@ export default function EventCreationPage(): React.ReactElement {
       outlookBody,
       outlookHeading,
       outlookSubheading,
+      outlookSubject,
       disableEmails,
       disableOutlook,
       emailTemplateOverrides,
@@ -2783,6 +2804,7 @@ export default function EventCreationPage(): React.ReactElement {
     const effOutlookBody = topComm.outlookBody;
     const effOutlookHeading = topComm.outlookHeading;
     const effOutlookSubheading = topComm.outlookSubheading;
+    const effOutlookSubject = topComm.outlookSubject;
     const effDisableEmails = topComm.disableEmails;
     const effDisableOutlook = topComm.disableOutlook;
 
@@ -2907,6 +2929,8 @@ export default function EventCreationPage(): React.ReactElement {
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
+      // v18.42: Betreff des Outlook-Termins mit-persistieren (leer = Titel via Flow-Fallback).
+      updates['OutlookSubject'] = effOutlookSubject.trim();
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -3383,6 +3407,7 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         // v18.40: manueller Outlook-Ort (leer = Auto in createEvent).
         outlookLocation: outlookLocationOverride.trim() || undefined,
+        outlookSubject: effOutlookSubject.trim() || undefined,
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -3741,13 +3766,16 @@ export default function EventCreationPage(): React.ReactElement {
     const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
     const currentTopLocation = outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
-    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'> = [];
+    const currentTopSubject = (resolveTopLevelCommState().outlookSubject || '').trim();
+    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
     // v18.34: reine Ort-Aenderung gilt ebenfalls als Outlook-relevant.
     if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
+    // v18.42: reine Betreff-Aenderung gilt ebenfalls als Outlook-relevant.
+    if (currentTopSubject !== (snap.outlookSubject || '').trim()) topChangedFields.push('subject');
     // v11.61: Beide Pointer pruefen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
@@ -4068,7 +4096,7 @@ export default function EventCreationPage(): React.ReactElement {
       agendaLen: (agenda || []).length,
       docsLen: (documents || []).length,
       subEventsLen: (subEvents || []).length,
-      outlookBody, outlookHeading, outlookSubheading,
+      outlookBody, outlookHeading, outlookSubheading, outlookSubject,
       disableEmails, disableOutlook,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
@@ -4082,7 +4110,7 @@ export default function EventCreationPage(): React.ReactElement {
     teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
     teamOpenSlotsVisible, teamJoinRequiresApproval, askSalutation, requireSubEventSelection,
     customFields, agenda, documents, subEvents,
-    outlookBody, outlookHeading, outlookSubheading, disableEmails, disableOutlook,
+    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableOutlook,
     emailTemplateOverrides,
   ]);
   React.useEffect(() => {
@@ -11895,6 +11923,19 @@ export default function EventCreationPage(): React.ReactElement {
             };
           });
         };
+        // v18.42: read-only Termin/Ort-Labels für den Outlook-Editor — je nach
+        // aktivem Tab (Hauptevent oder Sub-Event).
+        const olActiveSub = activeCommTabIdx > 0 ? subEvents[activeCommTabIdx - 1] : undefined;
+        const olStart = olActiveSub ? olActiveSub.startDate : startDate;
+        const olEnd = olActiveSub ? olActiveSub.endDate : endDate;
+        const olFmt = (d?: string): string => {
+          if (!d) return '';
+          try { return new Date(d).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
+        };
+        const outlookTimeLabel = olStart ? `${olFmt(olStart)}${olEnd ? ' – ' + olFmt(olEnd) : ''}` : '';
+        const outlookLocationLabel = olActiveSub
+          ? (buildOutlookLocation(olActiveSub.location, olActiveSub.locationAddress) || olActiveSub.location || '')
+          : (outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }));
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
@@ -11939,6 +11980,10 @@ export default function EventCreationPage(): React.ReactElement {
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
             outlookSubheading={isOutlook ? outlookSubheading : undefined}
             onOutlookSubheadingChange={isOutlook ? setOutlookSubheading : undefined}
+            outlookSubject={isOutlook ? outlookSubject : undefined}
+            onOutlookSubjectChange={isOutlook ? setOutlookSubject : undefined}
+            outlookTimeLabel={isOutlook ? outlookTimeLabel : undefined}
+            outlookLocationLabel={isOutlook ? outlookLocationLabel : undefined}
             previewVars={{
               // v17.5: Im Sub-Event-Kommunikations-Tab den Titel des
               // aktiven Sub-Events einsetzen, sonst den Hauptevent-Titel.
@@ -13548,12 +13593,13 @@ export default function EventCreationPage(): React.ReactElement {
             }}>
               {outlookConfirmItems.map((it, idx) => {
                 const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location', { de: string; en: string }> = {
+                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject', { de: string; en: string }> = {
                   title: { de: 'Titel', en: 'Title' },
                   startDate: { de: 'Startzeit', en: 'Start time' },
                   endDate: { de: 'Endzeit', en: 'End time' },
                   outlookBody: { de: 'Termin-Text', en: 'Calendar body' },
                   location: { de: 'Ort', en: 'Location' },
+                  subject: { de: 'Betreff', en: 'Subject' },
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];

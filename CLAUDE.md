@@ -890,6 +890,15 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 - DEX_IDReorder_TeilnehmerIDs — TeilnehmerIDs renummerieren + Warteliste nachrücken
 - DEX_SEND_MAIL — Mail-Versand aus DEX_Emails-Queue
 - DEX_CreateOutlookEvent — Outlook-Termin initial anlegen
+  - **Betreff im Termin (v18.42):** Neue Spalte `OutlookSubject` (Single line
+    text) auf `DEX_Events` — eigener Betreff des Outlook-Termins, im
+    Outlook-Body-Editor (Schritt 6) bearbeitbar (leer = Event-Titel).
+    Per-Tab gespiegelt wie `outlookHeading` (Top + Sub-Events), persistiert in
+    Create-/Update-/Sub-Payload. Der Flow mappt `item/subject` ←
+    `coalesce(OutlookSubject, Title)` (Create + UpdateEvent-`Build_Update_Body`,
+    siehe `docs/flow-jsons.md`, UI-Anleitung v18.42). Eine reine Betreff-
+    Änderung gilt als Outlook-relevant (öffnet das Update-Modal). Der Editor
+    zeigt zusätzlich **Termin + Ort read-only** („wird übernommen").
   - **Ort im Termin (v18.34):** Neue Spalte `OutlookLocation` (Single line text)
     auf `DEX_Events` — lesbarer Ort (Veranstaltungsort + Adresse), gebaut von
     `utils/eventFormat.ts → buildOutlookLocation()`. Geschrieben beim Anlegen
