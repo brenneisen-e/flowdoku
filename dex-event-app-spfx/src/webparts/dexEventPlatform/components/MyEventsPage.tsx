@@ -716,7 +716,7 @@ export default function MyEventsPage(): React.ReactElement {
         } else if (res.reason === 'team-full') {
           setAddMemberError(isDe ? 'Das Team ist bereits voll.' : 'The team is already full.');
         } else {
-          setAddMemberError(isDe ? 'Hinzufuegen fehlgeschlagen.' : 'Adding failed.');
+          setAddMemberError(isDe ? 'Hinzufügen fehlgeschlagen.' : 'Adding failed.');
         }
         setAddMemberBusy(false);
         return;
@@ -731,7 +731,7 @@ export default function MyEventsPage(): React.ReactElement {
       });
       closeAddMemberDialog();
     } catch {
-      setAddMemberError(isDe ? 'Hinzufuegen fehlgeschlagen.' : 'Adding failed.');
+      setAddMemberError(isDe ? 'Hinzufügen fehlgeschlagen.' : 'Adding failed.');
       setAddMemberBusy(false);
     }
   };
@@ -1675,7 +1675,7 @@ export default function MyEventsPage(): React.ReactElement {
                                         onClick={() => handleDecideJoinRequest(event.id, registration.TeamId!, r.Id, 'Approved')}
                                         style={{ fontSize: '0.75rem', padding: '4px 10px' }}
                                       >
-                                        {isDe ? 'Bestaetigen' : 'Approve'}
+                                        {isDe ? 'Bestätigen' : 'Approve'}
                                       </button>
                                       <button
                                         type="button"
@@ -2234,10 +2234,10 @@ export default function MyEventsPage(): React.ReactElement {
           onClose={closeAddMemberDialog}
           dismissable={!addMemberBusy}
           maxWidth={540}
-          ariaLabel={isDe ? 'Mitglied zum Team hinzufuegen' : 'Add member to team'}
+          ariaLabel={isDe ? 'Mitglied zum Team hinzufügen' : 'Add member to team'}
         >
             <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Mitglied zum Team hinzufuegen' : 'Add member to team'}
+              {isDe ? 'Mitglied zum Team hinzufügen' : 'Add member to team'}
             </h3>
             {/* Pflicht-Hinweisbox — orange, analog zur Initial-Team-Anmeldung. */}
             <div style={{
@@ -2254,11 +2254,11 @@ export default function MyEventsPage(): React.ReactElement {
               </div>
               <div style={{ marginBottom: 6 }}>
                 {isDe
-                  ? 'Die ausgewaehlte Person wird sofort und ohne weitere Rueckfrage zum Team hinzugefuegt. Sie bekommt automatisch:'
+                  ? 'Die ausgewählte Person wird sofort und ohne weitere Rückfrage zum Team hinzugefügt. Sie bekommt automatisch:'
                   : 'The selected person is added to the team immediately, without further confirmation. They automatically receive:'}
               </div>
               <ul style={{ margin: '0 0 4px 18px', padding: 0 }}>
-                <li>{isDe ? 'eine Anmeldebestaetigung per Mail' : 'a confirmation email'}</li>
+                <li>{isDe ? 'eine Anmeldebestätigung per Mail' : 'a confirmation email'}</li>
                 <li>{isDe ? 'einen Outlook-Termin im Kalender' : 'an Outlook calendar invite'}</li>
                 <li>{isDe ? 'den Event in „Meine Events"' : 'the event in „My Events"'}</li>
               </ul>
@@ -2271,7 +2271,7 @@ export default function MyEventsPage(): React.ReactElement {
             {/* People-Picker — simple Inline-Variante mit der searchUsers-API. */}
             <div>
               <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
-                <span style={{ color: 'var(--dex-red)' }}>*</span> {isDe ? 'Person auswaehlen' : 'Pick a person'}
+                <span style={{ color: 'var(--dex-red)' }}>*</span> {isDe ? 'Person auswählen' : 'Pick a person'}
               </label>
               {addMemberPick ? (
                 <div style={{
@@ -2380,7 +2380,7 @@ export default function MyEventsPage(): React.ReactElement {
               <span>
                 <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
                 {isDe
-                  ? 'Ich bestaetige, dass die ausgewaehlte Person ihrer Anmeldung zugestimmt hat.'
+                  ? 'Ich bestätige, dass die ausgewählte Person ihrer Anmeldung zugestimmt hat.'
                   : 'I confirm that the selected person has consented to this registration.'}
               </span>
             </label>
@@ -2405,8 +2405,8 @@ export default function MyEventsPage(): React.ReactElement {
                 disabled={!addMemberPick || !addMemberConsent || addMemberBusy}
               >
                 {addMemberBusy
-                  ? (isDe ? 'Wird hinzugefuegt…' : 'Adding…')
-                  : (isDe ? 'Hinzufuegen' : 'Add')}
+                  ? (isDe ? 'Wird hinzugefügt…' : 'Adding…')
+                  : (isDe ? 'Hinzufügen' : 'Add')}
               </button>
             </div>
         </Modal>

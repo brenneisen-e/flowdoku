@@ -66,7 +66,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -750,15 +750,16 @@ export default function RegistrationPage(): React.ReactElement {
     // leerem Pflichtfeld absenden, weil `willRegisterParent` hier immer false
     // ist. Dieselbe Bedingung wie shouldShadowRegisterParent unten verwenden.
     const isSubOnlyModeValidate = !!(event && event.subEventsOnlyMode);
-    const sessionsBeingAddedValidate = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
-    // v18.56 BUG-FIX: KEIN `!myParentReg` mehr. Die übergreifenden Hauptevent-
-    // Pflichtfelder (insb. die pro Absenden neu leere „Bestätigung"-Checkbox)
-    // werden bei JEDER Sub-Event-Anmeldung im subEventsOnlyMode angezeigt und
-    // müssen daher IMMER validiert werden — auch wenn schon eine (Schatten-)
-    // Parent-Registrierung existiert. Vorher konnte man beim Hinzufügen einer
-    // weiteren Session mit leerem Pflichtfeld absenden.
+    // v18.57 BUG-FIX: Bedingung robust gemacht. Vorher hing sie an
+    // `sessionsBeingAddedValidate` (= sessionMeta[...]?.wasRegistered), das in
+    // manchen Re-Submit-/Reload-Fällen unzuverlässig war → Validierungsblock
+    // wurde übersprungen → Pflichtfeld-Bypass. Jetzt reicht: subEventsOnlyMode
+    // aktiv UND mindestens eine Section ausgewählt. Die übergreifenden
+    // Hauptevent-Pflichtfelder (insb. die pro Absenden neu leere „Bestätigung"-
+    // Checkbox) werden in dem Modus IMMER angezeigt und müssen IMMER validiert
+    // werden. KEIN `!myParentReg`, KEIN sessionMeta-Abhängigkeit mehr.
     const willCollectMainFields = willRegisterParent || registerForOther
-      || (isSubOnlyModeValidate && sessionsBeingAddedValidate && !registerForOther);
+      || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther);
     if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
       // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
@@ -1010,6 +1011,16 @@ export default function RegistrationPage(): React.ReactElement {
         );
         if (parentOk) anySuccess = true;
         else setError(t('reg.error'));
+        setSubmitProgress(50);
+      } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
+        // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
+        // Section-Anmeldung) → sie wird NICHT neu registriert. Trotzdem die
+        // übergreifenden Hauptevent-Antworten (Food Preferences, Hotel etc.)
+        // mit den aktuellen Formular-Werten aktualisieren, damit Änderungen
+        // beim Nach-Anmelden einer weiteren Section persistiert werden. Vorher
+        // gingen sie verloren (Audit-Befund #2).
+        setSubmitProgress(40);
+        try { await updateMyRegistration(selectedEventId!, customData); } catch { /* best-effort */ }
         setSubmitProgress(50);
       } else {
         setSubmitProgress(50);

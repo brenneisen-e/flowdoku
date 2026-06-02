@@ -8989,43 +8989,8 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
-              {/* v15: Anrede-Toggle UNTER dem Datenschutz-Hinweis — Organizer
-                  liest erst die Pflicht zur Datensparsamkeit, danach kommt die
-                  optionale Frage „brauche ich überhaupt eine Anrede?". */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={askSalutation}
-                    onChange={e => setAskSalutation(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
-                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
-                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v18.57: Anrede-Abfrage-Toggle nach unten verschoben — sitzt jetzt
+                  direkt unter den „Vorgeschlagene Felder"-Buttons. */}
 
               {/* v18.35: Anmeldesprache vorgeben */}
               <div style={{
@@ -9065,45 +9030,8 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </div>
 
-              {/* v17.20: Bilingual-Toggle — Organizer kann pro Custom-Field
-                  eine EN-Variante hinterlegen. Wirkt sich auch auf das
-                  Form-Chrome (Placeholder, Hinweise, Sub-Event-Sektion) aus:
-                  Sobald an, folgt das Form-Chrome der App-Spracheinstellung
-                  des Teilnehmers statt der Event-Mail-Sprache. */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={bilingualFields}
-                    onChange={e => setBilingualFields(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Deutsch und Englisch ermöglichen' : 'Offer German and English'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob du pro Custom-Field, das du unten anlegst, <strong>eine englische Variante</strong> der Texte hinterlegen kannst — also Feld-Name, Beschreibung (i-Tooltip), Checkbox-Bestätigungs-Text und Dropdown-Optionen jeweils auf Deutsch UND auf Englisch. Default: <strong>aus</strong>.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, blendet jede Feld-Karte einen zweiten Eingabe-Block für die EN-Variante ein. Teilnehmer mit App-Sprache <strong>Englisch</strong> bekommen automatisch die EN-Texte zu sehen. Wer als App-Sprache Deutsch eingestellt hat, sieht weiterhin die DE-Texte. Zusätzlich folgt das Standard-Anmelde-Formular (Platzhalter, Hinweis-Boxen, Sub-Event-Sektion) ab dann der <strong>App-Spracheinstellung des Teilnehmers</strong> statt der Mail-Sprache des Events.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> internationale Kolleg:innen, die kein Deutsch sprechen, sehen das komplette Anmelde-Formular sauber auf Englisch. Wer als Organizer keine EN-Variante einträgt, fällt im EN-Modus still auf den DE-Wert zurück — die App bricht also nichts kaputt, falls du nur einige Felder übersetzt.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether, for each custom field you create below, you can store <strong>an English variant</strong> of the texts — i.e. field name, description (i-tooltip), checkbox confirmation text and dropdown options in both German AND English. Default: <strong>off</strong>.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, each field card shows a second input row for the EN variant. Attendees with app language set to <strong>English</strong> automatically see the EN texts. Attendees with German keep seeing the DE texts. In addition, the standard registration form chrome (placeholders, hint boxes, sub-event section) follows the <strong>attendee&apos;s app language</strong> instead of the event&apos;s email language.<br /><br />
-                          <strong>For attendees:</strong> international colleagues who do not speak German see the whole registration form cleanly in English. If an organizer leaves the EN variant empty for some field, the app silently falls back to the DE value — nothing breaks if you only translate a subset of fields.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Default: aus — wenn aktiviert, kannst du pro Feld eine englische Variante hinterlegen.'
-                        : 'Default: off — when enabled, each field gets a second input row for the English variant.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
+              {/* v18.57: Deutsch/Englisch-Toggle nach unten verschoben — sitzt jetzt
+                  direkt unter den „Vorgeschlagene Felder"-Buttons. */}
 
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
                   pickt B2Run-Felder einzeln per Suggested-Felder-Modal
@@ -9561,6 +9489,78 @@ export default function EventCreationPage(): React.ReactElement {
                     </button>
                   )}
                 </div>
+
+              {/* v18.57: Anrede-Abfrage + Deutsch/Englisch — von oben hierher
+                  verschoben, direkt unter die „Vorgeschlagene Felder"-Buttons. */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={askSalutation}
+                    onChange={e => setAskSalutation(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
+                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
+                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={bilingualFields}
+                    onChange={e => setBilingualFields(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Deutsch und Englisch ermöglichen' : 'Offer German and English'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob du pro Custom-Field, das du unten anlegst, <strong>eine englische Variante</strong> der Texte hinterlegen kannst — also Feld-Name, Beschreibung (i-Tooltip), Checkbox-Bestätigungs-Text und Dropdown-Optionen jeweils auf Deutsch UND auf Englisch. Default: <strong>aus</strong>.<br /><br />
+                          <strong>Anzeige in der App:</strong> wenn aktiviert, blendet jede Feld-Karte einen zweiten Eingabe-Block für die EN-Variante ein. Teilnehmer mit App-Sprache <strong>Englisch</strong> bekommen automatisch die EN-Texte zu sehen. Wer als App-Sprache Deutsch eingestellt hat, sieht weiterhin die DE-Texte. Zusätzlich folgt das Standard-Anmelde-Formular (Platzhalter, Hinweis-Boxen, Sub-Event-Sektion) ab dann der <strong>App-Spracheinstellung des Teilnehmers</strong> statt der Mail-Sprache des Events.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> internationale Kolleg:innen, die kein Deutsch sprechen, sehen das komplette Anmelde-Formular sauber auf Englisch. Wer als Organizer keine EN-Variante einträgt, fällt im EN-Modus still auf den DE-Wert zurück — die App bricht also nichts kaputt, falls du nur einige Felder übersetzt.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether, for each custom field you create below, you can store <strong>an English variant</strong> of the texts — i.e. field name, description (i-tooltip), checkbox confirmation text and dropdown options in both German AND English. Default: <strong>off</strong>.<br /><br />
+                          <strong>Where you see it:</strong> when enabled, each field card shows a second input row for the EN variant. Attendees with app language set to <strong>English</strong> automatically see the EN texts. Attendees with German keep seeing the DE texts. In addition, the standard registration form chrome (placeholders, hint boxes, sub-event section) follows the <strong>attendee&apos;s app language</strong> instead of the event&apos;s email language.<br /><br />
+                          <strong>For attendees:</strong> international colleagues who do not speak German see the whole registration form cleanly in English. If an organizer leaves the EN variant empty for some field, the app silently falls back to the DE value — nothing breaks if you only translate a subset of fields.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: aus — wenn aktiviert, kannst du pro Feld eine englische Variante hinterlegen.'
+                        : 'Default: off — when enabled, each field gets a second input row for the English variant.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
 
                 {/* v7.20: Spalten-Header oberhalb der Feld-Karten — erklaert
                     auf einen Blick welche Spalte was bedeutet. Nur sichtbar
