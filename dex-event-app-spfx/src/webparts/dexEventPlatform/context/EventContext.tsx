@@ -163,7 +163,7 @@ export function formatOrganizerList(organizers: string[], lang: string): string 
  *  die der Organizer als „CC bei An-/Abmelde-Mail" markiert hat. Format des
  *  Feldwerts ist „Anzeigename <email>". Liefert einen ';'-getrennten CC-String
  *  (ohne den Teilnehmer selbst, dedupliziert). NUR für Mails — nicht Outlook. */
-function collectCcEmailsFromFields(
+export function collectCcEmailsFromFields(
   fields: Array<{ id: string; type: string; ccOnEmails?: boolean }> | undefined,
   customData: Record<string, string>,
   excludeEmail?: string
@@ -221,7 +221,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean }) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<boolean>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -979,7 +979,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     preferredStarterType?: string, // B2Run: 'Durchstarter' | 'Funstarter'
     // v18.13: Massenimport — pro Anmeldung Bestätigungsmail bzw. Outlook-Termin
     // unterdrücken („stille Anmeldung").
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean }
+    // v18.53: extraCc — zusätzliche CC-Adressen, die NICHT aus den
+    // event-eigenen Feldern stammen. Genutzt im subEventsOnlyMode: das
+    // „Hauptevent" ist dort nicht anmeldbar, die CC-Felder (z.B. Assistenz)
+    // sind übergreifend und gelten für die Sub-Events — also müssen die
+    // Sub-Event-Bestätigungsmails ebenfalls an die Assistenz auf CC gehen.
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }
   ): Promise<boolean> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1179,7 +1184,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
         // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
-        const ccFromFields = collectCcEmailsFromFields(event.eventSpecificFields, customData, emailToUse) || undefined;
+        // v18.53: opts.extraCc (übergreifende CC aus dem Hauptformular im
+        // subEventsOnlyMode) mit den event-eigenen CC-Feldern mergen + deduppen.
+        const ccOwn = collectCcEmailsFromFields(event.eventSpecificFields, customData, emailToUse);
+        const ccMerged = (() => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const part of [ccOwn, opts?.extraCc || '']) {
+            for (const e of part.split(';').map(s => s.trim()).filter(Boolean)) {
+              const lc = e.toLowerCase();
+              if (lc !== (emailToUse || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); out.push(e); }
+            }
+          }
+          return out.join(';');
+        })();
+        const ccFromFields = ccMerged || undefined;
         eventService.queueEmail(
           finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, bcc

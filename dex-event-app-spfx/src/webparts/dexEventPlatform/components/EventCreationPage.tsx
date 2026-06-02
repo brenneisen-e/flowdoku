@@ -1047,6 +1047,13 @@ export default function EventCreationPage(): React.ReactElement {
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._outlookLogo || ''; } catch { return ''; }
   });
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
+  // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
+  // eingeklappt (kompakte Karte: nur Nummer + Label + Typ + Pflicht + Aktionen);
+  // Detail-Einstellungen (Hilfetext, Optionen, Bedingung, CC, EN-Variante …)
+  // erst beim Aufklappen. Neu hinzugefügte Felder starten aufgeklappt.
+  const [fieldExpandOverride, setFieldExpandOverride] = React.useState<Record<string, boolean>>({});
+  const toggleFieldExpand = (id: string, current: boolean): void =>
+    setFieldExpandOverride(prev => ({ ...prev, [id]: !current }));
   const [dragOverFieldId, setDragOverFieldId] = React.useState<string | null>(null);
   // v9.28: Reorder-Mode toggelt die Hoch/Runter-Pfeile pro Custom-Field.
   // Standardmäßig aus — sonst sieht das Feld-Listing zu unruhig aus.
@@ -1612,10 +1619,13 @@ export default function EventCreationPage(): React.ReactElement {
   const locationOptions = ['Berlin', 'Dresden', 'Düsseldorf', 'Frankfurt', 'Görlitz', 'Halle', 'Hamburg', 'Hannover', 'Köln', 'Leipzig', 'Magdeburg', 'Mannheim', 'München', 'Nürnberg', 'Stuttgart', 'Walldorf', 'All'];
 
   const addCustomField = (): void => {
+    const newId = `cf-${Date.now()}`;
     setCustomFields([...customFields, {
-      id: `cf-${Date.now()}`, label: '', type: 'text',
+      id: newId, label: '', type: 'text',
       required: false, options: [], visible: true,
     }]);
+    // v18.55: neues Feld direkt aufgeklappt, damit man es sofort ausfüllen kann.
+    setFieldExpandOverride(prev => ({ ...prev, [newId]: true }));
   };
 
   /**
@@ -9561,7 +9571,9 @@ export default function EventCreationPage(): React.ReactElement {
                     Input mit Placeholder + grüner Typ-Selector + Pflicht-
                     Pill + Lösch-X). Der Header passte mit den alten Spalten-
                     Breiten nicht mehr und stiftete optisch Verwirrung. */}
-                {customFields.map((field, idx) => (
+                {customFields.map((field, idx) => {
+                  const isExpanded = !!fieldExpandOverride[field.id];
+                  return (
                   <div
                     key={field.id}
                     draggable
@@ -9690,6 +9702,20 @@ export default function EventCreationPage(): React.ReactElement {
                         {t('create.required')}
                       </label>
                       <button
+                        type="button"
+                        onClick={() => toggleFieldExpand(field.id, isExpanded)}
+                        title={isExpanded ? (isDe ? 'Details einklappen' : 'Collapse details') : (isDe ? 'Details bearbeiten' : 'Edit details')}
+                        aria-expanded={isExpanded}
+                        style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', padding: 4, cursor: 'pointer', flexShrink: 0, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        {!isExpanded && (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                            {isDe ? 'Details' : 'Details'}
+                          </span>
+                        )}
+                        <Icon iconName={isExpanded ? 'ChevronUp' : 'ChevronDown'} style={{ fontSize: 14 }} />
+                      </button>
+                      <button
                         onClick={() => removeCustomField(field.id)}
                         title={isDe ? 'Feld löschen' : 'Delete field'}
                         style={{ background: 'none', border: 'none', color: 'var(--dex-red)', padding: 4, cursor: 'pointer', flexShrink: 0 }}
@@ -9698,6 +9724,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </button>
                     </div>
 
+                    {isExpanded && (<>
                     {/* v18.41: People-Picker-Feld → ausgewählte Person bei
                         An-/Abmelde-Mail auf CC (nur für user/roommate-Felder). */}
                     {(field.type === 'user' || field.type === 'roommate') && (
@@ -10297,8 +10324,10 @@ export default function EventCreationPage(): React.ReactElement {
                         </div>
                       );
                     })()}
+                    </>)}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* === Bereich 2: Felder pro Sub-Event (v10.11+) ============
