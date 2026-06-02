@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { useEvents } from '../context/EventContext';
+import { useEvents, collectCcEmailsFromFields } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
@@ -741,7 +741,19 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Nur wenn der User das Haupt-Event (neu) anmelden möchte, gelten
     // Anrede + Custom-Fields + B2Run-Starter-Typ als Pflicht.
-    if (willRegisterParent || registerForOther) {
+    // v18.53 BUG-FIX: Im subEventsOnlyMode wird das Hauptevent zwar nicht
+    // direkt angemeldet, aber als „Schatten-Registrierung" mitgeschrieben
+    // (s.u., shouldShadowRegisterParent) — inkl. der Hauptevent-Custom-Fields
+    // (z.B. „Selection as above confirmed", Food Preferences, Hotel). Diese
+    // werden in dem Modus trotzdem angezeigt und persistiert, also MÜSSEN sie
+    // auch validiert werden. Vorher konnte man im Nur-Sub-Events-Modus mit
+    // leerem Pflichtfeld absenden, weil `willRegisterParent` hier immer false
+    // ist. Dieselbe Bedingung wie shouldShadowRegisterParent unten verwenden.
+    const isSubOnlyModeValidate = !!(event && event.subEventsOnlyMode);
+    const sessionsBeingAddedValidate = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
+    const willCollectMainFields = willRegisterParent || registerForOther
+      || (isSubOnlyModeValidate && sessionsBeingAddedValidate && !myParentReg && !registerForOther);
+    if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
       // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
       // Sonst wird die Anrede gar nicht gerendert und bleibt leer.
@@ -1009,6 +1021,15 @@ export default function RegistrationPage(): React.ReactElement {
       // an sessionStarterType pro-Session, was zu redundanten UI-Radios
       // pro Sub-Event geführt hat.
       const inheritedStarterType = starterTypeToUse || preferredStarterType || '';
+      // v18.53: Im subEventsOnlyMode sind die Hauptevent-CC-Felder (z.B.
+      // „Your assistant") übergreifend — sie gelten für die Sub-Events. Daher
+      // die CC einmal aus dem Hauptformular ziehen und an jede Sub-Event-
+      // Anmeldung mitgeben, damit deren Bestätigungsmails ebenfalls an die
+      // Assistenz auf CC gehen (das „Hauptevent" ist nicht anmeldbar und seine
+      // Schatten-Registrierung verschickt keine Mail).
+      const crossCutCc = (event && event.subEventsOnlyMode)
+        ? collectCcEmailsFromFields(event.eventSpecificFields, customData, participantEmail)
+        : '';
       // v10.15+: Sub-Event-Anmeldungen laufen auch beim Stellvertreter-Modus
       // (registerForOther) durch. registerForEvent akzeptiert ja participantFirstName/
       // -LastName/-Email als Argumente, daher kann der Assistent jede beliebige
@@ -1035,7 +1056,7 @@ export default function RegistrationPage(): React.ReactElement {
           // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
           // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
           const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
-          const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType);
+          const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, crossCutCc ? { extraCc: crossCutCc } : undefined);
           if (ok) anySuccess = true;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));

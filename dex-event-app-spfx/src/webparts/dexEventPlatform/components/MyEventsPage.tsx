@@ -983,9 +983,21 @@ export default function MyEventsPage(): React.ReactElement {
           CancellationDate: '',
           CustomData: '',
         };
+        // v18.53: Im subEventsOnlyMode hält die Schatten-Parent-Registrierung die
+        // übergreifenden Hauptevent-Antworten (Food Preferences, Hotel, Assistenz
+        // etc.). Ohne sie war „Angaben ergänzen" in MyEvents leer, obwohl das
+        // Admin-Center die Werte korrekt zeigt. Echte Parent-Registrierung laden;
+        // Fallback bleibt die virtualReg (kein Regress, wenn nichts gefunden wird).
+        let parentRegForEntry: SPRegistration = virtualReg;
+        if (parent.subEventsOnlyMode) {
+          try {
+            const realParentReg = await getMyRegistration(parent.id);
+            if (realParentReg) parentRegForEntry = realParentReg;
+          } catch { /* Fallback virtualReg */ }
+        }
         entries.push({
           event: parent,
-          registration: virtualReg,
+          registration: parentRegForEntry,
           sessionsOnly: true,
           subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
         });
@@ -1815,13 +1827,11 @@ export default function MyEventsPage(): React.ReactElement {
                       {(event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 && (
                       <button
                         type="button"
+                        className="btn btn-outline"
                         onClick={() => { setEditData(customData); setEditingId(event.id); }}
                         style={{
-                          fontSize: '0.78rem', padding: '4px 10px', borderRadius: 4,
-                          background: 'transparent',
-                          color: 'var(--dex-gray-700)',
-                          border: '1px solid var(--dex-gray-300)',
-                          cursor: 'pointer',
+                          fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
+                          width: 'auto', cursor: 'pointer',
                           display: 'inline-flex', alignItems: 'center', gap: 4,
                         }}
                         title={displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
