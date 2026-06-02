@@ -9155,29 +9155,9 @@ export default function EventCreationPage(): React.ReactElement {
                         : <><strong>Optional</strong> — the standard attendee data (first name, last name, email) and profile data (job title, location, department, phone) are captured automatically. Here you only add <strong>extra questions specific to this sub-event</strong>. If the sub-event needs no extra questions, you can leave this section empty.</>}
                     </p>
 
-                    {/* v15.6: Datenschutz-Hinweis (orange Box) analog
-                        Hauptevent-Tab — gleicher Wortlaut, damit der Organizer
-                        beim Anlegen von Sub-Event-Feldern dieselbe Datensparsamkeits-
-                        Erinnerung sieht. */}
-                    <div style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10,
-                      padding: '12px 14px', marginBottom: 16,
-                      background: 'rgba(237,139,0,0.06)',
-                      border: '1px solid var(--dex-orange, #ed8b00)',
-                      borderRadius: 'var(--dex-radius, 12px)',
-                      fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-                      lineHeight: 1.5,
-                    }}>
-                      <span style={{ flexShrink: 0, fontSize: '1.1rem', lineHeight: 1, color: 'var(--dex-orange, #ed8b00)', fontWeight: 700 }}>⚠</span>
-                      <div>
-                        <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
-                          {isDe ? 'Sammle keine sensiblen personenbezogenen Daten' : 'Do not collect sensitive personal data'}
-                        </strong>{' '}
-                        {isDe
-                          ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
-                          : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
-                      </div>
-                    </div>
+                    {/* v18.62: Datenschutz-Hinweis hier ENTFERNT — er steht bereits
+                        einmal oben in Schritt 5 (über der Tab-Leiste). Eine
+                        Wiederholung pro Sub-Event-Tab ist redundant. */}
 
                     {/* v15.3: „Anrede abfragen"-Toggle pro Sub-Event */}
                     <div style={{

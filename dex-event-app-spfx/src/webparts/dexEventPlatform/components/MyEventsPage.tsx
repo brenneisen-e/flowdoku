@@ -2242,6 +2242,11 @@ export default function MyEventsPage(): React.ReactElement {
           entries={cancelledEntries}
           formatDate={formatDate}
           statusLabel={t('status.cancelled')}
+          hintText={locale === 'de'
+            ? 'Diese Events hast du abgemeldet. Möchtest du wieder teilnehmen, melde dich im Anmelde-Bereich einfach neu an.'
+            : 'You cancelled these events. If you want to attend again, simply register anew in the registration area.'}
+          reRegisterLabel={locale === 'de' ? 'Zur Anmeldung' : 'Go to registration'}
+          onReRegister={() => navigate('register')}
         />
       )}
 
@@ -2767,6 +2772,11 @@ function CancelledEventsCollapsible(props: {
   entries: Array<{ event: { id: string; title: string }; registration: { CancellationDate?: string } }>;
   formatDate: (iso: string) => string;
   statusLabel: string;
+  // v18.62: Hinweis + Button, dass man sich für eine erneute Teilnahme
+  // im Anmelde-Bereich neu registrieren muss (Abmeldung ist endgültig).
+  hintText: string;
+  reRegisterLabel: string;
+  onReRegister: () => void;
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false);
   return (
@@ -2791,6 +2801,20 @@ function CancelledEventsCollapsible(props: {
       </button>
       {open && (
         <div className="my-events-list">
+          <div style={{
+            fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 12,
+            padding: '10px 14px', borderRadius: 8,
+            background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{ flex: '1 1 auto' }}>{props.hintText}</span>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ fontSize: '0.78rem', padding: '5px 14px', whiteSpace: 'nowrap' }}
+              onClick={props.onReRegister}
+            >{props.reRegisterLabel}</button>
+          </div>
           {props.entries.map(({ event, registration }) => (
             <div
               key={event.id}
