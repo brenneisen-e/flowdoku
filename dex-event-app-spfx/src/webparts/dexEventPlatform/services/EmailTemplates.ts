@@ -86,7 +86,7 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
 </tr>
 <tr>
 <td style="padding:10px 30px 10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
-  Deutschland | Event Experience Platform
+  Deutschland | DEX App
 </td>
 </tr>
 <tr>
@@ -156,7 +156,7 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 <!-- ===== SUBHEADER ===== -->
 <tr>
 <td style="padding:10px 30px 10px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:11px;color:#999999;">
-  Deutschland | Event Experience Platform | ${getDate()}
+  Deutschland | DEX App | ${getDate()}
 </td>
 </tr>
 
@@ -372,7 +372,7 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
       eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>you have successfully registered for the event <strong>${eventTitle}</strong>.</p>
-      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>
+      <p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -392,7 +392,7 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
       `<p>Dear ${recipientName},</p>
       <p>you have been placed on the <strong>waitlist</strong> for the event <strong>${eventTitle}</strong>.</p>
       ${posInfo}
-      <p>We will notify you as soon as a spot becomes available. You can always check your current waitlist position in the <a href="${APP_URL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> under &bdquo;My Events&ldquo;.</p>
+      <p>We will notify you as soon as a spot becomes available. You can always check your current waitlist position in the <a href="${APP_URL}" style="color:#86bc25;font-weight:600;">DEX App</a> under &bdquo;My Events&ldquo;.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -428,7 +428,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       `<p>Dear ${recipientName},</p>
       ${cancelBanner}
       <p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p>
-      <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a>.</p>
+      <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
@@ -467,9 +467,9 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
       <p>You can find the list of participants here:</p>
       <ul>
         <li><a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">SharePoint Teilnehmerliste</a></li>
-        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Event Experience Platform</a> (Admin / Organizer)</li>
+        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a> (Admin / Organizer)</li>
       </ul>
-      <p>Regards,<br>Team Event Experience Platform</p>`
+      <p>Regards,<br>Team DEX App</p>`
     ),
   };
 }
@@ -496,19 +496,19 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
     return n.split(/\s+/)[0];
   })();
   return {
-    subject: `Willkommen als ${roleLabelDe} auf der Deloitte Event Experience Platform`,
+    subject: `Willkommen als ${roleLabelDe} auf der Deloitte DEX App`,
     body: wrapTemplate(
       GREEN,
       'Willkommen an Bord',
       `Dein Start als ${roleLabelDe}`,
       `<p>Hallo ${firstName},</p>
       <p>du wurdest soeben als <strong>${roleLabelDe}</strong> für die Deloitte
-      <strong>Event Experience Platform</strong> freigeschaltet. Damit kannst du
+      <strong>DEX App</strong> freigeschaltet. Damit kannst du
       eigene Events anlegen, Teilnehmer verwalten und Einladungen versenden.</p>
 
       <p style="margin-top:24px;"><strong>Deine wichtigsten Links:</strong></p>
       <ul>
-        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Zur Event Experience Platform</a> &mdash; hier legst du Events an und verwaltest deine Teilnehmer.</li>
+        <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Zur DEX App</a> &mdash; hier legst du Events an und verwaltest deine Teilnehmer.</li>
         <li><a href="${manualUrl}" style="color:${GREEN};font-weight:600;">Zum Handbuch</a> &mdash; Schritt-für-Schritt-Anleitung mit Screenshots zu allen Features.</li>
       </ul>
 

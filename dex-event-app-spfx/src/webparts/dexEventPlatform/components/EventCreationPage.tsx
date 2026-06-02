@@ -12033,10 +12033,20 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
           </div>
         );
+        // v18.46: Standard-Body-Vorlage (mit Platzhaltern) für „Standardtext laden"
+        // im Outlook-Editor — Sprache folgt der aktiven Mail-Sprache.
+        const outlookDefaultBody = (emailLanguage === 'EN')
+          ? '<p>You are registered for the event <strong>{{EventTitle}}</strong>.</p>'
+            + '<p>If you are unable to attend, please cancel your registration in time via the <a href="{{AppUrl}}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> („My Events").</p>'
+            + '<p>For organizational questions please contact <strong>{{Organizer}}</strong>.</p>'
+          : '<p>Du bist für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
+            + '<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> („Meine Events") ab.</p>'
+            + '<p>Bei organisatorischen Fragen wende dich bitte an <strong>{{Organizer}}</strong>.</p>';
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
+            defaultBodyHtml={isOutlook ? outlookDefaultBody : undefined}
             title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
             value={currentBody}
             onChange={(html) => {

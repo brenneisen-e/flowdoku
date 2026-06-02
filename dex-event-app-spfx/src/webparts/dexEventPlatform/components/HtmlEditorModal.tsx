@@ -69,6 +69,9 @@ export interface HtmlEditorModalProps {
   outlookLocationValue?: string;
   onOutlookLocationChange?: (s: string) => void;
   outlookLocationAuto?: string;
+  /** v18.46: Standard-Body-Vorlage (HTML mit Platzhaltern) für „Standardtext
+   *  laden". Wenn gesetzt, erscheint ein Reset-Button über dem Body-Editor. */
+  defaultBodyHtml?: string;
   previewVars?: Record<string, string>;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
@@ -174,6 +177,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     outlookSubheading, onOutlookSubheadingChange,
     outlookSubject, onOutlookSubjectChange,
     outlookDateEditor, outlookLocationValue, onOutlookLocationChange, outlookLocationAuto,
+    defaultBodyHtml,
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
     extraAction,
@@ -680,7 +684,32 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
               )}
 
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Body</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>Body</label>
+                  {defaultBodyHtml && (
+                    <button
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        const cur = editorRef.current?.innerHTML || '';
+                        const isEmpty = cur.replace(/<[^>]*>/g, '').replace(/\s/g, '').trim() === '';
+                        // eslint-disable-next-line no-alert
+                        if (isEmpty || window.confirm('Den aktuellen Body-Text durch den Standardtext ersetzen?')) {
+                          if (editorRef.current) { editorRef.current.innerHTML = defaultBodyHtml; fireChange(); }
+                        }
+                      }}
+                      style={{
+                        fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                        background: 'transparent', color: 'var(--dex-gray-600)',
+                        border: '1px solid var(--dex-gray-300)', borderRadius: 6, padding: '3px 9px',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                      }}
+                      title="Setzt den Body auf die Standard-Vorlage zurück (mit Variablen)"
+                    >
+                      <Icon iconName="Refresh" style={{ fontSize: 11 }} /> Standardtext laden
+                    </button>
+                  )}
+                </div>
                 {/* Toolbar */}
                 <div style={{
                   display: 'flex', flexWrap: 'wrap', gap: 4, padding: 6,
