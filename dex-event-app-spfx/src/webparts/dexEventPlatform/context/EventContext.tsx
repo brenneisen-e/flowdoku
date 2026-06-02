@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration } from '../services/EventService';
+import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
@@ -321,7 +321,7 @@ interface EventContextType {
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
    *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
    *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
-  reseedDefaultEmailTemplates: () => Promise<void>;
+  reseedDefaultEmailTemplates: () => Promise<ReseedSummary>;
   /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
    *  ein einziger schneller REST-Call, fuer Boot-Loader-Anzeige. */
   getKpiCache: () => Promise<{ participants: number; events: number } | null>;
@@ -2934,8 +2934,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * Template (gruener Header, Footer) gewrappt.
    */
   // v12.12: Re-Seed-Aktion durchreichen.
-  async function reseedDefaultEmailTemplates(): Promise<void> {
-    await eventService.reseedDefaultEmailTemplates();
+  async function reseedDefaultEmailTemplates(): Promise<ReseedSummary> {
+    return eventService.reseedDefaultEmailTemplates();
   }
 
   async function sendAdminInquiry(
