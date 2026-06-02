@@ -1292,7 +1292,51 @@ export default function RegistrationPage(): React.ReactElement {
             }} />
           )}
           <h2 style={{ marginTop: 0 }}>{successHeadline}</h2>
-          <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
+          {/* v18.54: Im subEventsOnlyMode strukturierter Bestätigungstext —
+              Begrüßung, Verweis auf das (nicht anwählbare) Hauptevent, Bullet-
+              Liste der gewählten Sections (dynamische Organizer-Bezeichnung) und
+              der Mail/Outlook-Satz NUR wenn für die gewählten Sections wirklich
+              Mail bzw. Outlook aktiv ist. */}
+          {sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
+            const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
+            const anyEmail = selectedChildren.some(ce => !ce.disableEmails);
+            const anyOutlook = selectedChildren.some(ce => !ce.disableOutlook);
+            const sectionPlural = childTermPlural || (locale === 'de' ? 'Event-Sections' : 'event-sections');
+            const sectionSingular = childTermSingular || (locale === 'de' ? 'Event-Section' : 'event-section');
+            const greetingName = (firstName || '').trim();
+            let confirmLine = '';
+            if (anyEmail && anyOutlook) confirmLine = locale === 'de'
+              ? `Du erhältst pro ${sectionSingular} eine E-Mail-Bestätigung und einen Outlook-Termin.`
+              : `You will receive a confirmation email and an Outlook invitation per ${sectionSingular}.`;
+            else if (anyEmail) confirmLine = locale === 'de'
+              ? `Du erhältst pro ${sectionSingular} eine E-Mail-Bestätigung.`
+              : `You will receive a confirmation email per ${sectionSingular}.`;
+            else if (anyOutlook) confirmLine = locale === 'de'
+              ? `Du erhältst pro ${sectionSingular} einen Outlook-Termin.`
+              : `You will receive an Outlook invitation per ${sectionSingular}.`;
+            return (
+              <div className="mt-8" style={{ color: 'var(--dex-gray-700)', textAlign: 'left', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
+                <p style={{ margin: '0 0 10px' }}>
+                  {locale === 'de'
+                    ? <>Hallo{greetingName ? <> <strong>{greetingName}</strong></> : ''},</>
+                    : <>Hi{greetingName ? <> <strong>{greetingName}</strong></> : ''},</>}
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  {locale === 'de'
+                    ? <>du hast dich erfolgreich für das <strong>{event.title}</strong> angemeldet. Wir haben deine Anmeldung für die folgenden {sectionPlural} erhalten:</>
+                    : <>you have successfully registered for <strong>{event.title}</strong>. We received your registration for the following {sectionPlural}:</>}
+                </p>
+                <ul style={{ margin: '0 0 10px', paddingLeft: 22 }}>
+                  {selectedChildren.map(ce => (
+                    <li key={ce.id} style={{ marginBottom: 3 }}>{ce.title || (locale === 'de' ? 'ohne Titel' : 'untitled')}</li>
+                  ))}
+                </ul>
+                {confirmLine && <p style={{ margin: 0 }}>{confirmLine}</p>}
+              </div>
+            );
+          })() : (
+            <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
+          )}
           {(() => {
             // v18.9: Organizer-Anzeige optional ausgeblendet.
             if (event.hideOrganizer) return null;
