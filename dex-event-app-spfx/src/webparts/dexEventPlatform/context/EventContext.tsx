@@ -351,6 +351,8 @@ export interface CreateEventInput {
   emailLanguage?: string;
   /** v18.35: erzwungene Anmeldeseiten-Sprache ('de' | 'en'); leer = App-Sprache. */
   registrationLanguage?: 'de' | 'en';
+  /** v18.40: manueller Outlook-Termin-Ort; leer = Auto aus Veranstaltungsort + Adresse. */
+  outlookLocation?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -695,6 +697,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
+      outlookLocation: e.OutlookLocation || undefined,
       outlookEventId: e.OutlookEventId || '',
       // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
       // DEX_CreateOutlookEvent-Flow nur dieses Feld auf Erfolg setzt — die

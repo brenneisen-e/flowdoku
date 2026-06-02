@@ -747,6 +747,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [addrHouseNo, setAddrHouseNo] = React.useState(editEvent?.locationAddress?.houseNo || '');
   const [addrZip, setAddrZip] = React.useState(editEvent?.locationAddress?.zip || '');
   const [addrCity, setAddrCity] = React.useState(editEvent?.locationAddress?.city || '');
+  // v18.40: Überschreibbarer Outlook-Termin-Ort. Leer = automatischer Standard
+  // (Veranstaltungsort + Adresse). Gefüllt = manueller Wert. Beim Edit nur als
+  // Override vorbelegen, wenn der gespeicherte Wert vom Auto-Standard abweicht —
+  // sonst bleibt das Feld leer und der Ort zieht weiter automatisch nach.
+  const [outlookLocationOverride, setOutlookLocationOverride] = React.useState<string>(() => {
+    if (!editEvent) return '';
+    const auto = buildOutlookLocation(editEvent.location, editEvent.locationAddress);
+    const stored = editEvent.outlookLocation || '';
+    return (stored && stored !== auto) ? stored : '';
+  });
   const [locationFilter, setLocationFilter] = React.useState(
     editEvent ? editEvent.locationAudience.join(', ') : ''
   );
@@ -1340,9 +1350,9 @@ export default function EventCreationPage(): React.ReactElement {
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
     outlookBody: editEvent?.outlookBody || '',
-    // v18.34: Ort in den Snapshot — eine reine Ort-Aenderung soll das
-    // Outlook-Update-Modal ebenfalls oeffnen (sonst bleibt der Termin-Ort leer).
-    outlookLocation: buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
+    // v18.34/v18.40: effektiver Ort in den Snapshot (gespeicherte Override ODER
+    // Auto). Eine reine Ort-Aenderung soll das Outlook-Update-Modal oeffnen.
+    outlookLocation: editEvent?.outlookLocation || buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
   });
   // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
   // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
@@ -2826,8 +2836,9 @@ export default function EventCreationPage(): React.ReactElement {
         'LocationAddress': (addrStreet || addrHouseNo || addrZip || addrCity)
           ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
           : '',
-        // v18.34: lesbaren Outlook-Ort mitschreiben (Flow mappt OutlookLocation 1:1).
-        'OutlookLocation': buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
+        // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst Auto aus
+        // Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
+        'OutlookLocation': outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
         'LocationFilter': locationFilter,
         'Audience': audience,
         // v16.4: Audience-DLs vor-aufgeloest mitschreiben.
@@ -3359,6 +3370,8 @@ export default function EventCreationPage(): React.ReactElement {
         locationAddress: (addrStreet || addrHouseNo || addrZip || addrCity)
           ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
           : '',
+        // v18.40: manueller Outlook-Ort (leer = Auto in createEvent).
+        outlookLocation: outlookLocationOverride.trim() || undefined,
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -3716,7 +3729,7 @@ export default function EventCreationPage(): React.ReactElement {
     // aussehen wuerde. Vergleich gegen den initial gestrippten Wert.
     const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
-    const currentTopLocation = buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
+    const currentTopLocation = outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
     const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
@@ -6464,6 +6477,37 @@ export default function EventCreationPage(): React.ReactElement {
                   <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
                   <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
                 </div>
+              </div>
+
+              {/* v18.40: Ort im Outlook-Termin (überschreibbar) */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isDe ? 'Ort im Outlook-Termin' : 'Location in the Outlook event'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den Text, der im <strong>&bdquo;Ort&ldquo;-Feld des Outlook-Termins</strong> der Teilnehmer steht.<br /><br />
+                      <strong>Standard:</strong> wird automatisch aus <strong>Veranstaltungsort + Adresse</strong> oben zusammengebaut (siehe Platzhalter). Lässt du das Feld <strong>leer</strong>, wird immer dieser aktuelle Standard verwendet.<br /><br />
+                      <strong>Überschreiben:</strong> Trägst du hier etwas ein, wird genau dieser Text als Termin-Ort genommen — z.&nbsp;B. ein abweichender Raum, ein Online-Link oder ein Kurzname.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the text shown in the <strong>&bdquo;Location&ldquo; field of attendees&apos; Outlook event</strong>.<br /><br />
+                      <strong>Default:</strong> built automatically from <strong>venue + address</strong> above (see placeholder). Leave it <strong>empty</strong> to always use that current default.<br /><br />
+                      <strong>Override:</strong> type something here to use exactly that text as the event location — e.g. a different room, an online link or a short name.
+                    </>
+                  )} />
+                </label>
+                <input
+                  className="form-input"
+                  value={outlookLocationOverride}
+                  onChange={e => setOutlookLocationOverride(e.target.value)}
+                  placeholder={buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                />
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                  {isDe
+                    ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse. Eingabe überschreibt den Termin-Ort.'
+                    : 'Leave empty = automatic from venue + address. Any input overrides the event location.'}
+                </span>
               </div>
 
               {/* ===== Agenda Editor ===== */}

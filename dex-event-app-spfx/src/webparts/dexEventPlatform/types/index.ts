@@ -76,6 +76,9 @@ export interface DeloitteEvent {
   imageUrl?: string;
   subsiteUrl?: string;
   outlookBody: string;
+  /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
+   *  Veranstaltungsort + Adresse (automatisch gebaut), im Wizard überschreibbar. */
+  outlookLocation?: string;
   /** OutlookEventId aus DEX_Events. Wird vom DEX_CreateOutlookEvent-Flow nach
    *  erfolgreichem Anlegen des Kalendertermins geschrieben (Wert='FAILED' bei
    *  Fehler). Leer = noch kein Outlook-Termin angelegt; wichtig u.a. für die

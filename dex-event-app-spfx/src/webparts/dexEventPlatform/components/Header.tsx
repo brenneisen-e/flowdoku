@@ -153,22 +153,6 @@ export default function Header(): React.ReactElement {
             <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
               {getTitle()}
             </span>
-            {showRegLangHint && (
-              <span
-                title={forcedRegLang === 'de'
-                  ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
-                  : 'This registration form is shown in English.'}
-                style={{
-                  marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'var(--dex-gray-100, #f0f0ee)', color: 'var(--dex-gray-600, #555)',
-                  border: '1px solid var(--dex-gray-200, #e0e0e0)', borderRadius: 999,
-                  padding: '2px 10px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
-                }}
-              >
-                <Icon iconName="Globe" style={{ fontSize: 12 }} />
-                {regLangHintText}
-              </span>
-            )}
           </>
         )}
       </div>
@@ -267,6 +251,24 @@ export default function Header(): React.ReactElement {
             </span>
           )}
         </button>
+        {/* v18.40: Hinweis-Chip „Registration in English/Deutsch" jetzt RECHTS,
+            direkt links neben dem Sprach-Picker (statt neben dem Titel). */}
+        {showRegLangHint && (
+          <span
+            title={forcedRegLang === 'de'
+              ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
+              : 'This registration form is shown in English.'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'center',
+              background: 'var(--dex-gray-100, #f0f0ee)', color: 'var(--dex-gray-600, #555)',
+              border: '1px solid var(--dex-gray-200, #e0e0e0)', borderRadius: 999,
+              padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+          >
+            <Icon iconName="Globe" style={{ fontSize: 12 }} />
+            {regLangHintText}
+          </span>
+        )}
         {/* v7.26: Sprach-Toggle DE/EN — laesst den User auch im laufenden
             Tool zwischen Deutsch und Englisch wechseln. Visuell ein kleiner
             Pill-Toggle im Header-Style. */}
