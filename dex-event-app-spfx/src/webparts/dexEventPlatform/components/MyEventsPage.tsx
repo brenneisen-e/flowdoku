@@ -11,6 +11,7 @@ import OrganizerList from './OrganizerList';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
+import { UserFieldPicker } from './UserFieldPicker';
 import { useCurrentUser } from '../context/UserContext';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
@@ -657,7 +658,7 @@ export default function MyEventsPage(): React.ReactElement {
   // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
   // searchUsers wird fuer den Add-Member-Picker gebraucht (gleiche API wie
   // im Registrierungs-Formular).
-  const { searchUsers, isImpersonating } = useRoles();
+  const { searchUsers, searchUser, isImpersonating } = useRoles();
   const [addMemberDialog, setAddMemberDialog] = React.useState<{
     eventId: string;
     teamId: string;
@@ -1871,6 +1872,27 @@ export default function MyEventsPage(): React.ReactElement {
                               <option value="">—</option>
                               {field.options && field.options.map((opt, optIdx) => <option key={opt} value={opt}>{eOpt(field, opt, optIdx)}</option>)}
                             </select>
+                          ) : (field.type === 'user' || field.type === 'roommate') ? (
+                            /* v18.61: People-Picker-Felder beim Bearbeiten wieder als
+                               echter People-Picker mit Profilfoto (vorher Rohtext). */
+                            <UserFieldPicker
+                              value={editData[field.id] || ''}
+                              onChange={v => setEditData({ ...editData, [field.id]: v })}
+                              searchUsers={searchUsers}
+                              searchUserByEmail={searchUser}
+                              placeholder={locale === 'de' ? 'Name oder E-Mail eingeben…' : 'Type a name or email…'}
+                              errorStyle={{}}
+                            />
+                          ) : field.type === 'checkbox' ? (
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={editData[field.id] === 'true'}
+                                onChange={e => setEditData({ ...editData, [field.id]: e.target.checked ? 'true' : 'false' })}
+                                style={{ marginTop: 2 }}
+                              />
+                              <span>{(useEnEdit && field.confirmLabelEn && field.confirmLabelEn.trim() ? field.confirmLabelEn : field.confirmLabel) || eLabel(field)}</span>
+                            </label>
                           ) : (
                             <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={eLabel(field)} type={field.type === 'number' ? 'number' : 'text'} />
                           )}
@@ -2220,6 +2242,11 @@ export default function MyEventsPage(): React.ReactElement {
           entries={cancelledEntries}
           formatDate={formatDate}
           statusLabel={t('status.cancelled')}
+          hintText={locale === 'de'
+            ? 'Diese Events hast du abgemeldet. Möchtest du wieder teilnehmen, melde dich im Anmelde-Bereich einfach neu an.'
+            : 'You cancelled these events. If you want to attend again, simply register anew in the registration area.'}
+          reRegisterLabel={locale === 'de' ? 'Zur Anmeldung' : 'Go to registration'}
+          onReRegister={() => navigate('register')}
         />
       )}
 
@@ -2745,6 +2772,11 @@ function CancelledEventsCollapsible(props: {
   entries: Array<{ event: { id: string; title: string }; registration: { CancellationDate?: string } }>;
   formatDate: (iso: string) => string;
   statusLabel: string;
+  // v18.62: Hinweis + Button, dass man sich für eine erneute Teilnahme
+  // im Anmelde-Bereich neu registrieren muss (Abmeldung ist endgültig).
+  hintText: string;
+  reRegisterLabel: string;
+  onReRegister: () => void;
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false);
   return (
@@ -2769,6 +2801,20 @@ function CancelledEventsCollapsible(props: {
       </button>
       {open && (
         <div className="my-events-list">
+          <div style={{
+            fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginBottom: 12,
+            padding: '10px 14px', borderRadius: 8,
+            background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{ flex: '1 1 auto' }}>{props.hintText}</span>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ fontSize: '0.78rem', padding: '5px 14px', whiteSpace: 'nowrap' }}
+              onClick={props.onReRegister}
+            >{props.reRegisterLabel}</button>
+          </div>
           {props.entries.map(({ event, registration }) => (
             <div
               key={event.id}
