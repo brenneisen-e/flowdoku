@@ -66,7 +66,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -1011,6 +1011,16 @@ export default function RegistrationPage(): React.ReactElement {
         );
         if (parentOk) anySuccess = true;
         else setError(t('reg.error'));
+        setSubmitProgress(50);
+      } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
+        // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
+        // Section-Anmeldung) → sie wird NICHT neu registriert. Trotzdem die
+        // übergreifenden Hauptevent-Antworten (Food Preferences, Hotel etc.)
+        // mit den aktuellen Formular-Werten aktualisieren, damit Änderungen
+        // beim Nach-Anmelden einer weiteren Section persistiert werden. Vorher
+        // gingen sie verloren (Audit-Befund #2).
+        setSubmitProgress(40);
+        try { await updateMyRegistration(selectedEventId!, customData); } catch { /* best-effort */ }
         setSubmitProgress(50);
       } else {
         setSubmitProgress(50);
