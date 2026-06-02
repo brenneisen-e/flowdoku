@@ -158,6 +158,9 @@ interface CustomFieldInput {
   options: string[];
   visible: boolean;
   externalLinks?: Array<{ label: string; url: string }>;
+  /** v18.41: Nur People-Picker (user/roommate): ausgewählte Person bei
+   *  An-/Abmelde-Mail auf CC setzen (nicht im Outlook-Termin). */
+  ccOnEmails?: boolean;
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
    *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
   multi?: boolean;
@@ -262,6 +265,8 @@ function serializeCustomFields(
         ...(f.externalLinks && f.externalLinks.length > 0
           ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
           : {}),
+        // v18.41: CC-bei-Mail nur für People-Picker-Felder persistieren.
+        ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
       } as CustomField;
     });
 }
@@ -840,6 +845,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
       ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
+      // v18.41: CC-bei-Mail-Flag beim Edit-Mount mit-übernehmen.
+      ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -3162,6 +3169,10 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
                   ? { confirmLabel: f.confirmLabel.trim() }
                   : {}),
+                // v18.41 (gleiches Muster wie v11.21/v18.20): ccOnEmails muss
+                // auch im zweiten Write mit, sonst droppt der spInternalName-
+                // Merge die Property direkt nach dem Speichern wieder.
+                ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -9595,6 +9606,44 @@ export default function EventCreationPage(): React.ReactElement {
                         <X size={18} />
                       </button>
                     </div>
+
+                    {/* v18.41: People-Picker-Feld → ausgewählte Person bei
+                        An-/Abmelde-Mail auf CC (nur für user/roommate-Felder). */}
+                    {(field.type === 'user' || field.type === 'roommate') && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!field.ccOnEmails}
+                          onChange={e => updateCustomField(field.id, { ccOnEmails: e.target.checked })}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                            {isDe ? 'Ausgewählte Person bei An-/Abmelde-Mail auf CC setzen' : 'CC the selected person on registration/cancellation email'}
+                          </span>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> ob die in diesem Feld <strong>ausgewählte Person</strong> (z.&nbsp;B. die Assistenz) die <strong>Anmelde- und Abmelde-Mail</strong> des Teilnehmers <strong>in Kopie (CC)</strong> bekommt.<br /><br />
+                              <strong>Anzeige in der App:</strong> ändert nichts an der Anzeige — wirkt nur beim Mail-Versand.<br /><br />
+                              <strong>Automatismen:</strong> die im Feld gewählte Person wird automatisch auf CC der Bestätigungs- bzw. Abmelde-Mail gesetzt. <strong>Der Outlook-Termin ist davon nicht betroffen</strong> — die Person wird also NICHT in den Kalendereintrag eingeladen.<br /><br />
+                              <strong>Auswirkung für Teilnehmer:</strong> seine Assistenz ist bei An- und Abmeldung automatisch informiert, ohne dass er sie manuell weiterleiten muss.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What you set here:</strong> whether the <strong>person selected in this field</strong> (e.g. the assistant) receives the attendee&apos;s <strong>registration and cancellation email</strong> in <strong>CC</strong>.<br /><br />
+                              <strong>Where you see it:</strong> no visible change — only affects email sending.<br /><br />
+                              <strong>Automations:</strong> the chosen person is automatically added to CC of the confirmation / cancellation mail. <strong>The Outlook event is not affected</strong> — the person is NOT invited to the calendar entry.<br /><br />
+                              <strong>For attendees:</strong> their assistant is automatically kept in the loop on registration and cancellation without manual forwarding.
+                            </>
+                          )} />
+                          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            {isDe
+                              ? 'Nur die Mails — der Outlook-Termin wird nicht an diese Person gesendet.'
+                              : 'Emails only — the Outlook event is not sent to this person.'}
+                          </span>
+                        </span>
+                      </label>
+                    )}
 
                     {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
                         Toggle oben aktiviert wurde. Sitzt direkt unter dem

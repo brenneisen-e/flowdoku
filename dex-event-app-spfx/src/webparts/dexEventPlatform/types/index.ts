@@ -338,6 +338,11 @@ export interface EventSpecificField {
    *  (fetten) Feld-Label. Pro Feld vom Organizer wählbar. */
   helpTextStyle?: 'tooltip' | 'inline';
   spInternalName?: string;
+  /** v18.41: Nur für People-Picker-Felder (`type === 'user'` / `'roommate'`).
+   *  Wenn true, wird die im Feld ausgewählte Person bei der An-/Abmelde-Mail
+   *  des Teilnehmers auf CC gesetzt (z.B. die Assistenz). Betrifft NUR die
+   *  E-Mails — NICHT den Outlook-Termin. */
+  ccOnEmails?: boolean;
   /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
   externalLinks?: Array<{ label: string; url: string }>;
   /** v7.11: Wenn `type === 'select'` und `multi === true`, wird das Feld als

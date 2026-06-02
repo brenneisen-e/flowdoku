@@ -504,6 +504,9 @@ export interface CustomField {
   helpText?: string;
   /** v18.18: 'tooltip' (Default) oder 'inline' (Erklär-Text unter dem Label). */
   helpTextStyle?: 'tooltip' | 'inline';
+  /** v18.41: People-Picker (user/roommate): ausgewählte Person bei An-/Abmelde-
+   *  Mail auf CC (nicht im Outlook-Termin). */
+  ccOnEmails?: boolean;
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
