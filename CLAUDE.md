@@ -841,6 +841,16 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 - DEX_IDReorder_TeilnehmerIDs — TeilnehmerIDs renummerieren + Warteliste nachrücken
 - DEX_SEND_MAIL — Mail-Versand aus DEX_Emails-Queue
 - DEX_CreateOutlookEvent — Outlook-Termin initial anlegen
+  - **Ort im Termin (v18.34):** Neue Spalte `OutlookLocation` (Single line text)
+    auf `DEX_Events` — lesbarer Ort (Veranstaltungsort + Adresse), gebaut von
+    `utils/eventFormat.ts → buildOutlookLocation()`. Geschrieben beim Anlegen
+    (`createEvent`-Payload) UND beim Bearbeiten (Wizard-`updates`), plus
+    Backfill in `EventService.queueOutlookEvent` (einmal pro Event/Session) für
+    Bestands-Events. Der Flow mappt `item/location` ←
+    `triggerBody()?['OutlookLocation']` (siehe `docs/flow-jsons.md`, UI-Anleitung
+    v18.34); der `DEX_Outlook_Einladungen`-UpdateEvent-Zweig patcht den Ort beim
+    Aktualisieren mit. Eine reine Ort-Änderung im Wizard gilt seit v18.34 als
+    Outlook-relevant (öffnet das Update-Modal).
   - **Trigger-Konsequenz (wichtig):** Der Flow lauscht ausschließlich auf
     `GetOnNewItems` in DEX_Events — er feuert **nur** beim Anlegen eines
     neuen DEX_Events-Items, **nicht** bei MERGE/PATCH-Updates. Wenn der

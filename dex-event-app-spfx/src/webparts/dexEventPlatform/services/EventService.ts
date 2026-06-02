@@ -20,6 +20,7 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
 import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
+import { buildOutlookLocation } from '../utils/eventFormat';
 
 /**
  * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -445,6 +446,7 @@ export interface SPEvent {
   OutlookEventId: string;
   CalendarLink: string;
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
+  OutlookLocation?: string; // v18.34: lesbarer Ort fuer das Location-Feld des Outlook-Termins
   EmailLanguage: string; // DE oder EN
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
@@ -978,6 +980,32 @@ export class EventService {
     await this.setQueueListPermissions(listName);
   }
 
+  // v18.34: pro App-Session je Event nur einmal den OutlookLocation-Backfill
+  // versuchen — verhindert N Roundtrips bei N Einladen-Calls eines Events.
+  private _outlookLocationBackfilled = new Set<string>();
+
+  /**
+   * v18.34: Backfill fuer Bestands-Events. Stellt sicher, dass das DEX_Events-Item
+   * eine gefuellte OutlookLocation hat, BEVOR der Flow den Termin anlegt/aktualisiert.
+   * Neue Events bekommen OutlookLocation bereits beim Anlegen/Bearbeiten — alte
+   * (vor v18.34 erstellte) Events haetten sonst eine leere Spalte.
+   */
+  private async backfillOutlookLocation(eventId: string): Promise<void> {
+    if (!eventId || this._outlookLocationBackfilled.has(eventId)) return;
+    this._outlookLocationBackfilled.add(eventId);
+    try {
+      const numId = Number(eventId);
+      if (isNaN(numId)) return;
+      const ev = await this.getEvent(numId);
+      if (!ev) return;
+      if (ev.OutlookLocation && ev.OutlookLocation.trim() !== '') return; // schon gesetzt
+      const loc = buildOutlookLocation(ev.Location, ev.LocationAddress);
+      if (loc) {
+        await this.updateEvent(numId, { 'OutlookLocation': loc });
+      }
+    } catch { /* best effort — Backfill darf den Queue-Eintrag nie blockieren */ }
+  }
+
   /**
    * Outlook-Termin-Einladung in die Queue eintragen.
    * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
@@ -989,6 +1017,8 @@ export class EventService {
     actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
   ): Promise<boolean> {
     try {
+      // v18.34: OutlookLocation fuer Bestands-Events nachziehen (einmal pro Event/Session).
+      await this.backfillOutlookLocation(eventId);
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
         {
@@ -2625,6 +2655,7 @@ export class EventService {
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
+      { title: 'OutlookLocation', type: 2 }, // v18.34: Single line - lesbarer Ort fuer den Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
@@ -3032,7 +3063,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookLocation,EmailLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3380,6 +3411,8 @@ export class EventService {
         'Description': event.description,
         'Location': event.location,
         'LocationAddress': event.locationAddress || '',
+        // v18.34: lesbaren Outlook-Ort vorbauen (Flow mappt OutlookLocation 1:1).
+        'OutlookLocation': buildOutlookLocation(event.location, event.locationAddress),
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
         'AudienceResolvedEmails': event.audienceResolvedEmails || '',

@@ -25,6 +25,7 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { generateSelfCheckInToken } from '../utils/selfCheckIn';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
+import { buildOutlookLocation } from '../utils/eventFormat';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -1334,11 +1335,14 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Aenderung loest das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string }>({
     title: editEvent?.title || '',
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
     outlookBody: editEvent?.outlookBody || '',
+    // v18.34: Ort in den Snapshot — eine reine Ort-Aenderung soll das
+    // Outlook-Update-Modal ebenfalls oeffnen (sonst bleibt der Termin-Ort leer).
+    outlookLocation: buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
   });
   // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
   // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
@@ -1354,7 +1358,7 @@ export default function EventCreationPage(): React.ReactElement {
     kind: 'top' | 'sub';
     eventId: string;
     title: string;
-    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'>;
+    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'>;
     /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
      *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
      *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
@@ -2795,6 +2799,8 @@ export default function EventCreationPage(): React.ReactElement {
         'LocationAddress': (addrStreet || addrHouseNo || addrZip || addrCity)
           ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
           : '',
+        // v18.34: lesbaren Outlook-Ort mitschreiben (Flow mappt OutlookLocation 1:1).
+        'OutlookLocation': buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
         'LocationFilter': locationFilter,
         'Audience': audience,
         // v16.4: Audience-DLs vor-aufgeloest mitschreiben.
@@ -3680,11 +3686,14 @@ export default function EventCreationPage(): React.ReactElement {
     // aussehen wuerde. Vergleich gegen den initial gestrippten Wert.
     const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
-    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'> = [];
+    const currentTopLocation = buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
+    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
+    // v18.34: reine Ort-Aenderung gilt ebenfalls als Outlook-relevant.
+    if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
     // v11.61: Beide Pointer pruefen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
@@ -13365,11 +13374,12 @@ export default function EventCreationPage(): React.ReactElement {
             }}>
               {outlookConfirmItems.map((it, idx) => {
                 const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody', { de: string; en: string }> = {
+                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location', { de: string; en: string }> = {
                   title: { de: 'Titel', en: 'Title' },
                   startDate: { de: 'Startzeit', en: 'Start time' },
                   endDate: { de: 'Endzeit', en: 'End time' },
                   outlookBody: { de: 'Termin-Text', en: 'Calendar body' },
+                  location: { de: 'Ort', en: 'Location' },
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
