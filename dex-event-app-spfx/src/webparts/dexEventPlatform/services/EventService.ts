@@ -426,6 +426,16 @@ export interface DeclinedAttendee {
   name: string;
 }
 
+// v18.66: Ergebnis-Zusammenfassung des Template-Reseeds, damit die UI dem
+// Admin konkret zurueckmeldet, was passiert ist (statt nur "erfolgreich").
+export interface ReseedSummary {
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
 export type DeclineCheckReason = 'no-pointer' | 'not-found' | 'forbidden' | 'error';
 
 // Flaches Ergebnis-Shape, weil der TS-4.7-Compiler bei Discriminated Unions
@@ -1801,11 +1811,12 @@ export class EventService {
    * Standard-Templates an — überschreibt eventuelle individuelle Änderungen
    * in DEX_EmailTemplates mit den aktuellen Default-Texten aus dem Code.
    */
-  public async reseedDefaultEmailTemplates(): Promise<void> {
-    await this.upgradeStandardEmailTemplates('DEX_EmailTemplates');
+  public async reseedDefaultEmailTemplates(): Promise<ReseedSummary> {
+    return this.upgradeStandardEmailTemplates('DEX_EmailTemplates');
   }
 
-  private async upgradeStandardEmailTemplates(listName: string): Promise<void> {
+  private async upgradeStandardEmailTemplates(listName: string): Promise<ReseedSummary> {
+    const summary: ReseedSummary = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
     const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
     void APP_URL; // Reserviert fuer spaetere Templates die {{AppUrl}} hardcoden
     const standards = [
@@ -1907,20 +1918,25 @@ export class EventService {
     } catch { /* Fallback */ }
 
     for (const t of standards) {
+      const label = `${t.TemplateType}_${t.Language}`;
       try {
         // Bestehendes Item finden
         const checkResp = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '${t.TemplateType}' and Language eq '${t.Language}'&$top=1&$select=Id,BodyHtml`,
           SPHttpClient.configurations.v1
         );
-        if (!checkResp.ok) continue;
+        if (!checkResp.ok) {
+          summary.failed++;
+          summary.errors.push(`${label}: Pruefung fehlgeschlagen (HTTP ${checkResp.status})`);
+          continue;
+        }
         const checkData = await checkResp.json();
         const items = checkData.value || checkData.d?.results || [];
         if (items.length === 0) {
           // existiert nicht -> anlegen (uebernimmt ensureMissingEmailTemplates fuer einige; hier sicherheitshalber auch)
-          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+          const postResp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
             '__metadata': { 'type': listItemType },
-            'Title': `${t.TemplateType}_${t.Language}`,
+            'Title': label,
             'TemplateType': t.TemplateType,
             'Language': t.Language,
             'Subject': t.Subject,
@@ -1928,14 +1944,25 @@ export class EventService {
             'Heading': t.Heading,
             'BodyHtml': t.BodyHtml,
           });
+          // v18.66: _post wirft NICHT bei HTTP 4xx/5xx — Status explizit pruefen,
+          // sonst scheitern Inserts (z.B. neue Templates wie OrgNachruecker)
+          // stillschweigend und der Reseed meldet faelschlich Erfolg.
+          if (postResp.ok || postResp.status === 201 || postResp.status === 204) {
+            summary.created++;
+          } else {
+            summary.failed++;
+            let detail = '';
+            try { detail = (await postResp.text()).slice(0, 200); } catch { /* ignore */ }
+            summary.errors.push(`${label}: Anlegen fehlgeschlagen (HTTP ${postResp.status})${detail ? ' — ' + detail : ''}`);
+          }
         } else {
           // existiert -> updaten falls BodyHtml vom Default abweicht
           const item = items[0];
           if (item.BodyHtml !== t.BodyHtml) {
-            await this._merge(
+            const mergeResp = await this._merge(
               `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${item.Id})`,
               {
-                'Title': `${t.TemplateType}_${t.Language}`,
+                'Title': label,
                 'TemplateType': t.TemplateType,
                 'Language': t.Language,
                 'Subject': t.Subject,
@@ -1944,10 +1971,22 @@ export class EventService {
                 'BodyHtml': t.BodyHtml,
               }
             );
+            if (mergeResp.ok || mergeResp.status === 204) {
+              summary.updated++;
+            } else {
+              summary.failed++;
+              summary.errors.push(`${label}: Aktualisieren fehlgeschlagen (HTTP ${mergeResp.status})`);
+            }
+          } else {
+            summary.skipped++;
           }
         }
-      } catch { /* einzelnes Template ueberspringen */ }
+      } catch (e) {
+        summary.failed++;
+        summary.errors.push(`${label}: ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
+      }
     }
+    return summary;
   }
 
   /**
@@ -2369,7 +2408,7 @@ export class EventService {
   public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,Subheading,BodyHtml&$orderby=TemplateType,Language&$top=50`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$select=Id,TemplateType,Language,Subject,HeadingColor,Heading,Subheading,BodyHtml&$orderby=TemplateType,Language&$top=500`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {

@@ -813,6 +813,7 @@ function ReseedTemplatesCard(): React.ReactElement {
   const isDe = locale === 'de';
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
+  const [summary, setSummary] = React.useState<{ created: number; updated: number; skipped: number; failed: number; errors: string[] } | undefined>(undefined);
   const handleReseed = async (): Promise<void> => {
     const msg = isDe
       ? 'Alle Standard-Mail-Templates (DEX_EmailTemplates) mit den Default-Texten aus dem Code überschreiben? Eigene individuelle Anpassungen an Subject / Heading / Body gehen verloren.'
@@ -821,10 +822,14 @@ function ReseedTemplatesCard(): React.ReactElement {
     if (!window.confirm(msg)) return;
     setBusy(true);
     setStatus('');
+    setSummary(undefined);
     try {
-      await reseedDefaultEmailTemplates();
-      setStatus('success');
-      setTimeout(() => setStatus(''), 4000);
+      const res = await reseedDefaultEmailTemplates();
+      setSummary(res);
+      // v18.66: Ein fehlgeschlagener Insert (z.B. neues Template) zaehlt als
+      // Fehler, auch wenn der Rest durchlief — so sieht der Admin sofort,
+      // dass nicht alle Templates angelegt wurden.
+      setStatus(res.failed > 0 ? 'error' : 'success');
     } catch {
       setStatus('error');
     } finally {
@@ -855,11 +860,30 @@ function ReseedTemplatesCard(): React.ReactElement {
       {status === 'success' && (
         <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
           {isDe ? 'Templates erfolgreich zurückgesetzt.' : 'Templates reset successfully.'}
+          {summary && (
+            <span style={{ color: 'var(--dex-gray-600)' }}>
+              {' '}({summary.created} {isDe ? 'neu angelegt' : 'created'}, {summary.updated} {isDe ? 'aktualisiert' : 'updated'}, {summary.skipped} {isDe ? 'unverändert' : 'unchanged'})
+            </span>
+          )}
         </div>
       )}
       {status === 'error' && (
         <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
-          {isDe ? 'Reset fehlgeschlagen. Bitte später erneut versuchen.' : 'Reset failed. Please try again later.'}
+          {summary
+            ? (isDe
+                ? `${summary.failed} Template(s) konnten nicht geschrieben werden (${summary.created} neu, ${summary.updated} aktualisiert, ${summary.skipped} unverändert).`
+                : `${summary.failed} template(s) could not be written (${summary.created} created, ${summary.updated} updated, ${summary.skipped} unchanged).`)
+            : (isDe ? 'Reset fehlgeschlagen. Bitte später erneut versuchen.' : 'Reset failed. Please try again later.')}
+          {summary && summary.errors.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+              {summary.errors.slice(0, 8).map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+              {summary.errors.length > 8 && (
+                <li>{isDe ? `… und ${summary.errors.length - 8} weitere` : `… and ${summary.errors.length - 8} more`}</li>
+              )}
+            </ul>
+          )}
         </div>
       )}
     </div>
