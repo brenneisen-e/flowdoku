@@ -448,6 +448,31 @@ Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
 verfällt). Restrisiko des statischen PDFs ist bewusst akzeptiert (nur
 Anwesenheits-Schummeln, keine Fremd-Anmeldung).
 
+### People-Picker-Feld → Person auf CC der An-/Abmelde-Mail (v18.41)
+
+Pro People-Picker-Custom-Field (`type === 'user'` / `'roommate'`) kann der
+Organizer im Wizard (Schritt **Felder**) das Häkchen **„Ausgewählte Person bei
+An-/Abmelde-Mail auf CC setzen"** aktivieren (Property `ccOnEmails`). Use-Case:
+ein „Assistenz"-Feld — die angegebene Person bekommt Anmelde- und Abmelde-Mail
+automatisch in Kopie.
+
+- **NUR E-Mails, NICHT Outlook:** Die CC wirkt ausschließlich auf
+  `queueEmail` (Anmeldung / Warteliste / Abmeldung). Der Outlook-Termin
+  (`queueOutlookEvent`) bleibt unangetastet — die CC-Person wird NICHT zum
+  Kalendereintrag eingeladen.
+- **Extraktion:** `collectCcEmailsFromFields(fields, customData, excludeEmail)`
+  in `EventContext.tsx` liest aus den `ccOnEmails`-Feldern die E-Mail
+  (Wertformat „Anzeigename <email>", Regex `/<([^>]+@[^>]+)>/`), dedupliziert
+  und schließt den Teilnehmer selbst aus. Ergebnis geht als `cc`-Parameter in
+  `queueEmail` (8. Argument).
+- **Eingehängt in:** `registerForEvent` (Bestätigung/Warteliste, aus dem
+  live `customData`), `cancelRegistration` (Self-Cancel, aus
+  `myReg.CustomData`), `cancelTeamMember` (aus `memberRegistration.CustomData`).
+- **Persistenz:** `ccOnEmails` ist eine Custom-Field-Property — daher in
+  `serializeCustomFields` **und** im `cfForFix`-Mapping ergänzt (zweiter
+  CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
+  (`eventSpecificFields.map`) durchgereicht.
+
 ### Anmeldesprache vorgeben (v18.35)
 
 Pro Event kann der Organizer die **Sprache der Anmeldeseite** fest vorgeben —
@@ -509,7 +534,8 @@ an **beiden** Stellen ergänzen:
 - im `cfForFix`-Mapping in `handleSubmit` (≈ Zeile 3030).
 
 Bug-Historie (immer dasselbe Muster): v11.21 (`helpText`/`showIf`),
-v11.94 (`confirmLabel`), v11.15 (`externalLinks`), v18.20 (`helpTextStyle`).
+v11.94 (`confirmLabel`), v11.15 (`externalLinks`), v18.20 (`helpTextStyle`),
+v18.41 (`ccOnEmails`).
 Der zweite Write feuert nur, wenn `fixResult.customFieldMap` Einträge
 liefert (also Spalten gemappt/angelegt wurden) — deshalb fällt der Bug
 oft erst bei Events mit echten Teilnehmerlisten-Spalten auf, nicht in der

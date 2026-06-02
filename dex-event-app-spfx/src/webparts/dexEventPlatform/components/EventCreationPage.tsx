@@ -158,6 +158,9 @@ interface CustomFieldInput {
   options: string[];
   visible: boolean;
   externalLinks?: Array<{ label: string; url: string }>;
+  /** v18.41: Nur People-Picker (user/roommate): ausgewählte Person bei
+   *  An-/Abmelde-Mail auf CC setzen (nicht im Outlook-Termin). */
+  ccOnEmails?: boolean;
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
    *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
   multi?: boolean;
@@ -262,6 +265,8 @@ function serializeCustomFields(
         ...(f.externalLinks && f.externalLinks.length > 0
           ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
           : {}),
+        // v18.41: CC-bei-Mail nur für People-Picker-Felder persistieren.
+        ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
       } as CustomField;
     });
 }
@@ -747,6 +752,16 @@ export default function EventCreationPage(): React.ReactElement {
   const [addrHouseNo, setAddrHouseNo] = React.useState(editEvent?.locationAddress?.houseNo || '');
   const [addrZip, setAddrZip] = React.useState(editEvent?.locationAddress?.zip || '');
   const [addrCity, setAddrCity] = React.useState(editEvent?.locationAddress?.city || '');
+  // v18.40: Überschreibbarer Outlook-Termin-Ort. Leer = automatischer Standard
+  // (Veranstaltungsort + Adresse). Gefüllt = manueller Wert. Beim Edit nur als
+  // Override vorbelegen, wenn der gespeicherte Wert vom Auto-Standard abweicht —
+  // sonst bleibt das Feld leer und der Ort zieht weiter automatisch nach.
+  const [outlookLocationOverride, setOutlookLocationOverride] = React.useState<string>(() => {
+    if (!editEvent) return '';
+    const auto = buildOutlookLocation(editEvent.location, editEvent.locationAddress);
+    const stored = editEvent.outlookLocation || '';
+    return (stored && stored !== auto) ? stored : '';
+  });
   const [locationFilter, setLocationFilter] = React.useState(
     editEvent ? editEvent.locationAudience.join(', ') : ''
   );
@@ -830,6 +845,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
       ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
+      // v18.41: CC-bei-Mail-Flag beim Edit-Mount mit-übernehmen.
+      ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -1340,9 +1357,9 @@ export default function EventCreationPage(): React.ReactElement {
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
     outlookBody: editEvent?.outlookBody || '',
-    // v18.34: Ort in den Snapshot — eine reine Ort-Aenderung soll das
-    // Outlook-Update-Modal ebenfalls oeffnen (sonst bleibt der Termin-Ort leer).
-    outlookLocation: buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
+    // v18.34/v18.40: effektiver Ort in den Snapshot (gespeicherte Override ODER
+    // Auto). Eine reine Ort-Aenderung soll das Outlook-Update-Modal oeffnen.
+    outlookLocation: editEvent?.outlookLocation || buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
   });
   // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
   // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
@@ -2826,8 +2843,9 @@ export default function EventCreationPage(): React.ReactElement {
         'LocationAddress': (addrStreet || addrHouseNo || addrZip || addrCity)
           ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
           : '',
-        // v18.34: lesbaren Outlook-Ort mitschreiben (Flow mappt OutlookLocation 1:1).
-        'OutlookLocation': buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
+        // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst Auto aus
+        // Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
+        'OutlookLocation': outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
         'LocationFilter': locationFilter,
         'Audience': audience,
         // v16.4: Audience-DLs vor-aufgeloest mitschreiben.
@@ -3151,6 +3169,10 @@ export default function EventCreationPage(): React.ReactElement {
                 ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
                   ? { confirmLabel: f.confirmLabel.trim() }
                   : {}),
+                // v18.41 (gleiches Muster wie v11.21/v18.20): ccOnEmails muss
+                // auch im zweiten Write mit, sonst droppt der spInternalName-
+                // Merge die Property direkt nach dem Speichern wieder.
+                ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -3359,6 +3381,8 @@ export default function EventCreationPage(): React.ReactElement {
         locationAddress: (addrStreet || addrHouseNo || addrZip || addrCity)
           ? JSON.stringify({ street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })
           : '',
+        // v18.40: manueller Outlook-Ort (leer = Auto in createEvent).
+        outlookLocation: outlookLocationOverride.trim() || undefined,
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -3716,7 +3740,7 @@ export default function EventCreationPage(): React.ReactElement {
     // aussehen wuerde. Vergleich gegen den initial gestrippten Wert.
     const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
-    const currentTopLocation = buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
+    const currentTopLocation = outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
     const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
@@ -6464,6 +6488,37 @@ export default function EventCreationPage(): React.ReactElement {
                   <input className="form-input" value={addrZip} onChange={e => setAddrZip(e.target.value)} placeholder="PLZ" />
                   <input className="form-input" value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="Ort" />
                 </div>
+              </div>
+
+              {/* v18.40: Ort im Outlook-Termin (überschreibbar) */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isDe ? 'Ort im Outlook-Termin' : 'Location in the Outlook event'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den Text, der im <strong>&bdquo;Ort&ldquo;-Feld des Outlook-Termins</strong> der Teilnehmer steht.<br /><br />
+                      <strong>Standard:</strong> wird automatisch aus <strong>Veranstaltungsort + Adresse</strong> oben zusammengebaut (siehe Platzhalter). Lässt du das Feld <strong>leer</strong>, wird immer dieser aktuelle Standard verwendet.<br /><br />
+                      <strong>Überschreiben:</strong> Trägst du hier etwas ein, wird genau dieser Text als Termin-Ort genommen — z.&nbsp;B. ein abweichender Raum, ein Online-Link oder ein Kurzname.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the text shown in the <strong>&bdquo;Location&ldquo; field of attendees&apos; Outlook event</strong>.<br /><br />
+                      <strong>Default:</strong> built automatically from <strong>venue + address</strong> above (see placeholder). Leave it <strong>empty</strong> to always use that current default.<br /><br />
+                      <strong>Override:</strong> type something here to use exactly that text as the event location — e.g. a different room, an online link or a short name.
+                    </>
+                  )} />
+                </label>
+                <input
+                  className="form-input"
+                  value={outlookLocationOverride}
+                  onChange={e => setOutlookLocationOverride(e.target.value)}
+                  placeholder={buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                />
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                  {isDe
+                    ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse. Eingabe überschreibt den Termin-Ort.'
+                    : 'Leave empty = automatic from venue + address. Any input overrides the event location.'}
+                </span>
               </div>
 
               {/* ===== Agenda Editor ===== */}
@@ -9551,6 +9606,44 @@ export default function EventCreationPage(): React.ReactElement {
                         <X size={18} />
                       </button>
                     </div>
+
+                    {/* v18.41: People-Picker-Feld → ausgewählte Person bei
+                        An-/Abmelde-Mail auf CC (nur für user/roommate-Felder). */}
+                    {(field.type === 'user' || field.type === 'roommate') && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!field.ccOnEmails}
+                          onChange={e => updateCustomField(field.id, { ccOnEmails: e.target.checked })}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                            {isDe ? 'Ausgewählte Person bei An-/Abmelde-Mail auf CC setzen' : 'CC the selected person on registration/cancellation email'}
+                          </span>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> ob die in diesem Feld <strong>ausgewählte Person</strong> (z.&nbsp;B. die Assistenz) die <strong>Anmelde- und Abmelde-Mail</strong> des Teilnehmers <strong>in Kopie (CC)</strong> bekommt.<br /><br />
+                              <strong>Anzeige in der App:</strong> ändert nichts an der Anzeige — wirkt nur beim Mail-Versand.<br /><br />
+                              <strong>Automatismen:</strong> die im Feld gewählte Person wird automatisch auf CC der Bestätigungs- bzw. Abmelde-Mail gesetzt. <strong>Der Outlook-Termin ist davon nicht betroffen</strong> — die Person wird also NICHT in den Kalendereintrag eingeladen.<br /><br />
+                              <strong>Auswirkung für Teilnehmer:</strong> seine Assistenz ist bei An- und Abmeldung automatisch informiert, ohne dass er sie manuell weiterleiten muss.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What you set here:</strong> whether the <strong>person selected in this field</strong> (e.g. the assistant) receives the attendee&apos;s <strong>registration and cancellation email</strong> in <strong>CC</strong>.<br /><br />
+                              <strong>Where you see it:</strong> no visible change — only affects email sending.<br /><br />
+                              <strong>Automations:</strong> the chosen person is automatically added to CC of the confirmation / cancellation mail. <strong>The Outlook event is not affected</strong> — the person is NOT invited to the calendar entry.<br /><br />
+                              <strong>For attendees:</strong> their assistant is automatically kept in the loop on registration and cancellation without manual forwarding.
+                            </>
+                          )} />
+                          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            {isDe
+                              ? 'Nur die Mails — der Outlook-Termin wird nicht an diese Person gesendet.'
+                              : 'Emails only — the Outlook event is not sent to this person.'}
+                          </span>
+                        </span>
+                      </label>
+                    )}
 
                     {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
                         Toggle oben aktiviert wurde. Sitzt direkt unter dem

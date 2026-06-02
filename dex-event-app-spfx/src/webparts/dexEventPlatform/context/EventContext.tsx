@@ -159,6 +159,31 @@ export function formatOrganizerList(organizers: string[], lang: string): string 
   return `${names.slice(0, -1).join(', ')}${conj}${names[names.length - 1]}`;
 }
 
+/** v18.41: Sammelt die E-Mail-Adressen aus People-Picker-Feldern (user/roommate),
+ *  die der Organizer als „CC bei An-/Abmelde-Mail" markiert hat. Format des
+ *  Feldwerts ist „Anzeigename <email>". Liefert einen ';'-getrennten CC-String
+ *  (ohne den Teilnehmer selbst, dedupliziert). NUR für Mails — nicht Outlook. */
+function collectCcEmailsFromFields(
+  fields: Array<{ id: string; type: string; ccOnEmails?: boolean }> | undefined,
+  customData: Record<string, string>,
+  excludeEmail?: string
+): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const exclude = (excludeEmail || '').toLowerCase();
+  for (const f of (fields || [])) {
+    if (!f.ccOnEmails) continue;
+    if (f.type !== 'user' && f.type !== 'roommate') continue;
+    const v = customData[f.id];
+    if (!v) continue;
+    const m = v.match(/<([^>]+@[^>]+)>/);
+    const em = m ? m[1].trim() : '';
+    const lc = em.toLowerCase();
+    if (em && lc !== exclude && !seen.has(lc)) { seen.add(lc); out.push(em); }
+  }
+  return out.join(';');
+}
+
 /** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
  *  QR) ODER `eventNumber` + `code` + `windowIndex` (rotierender Live-QR). */
 export interface SelfCheckInParams {
@@ -351,6 +376,8 @@ export interface CreateEventInput {
   emailLanguage?: string;
   /** v18.35: erzwungene Anmeldeseiten-Sprache ('de' | 'en'); leer = App-Sprache. */
   registrationLanguage?: 'de' | 'en';
+  /** v18.40: manueller Outlook-Termin-Ort; leer = Auto aus Veranstaltungsort + Adresse. */
+  outlookLocation?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -695,6 +722,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       imageUrl: e.EventImageUrl || '',
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
+      outlookLocation: e.OutlookLocation || undefined,
       outlookEventId: e.OutlookEventId || '',
       // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
       // DEX_CreateOutlookEvent-Flow nur dieses Feld auf Erfolg setzt — die
@@ -868,6 +896,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
         // RegistrationPage abgesichert).
         externalLinks: cf.externalLinks,
+        // v18.41: CC-bei-Mail-Flag durchreichen — collectCcEmailsFromFields liest es.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ccOnEmails: !!(cf as any).ccOnEmails,
         // v11.16: onlyForGroup aus dem persistierten Feld durchreichen.
         // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthaelt
         // den Schluessel), aber der Loader hat ihn nie zurueckgelesen —
@@ -1137,9 +1168,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
           finalBody = finalBody.replace(/<body([^>]*)>/i, `<body$1>${externalHint}`);
         }
+        // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
+        // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
+        const ccFromFields = collectCcEmailsFromFields(event.eventSpecificFields, customData, emailToUse) || undefined;
         eventService.queueEmail(
           finalSubject, finalRecipient, finalRecipientName, finalBody,
-          templateType, event.title, eventId, undefined, bcc
+          templateType, event.title, eventId, ccFromFields, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
 
         // v9.15: Auto-Send QR-Code wenn am Event aktiviert. Nur fuer
@@ -2147,9 +2181,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               const orgEmails = (event.organizerEmails || []).filter(Boolean);
               if (orgEmails.length > 0) bcc = orgEmails.join(';');
             }
+            // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
+            // Person(en) auch bei der Abmelde-Mail auf CC (nicht im Outlook-Termin).
+            let cancelCc: string | undefined;
+            try {
+              const cd = myReg.CustomData ? JSON.parse(myReg.CustomData) as Record<string, string> : {};
+              cancelCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, currentUserEmail) || undefined;
+            } catch { cancelCc = undefined; }
             const emailOk = await eventService.queueEmail(
               emailData.subject, currentUserEmail, currentUserName, emailData.body,
-              'Abmeldung', event.title, eventId, undefined, bcc
+              'Abmeldung', event.title, eventId, cancelCc, bcc
             );
             if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
           } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
@@ -2290,12 +2331,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             const orgEmails = (event.organizerEmails || []).filter(Boolean);
             if (orgEmails.length > 0) bcc = orgEmails.join(';');
           }
+          // v18.41: CC-Felder der abgemeldeten Person berücksichtigen.
+          let memberCc: string | undefined;
+          try {
+            const cd = memberRegistration.CustomData ? JSON.parse(memberRegistration.CustomData) as Record<string, string> : {};
+            memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, memberRegistration.ParticipantEmail) || undefined;
+          } catch { memberCc = undefined; }
           await eventService.queueEmail(
             emailData.subject,
             memberRegistration.ParticipantEmail,
             `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
             emailData.body,
-            'Abmeldung', event.title, eventId, undefined, bcc
+            'Abmeldung', event.title, eventId, memberCc, bcc
           );
         } catch (err) { console.warn('[DEX] queueEmail for team-lead cancel failed:', err); }
       }

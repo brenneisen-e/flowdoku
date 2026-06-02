@@ -504,6 +504,9 @@ export interface CustomField {
   helpText?: string;
   /** v18.18: 'tooltip' (Default) oder 'inline' (Erklär-Text unter dem Label). */
   helpTextStyle?: 'tooltip' | 'inline';
+  /** v18.41: People-Picker (user/roommate): ausgewählte Person bei An-/Abmelde-
+   *  Mail auf CC (nicht im Outlook-Termin). */
+  ccOnEmails?: boolean;
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
@@ -3219,6 +3222,7 @@ export class EventService {
     description: string;
     location: string;
     locationAddress?: string; // JSON-String: { street, houseNo, zip, city }
+    outlookLocation?: string; // v18.40: manueller Outlook-Ort (leer = Auto aus Ort + Adresse)
     locationFilter: string;
     audience: string;
     /** v16.4: Vor-aufgeloeste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
@@ -3414,8 +3418,11 @@ export class EventService {
         'Description': event.description,
         'Location': event.location,
         'LocationAddress': event.locationAddress || '',
-        // v18.34: lesbaren Outlook-Ort vorbauen (Flow mappt OutlookLocation 1:1).
-        'OutlookLocation': buildOutlookLocation(event.location, event.locationAddress),
+        // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst
+        // automatisch aus Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
+        'OutlookLocation': (event.outlookLocation && event.outlookLocation.trim())
+          ? event.outlookLocation.trim()
+          : buildOutlookLocation(event.location, event.locationAddress),
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
         'AudienceResolvedEmails': event.audienceResolvedEmails || '',
