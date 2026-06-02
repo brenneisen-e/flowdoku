@@ -184,7 +184,7 @@ const NACHRUECKEN_BODY_EN = wrapTemplateForStorage(
   `<p>Dear {{Name}},</p>
 <p>Great news! A spot has become available \u2014 you have <strong>moved up from the waitlist</strong> for the event <strong>{{EventTitle}}</strong> and are now a <strong>confirmed participant</strong>.</p>
 <p>You are now on the official participant list.</p>
-<p>You can review your participation any time in the <a href="{{AppUrl}}">DEX App</a> under <strong>\u201CMy Events\u201D</strong>.</p>
+<p>You can review your participation any time in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> under <strong>\u201CMy Events\u201D</strong>.</p>
 <p>If you are unable to attend after all, please cancel your registration as soon as possible via the App so that the next person on the waitlist can move up.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
 );
@@ -1232,6 +1232,8 @@ export class EventService {
       { title: 'EventNumber', type: 9 },
       { title: 'SubsiteUrl', type: 2 },
       { title: 'Status', type: 6, choices: ['Pending', 'Processing', 'Done', 'Failed'], metaType: 'SP.FieldChoice' },
+      // v18.65: Name der abgemeldeten Person (für die Organizer-Nachrücker-Mail).
+      { title: 'CancelledName', type: 2 },
     ];
 
     for (const f of fields) {
@@ -1461,11 +1463,38 @@ export class EventService {
   /**
    * ID-Reorder in Queue eintragen (nach Abmeldung).
    */
+  // v18.65: einmal pro Session die CancelledName-Spalte auf DEX_IDReorder
+  // nachrüsten (Bestands-Listen). Selbstheilend, weil der zentrale
+  // initEvents-ensure-Pfad bei gesetztem ENSURE_FLAG übersprungen wird.
+  private _idReorderCancelledFieldEnsured = false;
+  private async ensureIDReorderCancelledNameField(): Promise<void> {
+    if (this._idReorderCancelledFieldEnsured) return;
+    this._idReorderCancelledFieldEnsured = true;
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields/getbytitle('CancelledName')?$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) return; // existiert bereits
+    } catch { /* anlegen */ }
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields`, {
+        '__metadata': { 'type': 'SP.Field' }, 'Title': 'CancelledName', 'FieldTypeKind': 2, 'Required': false,
+      });
+    } catch { /* best-effort — Retry-ohne-Feld unten fängt es ab */ }
+  }
+
   public async queueIDReorder(
     eventId: string,
     eventNumber: number,
     subsiteUrl: string,
-    eventTitle: string
+    eventTitle: string,
+    // v18.65: Name der abgemeldeten Person — wird in die Queue geschrieben,
+    // damit der DEX_IDReorder-Flow ihn direkt aus dem Trigger lesen kann (statt
+    // die „jüngste Abmeldung" abzufragen, was bei gleichzeitigen Abmeldungen
+    // während des Flow-Laufs falsch sein könnte). Genutzt für die
+    // Organizer-Nachrücker-Mail (OrgNachruecker-Template).
+    cancelledName?: string
   ): Promise<boolean> {
     try {
       // ListItemEntityTypeFullName dynamisch ermitteln
@@ -1481,17 +1510,24 @@ export class EventService {
         }
       } catch { /* Fallback auf Standard-Name */ }
 
-      const response = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`,
-        {
-          '__metadata': { 'type': listItemType },
-          'Title': `Reorder: ${eventTitle}`,
-          'EventId': eventId,
-          'EventNumber': eventNumber,
-          'SubsiteUrl': subsiteUrl,
-          'Status': 'Pending',
-        }
-      );
+      if (cancelledName) { try { await this.ensureIDReorderCancelledNameField(); } catch { /* */ } }
+
+      const baseBody: Record<string, unknown> = {
+        '__metadata': { 'type': listItemType },
+        'Title': `Reorder: ${eventTitle}`,
+        'EventId': eventId,
+        'EventNumber': eventNumber,
+        'SubsiteUrl': subsiteUrl,
+        'Status': 'Pending',
+      };
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`;
+      let response = await this._post(url, cancelledName ? { ...baseBody, 'CancelledName': cancelledName } : baseBody);
+      // Falls die CancelledName-Spalte (noch) fehlt, schlägt der erste POST
+      // fehl — dann ohne das Feld erneut posten, damit der Reorder NIEMALS
+      // verloren geht (kritischer Pfad).
+      if (!response.ok && cancelledName) {
+        response = await this._post(url, baseBody);
+      }
       return response.ok;
     } catch {
       return false;

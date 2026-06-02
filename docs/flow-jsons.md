@@ -37,10 +37,13 @@ nicht — dann reicht **Zweig 1**.
 
 Gemeinsame Bausteine (in allen Zweigen identisch, nur der Action-Name ändert sich):
 - **Org-Template-URI** = `@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')`
-- **Abgemeldeten-URI** = `@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$filter=Status eq ''Abgemeldet''&$orderby=CancellationDate desc&$top=1&$select=Vorname,Nachname')`
+- **CancelledName** = `@coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person')` — kommt **direkt aus dem Trigger**: die App schreibt seit v18.65 den Namen der abgemeldeten Person beim Anlegen des DEX_IDReorder-Items mit (kein separater Abfrage-Schritt nötig, race-sicher).
 - **Empfänger** (item/Recipient) = `@first(outputs('Get_EventDetails')?['body/value'])?['OrganizerEmail']`
 - **EventTitle** = `@first(outputs('Get_EventDetails')?['body/value'])?['Title']`
 - **EventId** = `@triggerOutputs()?['body/EventId']`
+
+> Hinweis: dadurch entfällt der frühere `Get_Cancelled_Person`-Schritt komplett —
+> pro Zweig bleiben nur **zwei** neue Actions (Template laden + Mail queuen).
 
 ---
 
@@ -49,13 +52,12 @@ Gemeinsame Bausteine (in allen Zweigen identisch, nur der Action-Name ändert si
 Diese drei Actions **innerhalb** des `Condition_1`-TRUE-Zweigs, NACH dem
 bestehenden `Queue_Email`:
 
-1. **`Get_Org_Template_N`** — Send an HTTP request to SharePoint, GET, URI = *Org-Template-URI* (oben). runAfter: `Queue_Email` → Succeeded.
-2. **`Get_Cancelled_Person_N`** — Send an HTTP request, GET, URI = *Abgemeldeten-URI* (oben). runAfter: `Get_Org_Template_N` → Succeeded.
-3. **`Queue_Org_Email_N`** — Create item in **DEX_Emails**. runAfter: `Get_Cancelled_Person_N` → Succeeded. Felder:
+1. **`Get_Org_Template_N`** — Send an HTTP request to SharePoint, GET, URI = *Org-Template-URI* (oben). Header `Accept: application/json;odata=verbose`. runAfter: `Queue_Email` → Succeeded.
+2. **`Queue_Org_Email_N`** — Create item in **DEX_Emails**. runAfter: `Get_Org_Template_N` → Succeeded. Felder:
    - **item/Title:** `@replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname']))`
    - **item/Recipient:** *Empfänger* (oben)
    - **item/RecipientName:** `Organizer`
-   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', concat(first(body('Get_Cancelled_Person_N')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Cancelled_Person_N')?['d']?['results'])?['Nachname']))`
+   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
    - **item/EmailType → Value:** `OrgNachruecker`
    - **item/EventTitle:** *EventTitle* (oben)
    - **item/EventId:** *EventId* (oben)
@@ -68,13 +70,12 @@ bestehenden `Queue_Email`:
 NUR falls B2Run-Split. Drei Actions im Durchstarter-Promote-Zweig, NACH
 `Queue_Email_Durchstarter`. **Waitlist-Quelle:** `Get_Waitlist_First_Durchstarter`.
 
-1. **`Get_Org_Template_D`** — GET, URI = *Org-Template-URI*. runAfter: `Queue_Email_Durchstarter` → Succeeded.
-2. **`Get_Cancelled_Person_D`** — GET, URI = *Abgemeldeten-URI*. runAfter: `Get_Org_Template_D` → Succeeded.
-3. **`Queue_Org_Email_D`** — Create item in **DEX_Emails**. runAfter: `Get_Cancelled_Person_D` → Succeeded. Felder:
+1. **`Get_Org_Template_D`** — GET, URI = *Org-Template-URI*. Header `Accept: application/json;odata=verbose`. runAfter: `Queue_Email_Durchstarter` → Succeeded.
+2. **`Queue_Org_Email_D`** — Create item in **DEX_Emails**. runAfter: `Get_Org_Template_D` → Succeeded. Felder:
    - **item/Title:** `@replace(replace(coalesce(first(body('Get_Org_Template_D')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Nachname']))`
    - **item/Recipient:** *Empfänger*
    - **item/RecipientName:** `Organizer`
-   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_D')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', concat(first(body('Get_Cancelled_Person_D')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Cancelled_Person_D')?['d']?['results'])?['Nachname']))`
+   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_D')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
    - **item/EmailType → Value:** `OrgNachruecker`
    - **item/EventTitle:** *EventTitle* · **item/EventId:** *EventId* · **item/Status → Value:** `Pending`
 
@@ -85,20 +86,19 @@ NUR falls B2Run-Split. Drei Actions im Durchstarter-Promote-Zweig, NACH
 NUR falls B2Run-Split. Drei Actions im Funstarter-Promote-Zweig, NACH
 `Queue_Email_Funstarter`. **Waitlist-Quelle:** `Get_Waitlist_First_Funstarter`.
 
-1. **`Get_Org_Template_F`** — GET, URI = *Org-Template-URI*. runAfter: `Queue_Email_Funstarter` → Succeeded.
-2. **`Get_Cancelled_Person_F`** — GET, URI = *Abgemeldeten-URI*. runAfter: `Get_Org_Template_F` → Succeeded.
-3. **`Queue_Org_Email_F`** — Create item in **DEX_Emails**. runAfter: `Get_Cancelled_Person_F` → Succeeded. Felder:
+1. **`Get_Org_Template_F`** — GET, URI = *Org-Template-URI*. Header `Accept: application/json;odata=verbose`. runAfter: `Queue_Email_Funstarter` → Succeeded.
+2. **`Queue_Org_Email_F`** — Create item in **DEX_Emails**. runAfter: `Get_Org_Template_F` → Succeeded. Felder:
    - **item/Title:** `@replace(replace(coalesce(first(body('Get_Org_Template_F')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Nachname']))`
    - **item/Recipient:** *Empfänger*
    - **item/RecipientName:** `Organizer`
-   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_F')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', concat(first(body('Get_Cancelled_Person_F')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Cancelled_Person_F')?['d']?['results'])?['Nachname']))`
+   - **item/Body:** `@replace(replace(replace(coalesce(first(body('Get_Org_Template_F')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
    - **item/EmailType → Value:** `OrgNachruecker`
    - **item/EventTitle:** *EventTitle* · **item/EventId:** *EventId* · **item/Status → Value:** `Pending`
 
 > **Betreff:** `{{CancelledName}}` ist im Title bewusst nicht ersetzt (Betreff
 > bleibt kurz, zeigt nur den Nachrücker). Wer es im Betreff will, ergänzt im
 > jeweiligen `item/Title` ein weiteres `replace(…, '{{CancelledName}}', …)`.
-> **Headers** für alle GET-Actions: `Accept: application/json;odata=verbose`
+> **Headers** für alle Template-GET-Actions: `Accept: application/json;odata=verbose`
 > (damit `?['d']?['results']` greift — wie bei den bestehenden Waitlist-GETs).
 
 **Hinweis:** Der `OrganizerEmail`-Wert in `DEX_Events` ist `;`-getrennt — der

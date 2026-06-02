@@ -6035,7 +6035,7 @@ export default function AdminPage(): React.ReactElement {
                             try {
                               const ok = await eventServiceRef.queueIDReorder(
                                 selectedEvent.id, selectedEvent.eventNumber || 0,
-                                selectedEvent.subsiteUrl, selectedEvent.title
+                                selectedEvent.subsiteUrl, selectedEvent.title, name
                               );
                               if (!ok) {
                                 console.warn('[DEX] queueIDReorder returned false');
@@ -6369,7 +6369,8 @@ export default function AdminPage(): React.ReactElement {
                                   try {
                                     const ok = await eventServiceRef.queueIDReorder(
                                       selectedEvent.id, selectedEvent.eventNumber || 0,
-                                      selectedEvent.subsiteUrl, selectedEvent.title
+                                      selectedEvent.subsiteUrl, selectedEvent.title,
+                                      `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || undefined
                                     );
                                     if (!ok) {
                                       alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
