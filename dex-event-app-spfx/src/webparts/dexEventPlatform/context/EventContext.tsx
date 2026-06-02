@@ -2211,10 +2211,36 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             }
             // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
             // Person(en) auch bei der Abmelde-Mail auf CC (nicht im Outlook-Termin).
+            // v18.58: Im subEventsOnlyMode liegen die übergreifenden CC-Felder
+            // (z.B. Assistenz) in der Schatten-Parent-Registrierung, NICHT in der
+            // Sub-Event-Registrierung. Beim Abmelden einer Section daher
+            // zusätzlich die CC aus dem Parent-Event nachladen und mergen, damit
+            // die Assistenz auch die Abmelde-Mail in Kopie bekommt (Anmeldung
+            // war bereits via extraCc abgedeckt).
             let cancelCc: string | undefined;
             try {
               const cd = myReg.CustomData ? JSON.parse(myReg.CustomData) as Record<string, string> : {};
-              cancelCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, currentUserEmail) || undefined;
+              const ownCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, currentUserEmail);
+              let parentCc = '';
+              if (event.parentEventId) {
+                const parentEvent = events.find(ev => ev.id === event.parentEventId);
+                if (parentEvent && parentEvent.subEventsOnlyMode) {
+                  try {
+                    const parentReg = await getMyRegistration(event.parentEventId);
+                    const pcd = parentReg?.CustomData ? JSON.parse(parentReg.CustomData) as Record<string, string> : {};
+                    parentCc = collectCcEmailsFromFields(parentEvent.eventSpecificFields, pcd, currentUserEmail);
+                  } catch { /* parent-CC best-effort */ }
+                }
+              }
+              const seen = new Set<string>();
+              const merged: string[] = [];
+              for (const part of [ownCc, parentCc]) {
+                for (const em of part.split(';').map(s => s.trim()).filter(Boolean)) {
+                  const lc = em.toLowerCase();
+                  if (lc !== (currentUserEmail || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); merged.push(em); }
+                }
+              }
+              cancelCc = merged.length ? merged.join(';') : undefined;
             } catch { cancelCc = undefined; }
             const emailOk = await eventService.queueEmail(
               emailData.subject, currentUserEmail, currentUserName, emailData.body,
