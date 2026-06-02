@@ -17,7 +17,47 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
+**Letztes Update:** 2026-06-02 (v18.66 — OrgNachruecker-Mail + Paginierung as-implemented; siehe offene Korrektur unten)
+
+### ⚠ OFFENE KORREKTUR 2026-06-02 (v18.66) — leeres `from` + unquoted `Warteliste` in den Filter-Actions
+
+Beim Review des as-implemented Flow-Exports (nach dem Paginierungs-Umbau)
+sind **zwei Fehler** in den **Filter-array-Actions** (Query) aufgefallen.
+Beide entstehen dadurch, dass diese Actions vor dem Umbau auf
+`@body('Get_Enrolled_Participants')?['value']` zeigten — beim Löschen dieser
+Quelle wurde die `from`-Bindung geleert und in der Paginierungs-Anleitung
+**nicht** auf `AllParticipants` umgebogen.
+
+**Betroffene Actions:** `Filter_Non_Waitlist`, `Filter_Active`,
+`Filter_Waitlist`, `Filter_Active_Durchstarter`, `Filter_Active_Funstarter`.
+
+1. **Leeres `From` (kritisch).** Alle fünf Filter-Actions haben aktuell
+   `from = ""` → sie filtern ein **leeres** Array. Folge:
+   - `Count_Active` (= `length(Filter_Non_Waitlist)`) ist immer **0**.
+   - Damit ist `Check_Nachrücken` (`Count_Active < MaxParticipants`) **immer
+     wahr** → der Flow rückt bei **jeder** Abmeldung jemanden nach,
+     **auch wenn das Event voll ist** → schleichende Überbuchung.
+   - Im Split-Pfad analog: `Count_Active_Durchstarter` / `_Funstarter` = 0 →
+     `Check_*_Free` immer wahr → Überbuchung pro Gruppe.
+   - Die reine **ID-Neuvergabe** ist NICHT betroffen (sie liest
+     `GenerateSPData` direkt aus `variables('AllParticipants')`).
+   - **Fix:** In jeder der fünf Actions das **From**-Feld auf den
+     fx-Ausdruck `variables('AllParticipants')` setzen.
+2. **`Warteliste` ohne Anführungszeichen** (in den drei Nicht-Split-Filtern
+   `Filter_Non_Waitlist`, `Filter_Active`, `Filter_Waitlist`). Die Where-
+   Bedingung lautet z. B. `@not(equals(item()?['Status'],Warteliste))` —
+   der Vergleichswert `Warteliste` ist ein **String** und muss in
+   einfache Anführungszeichen: `'Warteliste'`. Am einfachsten über den
+   **Basismodus** der Filter-array-Action neu eintippen (Status / *is not
+   equal to* / `Warteliste`) — Power Automate quotet den Wert dann selbst.
+   Die Split-Filter (`Filter_Active_Durchstarter` / `_Funstarter`) haben die
+   Anführungszeichen bereits korrekt.
+
+**Verifikation nach dem Fix:** Event mit Cap = 2, 2 Aktiven, 1 Wartelistler;
+eine **dritte** Person zusätzlich auf die Warteliste setzen; jetzt eine
+Abmeldung auslösen → es darf **genau eine** Person nachrücken (auf den frei
+gewordenen Platz), nicht zwei. `Count_Active` muss nach dem Lauf der echten
+Aktiven-Zahl entsprechen, nicht 0.
 
 ### UI-Anleitung 2026-06-02 (v18.63) — Organizer-Mail bei Abmeldung mit Nachrücker
 
@@ -368,6 +408,18 @@ aber lesbarer.
    (komplettes Deloitte-Design inklusive Logo/Header/Footer), weil der PA-Flow den
    BodyHtml raw verwendet. Client-Code erkennt pre-wrapped Templates in
    `buildEmailFromTemplate()` und skippt den zweiten Wrap. App-seitig v5.33.0+ nötig.
+
+> **HINWEIS (v18.66):** Der folgende JSON-Block ist die **Baseline vor dem
+> Paginierungs-Umbau** (ohne `Init_AllParticipants` / `Init_NextPageUri` /
+> `Load_All_Pages` und ohne die `OrgNachruecker`-Mail-Actions). Der
+> **aktuelle** Stand ergibt sich aus dieser Baseline **plus** den
+> Delta-Anleitungen oben:
+> - „UI-Anleitung 2026-06-02 (v18.55) — Paginierung" (ersetzt `Get_Enrolled_Participants` durch die Lade-Schleife),
+> - „UI-Anleitung 2026-06-02 (v18.63) — Organizer-Mail" (die `Get_Org_Template_*` / `Queue_Org_Email_*`-Actions je Zweig),
+> - „⚠ OFFENE KORREKTUR 2026-06-02 (v18.66)" (das leere `from` + unquoted `Warteliste` in den Filter-Actions — MUSS noch im Tenant gefixt werden).
+>
+> Sobald die offene Korrektur durchgeklickt ist, bitte den frischen Export
+> schicken — dann ersetze ich diese Baseline durch den finalen v18.66-Stand.
 
 ```json
 TRIGGER:
