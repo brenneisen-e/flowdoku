@@ -206,18 +206,19 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
 // gequeued (nicht von der App). Pre-wrapped gespeichert wie Nachruecken; der
 // Flow ersetzt nur {{EventTitle}} und {{PromotedName}} per replace(). Daher
 // KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste App-URL eingebaut.
-// Platzhalter: {{EventTitle}}, {{PromotedName}} (voller Name des Nachrückers).
+// Platzhalter: {{EventTitle}}, {{CancelledName}} (abgemeldete Person),
+// {{PromotedName}} (voller Name des Nachrückers).
 const ORG_NACHRUECKER_BODY_EN = wrapTemplateForStorage(
   '#86bc25', 'Cancellation — waitlist move-up', 'Event {{EventTitle}}',
   `<p>Hello,</p>
-<p>There was a <strong>cancellation</strong> for the event <strong>{{EventTitle}}</strong>. As a result, <strong>{{PromotedName}}</strong> was automatically <strong>moved up from the waitlist</strong> and is now a confirmed participant.</p>
+<p>For the event <strong>{{EventTitle}}</strong>, <strong>{{CancelledName}}</strong> cancelled their registration. As a result, <strong>{{PromotedName}}</strong> was automatically <strong>moved up from the waitlist</strong> and is now a confirmed participant.</p>
 <p>You don't need to do anything — the participant list and participant IDs have already been updated automatically. You can review the current status in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your DEX Team</strong></p>`
 );
 const ORG_NACHRUECKER_BODY_DE = wrapTemplateForStorage(
   '#86bc25', 'Abmeldung — Nachrücker', 'Event {{EventTitle}}',
   `<p>Hallo,</p>
-<p>beim Event <strong>{{EventTitle}}</strong> gab es eine <strong>Abmeldung</strong>. Daraufhin ist <strong>{{PromotedName}}</strong> automatisch von der <strong>Warteliste nachgerückt</strong> und ist jetzt fester Teilnehmer.</p>
+<p>beim Event <strong>{{EventTitle}}</strong> hat sich <strong>{{CancelledName}}</strong> abgemeldet. Daraufhin ist <strong>{{PromotedName}}</strong> automatisch von der <strong>Warteliste nachgerückt</strong> und ist jetzt fester Teilnehmer.</p>
 <p>Du musst nichts weiter tun — die Teilnehmerliste und die TeilnehmerIDs wurden bereits automatisch aktualisiert. Den aktuellen Stand siehst du im <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
 );
